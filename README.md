@@ -186,7 +186,7 @@ tsunami-surrogate/
 │  │  ├─ shallow_water.py
 │  │  ├─ boussinesq.py
 │  │  ├─ boundary_problems.py
-│  │  └─ source_models.py
+│  │  └─ source_modelling.py
 │  ├─ data_gen/
 │  │  ├─ generate_bathymetry.py
 │  │  ├─ generate_sources.py
