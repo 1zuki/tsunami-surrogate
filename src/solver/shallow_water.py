@@ -24,17 +24,44 @@ class ShallowWaterSolver:
 
     def set_initial_condition(self, h0, hu0=None, hv0=None):
         """ set initial water state """
-        self.h = np.where(h0 < self.eps, 0, h0)
+        h0 = np.asarray(h0, dtype=float)
+
+        if h0.shape != (self.nx, self.ny):
+            raise ValueError(f"h0 shape must be {(self.nx, self.ny)}, got {h0.shape}")
+
+        self.h = h0.copy()
+        self.h[self.h < 0] = 0.0
+
+        self.hu = np.zeros_like(self.h)
+        self.hv = np.zeros_like(self.h)
 
         if hu0 is not None:
-            self.hu = hu0
-        
+            hu0 = np.asarray(hu0, dtype=float)
+            
+            if hu0.shape != self.h.shape:
+                raise ValueError("hu0 shape mismatch")
+            
+            self.hu = hu0.copy()
+
         if hv0 is not None:
-            self.hv = hv0
+            hv0 = np.asarray(hv0, dtype=float)
+            
+            if hv0.shape != self.h.shape:
+                raise ValueError("hv0 shape mismatch")
+
+            self.hv = hv0.copy()
+
+        mask = self.h < self.eps
+        self.hu[mask] = 0.0
+        self.hv[mask] = 0.0
 
     def set_bathymetry(self, b):
-        """ set seabed height. """
-        self.b = b
+        b = np.asarray(b, dtype=float)
+
+        if b.shape != (self.nx, self.ny):
+            raise ValueError(f"b shape must be {(self.nx, self.ny)}, got {b.shape}")
+
+        self.b = b.copy()
 
     def compute_velocity(self):
         """ compute velocity """
@@ -83,23 +110,67 @@ class ShallowWaterSolver:
 
         return S
 
-    def compute_derivatives(self, F, G):
-        """ compute spatial derivatives """
-        dF_dx = np.zeros(F.shape)
-        dG_dy = np.zeros(G.shape)
+    def compute_rusanov_flux_F(self, F):
+        U = np.stack([self.h, self.hu, self.hv], axis = 0)
 
-        # central
-        dF_dx[:, 1:-1, :] = (F[:, 2:, :] - F[:, :-2, :]) / (2 * self.dx)
-        dG_dy[:, :, 1:-1] = (G[:, :, 2:] - G[:, :, :-2]) / (2 * self.dy)
-        
-        # boundaries
-        dF_dx[:, 0, :] = (F[:, 1, :] - F[:, 0, :]) / self.dx
-        dF_dx[:, -1, :] = (F[:, -1, :] - F[:, -2, :]) / self.dx
+        F_half = np.zeros_like(F)
 
-        dG_dy[:, :, 0] = (G[:, :, 1] - G[:, :, 0]) / self.dy
-        dG_dy[:, :, -1] = (G[:, :, -1] - G[:, :, -2]) / self.dy
+        U_L = U[:, :-1, :]
+        U_R = U[:, 1:, :]
+    
+        F_L = F[:, :-1, :]
+        F_R = F[:, 1:, :]
 
-        return dF_dx + dG_dy
+        u, v = self.compute_velocity()
+        c = np.sqrt(self.g * np.maximum(self.h, self.eps))
+
+        lbd_L = np.abs(u[:-1, :]) + c[:-1, :]
+        lbd_R = np.abs(u[1:, :]) + c[1:, :]
+
+        lbd = np.maximum(lbd_L, lbd_R)
+        lbd = lbd[None, :, :] # broadcasting
+
+        F_half[:, :-1, :] = 0.5 * (F_L + F_R) - 0.5 * lbd * (U_R - U_L)
+
+        dF_dx = np.zeros_like(F)
+
+        dF_dx[:, 1:-1, :] = (F_half[:, 1:-1, :] - F_half[:, 0:-2, :]) / self.dx
+
+        dF_dx[:, 0, :] = dF_dx[:, 1, :]
+        dF_dx[:, -1, :] = dF_dx[:, -2, :]
+
+        return dF_dx
+    
+    def compute_rusanov_flux_G(self, G):
+        U = np.stack([self.h, self.hu, self.hv], axis = 0)
+
+        G_half = np.zeros_like(G)
+
+        U_L = U[:, :, :-1]
+        U_R = U[:, :, 1:]
+
+        G_L = G[:, :, :-1]
+        G_R = G[:, :, 1:]
+
+        u, v = self.compute_velocity()
+        c = np.sqrt(self.g * np.maximum(self.h, self.eps))
+
+        lbd_L = np.abs(v[:, :-1]) + c[:, :-1]
+        lbd_R = np.abs(v[:, 1:]) + c[:, 1:]
+
+        lbd = np.maximum(lbd_L, lbd_R)
+        lbd = lbd[None, :, :]
+
+        G_half[:, :, :-1] = 0.5 * (G_L + G_R) - 0.5 * lbd * (U_R - U_L)
+
+        dG_dy = np.zeros_like(G)
+
+        dG_dy[:, :, 1:-1] = (G_half[:, :, 1:-1] - G_half[:, :, 0:-2]) / self.dy
+
+        dG_dy[:, :, 0] = dG_dy[:, :, 1]
+        dG_dy[:, :, -1] = dG_dy[:, :, -2]
+
+        return dG_dy
 
     # time step update
     def update(self):
@@ -107,7 +178,11 @@ class ShallowWaterSolver:
         # flux
         F = self.compute_flux_x()
         G = self.compute_flux_y()
-        divergence = self.compute_derivatives(F, G)
+
+        dF_dx = self.compute_rusanov_flux_F(F)
+        dG_dy = self.compute_rusanov_flux_G(G)
+
+        divergence = dF_dx + dG_dy
 
         # source
         S = self.compute_source()
@@ -117,18 +192,17 @@ class ShallowWaterSolver:
 
         U_new = U - self.dt * divergence + self.dt * S
 
-        self.h  = U_new[0]
+        self.h  = np.maximum(U_new[0], 0.0)
         self.hu = U_new[1]
         self.hv = U_new[2]
 
         # update
-        self.h = np.maximum(self.h, 0)
-
         mask = self.h < self.eps
+
         self.hu[mask] = 0
         self.hv[mask] = 0
 
-    # SIMPLE VERSION WILL NEED TO CHANGE
+    # non refective boundary (open ocen tsunami)
     def apply_boundary_conditions(self):
         """ apply boundary conditions """
         # simple ver
@@ -149,7 +223,7 @@ class ShallowWaterSolver:
 
     def step(self):
         """ one sim step. """
-        self.adjust_dt()
+        self.apply_boundary_conditions()
         self.update()
         self.apply_boundary_conditions()
 
@@ -161,10 +235,11 @@ class ShallowWaterSolver:
         """ CFL condition for stability """
         u, v = self.compute_velocity()
 
-        wave_speed = np.sqrt(self.g * self.h)
-        speed = np.abs(u) + wave_speed
+        wave_speed = np.sqrt(self.g * np.maximum(self.h, self.eps))
+        speed_x = np.abs(u) + wave_speed
+        speed_y = np.abs(v) + wave_speed
 
-        max_speed = np.max(speed)
+        max_speed = max(np.max(speed_x), np.max(speed_y))
 
         cfl_x = max_speed * self.dt / self.dx
         cfl_y = max_speed * self.dt / self.dy
@@ -173,10 +248,20 @@ class ShallowWaterSolver:
         
     def adjust_dt(self, target_cfl=0.5):
         u, v = self.compute_velocity()
-        wave_speed = np.sqrt(self.g * np.maximum(self.h, 0))
-        speed = np.abs(u) + wave_speed
+        wave_speed = np.sqrt(self.g * np.maximum(self.h, self.eps))
+        
+        speed_x = np.abs(u) + wave_speed
+        speed_y = np.abs(v) + wave_speed
 
-        max_speed = np.max(speed)
+        max_speed = max(np.max(speed_x), np.max(speed_y))
 
         if max_speed > 0:
             self.dt = target_cfl * min(self.dx, self.dy) / max_speed
+
+
+"""
+Reference doc:
+https://www.sciencedirect.com/science/article/pii/S0307904X04001647
+https://en.wikipedia.org/wiki/Shallow_water_equations
+https://www.sciencedirect.com/science/article/pii/S0045793026000423
+"""
