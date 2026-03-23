@@ -96,6 +96,26 @@ class ShallowWaterSolver:
                     axis = 0)
         
         return G
+    
+    def flux_x_from_U(self, U):
+        h = np.maximum(U[0], self.eps)
+        hu = U[1]
+        hv = U[2]
+
+        return np.stack([hu,
+                        hu ** 2 / h + 0.5 * self.g * h ** 2,
+                        hu * hv / h],
+                        axis = 0)
+    
+    def flux_y_from_U(self, U):
+        h = np.maximum(U[0], self.eps)
+        hu = U[1]
+        hv = U[2]
+
+        return np.stack([hv,
+                        hu * hv / h,
+                        hv ** 2 / h + 0.5 * self.g * h ** 2],
+                        axis = 0)
 
     def compute_source(self):
         """ compute source term due to bathymetry """
@@ -109,26 +129,66 @@ class ShallowWaterSolver:
                     axis = 0)
 
         return S
+    
+    def minmod(self, a, b):
+        return np.where(np.sign(a) == np.sign(b),
+                        np.sign(a) * np.minimum(np.abs(a), np.abs(b)),
+                        0.0)
+    
+    def compute_slope(self, U, axis):
+        """ MUSCL """
+        if axis == "x":
+            dU_forward = U[:, 2:, :] - U[:, 1:-1, :]
+            dU_backward = U[:, 1:-1, :] - U[:, :-2, :]
 
+            slope = self.minmod(dU_forward, dU_backward)
+
+            return slope
+        
+        elif axis == "y":
+            dU_forward = U[:, :, 2:] - U[:, :, 1:-1]
+            dU_backward = U[:, :, 1:-1] - U[:, :, :-2]
+
+            slope = self.minmod(dU_forward, dU_backward)
+
+            return slope
+
+        else:
+            raise ValueError("axis must be x / y")
+    
+    # rusanov
     def compute_rusanov_flux_F(self, F):
         U = np.stack([self.h, self.hu, self.hv], axis = 0)
 
+        slope = self.compute_slope(U, axis = "x")
+
+        slope_bc = np.zeros_like(U)
+
+        slope_bc[:, 1:-1, :] = slope
+
         F_half = np.zeros_like(F)
 
-        U_L = U[:, :-1, :]
-        U_R = U[:, 1:, :]
+        U_L = U[:, :-1, :] + 0.5 * slope_bc[:, :-1, :]
+        U_R = U[:, 1:, :] - 0.5 * slope_bc[:, 1:, :]
+
+        U_L[0] = np.maximum(U_L[0], self.eps)
+        U_R[0] = np.maximum(U_R[0], self.eps)
     
-        F_L = F[:, :-1, :]
-        F_R = F[:, 1:, :]
+        F_L = self.flux_x_from_U(U_L)
+        F_R = self.flux_x_from_U(U_R)
 
-        u, v = self.compute_velocity()
-        c = np.sqrt(self.g * np.maximum(self.h, self.eps))
+        h_L = np.maximum(U_L[0], self.eps)
+        h_R = np.maximum(U_R[0], self.eps)
 
-        lbd_L = np.abs(u[:-1, :]) + c[:-1, :]
-        lbd_R = np.abs(u[1:, :]) + c[1:, :]
+        u_L = U_L[1] / h_L
+        u_R = U_R[1] / h_R
 
-        lbd = np.maximum(lbd_L, lbd_R)
-        lbd = lbd[None, :, :] # broadcasting
+        c_L = np.sqrt(self.g * h_L)
+        c_R = np.sqrt(self.g * h_R)
+
+        lbd = np.maximum(np.abs(u_L) + c_L,
+                        np.abs(u_R) + c_R)
+        lbd = lbd[None, :, :]
 
         F_half[:, :-1, :] = 0.5 * (F_L + F_R) - 0.5 * lbd * (U_R - U_L)
 
@@ -144,21 +204,34 @@ class ShallowWaterSolver:
     def compute_rusanov_flux_G(self, G):
         U = np.stack([self.h, self.hu, self.hv], axis = 0)
 
+        slope = self.compute_slope(U, axis = "y")
+        
+        slope_bc = np.zeros_like(U)
+
+        slope_bc[:, :, 1:-1] = slope
+
         G_half = np.zeros_like(G)
 
-        U_L = U[:, :, :-1]
-        U_R = U[:, :, 1:]
+        U_L = U[:, :, :-1] + 0.5 * slope_bc[:, :, :-1]
+        U_R = U[:, :, 1:] - 0.5 * slope_bc[:, :, 1:]
 
-        G_L = G[:, :, :-1]
-        G_R = G[:, :, 1:]
+        U_L[0] = np.maximum(U_L[0], self.eps)
+        U_R[0] = np.maximum(U_R[0], self.eps)
 
-        u, v = self.compute_velocity()
-        c = np.sqrt(self.g * np.maximum(self.h, self.eps))
+        G_L = self.flux_y_from_U(U_L)
+        G_R = self.flux_y_from_U(U_R)
 
-        lbd_L = np.abs(v[:, :-1]) + c[:, :-1]
-        lbd_R = np.abs(v[:, 1:]) + c[:, 1:]
+        h_L = np.maximum(U_L[0], self.eps)
+        h_R = np.maximum(U_R[0], self.eps)
 
-        lbd = np.maximum(lbd_L, lbd_R)
+        v_L = U_L[2] / h_L
+        v_R = U_R[2] / h_R
+
+        c_L = np.sqrt(self.g * h_L)
+        c_R = np.sqrt(self.g * h_R)
+
+        lbd = np.maximum(np.abs(v_L) + c_L,
+                        np.abs(v_R) + c_R)
         lbd = lbd[None, :, :]
 
         G_half[:, :, :-1] = 0.5 * (G_L + G_R) - 0.5 * lbd * (U_R - U_L)
@@ -172,12 +245,14 @@ class ShallowWaterSolver:
 
         return dG_dy
 
-    # time step update
+    # update
     def update(self):
         """ one time step update """
         # flux
         F = self.compute_flux_x()
         G = self.compute_flux_y()
+
+        u, v = self.compute_velocity()
 
         dF_dx = self.compute_rusanov_flux_F(F)
         dG_dy = self.compute_rusanov_flux_G(G)
@@ -223,7 +298,6 @@ class ShallowWaterSolver:
 
     def step(self):
         """ one sim step. """
-        self.apply_boundary_conditions()
         self.update()
         self.apply_boundary_conditions()
 
@@ -261,7 +335,9 @@ class ShallowWaterSolver:
 
 """
 Reference doc:
-https://www.sciencedirect.com/science/article/pii/S0307904X04001647
+-------------------------------------------------------------------
 https://en.wikipedia.org/wiki/Shallow_water_equations
+https://www.sciencedirect.com/science/article/pii/S0307904X04001647
+https://en.wikipedia.org/wiki/MUSCL_scheme
 https://www.sciencedirect.com/science/article/pii/S0045793026000423
 """
