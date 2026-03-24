@@ -1,343 +1,437 @@
+from __future__ import annotations
+from typing import Literal, NamedTuple, Optional, Tuple, Union
 import numpy as np
 
+BoundaryMode = Literal["open", "reflective", "periodic"]
+
+class SolverInfo(NamedTuple):
+    """ metadata bundle for logging / experiment tracking"""
+    nx: int
+    ny: int
+    dx: float
+    dy: float
+    dt: float
+    g: float
+    cfl: float
+    dry_tolerance: float
+    boundary_x: BoundaryMode
+    boundary_y: BoundaryMode
+
 class ShallowWaterSolver:
-    def __init__(self, nx, ny, dx, dy, dt, g=9.81):
-        # grid
-        self.nx = nx
-        self.ny = ny
-        self.dx = dx
-        self.dy = dy
+    def __init__(self, nx: int, ny: int, dx: float, dy: float, dt: float, g: float = 9.81, cfl: float = 0.45,
+                 dry_tolerance: float = 1e-6, boundary: Union[BoundaryMode, Tuple[BoundaryMode, BoundaryMode]] = "open") -> None:
+        if nx <= 1 or ny <= 1:
+            raise ValueError("nx and ny must be greater than 1.")
+        if dx <= 0 or dy <= 0:
+            raise ValueError("dx and dy must be positive.")
+        if dt <= 0:
+            raise ValueError("dt must be positive.")
+        if g <= 0:
+            raise ValueError("g must be positive.")
+        if cfl <= 0:
+            raise ValueError("cfl must be positive.")
+        if dry_tolerance <= 0:
+            raise ValueError("dry_tolerance must be positive.")
 
-        # time
-        self.dt = dt
-        self.g = g
+        self.nx = int(nx)
+        self.ny = int(ny)
+        self.dx = float(dx)
+        self.dy = float(dy)
+        self.dt = float(dt)
+        self.g = float(g)
+        self.cfl = float(cfl)
+        self.dry_tolerance = float(dry_tolerance)
 
-        # vars
-        self.h = np.zeros((nx, ny))   # water height
-        self.hu = np.zeros((nx, ny))  # momentum in x
-        self.hv = np.zeros((nx, ny))  # momentum in y
+        if isinstance(boundary, tuple):
+            self.boundary_x, self.boundary_y = boundary
 
-        # bathymetry
-        self.b = np.zeros((nx, ny))
+        else:
+            self.boundary_x = boundary
+            self.boundary_y = boundary
 
-        self.eps = 1e-6
+        self._validate_boundary(self.boundary_x, "boundary_x")
+        self._validate_boundary(self.boundary_y, "boundary_y")
 
-    def set_initial_condition(self, h0, hu0=None, hv0=None):
-        """ set initial water state """
-        h0 = np.asarray(h0, dtype=float)
+        self.h = np.zeros((self.nx, self.ny), dtype=float)
+        self.hu = np.zeros((self.nx, self.ny), dtype=float)
+        self.hv = np.zeros((self.nx, self.ny), dtype=float)
+        self.b = np.zeros((self.nx, self.ny), dtype=float)
 
-        if h0.shape != (self.nx, self.ny):
-            raise ValueError(f"h0 shape must be {(self.nx, self.ny)}, got {h0.shape}")
+    # validation
+    @staticmethod
+    def _validate_boundary(mode: BoundaryMode, name: str) -> None:
+        if mode not in ("open", "reflective", "periodic"):
+            raise ValueError(f"{name} must be one of: open, reflective, periodic")
 
-        self.h = h0.copy()
-        self.h[self.h < 0] = 0.0
+    def _check_shape(self, arr: np.ndarray, name: str) -> np.ndarray:
+        arr = np.asarray(arr, dtype=float)
+
+        if arr.shape != (self.nx, self.ny):
+            raise ValueError(f"{name} shape must be {(self.nx, self.ny)}, got {arr.shape}")
+
+        return arr
+
+    # settets
+    def set_initial_condition(self, h0: np.ndarray, hu0: Optional[np.ndarray] = None, hv0: Optional[np.ndarray] = None) -> None:
+        """ initial water depth (and momentum) """
+        self.h = self._check_shape(h0, "h0").copy()
+        self.h = np.maximum(self.h, 0.0)
 
         self.hu = np.zeros_like(self.h)
         self.hv = np.zeros_like(self.h)
 
         if hu0 is not None:
-            hu0 = np.asarray(hu0, dtype=float)
-            
-            if hu0.shape != self.h.shape:
-                raise ValueError("hu0 shape mismatch")
-            
-            self.hu = hu0.copy()
+            self.hu = self._check_shape(hu0, "hu0").copy()
 
         if hv0 is not None:
-            hv0 = np.asarray(hv0, dtype=float)
-            
-            if hv0.shape != self.h.shape:
-                raise ValueError("hv0 shape mismatch")
+            self.hv = self._check_shape(hv0, "hv0").copy()
 
-            self.hv = hv0.copy()
+        self._zero_momentum_in_dry_cells()
 
-        mask = self.h < self.eps
-        self.hu[mask] = 0.0
-        self.hv[mask] = 0.0
+    def set_bathymetry(self, b: np.ndarray) -> None:
+        self.b = self._check_shape(b, "b").copy()
 
-    def set_bathymetry(self, b):
-        b = np.asarray(b, dtype=float)
+    # state utils
+    def get_state(self) -> np.ndarray:
+        """ return state as [h, hu, hv] """
+        return np.stack([self.h, self.hu, self.hv], axis=0)
 
-        if b.shape != (self.nx, self.ny):
-            raise ValueError(f"b shape must be {(self.nx, self.ny)}, got {b.shape}")
+    def set_state(self, U: np.ndarray) -> None:
+        """ replace the state from a stacked array """
+        U = np.asarray(U, dtype=float)
 
-        self.b = b.copy()
+        if U.shape != (3, self.nx, self.ny):
+            raise ValueError(f"U shape must be {(3, self.nx, self.ny)}, got {U.shape}")
 
-    def compute_velocity(self):
-        """ compute velocity """
-        mask = self.h > self.eps
+        self.h = np.maximum(U[0].copy(), 0.0)
+        self.hu = U[1].copy()
+        self.hv = U[2].copy()
+        self._zero_momentum_in_dry_cells()
+
+    def compute_velocity(self) -> tuple[np.ndarray, np.ndarray]:
+        """ return velocity (u, v) """
+        h_safe = np.maximum(self.h, self.dry_tolerance)
+        wet = self.h > self.dry_tolerance
 
         u = np.zeros_like(self.h)
         v = np.zeros_like(self.h)
-
-        u[mask] = self.hu[mask] / self.h[mask]
-        v[mask] = self.hv[mask] / self.h[mask]
+        u[wet] = self.hu[wet] / h_safe[wet]
+        v[wet] = self.hv[wet] / h_safe[wet]
 
         return u, v
 
-    def compute_flux_x(self):
-        """ compute flux F in x-direction """
-        h_safe = np.maximum(self.h, self.eps)
+    def compute_free_surface(self) -> np.ndarray:
+        """ return the free-surface elevation eta = h + b """
+        return self.h + self.b
 
-        F = np.stack([self.hu,
-                    self.hu ** 2 / h_safe + 0.5 * self.g * h_safe ** 2,
-                    (self.hu * self.hv) / h_safe],
-                    axis = 0)
-        
-        return F
-
-    def compute_flux_y(self):
-        """ compute flux G in y-direction """
-        h_safe = np.maximum(self.h, self.eps)
-
-        G = np.stack([self.hv,
-                    self.hu * self.hv / h_safe,
-                    self.hv ** 2 / h_safe + 0.5 * self.g * h_safe ** 2],
-                    axis = 0)
-        
-        return G
-    
-    def flux_x_from_U(self, U):
-        h = np.maximum(U[0], self.eps)
+    # flux func
+    def flux_x_from_U(self, U: np.ndarray) -> np.ndarray:
+        """ physical x-flux evaluated from a stacked state array """
+        h = np.maximum(U[0], self.dry_tolerance)
         hu = U[1]
         hv = U[2]
 
         return np.stack([hu,
-                        hu ** 2 / h + 0.5 * self.g * h ** 2,
+                        hu * hu / h + 0.5 * self.g * h * h,
                         hu * hv / h],
-                        axis = 0)
-    
-    def flux_y_from_U(self, U):
-        h = np.maximum(U[0], self.eps)
+                        axis=0)
+
+    def flux_y_from_U(self, U: np.ndarray) -> np.ndarray:
+        """ physical y-flux evaluated from a stacked state array """
+        h = np.maximum(U[0], self.dry_tolerance)
         hu = U[1]
         hv = U[2]
 
         return np.stack([hv,
                         hu * hv / h,
-                        hv ** 2 / h + 0.5 * self.g * h ** 2],
-                        axis = 0)
+                        hv * hv / h + 0.5 * self.g * h * h],
+                        axis=0)
 
-    def compute_source(self):
-        """ compute source term due to bathymetry """
-        db_dx, db_dy = np.gradient(self.b, self.dx, self.dy)
+    def compute_flux_x(self) -> np.ndarray:
+        """ cell-centered x-flux of the current state """
+        return self.flux_x_from_U(self.get_state())
 
-        zero = np.zeros_like(self.h)
+    def compute_flux_y(self) -> np.ndarray:
+        """ cell-centered y-flux of the current state """
+        return self.flux_y_from_U(self.get_state())
 
-        S = np.stack([zero,
-                    -self.g * self.h * db_dx,
-                    -self.g * self.h * db_dy],
-                    axis = 0)
-
-        return S
-    
-    def minmod(self, a, b):
-        return np.where(np.sign(a) == np.sign(b),
-                        np.sign(a) * np.minimum(np.abs(a), np.abs(b)),
-                        0.0)
-    
-    def compute_slope(self, U, axis):
-        """ MUSCL """
-        if axis == "x":
-            dU_forward = U[:, 2:, :] - U[:, 1:-1, :]
-            dU_backward = U[:, 1:-1, :] - U[:, :-2, :]
-
-            slope = self.minmod(dU_forward, dU_backward)
-
-            return slope
-        
-        elif axis == "y":
-            dU_forward = U[:, :, 2:] - U[:, :, 1:-1]
-            dU_backward = U[:, :, 1:-1] - U[:, :, :-2]
-
-            slope = self.minmod(dU_forward, dU_backward)
-
-            return slope
+    # source term
+    def compute_source(self, h: Optional[np.ndarray] = None) -> np.ndarray:
+        """ bathymetry source term
+        For the standard shallow-water equations with bottom topography:
+            S = [0, -g h db/dx, -g h db/dy]^T
+        """
+        if h is None:
+            h = self.h
 
         else:
-            raise ValueError("axis must be x / y")
-    
-    # rusanov
-    def compute_rusanov_flux_F(self, F):
-        U = np.stack([self.h, self.hu, self.hv], axis = 0)
+            h = self._check_shape(h, "h")
 
-        slope = self.compute_slope(U, axis = "x")
+        if self.nx >= 3 and self.ny >= 3:
+            db_dx, db_dy = np.gradient(self.b, self.dx, self.dy, edge_order=2)
 
-        slope_bc = np.zeros_like(U)
+        else:
+            db_dx, db_dy = np.gradient(self.b, self.dx, self.dy)
 
-        slope_bc[:, 1:-1, :] = slope
+        zero = np.zeros_like(h)
+        return np.stack([zero,
+                        -self.g * h * db_dx,
+                        -self.g * h * db_dy],
+                        axis=0)
 
-        F_half = np.zeros_like(F)
+    # limiters / reconstruction
+    @staticmethod
+    def minmod(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+        """minmod limiter """
+        same_sign = np.sign(a) == np.sign(b)
+        return np.where(same_sign, np.sign(a) * np.minimum(np.abs(a), np.abs(b)), 0.0)
 
-        U_L = U[:, :-1, :] + 0.5 * slope_bc[:, :-1, :]
-        U_R = U[:, 1:, :] - 0.5 * slope_bc[:, 1:, :]
+    def _slope(self, U: np.ndarray, axis: Literal["x", "y"]) -> np.ndarray:
+        """ limited slope on a padded state array """
+        slope = np.zeros_like(U)
 
-        U_L[0] = np.maximum(U_L[0], self.eps)
-        U_R[0] = np.maximum(U_R[0], self.eps)
-    
-        F_L = self.flux_x_from_U(U_L)
-        F_R = self.flux_x_from_U(U_R)
+        if axis == "x":
+            forward = U[:, 2:, :] - U[:, 1:-1, :]
+            backward = U[:, 1:-1, :] - U[:, :-2, :]
+            slope[:, 1:-1, :] = self.minmod(forward, backward)
 
-        h_L = np.maximum(U_L[0], self.eps)
-        h_R = np.maximum(U_R[0], self.eps)
+        elif axis == "y":
+            forward = U[:, :, 2:] - U[:, :, 1:-1]
+            backward = U[:, :, 1:-1] - U[:, :, :-2]
+            slope[:, :, 1:-1] = self.minmod(forward, backward)
 
-        u_L = U_L[1] / h_L
-        u_R = U_R[1] / h_R
+        else:
+            raise ValueError("axis must be 'x' or 'y'")
 
-        c_L = np.sqrt(self.g * h_L)
-        c_R = np.sqrt(self.g * h_R)
+        return slope
 
-        lbd = np.maximum(np.abs(u_L) + c_L,
-                        np.abs(u_R) + c_R)
-        lbd = lbd[None, :, :]
+    # boundary padding
+    @staticmethod
+    def _pad_mode(mode: BoundaryMode) -> str:
+        return "wrap" if mode == "periodic" else "edge"
 
-        F_half[:, :-1, :] = 0.5 * (F_L + F_R) - 0.5 * lbd * (U_R - U_L)
+    def _pad_state(self, U: np.ndarray) -> np.ndarray:
+        """ pad a stacked state array with one ghost cell on every side """
+        if U.shape != (3, self.nx, self.ny):
+            raise ValueError(f"U shape must be {(3, self.nx, self.ny)}, got {U.shape}")
 
-        dF_dx = np.zeros_like(F)
+        padded = np.pad(U,
+                        pad_width=((0, 0), (1, 1), (1, 1)),
+                        mode=self._pad_mode(self.boundary_x if self.boundary_x == self.boundary_y else "open"))
 
-        dF_dx[:, 1:-1, :] = (F_half[:, 1:-1, :] - F_half[:, 0:-2, :]) / self.dx
+        # if x and y use different boundary modes -> repad from the original state
+        # axis-by-axis so that the two modes are respected independently
+        if self.boundary_x != self.boundary_y:
+            padded = np.pad(U, pad_width=((0, 0), (1, 1), (0, 0)), mode=self._pad_mode(self.boundary_x))
+            
+            if self.boundary_x == "reflective":
+                padded[1, 0, :] *= -1
+                padded[1, -1, :] *= -1
 
-        dF_dx[:, 0, :] = dF_dx[:, 1, :]
-        dF_dx[:, -1, :] = dF_dx[:, -2, :]
+            padded = np.pad(padded, pad_width=((0, 0), (0, 0), (1, 1)), mode=self._pad_mode(self.boundary_y))
+            
+            if self.boundary_y == "reflective":
+                padded[2, :, 0] *= -1
+                padded[2, :, -1] *= -1
 
-        return dF_dx
-    
-    def compute_rusanov_flux_G(self, G):
-        U = np.stack([self.h, self.hu, self.hv], axis = 0)
+            return padded
 
-        slope = self.compute_slope(U, axis = "y")
+        if self.boundary_x == "reflective":
+            padded[1, 0, :] *= -1
+            padded[1, -1, :] *= -1
+            padded[2, :, 0] *= -1
+            padded[2, :, -1] *= -1
+
+        return padded
+
+    def _pad_scalar(self, A: np.ndarray) -> np.ndarray:
+        """ pad a scalar field with one ghost cell on every side """
+        A = self._check_shape(A, "scalar field")
+        if self.boundary_x == self.boundary_y:
+            return np.pad(A, pad_width=1, mode=self._pad_mode(self.boundary_x))
+
+        padded = np.pad(A, pad_width=((1, 1), (0, 0)), mode=self._pad_mode(self.boundary_x))
+        padded = np.pad(padded, pad_width=((0, 0), (1, 1)), mode=self._pad_mode(self.boundary_y))
+
+        return padded
+
+    # fluxes
+    def _rusanov_flux(self, U_L: np.ndarray, U_R: np.ndarray, axis: Literal["x", "y"]) -> np.ndarray:
+        """ compute the rusanov flux at all interfaces """
+        h_L = np.maximum(U_L[0], self.dry_tolerance)
+        h_R = np.maximum(U_R[0], self.dry_tolerance)
+
+        hu_L = U_L[1]
+        hu_R = U_R[1]
+        hv_L = U_L[2]
+        hv_R = U_R[2]
+
+        if axis == "x":
+            F_L = self.flux_x_from_U(U_L)
+            F_R = self.flux_x_from_U(U_R)
+
+            u_L = hu_L / h_L
+            u_R = hu_R / h_R
+            c_L = np.sqrt(self.g * h_L)
+            c_R = np.sqrt(self.g * h_R)
+
+            wave_speed = np.maximum(np.abs(u_L) + c_L, np.abs(u_R) + c_R)
         
-        slope_bc = np.zeros_like(U)
+        elif axis == "y":
+            F_L = self.flux_y_from_U(U_L)
+            F_R = self.flux_y_from_U(U_R)
 
-        slope_bc[:, :, 1:-1] = slope
+            v_L = hv_L / h_L
+            v_R = hv_R / h_R
+            c_L = np.sqrt(self.g * h_L)
+            c_R = np.sqrt(self.g * h_R)
 
-        G_half = np.zeros_like(G)
+            wave_speed = np.maximum(np.abs(v_L) + c_L, np.abs(v_R) + c_R)
+        
+        else:
+            raise ValueError("axis must be 'x' or 'y'")
 
-        U_L = U[:, :, :-1] + 0.5 * slope_bc[:, :, :-1]
-        U_R = U[:, :, 1:] - 0.5 * slope_bc[:, :, 1:]
+        wave_speed = wave_speed[None, :, :]
+        
+        return 0.5 * (F_L + F_R) - 0.5 * wave_speed * (U_R - U_L)
 
-        U_L[0] = np.maximum(U_L[0], self.eps)
-        U_R[0] = np.maximum(U_R[0], self.eps)
+    def _flux_divergence_x(self, U: np.ndarray) -> np.ndarray:
+        """ return dF/dx on the physical domain """
+        U_pad = self._pad_state(U)
+        slope_x = self._slope(U_pad, axis="x")
 
-        G_L = self.flux_y_from_U(U_L)
-        G_R = self.flux_y_from_U(U_R)
+        U_L = U_pad[:, :-1, :] + 0.5 * slope_x[:, :-1, :]
+        U_R = U_pad[:, 1:, :] - 0.5 * slope_x[:, 1:, :]
 
-        h_L = np.maximum(U_L[0], self.eps)
-        h_R = np.maximum(U_R[0], self.eps)
+        F_half = self._rusanov_flux(U_L, U_R, axis="x")
+        
+        return (F_half[:, 1 : self.nx + 1, 1:-1] - F_half[:, 0:self.nx, 1:-1]) / self.dx
 
-        v_L = U_L[2] / h_L
-        v_R = U_R[2] / h_R
+    def _flux_divergence_y(self, U: np.ndarray) -> np.ndarray:
+        """ return dG/dy on the physical domain """
+        U_pad = self._pad_state(U)
+        slope_y = self._slope(U_pad, axis="y")
 
-        c_L = np.sqrt(self.g * h_L)
-        c_R = np.sqrt(self.g * h_R)
+        U_L = U_pad[:, :, :-1] + 0.5 * slope_y[:, :, :-1]
+        U_R = U_pad[:, :, 1:] - 0.5 * slope_y[:, :, 1:]
 
-        lbd = np.maximum(np.abs(v_L) + c_L,
-                        np.abs(v_R) + c_R)
-        lbd = lbd[None, :, :]
+        G_half = self._rusanov_flux(U_L, U_R, axis="y")
+        
+        return (G_half[:, 1:-1, 1 : self.ny + 1] - G_half[:, 1:-1, 0:self.ny]) / self.dy
 
-        G_half[:, :, :-1] = 0.5 * (G_L + G_R) - 0.5 * lbd * (U_R - U_L)
+    # time step
+    def _zero_momentum_in_dry_cells(self) -> None:
+        dry = self.h <= self.dry_tolerance
+        self.hu[dry] = 0.0
+        self.hv[dry] = 0.0
 
-        dG_dy = np.zeros_like(G)
-
-        dG_dy[:, :, 1:-1] = (G_half[:, :, 1:-1] - G_half[:, :, 0:-2]) / self.dy
-
-        dG_dy[:, :, 0] = dG_dy[:, :, 1]
-        dG_dy[:, :, -1] = dG_dy[:, :, -2]
-
-        return dG_dy
-
-    # update
-    def update(self):
-        """ one time step update """
-        # flux
-        F = self.compute_flux_x()
-        G = self.compute_flux_y()
+    def compute_cfl(self, dt: Optional[float] = None) -> float:
+        """ return the current cfl number for a candidate time step """
+        if dt is None:
+            dt = self.dt
 
         u, v = self.compute_velocity()
+        wave_speed = np.sqrt(self.g * np.maximum(self.h, self.dry_tolerance))
 
-        dF_dx = self.compute_rusanov_flux_F(F)
-        dG_dy = self.compute_rusanov_flux_G(G)
+        cfl_x = np.max((np.abs(u) + wave_speed) * dt / self.dx)
+        cfl_y = np.max((np.abs(v) + wave_speed) * dt / self.dy)
+        
+        return float(max(cfl_x, cfl_y))
 
-        divergence = dF_dx + dG_dy
+    def suggest_dt(self, target_cfl: Optional[float] = None) -> float:
+        """ suggest a stable time step based on the current state """
+        if target_cfl is None:
+            target_cfl = self.cfl
 
-        # source
-        S = self.compute_source()
+        u, v = self.compute_velocity()
+        wave_speed = np.sqrt(self.g * np.maximum(self.h, self.dry_tolerance))
 
-        # current state
-        U = np.stack([self.h, self.hu, self.hv], axis = 0)
+        speed_x = np.max(np.abs(u) + wave_speed)
+        speed_y = np.max(np.abs(v) + wave_speed)
 
-        U_new = U - self.dt * divergence + self.dt * S
+        denom = max(speed_x / self.dx, speed_y / self.dy)
+        
+        if denom <= 0.0:
+            return self.dt
 
-        self.h  = np.maximum(U_new[0], 0.0)
+        return float(target_cfl / denom)
+
+    def adjust_dt(self, target_cfl: Optional[float] = None) -> float:
+        """ update self.dt to a CFL-safe value and return """
+        self.dt = self.suggest_dt(target_cfl=target_cfl)
+        
+        return self.dt
+
+    def update(self, dt: Optional[float] = None) -> None:
+        """ advance the solution by one explicit finite-volume step """
+        if dt is None:
+            dt = self.dt
+        
+        if dt <= 0:
+            raise ValueError("dt must be positive")
+
+        U = self.get_state()
+        divergence = self._flux_divergence_x(U) + self._flux_divergence_y(U)
+        source = self.compute_source(self.h)
+
+        U_new = U - dt * divergence + dt * source
+
+        self.h = np.maximum(U_new[0], 0.0)
         self.hu = U_new[1]
         self.hv = U_new[2]
+        self._zero_momentum_in_dry_cells()
 
-        # update
-        mask = self.h < self.eps
+    def apply_boundary_conditions(self) -> None:
+        """
+        this is kept for API compatibility
 
-        self.hu[mask] = 0
-        self.hv[mask] = 0
+        the actual numerical boundaries are enforced through ghost-cell padding
+        inside the flux computation, so this method only ensures dry-cell cleanup
+        """
+        self._zero_momentum_in_dry_cells()
 
-    # non refective boundary (open ocen tsunami)
-    def apply_boundary_conditions(self):
-        """ apply boundary conditions """
-        # simple ver
-        self.h[0, :] = self.h[1, :]
-        self.h[-1, :] = self.h[-2, :]
-        self.h[:, 0] = self.h[:, 1]
-        self.h[:, -1] = self.h[:, -2]
+    def step(self, dt: Optional[float] = None, auto_dt: bool = False) -> None:
+        """ one simulation step """
+        if auto_dt:
+            dt = self.suggest_dt()
 
-        self.hu[0, :] = self.hu[1, :]
-        self.hu[-1, :] = self.hu[-2, :]
-        self.hu[:, 0] = self.hu[:, 1]
-        self.hu[:, -1] = self.hu[:, -2]
-
-        self.hv[0, :] = self.hv[1, :]
-        self.hv[-1, :] = self.hv[-2, :]
-        self.hv[:, 0] = self.hv[:, 1]
-        self.hv[:, -1] = self.hv[:, -2]
-
-    def step(self):
-        """ one sim step. """
-        self.update()
+        self.update(dt=dt)
         self.apply_boundary_conditions()
 
-    def get_state(self):
-        """ current state in tensor """
-        return np.stack([self.h, self.hu, self.hv], axis=0)
+    def run(self, n_steps: int, record_every: int = 1, auto_dt: bool = False, return_history: bool = False) -> Optional[list[np.ndarray]]:
+        """
+        run the simulation for n_steps
 
-    def compute_cfl(self):
-        """ CFL condition for stability """
-        u, v = self.compute_velocity()
+        n_steps: number of explicit steps 
+        record_every: store every k-th frame when return_history=True
+        auto_dt: recompute dt from CFL before each step
+        return_history: if True, return a list of snapshots as stacked arrays
+        """
+        if n_steps < 0:
+            raise ValueError("n_steps must be non-negative")
 
-        wave_speed = np.sqrt(self.g * np.maximum(self.h, self.eps))
-        speed_x = np.abs(u) + wave_speed
-        speed_y = np.abs(v) + wave_speed
+        if record_every <= 0:
+            raise ValueError("record_every must be positive")
 
-        max_speed = max(np.max(speed_x), np.max(speed_y))
+        history = []
 
-        cfl_x = max_speed * self.dt / self.dx
-        cfl_y = max_speed * self.dt / self.dy
+        for step_idx in range(n_steps):
+            self.step(auto_dt=auto_dt)
+            
+            if return_history and (step_idx % record_every == 0):
+                history.append(self.get_state().copy())
 
-        return max(cfl_x, cfl_y)
-        
-    def adjust_dt(self, target_cfl=0.5):
-        u, v = self.compute_velocity()
-        wave_speed = np.sqrt(self.g * np.maximum(self.h, self.eps))
-        
-        speed_x = np.abs(u) + wave_speed
-        speed_y = np.abs(v) + wave_speed
+        return history if return_history else None
 
-        max_speed = max(np.max(speed_x), np.max(speed_y))
-
-        if max_speed > 0:
-            self.dt = target_cfl * min(self.dx, self.dy) / max_speed
-
+    # helper
+    def info(self) -> SolverInfo:
+        """ return desc of the solver configuration """
+        return SolverInfo(nx=self.nx, ny=self.ny, dx=self.dx, dy=self.dy, dt=self.dt, g=self.g, cfl=self.cfl,
+                          dry_tolerance=self.dry_tolerance, boundary_x=self.boundary_x, boundary_y=self.boundary_y,)
 
 """
-Reference doc:
--------------------------------------------------------------------
-https://en.wikipedia.org/wiki/Shallow_water_equations
-https://www.sciencedirect.com/science/article/pii/S0307904X04001647
-https://en.wikipedia.org/wiki/MUSCL_scheme
-https://www.sciencedirect.com/science/article/pii/S0045793026000423
+Reference notes:
+- Shallow-water equations: conservative 2D form with bathymetry source term.
+- MUSCL reconstruction with minmod limiter.
+- Rusanov flux for robust shock-capturing.
 """
