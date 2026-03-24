@@ -57,6 +57,8 @@ class ShallowWaterSolver:
         self.hv = np.zeros((self.nx, self.ny), dtype=float)
         self.b = np.zeros((self.nx, self.ny), dtype=float)
 
+        self._init_sponge_layer(width = 20, min_factor = 0.9)
+
     # validation
     @staticmethod
     def _validate_boundary(mode: BoundaryMode, name: str) -> None:
@@ -204,6 +206,35 @@ class ShallowWaterSolver:
             raise ValueError("axis must be 'x' or 'y'")
 
         return slope
+    
+    # sponge
+    def _init_sponge_layer(self, width: int = 20, min_factor: float = 0.90) -> None:
+        """ 
+        initializes a multiplicative mask to damp waves near the boundaries.
+        factor = 1.0 in the center, dropping smoothly to min_factor at the edge
+        """
+        self.sponge_mask = np.ones((self.nx, self.ny), dtype=float)
+        
+        for d in range(width):
+            decay = (1.0 - min_factor) * ((width - d) / width)**2
+            val = 1.0 - decay
+            
+            self.sponge_mask[d, :] = np.minimum(self.sponge_mask[d, :], val)
+            self.sponge_mask[-(d+1), :] = np.minimum(self.sponge_mask[-(d+1), :], val)
+            self.sponge_mask[:, d] = np.minimum(self.sponge_mask[:, d], val)
+            self.sponge_mask[:, -(d+1)] = np.minimum(self.sponge_mask[:, -(d+1)], val)
+
+    def apply_sponge_layer(self) -> None:
+        """ gently dampens momentum and wave elevation inside the sponge zone """
+        if not hasattr(self, 'sponge_mask'):
+            return
+
+        self.hu *= self.sponge_mask
+        self.hv *= self.sponge_mask
+
+        h_rest = np.maximum(-self.b, 0.0)
+        elevation = self.h - h_rest
+        self.h = h_rest + (elevation * self.sponge_mask)
 
     # boundary padding
     @staticmethod
@@ -397,6 +428,7 @@ class ShallowWaterSolver:
 
         self.update(dt=dt)
         self.apply_boundary_conditions()
+        self.apply_sponge_layer()
 
     def run(self, n_steps: int, record_every: int = 1, auto_dt: bool = False, return_history: bool = False) -> Optional[list[np.ndarray]]:
         """
