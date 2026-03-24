@@ -210,7 +210,7 @@ tsunami-surrogate/
 │  │  └─ eval_uncertainty.py
 │  └─ utils/
 │     ├─ seed.py
-│     ├─ logging.py
+│     ├─ logger.py
 │     └─ visualization.py
 ├─ experiments/
 │  ├─ exp1_same_resolution/
