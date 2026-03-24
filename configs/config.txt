@@ -1,0 +1,24 @@
+
+nx: 64
+ny: 64
+
+seed: 42
+
+slope_range: 0.0, 0.05
+
+enabled_g: true
+range_g: 1,5
+amp_range_g: -1.0, 1.0
+sigma_range_g: 2.0, 10.0
+
+enabled_r: true
+range_r: 0, 3
+len_scale_r: 5, 20
+amp_range_r: -0.5, 0.5
+
+enabled_n: true
+scale_range_n: 0.01, 0.1
+smoothing_sigma_n: 1.0, 3.0
+
+depth_min: -5.0
+depth_max: 0.0

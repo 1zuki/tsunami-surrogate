@@ -21,17 +21,17 @@ class ShallowWaterSolver:
     def __init__(self, nx: int, ny: int, dx: float, dy: float, dt: float, g: float = 9.81, cfl: float = 0.45,
                  dry_tolerance: float = 1e-6, boundary: Union[BoundaryMode, Tuple[BoundaryMode, BoundaryMode]] = "open") -> None:
         if nx <= 1 or ny <= 1:
-            raise ValueError("nx and ny must be greater than 1.")
+            raise ValueError("nx and ny must be greater than 1")
         if dx <= 0 or dy <= 0:
-            raise ValueError("dx and dy must be positive.")
+            raise ValueError("dx and dy must be positive")
         if dt <= 0:
-            raise ValueError("dt must be positive.")
+            raise ValueError("dt must be positive")
         if g <= 0:
-            raise ValueError("g must be positive.")
+            raise ValueError("g must be positive")
         if cfl <= 0:
-            raise ValueError("cfl must be positive.")
+            raise ValueError("cfl must be positive")
         if dry_tolerance <= 0:
-            raise ValueError("dry_tolerance must be positive.")
+            raise ValueError("dry_tolerance must be positive")
 
         self.nx = int(nx)
         self.ny = int(ny)
