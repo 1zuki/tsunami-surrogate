@@ -44,8 +44,9 @@ class BathymetryGenerator:
         self.b_type = VALID_TYPES
         
         # small helper
-        def _parse_array_int(key: str, default: Optional[list[int]] = None) -> np.ndarray:
-            value = cfg.get(key, default)
+        def _parse_array_int(host: str, key: str, default: Optional[list[int]] = None) -> np.ndarray:
+            section = cfg.get(host, {})
+            value = section.get(key, default)
 
             if value is None:
                 raise KeyError(f"missing config key: {key}")
@@ -60,8 +61,9 @@ class BathymetryGenerator:
 
             return arr
         
-        def _parse_array_float(key: str, default: Optional[list[float]]) -> np.ndarray:
-            value = cfg.get(key, default)
+        def _parse_array_float(host: str, key: str, default: Optional[list[float]]) -> np.ndarray:
+            section = cfg.get(host, {})
+            value = section.get(key, default)
 
             if value is None:
                 raise KeyError(f"missing config key: {key}")
@@ -77,37 +79,37 @@ class BathymetryGenerator:
             return arr
         
         # base
-        self.slope_range = _parse_array_float("slope_range", [0.0, 0.15])
-        self.base_kind = cfg.get("base_kind", "slope") # slope / flat / basin
+        self.slope_range = _parse_array_float("base", "slope_range", [0.0, 0.15])
+        self.base_kind = cfg.get("base").get("kind", "slope") # slope / flat / basin
 
         if self.base_kind not in VALID_BASE:
             raise ValueError("Base must be slope/flat/basin")
 
         # gaussians
-        self.enabled_g = bool(cfg.get("enabled_g", True))
-        self.range_g = _parse_array_int("range_g", [1, 4])
-        self.amp_range_g = _parse_array_float("amp_range_g", [-0.4, 0.4])
-        self.sigma_range_g = _parse_array_float("sigma_range_g", [0.01, 0.08])
+        self.enabled_g = bool(cfg.get("gaussian").get("enabled", True))
+        self.range_g = _parse_array_int("gaussian", "range", [1, 4])
+        self.amp_range_g = _parse_array_float("gaussian", "amp_range", [-0.4, 0.4])
+        self.sigma_range_g = _parse_array_float("gaussian", "sigma_range", [0.01, 0.08])
 
         # ridges
-        self.enabled_r = bool(cfg.get("enabled_r", True))
-        self.range_r = _parse_array_int("range_r", [0, 3])
-        self.amp_range_r = _parse_array_float("amp_range_r", [-0.3, 0.3])
-        self.len_scale_r = _parse_array_float("len_scale_r", [0.02, 0.15])
+        self.enabled_r = bool(cfg.get("ridges").get("enabled", True))
+        self.range_r = _parse_array_int("ridges", "range", [0, 3])
+        self.amp_range_r = _parse_array_float("ridges", "amp_range", [-0.3, 0.3])
+        self.len_scale_r = _parse_array_float("ridges", "len_scale", [0.02, 0.15])
 
         # noise
-        self.enabled_n = bool(cfg.get("enabled_n", True))
-        self.scale_range_n = _parse_array_float("scale_range_n", [0.01, 0.08])
-        self.smoothing_sigma_n = _parse_array_float("smoothing_sigma_n", [1.5, 4.5])
+        self.enabled_n = bool(cfg.get("noise").get("enabled", True))
+        self.scale_range_n = _parse_array_float("noise", "scale_range", [0.01, 0.08])
+        self.smoothing_sigma_n = _parse_array_float("noise", "smoothing_sigma", [1.5, 4.5])
 
         # nomalization
-        self.depth_min = float(cfg.get("depth_min", -5.0))
-        self.depth_max = float(cfg.get("depth_max", 0.0))
+        self.depth_min = float(cfg.get("normalization").get("depth_min", -5.0))
+        self.depth_max = float(cfg.get("normalization").get("depth_max", 0.0))
 
         # extra config for terrain control
-        self.warp_scale = float(cfg.get("warp_scale", 0.08))
-        self.warp_sigma = float(cfg.get("warp_sigma", 3.0))
-        self.bias_strength = float(cfg.get("bias_strength", 1.0))
+        self.warp_scale = float(cfg.get("terrain").get("warp_scale", 0.08))
+        self.warp_sigma = float(cfg.get("terrain").get("warp_sigma", 3.0))
+        self.bias_strength = float(cfg.get("terrain").get("bias_strength", 1.0))
 
     def terrain_type(self) -> Type:
         return self.rng.choice(self.b_type)
@@ -384,7 +386,32 @@ class BathymetryGenerator:
 if __name__ == "__main__":
     generator = BathymetryGenerator("configs/bathymetry-gen-test.yaml")
 
-    for i in range(67):
+    for i in range(10):
         bathymetry, t_type = generator.generate()
         np.save(f"data/raw/bathymetry_{i + 1}.npy", bathymetry)
         np.save(f"data/raw/type_{i + 1}.npy", np.array(t_type))
+
+"""
+References:
+
+[1] LeVeque, R. J. (2002)
+Finite Volume Methods for Hyperbolic Problems
+
+[2] Titov, V. V., & Synolakis, C. E. (1998)
+Numerical modeling of tidal wave runup
+
+[3] Musgrave, F. K., Kolb, C. E., & Mace, R. S. (1989)
+The synthesis and rendering of eroded fractal terrains
+
+[4] Ebert, D. S., et al. (2003)
+Texturing and Modeling: A Procedural Approach
+
+[5] Rasmussen, C. E., & Williams, C. K. I. (2006)
+Gaussian Processes for Machine Learning
+
+[6] Sandwell, D. T., et al. (2014)
+Marine gravity and bathymetry
+
+[7] Toro, E. F. (2009)
+Riemann Solvers and Numerical Methods for Fluid Dynamics
+"""
