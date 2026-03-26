@@ -19,7 +19,8 @@ class SolverInfo(NamedTuple):
 
 class ShallowWaterSolver:
     def __init__(self, nx: int, ny: int, dx: float, dy: float, dt: float, g: float = 9.81, cfl: float = 0.45,
-                 dry_tolerance: float = 1e-6, boundary: Union[BoundaryMode, Tuple[BoundaryMode, BoundaryMode]] = "open") -> None:
+                 dry_tolerance: float = 1e-6, boundary: Union[BoundaryMode, Tuple[BoundaryMode, BoundaryMode]] = "open",
+                 use_sponge: bool = True, sponge_width = 20, sponge_min_factor: float = 0.9) -> None:
         if nx <= 1 or ny <= 1:
             raise ValueError("nx and ny must be greater than 1")
         if dx <= 0 or dy <= 0:
@@ -32,6 +33,10 @@ class ShallowWaterSolver:
             raise ValueError("cfl must be positive")
         if dry_tolerance <= 0:
             raise ValueError("dry_tolerance must be positive")
+        if sponge_width < 0:
+            raise ValueError("sponge_width must be non-negative")
+        if not (0.0 < sponge_min_factor <= 1.0):
+            raise ValueError("sponge_min_factor must be in (0, 1]")
 
         self.nx = int(nx)
         self.ny = int(ny)
@@ -57,7 +62,17 @@ class ShallowWaterSolver:
         self.hv = np.zeros((self.nx, self.ny), dtype=float)
         self.b = np.zeros((self.nx, self.ny), dtype=float)
 
-        self._init_sponge_layer(width = 20, min_factor = 0.9)
+        self.use_sponge = bool(use_sponge)
+        self.sponge_width = int(sponge_width)
+        self.sponge_min_factor = float(sponge_min_factor)
+
+        self._db_dx: Optional[np.ndarray] = None
+        self._db_dy: Optional[np.ndarray] = None
+
+        self.sponge_mask = np.ones((self.nx, self.ny), dtype=float)
+        if self.use_sponge:
+            self._init_sponge_layer(width=self.sponge_width, min_factor=self.sponge_min_factor)
+
 
     # validation
     @staticmethod
@@ -92,6 +107,16 @@ class ShallowWaterSolver:
 
     def set_bathymetry(self, b: np.ndarray) -> None:
         self.b = self._check_shape(b, "b").copy()
+        self._db_dx = None
+        self._db_dy = None
+
+    def _bathymetry_gradients(self) -> tuple[np.ndarray, np.ndarray]:
+        if self._db_dx is None or self._db_dy is None:
+            if self.nx >= 3 and self.ny >= 3:
+                self._db_dx, self._db_dy = np.gradient(self.b, self.dx, self.dy, edge_order=2)
+            else:
+                self._db_dx, self._db_dy = np.gradient(self.b, self.dx, self.dy)
+        return self._db_dx, self._db_dy
 
     # state utils
     def get_state(self) -> np.ndarray:
@@ -127,35 +152,79 @@ class ShallowWaterSolver:
         return self.h + self.b
 
     # flux func
-    def flux_x_from_U(self, U: np.ndarray) -> np.ndarray:
-        """ physical x-flux evaluated from a stacked state array """
-        h = np.maximum(U[0], self.dry_tolerance)
-        hu = U[1]
-        hv = U[2]
+    def _primitive(self, h: float, hu: float, hv: float) -> tuple[float, float]:
+        """Return velocities (u, v) with dry-cell protection."""
+        if h <= self.dry_tolerance:
+            return 0.0, 0.0
+        return hu / h, hv / h
 
-        return np.stack([hu,
-                        hu * hu / h + 0.5 * self.g * h * h,
-                        hu * hv / h],
-                        axis=0)
 
-    def flux_y_from_U(self, U: np.ndarray) -> np.ndarray:
-        """ physical y-flux evaluated from a stacked state array """
-        h = np.maximum(U[0], self.dry_tolerance)
-        hu = U[1]
-        hv = U[2]
+    def _flux_x(self, h: float, hu: float, hv: float) -> np.ndarray:
+        """Physical x-flux for the shallow-water system."""
+        if h <= self.dry_tolerance:
+            return np.zeros(3, dtype=float)
 
-        return np.stack([hv,
-                        hu * hv / h,
-                        hv * hv / h + 0.5 * self.g * h * h],
-                        axis=0)
+        u, v = self._primitive(h, hu, hv)
+        return np.array(
+            [
+                hu,
+                hu * u + 0.5 * self.g * h * h,
+                hu * v,
+            ],
+            dtype=float,
+        )
 
-    def compute_flux_x(self) -> np.ndarray:
-        """ cell-centered x-flux of the current state """
-        return self.flux_x_from_U(self.get_state())
 
-    def compute_flux_y(self) -> np.ndarray:
-        """ cell-centered y-flux of the current state """
-        return self.flux_y_from_U(self.get_state())
+    def _flux_y(self, h: float, hu: float, hv: float) -> np.ndarray:
+        """Physical y-flux for the shallow-water system."""
+        if h <= self.dry_tolerance:
+            return np.zeros(3, dtype=float)
+
+        u, v = self._primitive(h, hu, hv)
+        return np.array(
+            [
+                hv,
+                hu * v,
+                hv * v + 0.5 * self.g * h * h,
+            ],
+            dtype=float,
+        )
+
+
+    def _rusanov_x(self, qL: np.ndarray, qR: np.ndarray) -> np.ndarray:
+        """Rusanov flux in x-direction."""
+        hL, huL, hvL = qL
+        hR, huR, hvR = qR
+
+        fL = self._flux_x(hL, huL, hvL)
+        fR = self._flux_x(hR, huR, hvR)
+
+        uL, _ = self._primitive(hL, huL, hvL)
+        uR, _ = self._primitive(hR, huR, hvR)
+
+        cL = np.sqrt(self.g * max(hL, 0.0))
+        cR = np.sqrt(self.g * max(hR, 0.0))
+        smax = max(abs(uL) + cL, abs(uR) + cR)
+
+        return 0.5 * (fL + fR) - 0.5 * smax * (qR - qL)
+
+
+    def _rusanov_y(self, qL: np.ndarray, qR: np.ndarray) -> np.ndarray:
+        """Rusanov flux in y-direction."""
+        hL, huL, hvL = qL
+        hR, huR, hvR = qR
+
+        fL = self._flux_y(hL, huL, hvL)
+        fR = self._flux_y(hR, huR, hvR)
+
+        _, vL = self._primitive(hL, huL, hvL)
+        _, vR = self._primitive(hR, huR, hvR)
+
+        cL = np.sqrt(self.g * max(hL, 0.0))
+        cR = np.sqrt(self.g * max(hR, 0.0))
+        smax = max(abs(vL) + cL, abs(vR) + cR)
+
+        return 0.5 * (fL + fR) - 0.5 * smax * (qR - qL)
 
     # source term
     def compute_source(self, h: Optional[np.ndarray] = None) -> np.ndarray:
@@ -165,21 +234,63 @@ class ShallowWaterSolver:
         """
         if h is None:
             h = self.h
-
         else:
             h = self._check_shape(h, "h")
 
-        if self.nx >= 3 and self.ny >= 3:
-            db_dx, db_dy = np.gradient(self.b, self.dx, self.dy, edge_order=2)
-
-        else:
-            db_dx, db_dy = np.gradient(self.b, self.dx, self.dy)
+        db_dx, db_dy = self._bathymetry_gradients()
 
         zero = np.zeros_like(h)
         return np.stack([zero,
                         -self.g * h * db_dx,
                         -self.g * h * db_dy],
                         axis=0)
+
+    """ hydrostatic reconstruction + rusanov flux for x/y-faces """
+    def _hydro_face_x(self, hL: float, huL: float, hvL: float, bL: float,
+                      hR: float, huR: float, hvR: float, bR: float, use_left_correction: bool) -> np.ndarray:
+        z = max(bL, bR)
+
+        hLr = max(0.0, hL + bL - z)
+        hRr = max(0.0, hR + bR - z)
+
+        uL, vL = self._primitive(hL, huL, hvL)
+        uR, vR = self._primitive(hR, huR, hvR)
+
+        qL = np.array([hLr, hLr * uL, hLr * vL], dtype=float)
+        qR = np.array([hRr, hRr * uR, hRr * vR], dtype=float)
+
+        base = self._rusanov_x(qL, qR)
+
+        if use_left_correction:
+            corr = np.array([0.0, 0.5 * self.g * (hL * hL - hLr * hLr), 0.0], dtype=float)
+        else:
+            corr = np.array([0.0, 0.5 * self.g * (hR * hR - hRr * hRr), 0.0], dtype=float)
+
+        return base + corr
+
+
+    def _hydro_face_y(self, hL: float, huL: float, hvL: float, bL: float,
+                      hR: float, huR: float, hvR: float, bR: float, use_left_correction: bool) -> np.ndarray:
+
+        z = max(bL, bR)
+
+        hLr = max(0.0, hL + bL - z)
+        hRr = max(0.0, hR + bR - z)
+
+        uL, vL = self._primitive(hL, huL, hvL)
+        uR, vR = self._primitive(hR, huR, hvR)
+
+        qL = np.array([hLr, hLr * uL, hLr * vL], dtype=float)
+        qR = np.array([hRr, hRr * uR, hRr * vR], dtype=float)
+
+        base = self._rusanov_y(qL, qR)
+
+        if use_left_correction:
+            corr = np.array([0.0, 0.0, 0.5 * self.g * (hL * hL - hLr * hLr)], dtype=float)
+        else:
+            corr = np.array([0.0, 0.0, 0.5 * self.g * (hR * hR - hRr * hRr)], dtype=float)
+
+        return base + corr
 
     # limiters / reconstruction
     @staticmethod
@@ -213,19 +324,32 @@ class ShallowWaterSolver:
         initializes a multiplicative mask to damp waves near the boundaries.
         factor = 1.0 in the center, dropping smoothly to min_factor at the edge
         """
+        width = int(max(0, width))
+        min_factor = float(min_factor)
+
         self.sponge_mask = np.ones((self.nx, self.ny), dtype=float)
-        
+
+        if width == 0:
+            return
+
+        # avoid overextending the sponge on very small grids
+        max_width = max(1, min(self.nx, self.ny) // 2)
+        width = min(width, max_width)
+
         for d in range(width):
-            decay = (1.0 - min_factor) * ((width - d) / width)**2
-            val = 1.0 - decay
-            
+            t = (width - d) / width
+            val = 1.0 - (1.0 - min_factor) * (t * t)
+
             self.sponge_mask[d, :] = np.minimum(self.sponge_mask[d, :], val)
-            self.sponge_mask[-(d+1), :] = np.minimum(self.sponge_mask[-(d+1), :], val)
+            self.sponge_mask[-(d + 1), :] = np.minimum(self.sponge_mask[-(d + 1), :], val)
             self.sponge_mask[:, d] = np.minimum(self.sponge_mask[:, d], val)
-            self.sponge_mask[:, -(d+1)] = np.minimum(self.sponge_mask[:, -(d+1)], val)
+            self.sponge_mask[:, -(d + 1)] = np.minimum(self.sponge_mask[:, -(d + 1)], val)
 
     def apply_sponge_layer(self) -> None:
         """ gently dampens momentum and wave elevation inside the sponge zone """
+        if not self.use_sponge:
+            return
+        
         if not hasattr(self, 'sponge_mask'):
             return
 
@@ -393,24 +517,77 @@ class ShallowWaterSolver:
         
         return self.dt
 
-    def update(self, dt: Optional[float] = None) -> None:
+    def update(self, dt: float) -> None:
         """ advance the solution by one explicit finite-volume step """
-        if dt is None:
-            dt = self.dt
-        
         if dt <= 0:
             raise ValueError("dt must be positive")
 
-        U = self.get_state()
-        divergence = self._flux_divergence_x(U) + self._flux_divergence_y(U)
-        source = self.compute_source(self.h)
+        h_old = self.h.copy()
+        hu_old = self.hu.copy()
+        hv_old = self.hv.copy()
+        b = self.b
 
-        U_new = U - dt * divergence + dt * source
+        h_new = h_old.copy()
+        hu_new = hu_old.copy()
+        hv_new = hv_old.copy()
 
-        self.h = np.maximum(U_new[0], 0.0)
-        self.hu = U_new[1]
-        self.hv = U_new[2]
-        self._zero_momentum_in_dry_cells()
+        for i in range(self.nx):
+            for j in range(self.ny):
+                # x-direction fluxes
+                if i == 0:
+                    # open/zero-gradient ghost state
+                    FxL = self._hydro_face_x(h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
+                                             h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
+                                             use_left_correction=False)
+                else:
+                    FxL = self._hydro_face_x(h_old[i - 1, j], hu_old[i - 1, j], hv_old[i - 1, j], b[i - 1, j],
+                                             h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
+                                             use_left_correction=False)
+
+                if i == self.nx - 1:
+                    FxR = self._hydro_face_x(h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
+                                             h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
+                                             use_left_correction=True)
+                else:
+                    FxR = self._hydro_face_x(h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
+                                             h_old[i + 1, j], hu_old[i + 1, j], hv_old[i + 1, j], b[i + 1, j],
+                                             use_left_correction=True)
+
+                # y-direction fluxes
+                if j == 0:
+                    FyB = self._hydro_face_y(h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
+                                             h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
+                                             use_left_correction=False)
+                else:
+                    FyB = self._hydro_face_y(h_old[i, j - 1], hu_old[i, j - 1], hv_old[i, j - 1], b[i, j - 1],
+                                             h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
+                                             use_left_correction=False)
+
+                if j == self.ny - 1:
+                    FyT = self._hydro_face_y(h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
+                                             h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
+                                             use_left_correction=True)
+                else:
+                    FyT = self._hydro_face_y(h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
+                                             h_old[i, j + 1], hu_old[i, j + 1], hv_old[i, j + 1], b[i, j + 1],
+                                             use_left_correction=True)
+
+                # finite-volume update
+                h_new[i, j] = (h_old[i, j] - (dt / self.dx) * (FxR[0] - FxL[0]) - (dt / self.dy) * (FyT[0] - FyB[0]))
+
+                hu_new[i, j] = (hu_old[i, j] - (dt / self.dx) * (FxR[1] - FxL[1]) - (dt / self.dy) * (FyT[1] - FyB[1]))
+
+                hv_new[i, j] = (hv_old[i, j] - (dt / self.dx) * (FxR[2] - FxL[2]) - (dt / self.dy) * (FyT[2] - FyB[2]))
+
+        # dry-cell safety
+        h_new = np.maximum(h_new, 0.0)
+        dry = h_new <= self.dry_tolerance
+        hu_new[dry] = 0.0
+        hv_new[dry] = 0.0
+
+        self.h = h_new
+        self.hu = hu_new
+        self.hv = hv_new
 
     def apply_boundary_conditions(self) -> None:
         """
@@ -425,6 +602,10 @@ class ShallowWaterSolver:
         """ one simulation step """
         if auto_dt:
             dt = self.suggest_dt()
+            self.dt = dt
+
+        if dt is None:
+            dt = self.dt       
 
         self.update(dt=dt)
         self.apply_boundary_conditions()
@@ -445,12 +626,15 @@ class ShallowWaterSolver:
         if record_every <= 0:
             raise ValueError("record_every must be positive")
 
-        history = []
+        history: list[np.ndarray] = []
+
+        if return_history:
+            history.append(self.get_state().copy())
 
         for step_idx in range(n_steps):
             self.step(auto_dt=auto_dt)
             
-            if return_history and (step_idx % record_every == 0):
+            if return_history and ((step_idx + 1) % record_every == 0):
                 history.append(self.get_state().copy())
 
         return history if return_history else None
