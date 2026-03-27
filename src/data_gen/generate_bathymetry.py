@@ -326,7 +326,6 @@ class BathymetryGenerator:
 
         return terrain
     
-
     def add_ridges(self, terrain: np.ndarray, t_type: Type) -> np.ndarray:
         n_ridges = self.rng.integers(self.range_r[0], self.range_r[1] + 1)
 

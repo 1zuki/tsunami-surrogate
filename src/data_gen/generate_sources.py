@@ -1,6 +1,7 @@
 import numpy as np
 import yaml
-from typing import Literal, Optional
+from typing import Literal, Optional, Tuple
+from scipy.ndimage import gaussian_filter
 
 Type = Literal["gaussian", "multi-gauss", "okada-like", "dipole", "fault", "rough"]
 VALID_TYPES = ("gaussian", "multi-gauss", "okada-like", "dipole", "fault", "rough")
@@ -101,7 +102,7 @@ class SourceGenerator:
         # rough
         self.enabled_r = bool(cfg.get("rough").get("enabled", True))
         self.amp_range_r = _parse_array_float("rough", "amp_range", [0.5, 2.0])
-        self.smoothing_sigma = _parse_array_float("rough", "smoothing_sigma", [1.0, 3.0])
+        self.smoothing_sigma_r = _parse_array_float("rough", "smoothing_sigma", [1.0, 3.0])
 
         # okada-like
         self.enabled_o = bool(cfg.get("okada").get("enabled", True))
@@ -109,6 +110,9 @@ class SourceGenerator:
         self.width_range_o = _parse_array_float("okada", "width_range", [0.05, 0.2])
         self.slip_range_o = _parse_array_float("okada", "slip_range", [0.5, 2.0])
         self.angle_range_o = _parse_array_float("okada", "angle_range", [0.0, 3.14])
+        self.dip_range_o = _parse_array_float("okada", "dip_range", [0.0, 0.5])
+        self.depth_range_o = _parse_array_float("okada", "depth_range", [0.0, 0.2])
+        self.smoothing_sigma_o = _parse_array_float("okada", "smoothing_sigma", [0.01, 0.03])
 
         # noise
         self.enabled_n = bool(cfg.get("noise").get("enabled", True))
@@ -119,7 +123,7 @@ class SourceGenerator:
         self.height_scale = _parse_array_float("normalization", "height_scale", [-1.0, 1.0])
 
     def source_type(self) -> Type:
-        available = {}
+        available = []
 
         if self.enabled_g:
             available.append("gaussian")
@@ -146,57 +150,214 @@ class SourceGenerator:
         s_type = self.source_type()
 
         if s_type == "gaussian":
-            pass
+            src = self._gen_gaussian()
 
         elif s_type == "multi-gauss":
-            pass
+            src = self._gen_multi_gaussian()
 
         elif s_type == "dipole":
-            pass
+            src = self._gen_dipole()
 
         elif s_type == "fault":
-            pass
+            src = self._gen_fault()
 
         elif s_type == "rough":
-            pass
+            src = self._gen_rough()
 
         else: # okada-like
-            pass
+            src = self._gen_okada_like()
+
+        src = self.build_output(src)
+
+        return src, s_type
 
     # helper
-    def _gaussian_2d(self, x0, y0, sigma_x, sigma_y, amp):
-        pass
+    def _gaussian_2d(self, x0: float, y0: float, sigma_x: float, sigma_y: float, amp: float) -> np.ndarray:
+        x = (self.x - x0) ** 2 / (2 * sigma_x ** 2)
+        y = (self.y - y0) ** 2 / (2 * sigma_y ** 2)
 
-    def _rotate(self, X, Y, x0, y0, angle):
-        pass
+        return amp * np.exp(-(x + y))
 
-    def _sample(self, range_array):
-        pass
+    def _rotate(self, X: np.ndarray, Y: np.ndarray, x0: float, y0: float, angle: float) -> Tuple[np.ndarray, np.ndarray]:
+        """ rotate coordinates (X, Y) about centre (x0, y0) in radians """
+        X_c = X - x0
+        Y_c = Y - y0
+
+        X_r = X_c * np.cos(angle) + Y_c * np.sin(angle)
+        Y_r = -X_c * np.sin(angle) + Y_c * np.cos(angle)
+
+        return X_r + x0, Y_r + y0
+
+    def _sample(self, range_array: np.ndarray) -> np.ndarray:
+        return self.rng.uniform(range_array[0], range_array[1])
 
     # generator
     def _gen_gaussian(self) -> np.ndarray:
-        pass
+        n_gaussian = self.rng.integers(self.num_range_g[0], self.num_range_g[1] + 1)
+        src = np.zeros((self.nx, self.ny))
 
-    def _gen_multi_gaussian(self):
-        pass
+        for _ in range(n_gaussian):
+            x0 = self.rng.uniform(0.0, 1.0)
+            y0 = self.rng.uniform(0.0, 1.0)
 
-    def _gen_dipole(self):
-        pass
+            sigma_y = self._sample(self.sigma_range_g)
+            sigma_x = self._sample(self.sigma_range_g)
 
-    def _gen_fault(self):
-        pass
+            amp = self._sample(self.amp_range_g)
 
-    def _gen_okada_like(self):
-        pass
+            src += self._gaussian_2d(x0, y0, sigma_x, sigma_y, amp)
 
-    def _gen_rough(self):
-        pass
+        return src
 
-    def add_noise(self, h):
-        pass
+    def _gen_multi_gaussian(self) -> np.ndarray:
+        n_multi_gauss = self.rng.integers(self.num_sources[0], self.num_sources[1] + 1)
+        field = np.zeros((self.nx, self.ny))
 
-    def normalize(self, h):
-        pass
+        for _ in range(n_multi_gauss):
+            field += self._gen_gaussian()
 
-    def build_output(self, h):
-        pass
+        return field
+
+    def _gen_dipole(self) -> np.ndarray:
+        x_c = self.rng.uniform(0.0, 1.0)
+        y_c = self.rng.uniform(0.0, 1.0)
+
+        sep = self._sample(self.sep_range_d)
+        angle = self._sample(self.angle_range_d)
+        sigma_x = self._sample(self.sigma_range_d)
+        sigma_y = self._sample(self.sigma_range_d)
+        amp = self._sample(self.amp_range_d)
+
+        dx = (sep / 2.0) * np.cos(angle)
+        dy = (sep / 2.0) * np.sin(angle)
+
+        x_1 = x_c + dx
+        y_1 = y_c + dy
+        x_2 = x_c - dx
+        y_2 = x_c - dy
+
+        gauss_1 = self._gaussian_2d(x_1, y_1, sigma_x, sigma_y, amp)
+        gauss_2 = self._gaussian_2d(x_2, y_2, sigma_x, sigma_y, - amp)
+
+        dipole_field = gauss_1 + gauss_2
+
+        return dipole_field
+
+    def _gen_fault(self) -> np.ndarray:
+        x_c = self.rng.uniform(0.0, 1.0)
+        y_c = self.rng.uniform(0.0, 1.0)
+
+        amp = self._sample(self.amp_range_f)
+        length = self._sample(self.len_range_f)
+        width = self._sample(self.width_range_f)
+        angle = self._sample(self.angle_range_f)
+        smoothing = self._sample(self.smoothing_sigma_f)
+
+        x_rot, y_rot = self._rotate(self.x, self. y, x_c, y_c, angle)
+
+        u = x_rot - x_c
+        v = y_rot - y_c
+
+        ridge = amp * np.exp(-(u ** 2) / (2 * (length / 2.0) ** 2) - (v ** 2) / (2 * (width / 2.0) ** 2))
+
+        if smoothing > 0:
+            ridge = gaussian_filter(ridge, sigma=smoothing)
+
+        return ridge
+
+    @staticmethod
+    def _alpha(nu: float) -> float:
+        return (1.0 - 2.0 * nu) / (2.0 * (1.0 - nu))
+    
+    def _gen_okada_like(self) -> np.ndarray:
+        x_c = self.rng.uniform(0.0, 1.0)
+        y_c = self.rng.uniform(0.0, 1.0)
+
+        slip = self._sample(self.slip_range_o)
+        length = self._sample(self.len_range_o)
+        width = self._sample(self.width_range_o)
+        angle = self._sample(self.angle_range_o)
+        dip = self._sample(self.dip_range_o)
+        depth = self._sample(self.depth_range_o)
+        smoothing = self._sample(self.smoothing_sigma_o)
+
+        nu = 0.25
+        alpha = self._alpha(nu)
+
+        def _corner_contribution():
+            X = self.x - x_c
+            Y = self.y - y_c
+
+            cos_a = np.cos(angle)
+            sin_a = np.sin(angle)
+            X_a = cos_a * X + sin_a * Y
+            Y_a = -sin_a * X + cos_a * Y
+
+            cos_d = np.cos(dip)
+            sin_d = np.sin(dip)
+
+            p = Y_a * cos_d + depth * sin_d
+            q = depth * cos_d - Y_a * sin_d
+            u = X_a
+            v = p
+
+            R = np.sqrt(u ** 2, v ** 2, q ** 2)
+
+            term1 = -alpha * slip * np.arctan2(u * q, (v + R) * R)
+            term2 = (1.0 - alpha) * slip * np.log(u + R)
+            term3 = -alpha * slip * np.log(R + q)
+
+            return term1 + term2 + term3
+
+        u00 = _corner_contribution(0.0, 0.0)
+        uL0 = _corner_contribution(length, 0.0)
+        u0W = _corner_contribution(0.0, width)
+        uLW = _corner_contribution(length, width)
+
+        uz = u00 - uL0 - u0W + uLW
+
+        if smoothing > 0:
+            uz = gaussian_filter(uz, sigma=smoothing)
+
+        return uz
+
+    def _gen_rough(self) -> np.ndarray:
+        amp = self._sample(self.amp_range_r)
+        sigma_big = self._sample(self.smoothing_sigma_r)
+
+        noise_big = self.rng.standard_normal((self.nx, self.ny))
+        coarse = amp * gaussian_filter(noise_big, sigma=sigma_big)
+
+        sigma_small = max(0.2, sigma_big / 4.0)
+        micro_amp = 0.3 * amp
+
+        noise_small = self.rng.standard_normal((self.nx, self.ny))
+        micro = micro_amp * gaussian_filter(noise_small, sigma = sigma_small)
+
+        rough_field = coarse + micro
+
+        return rough_field
+
+    def add_noise(self, h: np.ndarray) -> np.ndarray:
+        scale = self._sample(self.scale_range_n)
+        sigma = self._sample(self.smoothing_sigma_n)
+
+        noise = scale * self.rng.standard_normal(h.shape)
+
+        return h + gaussian_filter(noise, sigma)
+
+    def normalize(self, h: np.ndarray) -> np.ndarray:
+        h_min, h_max = h.min(), h.max()
+
+        if np.isclose(h_max, h_min):
+            return np.full_like(h, self.height_scale[0])
+
+        norm = (h - h_min) / (h_max - h_min)
+
+        return norm * (self.height_scale[1] - self.height_scale[0]) + self.height_scale[0]
+
+    def build_output(self, h: np.ndarray) -> np.ndarray:
+        h = self.add_noise(h)
+        h = self.normalize(h)
+
+        return np.clip(h, self.height_scale[0], self.height_scale[1])
