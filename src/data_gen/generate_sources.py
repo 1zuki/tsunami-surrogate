@@ -365,7 +365,7 @@ class SourceGenerator:
         return np.clip(h, self.height_scale[0], self.height_scale[1])
     
 """
-Reference notes
+Reference notes:
 
 [1] LeVeque, R. J. (2002)
 Finite Volume Methods for Hyperbolic Problems

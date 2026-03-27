@@ -390,7 +390,7 @@ if __name__ == "__main__":
         np.save(f"data/raw/type_{i + 1}.npy", np.array(t_type))
 
 """
-References:
+References notes:
 
 [1] LeVeque, R. J. (2002)
 Finite Volume Methods for Hyperbolic Problems
