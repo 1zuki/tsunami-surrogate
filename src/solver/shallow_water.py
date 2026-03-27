@@ -647,7 +647,13 @@ class ShallowWaterSolver:
 
 """
 Reference notes:
-- Shallow-water equations: conservative 2D form with bathymetry source term.
-- MUSCL reconstruction with minmod limiter.
-- Rusanov flux for robust shock-capturing.
+
+[1] LeVeque, R. J. (2002)
+Finite volume methods for hyperbolic problems.
+
+[2] Delis A. I., Katsaounis T. D., and Mitsotakis D. (2005)
+Numerical solution of the two-dimensional shallow water equations by the application of relaxation methods.
+
+[3] Eleuterio F. T, & Tokareva S. A. (2026)
+Rusanov-type schemes for hyperbolic equations: Wave-speed estimates, monotonicity and stability
 """

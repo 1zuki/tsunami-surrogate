@@ -363,3 +363,16 @@ class SourceGenerator:
         h = self.normalize(h)
 
         return np.clip(h, self.height_scale[0], self.height_scale[1])
+    
+"""
+Reference notes
+
+[1] LeVeque, R. J. (2002)
+Finite Volume Methods for Hyperbolic Problems
+
+[2] Scivier, A., & Nissen-Meyer, T., & Koelemeijer, P., & Baydin, A. G. (2024)
+Gaussian Processes for Probabilistic Estimates of Earthquake Ground Shaking
+
+[3] Okada, Y. (1985)
+Surface deformation due to shear and tensile faults in a half-space
+"""
