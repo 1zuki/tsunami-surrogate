@@ -234,7 +234,7 @@ class SourceGenerator:
         x_1 = x_c + dx
         y_1 = y_c + dy
         x_2 = x_c - dx
-        y_2 = x_c - dy
+        y_2 = y_c - dy
 
         gauss_1 = self._gaussian_2d(x_1, y_1, sigma_x, sigma_y, amp)
         gauss_2 = self._gaussian_2d(x_2, y_2, sigma_x, sigma_y, - amp)
@@ -253,7 +253,7 @@ class SourceGenerator:
         angle = self._sample(self.angle_range_f)
         smoothing = self._sample(self.smoothing_sigma_f)
 
-        x_rot, y_rot = self._rotate(self.x, self. y, x_c, y_c, angle)
+        x_rot, y_rot = self._rotate(self.x, self.y, x_c, y_c, angle)
 
         u = x_rot - x_c
         v = y_rot - y_c
@@ -284,29 +284,31 @@ class SourceGenerator:
         nu = 0.25
         alpha = self._alpha(nu)
 
-        def _corner_contribution():
-            X = self.x - x_c
-            Y = self.y - y_c
+        X = self.x - x_c
+        Y = self.y - y_c
 
-            cos_a = np.cos(angle)
-            sin_a = np.sin(angle)
-            X_a = cos_a * X + sin_a * Y
-            Y_a = -sin_a * X + cos_a * Y
+        cos_a = np.cos(angle)
+        sin_a = np.sin(angle)
+        X_a = cos_a * X + sin_a * Y
+        Y_a = -sin_a * X + cos_a * Y
+        
+        cos_d = np.cos(dip)
+        sin_d = np.sin(dip)
 
-            cos_d = np.cos(dip)
-            sin_d = np.sin(dip)
+        p = Y_a * cos_d + depth * sin_d
+        q = depth * cos_d - Y_a * sin_d
+        u = X_a
+        v = p
 
-            p = Y_a * cos_d + depth * sin_d
-            q = depth * cos_d - Y_a * sin_d
-            u = X_a
-            v = p
+        def _corner_contribution(xi: float, eta: float) -> np.ndarray:
+            u_c = u - xi
+            v_c = v - eta
 
-            R = np.sqrt(u ** 2, v ** 2, q ** 2)
+            R = np.sqrt(u_c ** 2 + v_c ** 2 + q ** 2)
 
-            term1 = -alpha * slip * np.arctan2(u * q, (v + R) * R)
-            term2 = (1.0 - alpha) * slip * np.log(u + R)
-            term3 = -alpha * slip * np.log(R + q)
-
+            term1 = -alpha * slip * np.arctan2(u_c * q, (v_c + R) * R)
+            term2 = (1.0 - alpha) * slip * np.log(v_c + R + 1e-12)
+            term3 = -alpha * slip * np.log(R + q + 1e-12)
             return term1 + term2 + term3
 
         u00 = _corner_contribution(0.0, 0.0)
@@ -332,7 +334,7 @@ class SourceGenerator:
         micro_amp = 0.3 * amp
 
         noise_small = self.rng.standard_normal((self.nx, self.ny))
-        micro = micro_amp * gaussian_filter(noise_small, sigma = sigma_small)
+        micro = micro_amp * gaussian_filter(noise_small, sigma=sigma_small)
 
         rough_field = coarse + micro
 

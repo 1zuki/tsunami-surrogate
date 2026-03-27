@@ -211,7 +211,6 @@ class BathymetryGenerator:
             trench += -depth * envelope_u * np.exp(-((v - curve) ** 2) / (2 * width ** 2))
 
         return trench
-    
 
     def _add_canyon_system(self, X: np.ndarray, Y: np.ndarray, scale: float) -> np.ndarray:
         canyon = np.zeros_like(X)
