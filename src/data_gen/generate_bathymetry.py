@@ -382,7 +382,7 @@ class BathymetryGenerator:
         return terrain
 
 if __name__ == "__main__":
-    generator = BathymetryGenerator("configs/bathymetry-gen-test.yaml")
+    generator = BathymetryGenerator("configs/bathymetry.yaml")
 
     for i in range(10):
         bathymetry, t_type = generator.generate()
