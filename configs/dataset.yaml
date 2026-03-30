@@ -16,8 +16,8 @@ dataset:
   copy_configs: true
 
 solver:
-  nx: 256
-  ny: 256
+  nx: 64
+  ny: 64
   dx: 0.00390625
   dy: 0.00390625
   dt: 0.001

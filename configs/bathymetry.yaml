@@ -1,5 +1,5 @@
-nx: 256
-ny: 256
+nx: 64
+ny: 64
 
 seed: null
 

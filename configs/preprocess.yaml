@@ -1,0 +1,34 @@
+raw_dir: data/raw/samples
+processed_dir: data/processed
+
+manifest_path: data/synthetic/manifest.jsonl
+
+split:
+  train: 0.7
+  val: 0.15
+  test: 0.15
+  seed: 42
+
+input:
+  use_bathymetry: true
+  use_source: true
+  use_initial_depth: true
+  use_initial_surface: false
+
+target:
+  mode: next_step   # or multi_step / final_state
+  forecast_steps: 10
+  stride: 1
+
+normalization:
+  method: standardize   # or minmax
+  channels:
+    bathymetry: true
+    source: true
+    trajectory: true
+  eps: 1e-6
+
+saving:
+  format: npy
+  compress: true
+  include_meta: true
