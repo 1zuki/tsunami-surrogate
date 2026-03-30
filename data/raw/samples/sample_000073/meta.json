@@ -1,0 +1,57 @@
+{
+  "sample_index": 73,
+  "bathymetry_type": "canyon",
+  "source_type": "gaussian",
+  "source_strength": 1.108981183431046,
+  "num_frames": 41,
+  "trajectory_shape": [
+    41,
+    3,
+    64,
+    64
+  ],
+  "timestamps_shape": [
+    41
+  ],
+  "dt_history_shape": [
+    41
+  ],
+  "bathymetry_shape": [
+    64,
+    64
+  ],
+  "source_shape": [
+    64,
+    64
+  ],
+  "eta0_shape": [
+    64,
+    64
+  ],
+  "h0_shape": [
+    64,
+    64
+  ],
+  "free_surface0_shape": [
+    64,
+    64
+  ],
+  "dataset_config_path": "configs/dataset.yaml",
+  "bathymetry_config_path": "configs/bathymetry.yaml",
+  "source_config_path": "configs/source.yaml",
+  "solver": {
+    "nx": 64,
+    "ny": 64,
+    "dx": 0.00390625,
+    "dy": 0.00390625,
+    "dt": 0.001,
+    "g": 9.81,
+    "rho": 1000,
+    "cfl": 0.45,
+    "dry_tolerance": "1e-6",
+    "boundary": "open",
+    "use_sponge": true,
+    "sponge_width": 20,
+    "sponge_min_factor": 0.9
+  }
+}
