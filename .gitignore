@@ -1,5 +1,6 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
+__pycache__/
 *.py[codz]
 *$py.class
 
@@ -35,6 +36,9 @@ MANIFEST
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
+
+.gitignore
+.sixth
 
 # Unit test / coverage reports
 htmlcov/
@@ -207,3 +211,5 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
