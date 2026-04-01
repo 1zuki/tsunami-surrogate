@@ -1,0 +1,83 @@
+runtime:
+  seed: 42
+  device: cuda
+
+model:
+  module: src.models.fno
+  class_name: FNO2d
+  strict_load: true
+  kwargs:
+    in_channels: 2
+    out_channels: 20
+    hidden_channels: 48
+    modes1: 12
+    modes2: 12
+
+# Use either:
+# dataset.path: path/to/test.npz
+# or dataset.path: path/to/test_directory/
+# or dataset.inputs_path + dataset.targets_path
+
+dataset:
+  path: data/processed/test.npz
+  inputs_key: inputs
+  targets_key: targets
+  ids_key: sample_id
+  batch_size: 8
+  num_workers: 0
+  channel_last_inputs: false
+  channel_last_targets: false
+  target_squeeze_last: true
+
+normalization:
+  input: {}
+  target: {}
+  # Example with saved stats:
+  # input:
+  #   path: data/processed/stats.npz
+  #   mean_key: input_mean
+  #   std_key: input_std
+  # target:
+  #   path: data/processed/stats.npz
+  #   mean_key: target_mean
+  #   std_key: target_std
+
+evaluation:
+  checkpoint: results/checkpoints/best.pt
+  output_dir: results/evaluation/default_run
+  output_key: prediction
+  num_plot_examples: 4
+
+speed:
+  num_batches: 3
+  model_warmup: 10
+  model_repeats: 50
+  simulator_callable: src.solver.shallow_water:simulate_rollout
+  simulator_warmup: 2
+  simulator_repeats: 5
+  simulator_num_cases: 1
+  kwargs: {}
+
+generalization:
+  suites:
+    - label: same_resolution
+      path: data/processed/test_same_resolution.npz
+      inputs_key: inputs
+      targets_key: targets
+    - label: unseen_bathymetry
+      path: data/processed/test_unseen_bathymetry.npz
+      inputs_key: inputs
+      targets_key: targets
+    - label: cross_resolution
+      path: data/processed/test_cross_resolution.npz
+      inputs_key: inputs
+      targets_key: targets
+
+uncertainty:
+  mode: mc_dropout
+  num_samples: 20
+  visualization_timestep: 19
+  checkpoints:
+    - results/checkpoints/model_seed_1.pt
+    - results/checkpoints/model_seed_2.pt
+    - results/checkpoints/model_seed_3.pt
