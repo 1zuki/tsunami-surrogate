@@ -1,3 +1,7 @@
+![Python](https://img.shields.io/badge/Python-3.10-blue)
+![PyTorch](https://img.shields.io/badge/PyTorch-DeepLearning-red)
+![License](https://img.shields.io/badge/License-MIT-green)
+
 # Tsunami Surrogate Modeling with Neural Operators
 
 A research-grade codebase for synthetic tsunami simulation, neural-operator surrogates, and paper-ready evaluation.
