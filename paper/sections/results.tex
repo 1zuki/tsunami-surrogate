@@ -1,0 +1,31 @@
+\section{Results}
+
+\subsection{Accuracy against the simulator}
+[TODO: Insert quantitative table for FNO vs baselines on the held-out test set.]
+
+\begin{table}[h]
+    \centering
+    \caption{Placeholder accuracy table. Replace with final numbers.}
+    \begin{tabular}{lccc}
+        \toprule
+        Model & MSE $\downarrow$ & RMSE $\downarrow$ & MAE $\downarrow$ \\
+        \midrule
+        CNN & -- & -- & -- \\
+        U-Net & -- & -- & -- \\
+        ConvLSTM & -- & -- & -- \\
+        FNO & -- & -- & -- \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Speedup}
+[TODO: Insert wall-clock comparison between the trained surrogate and the numerical simulator.]
+
+\subsection{Generalization to unseen bathymetry}
+[TODO: Insert held-out bathymetry results and representative visualizations.]
+
+\subsection{Uncertainty analysis}
+[TODO: Show predictive spread vs empirical error for MC dropout or ensembles.]
+
+\subsection{Curriculum-by-resolution study}
+[TODO: Compare high-resolution training from scratch against progressive 32->64->128 training.]

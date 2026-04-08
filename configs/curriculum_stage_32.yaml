@@ -1,0 +1,35 @@
+base_config: fno.yaml
+
+project:
+  name: curriculum-stage-32
+
+paths:
+  output_root: results/curriculum_32
+  checkpoint_dir: results/curriculum_32/checkpoints
+  log_dir: results/curriculum_32/logs
+  figure_dir: results/curriculum_32/figures
+  dataset_dir: data/synthetic/curriculum_32
+  train_file: data/synthetic/curriculum_32/train.npz
+  val_file: data/synthetic/curriculum_32/val.npz
+  test_file: data/synthetic/curriculum_32/test.npz
+  stats_file: data/synthetic/curriculum_32/stats.yaml
+
+simulation:
+  nx: 32
+  ny: 32
+  nt: 20
+
+model:
+  out_channels: 20
+  hidden_channels: 12
+  modes_x: 8
+  modes_y: 8
+  n_layers: 2
+
+training:
+  epochs: 30
+  batch_size: 4
+  lr: 0.001
+
+dataset_generation:
+  n_samples: 512

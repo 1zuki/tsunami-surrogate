@@ -1,0 +1,27 @@
+\section{Experimental Setup}
+
+\subsection{Datasets and splits}
+We use synthetic train, validation, and test splits generated from the simulator. Unless otherwise stated, the train split is used to compute normalization statistics and the test split is reserved for final reporting.
+
+\subsection{Evaluation protocol}
+We report:
+\begin{itemize}[leftmargin=1.5em]
+    \item reconstruction error (MSE, RMSE, MAE),
+    \item runtime speedup relative to the simulator,
+    \item generalization performance on unseen bathymetry and source families, and
+    \item uncertainty diagnostics for dropout or ensemble-based prediction.
+\end{itemize}
+
+\subsection{Experiment suite}
+The codebase is organized around the following experiment groups:
+\begin{enumerate}[leftmargin=1.5em]
+    \item same-resolution learning,
+    \item unseen bathymetry generalization,
+    \item cross-resolution transfer,
+    \item physics-loss ablation,
+    \item uncertainty analysis,
+    \item curriculum by resolution.
+\end{enumerate}
+
+\subsection{Implementation details}
+This repository is implemented in Python using NumPy, SciPy, Matplotlib, PyYAML, and PyTorch. Training, evaluation, visualization, and dataset generation are all configuration-driven.

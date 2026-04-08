@@ -1,0 +1,33 @@
+base_config: fno.yaml
+
+project:
+  name: tsunami-fno-32-to-64
+
+paths:
+  output_root: results/fno_32_to_64
+  checkpoint_dir: results/fno_32_to_64/checkpoints
+  log_dir: results/fno_32_to_64/logs
+  figure_dir: results/fno_32_to_64/figures
+  dataset_dir: data/synthetic/train32_test64
+  train_file: data/synthetic/train32_test64/train_32.npz
+  val_file: data/synthetic/train32_test64/val_32.npz
+  test_file: data/synthetic/train32_test64/test_64.npz
+  stats_file: data/synthetic/train32_test64/stats_32.yaml
+
+simulation:
+  nx: 32
+  ny: 32
+  nt: 20
+
+model:
+  name: fno
+  modes_x: 6
+  modes_y: 6
+  hidden_channels: 8
+
+training:
+  epochs: 70
+  batch_size: 1
+
+evaluation:
+  batch_size: 1
