@@ -1,77 +1,121 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import argparse
-from pathlib import Path
+from copy import deepcopy
+from typing import Any, Dict, List
 
 import numpy as np
 
-from src.evaluation._common import load_checkpoint_and_model, make_eval_loader, run_inference, save_json
-from src.training.metrics import compute_metrics_np
-
-
-def _collect_meta_array(metas, key: str):
-    if not metas:
-        return None
-    chunks = []
-    for meta in metas:
-        if key in meta:
-            chunks.append(np.asarray(meta[key]))
-    if not chunks:
-        return None
-    return np.concatenate(chunks, axis=0)
+from src.evaluation._common import (
+    build_dataloader,
+    collect_predictions,
+    compute_sample_metrics,
+    compute_timestep_metrics,
+    load_model,
+    load_yaml,
+    parse_cli,
+    prepare_runtime,
+    resolve_standardizer,
+    save_json,
+)
+from src.utils.logger import setup_logger
+from src.utils.visualization import save_generalization_bar_chart, save_metric_curves
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate generalization across bathymetry regimes.")
-    parser.add_argument("--config", type=str, required=True)
-    parser.add_argument("--checkpoint", type=str, default=None)
-    parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test"])
-    args = parser.parse_args()
+    args = parse_cli("Evaluate surrogate generalization across multiple splits or datasets.")
+    config = load_yaml(args.config)
+    device, seed_value, output_dir = prepare_runtime(config, args)
+    logger = setup_logger("eval_generalization", save_dir=output_dir)
+    logger.info("Starting generalization evaluation")
 
-    config, model, stats, device, state = load_checkpoint_and_model(args.config, args.checkpoint)
-    loader = make_eval_loader(config, split=args.split, return_meta=True)
-    normalize_targets = bool(config.get("normalization", {}).get("normalize_targets", True))
-    overall_metrics, preds, targets, metas, _ = run_inference(model, loader, device, stats, normalize_targets)
+    model, checkpoint_path = load_model(config, device=device, checkpoint_override=args.checkpoint)
+    logger.info("Loaded model checkpoint: %s", checkpoint_path if checkpoint_path else "config-only model")
 
-    roughness = _collect_meta_array(metas, "roughness")
-    mean_depth = _collect_meta_array(metas, "mean_depth")
-    source_type = _collect_meta_array(metas, "source_type")
-    n_bins = int(config.get("evaluation", {}).get("generalization_bins", 4))
+    normalization_cfg = config.get("normalization", {})
+    input_standardizer = resolve_standardizer(normalization_cfg.get("input"))
+    target_standardizer = resolve_standardizer(normalization_cfg.get("target"))
+    output_key = config.get("evaluation", {}).get("output_key")
 
-    report = {"overall": overall_metrics, "roughness_bins": [], "depth_bins": [], "source_type": []}
+    generalization_cfg = config.get("generalization", {})
+    suites = generalization_cfg.get("suites")
+    if not suites:
+        raise ValueError("Config must contain generalization.suites with at least one dataset suite.")
 
-    if roughness is not None:
-        edges = np.quantile(roughness, np.linspace(0, 1, n_bins + 1))
-        for i in range(n_bins):
-            mask = (roughness >= edges[i]) & (roughness <= edges[i + 1] if i == n_bins - 1 else roughness < edges[i + 1])
-            if np.any(mask):
-                metrics = compute_metrics_np(preds[mask], targets[mask])
-                report["roughness_bins"].append({"bin": i, "low": float(edges[i]), "high": float(edges[i + 1]), **metrics})
+    suite_results: Dict[str, Dict[str, Any]] = {}
+    rmse_by_suite: Dict[str, float] = {}
+    rel_l2_by_suite: Dict[str, float] = {}
 
-    if mean_depth is not None:
-        edges = np.quantile(mean_depth, np.linspace(0, 1, n_bins + 1))
-        for i in range(n_bins):
-            mask = (mean_depth >= edges[i]) & (mean_depth <= edges[i + 1] if i == n_bins - 1 else mean_depth < edges[i + 1])
-            if np.any(mask):
-                metrics = compute_metrics_np(preds[mask], targets[mask])
-                report["depth_bins"].append({"bin": i, "low": float(edges[i]), "high": float(edges[i + 1]), **metrics})
+    for suite in suites:
+        label = str(suite.get("label") or suite.get("name") or suite.get("path"))
+        suite_config = deepcopy(config)
+        suite_dataset_cfg = deepcopy(config.get("dataset", {}))
+        for key, value in suite.items():
+            if key not in {"label", "name"}:
+                suite_dataset_cfg[key] = value
+        suite_config["dataset"] = suite_dataset_cfg
 
-    if source_type is not None:
-        for st in np.unique(source_type.astype(int)):
-            mask = source_type.astype(int) == int(st)
-            metrics = compute_metrics_np(preds[mask], targets[mask])
-            report["source_type"].append({"source_type": int(st), **metrics})
+        dataset, dataloader = build_dataloader(suite_config, dataset_key="dataset")
+        logger.info("Evaluating suite '%s' with %d samples", label, len(dataset))
 
-    out_dir = Path(config.get("paths", {}).get("output_root", "results/default_run")) / f"eval_generalization_{args.split}"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    save_json(report, out_dir / "generalization.json")
-    print(report)
+        pred, target, _ = collect_predictions(
+            model=model,
+            dataloader=dataloader,
+            device=device,
+            input_standardizer=input_standardizer,
+            target_standardizer=target_standardizer,
+            output_key=output_key,
+        )
+        sample_metrics = compute_sample_metrics(pred, target)
+        timestep_metrics = compute_timestep_metrics(pred, target)
+        summary = {
+            name: {
+                "mean": float(np.mean(values)),
+                "std": float(np.std(values)),
+                "median": float(np.median(values)),
+                "min": float(np.min(values)),
+                "max": float(np.max(values)),
+            }
+            for name, values in sample_metrics.items()
+        }
+        suite_results[label] = {
+            "num_samples": int(pred.shape[0]),
+            "metrics": summary,
+            "timestep_metrics": {name: values.tolist() for name, values in timestep_metrics.items()},
+        }
+        rmse_by_suite[label] = summary["rmse"]["mean"]
+        rel_l2_by_suite[label] = summary["relative_l2"]["mean"]
+
+        save_metric_curves(
+            metric_dict={
+                "RMSE": timestep_metrics["rmse"],
+                "MAE": timestep_metrics["mae"],
+                "Relative L2": timestep_metrics["relative_l2"],
+            },
+            save_path=output_dir / f"{label}_timestep_metrics.png",
+            title=f"Per-timestep metrics | {label}",
+        )
+
+    summary_payload = {
+        "checkpoint": str(checkpoint_path) if checkpoint_path else None,
+        "seed": seed_value,
+        "suites": suite_results,
+    }
+    save_json(output_dir / "generalization_summary.json", summary_payload)
+    logger.info("Saved suite summaries")
+
+    save_generalization_bar_chart(
+        values=rmse_by_suite,
+        save_path=output_dir / "generalization_rmse_bar.png",
+        title="Mean RMSE by evaluation suite",
+        ylabel="RMSE",
+    )
+    save_generalization_bar_chart(
+        values=rel_l2_by_suite,
+        save_path=output_dir / "generalization_relative_l2_bar.png",
+        title="Mean relative L2 by evaluation suite",
+        ylabel="Relative L2",
+    )
+    logger.info("Generalization evaluation finished successfully")
 
 
 if __name__ == "__main__":
