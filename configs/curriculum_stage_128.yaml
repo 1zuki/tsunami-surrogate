@@ -1,0 +1,35 @@
+base_config: fno.yaml
+
+project:
+  name: curriculum-stage-128
+
+paths:
+  output_root: results/curriculum_128
+  checkpoint_dir: results/curriculum_128/checkpoints
+  log_dir: results/curriculum_128/logs
+  figure_dir: results/curriculum_128/figures
+  dataset_dir: data/synthetic/curriculum_128
+  train_file: data/synthetic/curriculum_128/train.npz
+  val_file: data/synthetic/curriculum_128/val.npz
+  test_file: data/synthetic/curriculum_128/test.npz
+  stats_file: data/synthetic/curriculum_128/stats.yaml
+
+simulation:
+  nx: 128
+  ny: 128
+  nt: 20
+
+model:
+  out_channels: 20
+  hidden_channels: 20
+  modes_x: 16
+  modes_y: 16
+  n_layers: 4
+
+training:
+  epochs: 20
+  batch_size: 1
+  lr: 0.0005
+
+dataset_generation:
+  n_samples: 256

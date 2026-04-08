@@ -3,20 +3,16 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from datetime import datetime
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Union
+from typing import Any, Dict
 
-import yaml
+from src.utils.config import save_yaml
 
 
-def setup_logger(
-    name: str,
-    save_dir: Optional[Union[str, Path]] = None,
-    filename: str = "run.log",
-    level: Union[int, str] = logging.INFO,
-    console: bool = True,
-) -> logging.Logger:
+def configure_logger(log_dir: str | Path, name: str = "tsunami", level: int = logging.INFO) -> logging.Logger:
+    log_dir = Path(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger(name)
     logger.setLevel(level)
     logger.propagate = False
@@ -24,65 +20,47 @@ def setup_logger(
     if logger.handlers:
         return logger
 
-    formatter = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s", datefmt="%H:%M:%S")
 
-    if console:
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(level)
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
 
-    if save_dir is not None:
-        save_dir = Path(save_dir)
-        save_dir.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(save_dir / filename, encoding="utf-8")
-        file_handler.setLevel(level)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-
+    file_handler = logging.FileHandler(log_dir / f"{name}.log", encoding="utf-8")
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
     return logger
 
 
-def save_json(path: Union[str, Path], data: Mapping[str, Any]) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(data, handle, indent=2, sort_keys=True)
-
-
-def save_yaml(path: Union[str, Path], data: Mapping[str, Any]) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        yaml.safe_dump(dict(data), handle, sort_keys=False)
-
-
-def append_jsonl(path: Union[str, Path], data: Mapping[str, Any]) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(dict(data), sort_keys=True) + "\n")
-
-
+@dataclass
 class ExperimentLogger:
-    def __init__(self, root_dir: Union[str, Path], run_name: str = "run") -> None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.root_dir = Path(root_dir) / f"{run_name}_{timestamp}"
-        self.root_dir.mkdir(parents=True, exist_ok=True)
-        self.logger = setup_logger(run_name, save_dir=self.root_dir)
-        self.metrics_path = self.root_dir / "metrics.jsonl"
+    log_dir: str | Path
+    name: str = "experiment"
+    logger: logging.Logger = field(init=False)
+    metrics_path: Path = field(init=False)
 
-    def log(self, message: str) -> None:
+    def __post_init__(self) -> None:
+        self.log_dir = Path(self.log_dir)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.logger = configure_logger(self.log_dir, self.name)
+        self.metrics_path = self.log_dir / "metrics.jsonl"
+
+    def info(self, message: str) -> None:
         self.logger.info(message)
 
-    def log_metrics(self, step: int, metrics: Mapping[str, Any], prefix: str = "") -> None:
-        payload: Dict[str, Any] = {"step": int(step)}
-        for key, value in metrics.items():
-            payload[f"{prefix}{key}"] = value
-        append_jsonl(self.metrics_path, payload)
+    def warning(self, message: str) -> None:
+        self.logger.warning(message)
 
-    def save_config(self, config: Mapping[str, Any], filename: str = "config.yaml") -> None:
-        save_yaml(self.root_dir / filename, config)
+    def error(self, message: str) -> None:
+        self.logger.error(message)
+
+    def save_config(self, config: Dict[str, Any], filename: str = "config_resolved.yaml") -> None:
+        save_yaml(config, self.log_dir / filename)
+
+    def log_metrics(self, step: int, split: str, metrics: Dict[str, Any]) -> None:
+        payload = {"step": int(step), "split": split}
+        payload.update({k: float(v) if isinstance(v, (int, float)) else v for k, v in metrics.items()})
+        with self.metrics_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload) + "\n")
+        formatted = ", ".join(f"{k}={v:.6f}" for k, v in metrics.items() if isinstance(v, (int, float)))
+        self.info(f"[{split}] step={step} {formatted}")

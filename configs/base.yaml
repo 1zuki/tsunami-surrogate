@@ -1,0 +1,121 @@
+project:
+  name: tsunami-surrogate
+  seed: 42
+  deterministic: false
+  device: auto
+
+paths:
+  output_root: results/default_run
+  checkpoint_dir: results/default_run/checkpoints
+  log_dir: results/default_run/logs
+  figure_dir: results/default_run/figures
+  dataset_dir: data/synthetic/default
+  train_file: data/synthetic/default/train.npz
+  val_file: data/synthetic/default/val.npz
+  test_file: data/synthetic/default/test.npz
+  stats_file: data/synthetic/default/stats.yaml
+
+simulation:
+  solver: shallow_water
+  nx: 32
+  ny: 32
+  nt: 20
+  dx: 1.0
+  dy: 1.0
+  dt: 0.05
+  adaptive_dt: true
+  cfl: 0.35
+  gravity: 1.0
+  friction: 0.002
+  min_depth: 0.15
+  boundary: transmissive
+  dispersion_coeff: 0.01
+  save_every: 1
+
+bathymetry:
+  min_depth: 1.0
+  max_depth: 4.0
+  slope_scale: 0.6
+  noise_scale: 0.15
+  smoothing_sigma_range: [1.0, 3.0]
+  num_features: [2, 5]
+  feature_amplitude_scale: 0.35
+  feature_sigma_range: [0.08, 0.28]
+
+source:
+  types: [gaussian, dipole, ring, okada_like]
+  amplitude_range: [0.05, 0.35]
+  sigma_range: [1.5, 5.0]
+  offset_range: [1.0, 4.0]
+  ring_radius_range: [2.0, 6.0]
+
+dataset_generation:
+  n_samples: 512
+  train_ratio: 0.8
+  val_ratio: 0.1
+  num_workers: 0
+  preview_every: 0
+  save_metadata: true
+
+model:
+  name: fno
+  in_channels: 2
+  out_channels: 20
+  hidden_channels: 8
+  dropout: 0.10
+  use_grid: true
+
+training:
+  batch_size: 1
+  num_workers: 0
+  epochs: 40
+  lr: 0.001
+  weight_decay: 0.000001
+  grad_clip: 1.0
+  mixed_precision: false
+  log_every: 10
+  save_every: 1
+  pin_memory: false
+  early_stopping_patience: 10
+  early_stopping_min_delta: 0.0
+  scheduler:
+    name: plateau
+    factor: 0.5
+    patience: 4
+    min_lr: 0.00001
+
+loss:
+  mse_weight: 1.0
+  l1_weight: 0.0
+  gradient_weight: 0.05
+  temporal_weight: 0.02
+  mass_weight: 0.02
+  spectral_weight: 0.00
+  epsilon: 0.000001
+
+normalization:
+  normalize_inputs: true
+  normalize_targets: true
+
+augmentation:
+  horizontal_flip: true
+  vertical_flip: true
+  noise_std: 0.0
+
+visualization:
+  n_samples: 4
+  cmap_wave: RdBu_r
+  cmap_bathy: viridis
+  dpi: 140
+
+uncertainty:
+  method: mc_dropout
+  num_samples: 20
+  confidence_levels: [0.68, 0.95]
+
+evaluation:
+  batch_size: 1
+  num_workers: 0
+  max_samples: null
+  save_predictions: false
+  generalization_bins: 4

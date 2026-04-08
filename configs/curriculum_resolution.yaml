@@ -1,0 +1,14 @@
+project:
+  name: curriculum-by-resolution
+
+curriculum:
+  generate_dataset: true
+  resume_from_previous: true
+  run_final_accuracy_eval: false
+  stages:
+    - name: stage32
+      config: configs/curriculum_stage_32.yaml
+    - name: stage64
+      config: configs/curriculum_stage_64.yaml
+    - name: stage128
+      config: configs/curriculum_stage_128.yaml

@@ -1,0 +1,25 @@
+base_config: base.yaml
+
+project:
+  name: tsunami-convlstm
+
+paths:
+  output_root: results/convlstm_run
+  checkpoint_dir: results/convlstm_run/checkpoints
+  log_dir: results/convlstm_run/logs
+  figure_dir: results/convlstm_run/figures
+  dataset_dir: data/synthetic/default
+  train_file: data/synthetic/default/train.npz
+  val_file: data/synthetic/default/val.npz
+  test_file: data/synthetic/default/test.npz
+  stats_file: data/synthetic/default/stats.yaml
+
+model:
+  name: convlstm
+  hidden_channels: 32
+  dropout: 0.10
+
+training:
+  epochs: 60
+  batch_size: 2
+  lr: 0.001

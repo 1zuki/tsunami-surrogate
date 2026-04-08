@@ -1,0 +1,22 @@
+base_config: fno.yaml
+
+project:
+  name: tsunami-fno-demo-tiny
+
+paths:
+  output_root: results/smoke_tiny
+  checkpoint_dir: results/smoke_tiny/checkpoints
+  log_dir: results/smoke_tiny/logs
+  figure_dir: results/smoke_tiny/figures
+  dataset_dir: data/synthetic/tiny
+  train_file: data/synthetic/tiny/train.npz
+  val_file: data/synthetic/tiny/val.npz
+  test_file: data/synthetic/tiny/test.npz
+  stats_file: data/synthetic/tiny/stats.yaml
+
+training:
+  epochs: 1
+  batch_size: 1
+
+evaluation:
+  batch_size: 1

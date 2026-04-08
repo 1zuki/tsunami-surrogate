@@ -1,0 +1,26 @@
+base_config: base.yaml
+
+project:
+  name: tsunami-unet
+
+paths:
+  output_root: results/unet_run
+  checkpoint_dir: results/unet_run/checkpoints
+  log_dir: results/unet_run/logs
+  figure_dir: results/unet_run/figures
+  dataset_dir: data/synthetic/fno_default
+  train_file: data/synthetic/fno_default/train.npz
+  val_file: data/synthetic/fno_default/val.npz
+  test_file: data/synthetic/fno_default/test.npz
+  stats_file: data/synthetic/fno_default/stats.yaml
+
+model:
+  name: unet
+  base_channels: 16
+  depth: 4
+  dropout: 0.10
+
+training:
+  epochs: 60
+  batch_size: 4
+  lr: 0.0008
