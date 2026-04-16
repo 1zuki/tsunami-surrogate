@@ -141,17 +141,19 @@ class TsunamiDatasetBuilder:
         if target_cfl <= 0:
             raise ValueError("dataset.target_cfl must be positive")
 
-        return DatasetConfig(num_samples=num_samples,
-                             n_steps=n_steps,
-                             save_every=save_every,
-                             auto_dt=auto_dt,
-                             target_cfl=target_cfl,
-                             include_initial_state=include_initial_state,
-                             sea_level_offset=sea_level_offset,
-                             source_strength_range=source_strength_range,
-                             output_dir=output_dir,
-                             manifest_path=manifest_path,
-                             copy_configs=copy_configs)
+        return DatasetConfig(
+            num_samples=num_samples,
+            n_steps=n_steps,
+            save_every=save_every,
+            auto_dt=auto_dt,
+            target_cfl=target_cfl,
+            include_initial_state=include_initial_state,
+            sea_level_offset=sea_level_offset,
+            source_strength_range=source_strength_range,
+            output_dir=output_dir,
+            manifest_path=manifest_path,
+            copy_configs=copy_configs
+        )
 
     @staticmethod
     def _parse_solver_section(cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -179,18 +181,20 @@ class TsunamiDatasetBuilder:
         sv = self.solver_cfg
         boundary = sv.get("boundary", "open")
 
-        return ShallowWaterSolver(nx=int(sv["nx"]),
-                                  ny=int(sv["ny"]),
-                                  dx=float(sv["dx"]),
-                                  dy=float(sv["dy"]),
-                                  dt=float(sv["dt"]),
-                                  g=float(sv.get("g", 9.81)),
-                                  cfl=float(sv.get("cfl", 0.45)),
-                                  dry_tolerance=float(sv.get("dry_tolerance", 1e-6)),
-                                  boundary=boundary,
-                                  use_sponge=bool(sv.get("use_sponge", True)),
-                                  sponge_width=int(sv.get("sponge_width", 20)),
-                                  sponge_min_factor=float(sv.get("sponge_min_factor", 0.9)))
+        return ShallowWaterSolver(
+            nx=int(sv["nx"]),
+            ny=int(sv["ny"]),
+            dx=float(sv["dx"]),
+            dy=float(sv["dy"]),
+            dt=float(sv["dt"]),
+            g=float(sv.get("g", 9.81)),
+            cfl=float(sv.get("cfl", 0.45)),
+            dry_tolerance=float(sv.get("dry_tolerance", 1e-6)),
+            boundary=boundary,
+            use_sponge=bool(sv.get("use_sponge", True)),
+            sponge_width=int(sv.get("sponge_width", 20)),
+            sponge_min_factor=float(sv.get("sponge_min_factor", 0.9))
+        )
 
     def _sample_strength(self) -> float:
         lo, hi = self.dataset.source_strength_range
@@ -259,58 +263,66 @@ class TsunamiDatasetBuilder:
         return trajectory, timestamps_arr, dt_hist_arr
 
     def _sample_meta(self, sample_idx: int, bathy_type: str, source_type: str, source_strength: float,
-                     trajectory: np.ndarray, timestamps: np.ndarray, dt_hist: np.ndarray, bathymetry: np.ndarray,
-                     source_field: np.ndarray, eta0: np.ndarray, h0: np.ndarray, free_surface0: np.ndarray) -> Dict[str, Any]:
+            trajectory: np.ndarray, timestamps: np.ndarray, dt_hist: np.ndarray, bathymetry: np.ndarray,
+            source_field: np.ndarray, eta0: np.ndarray, h0: np.ndarray, free_surface0: np.ndarray
+        ) -> Dict[str, Any]:
 
-        return {"sample_index": sample_idx,
-                "bathymetry_type": bathy_type,
-                "source_type": source_type,
-                "source_strength": source_strength,
-                "num_frames": int(trajectory.shape[0]),
-                "trajectory_shape": list(map(int, trajectory.shape)),
-                "timestamps_shape": list(map(int, timestamps.shape)),
-                "dt_history_shape": list(map(int, dt_hist.shape)),
-                "bathymetry_shape": list(map(int, bathymetry.shape)),
-                "source_shape": list(map(int, source_field.shape)),
-                "eta0_shape": list(map(int, eta0.shape)),
-                "h0_shape": list(map(int, h0.shape)),
-                "free_surface0_shape": list(map(int, free_surface0.shape)),
-                "dataset_config_path": str(self.config_path),
-                "bathymetry_config_path": str(self.bathy_cfg_path),
-                "source_config_path": str(self.source_cfg_path),
-                "solver": self.solver_cfg}
+        return {
+            "sample_index": sample_idx,
+            "bathymetry_type": bathy_type,
+            "source_type": source_type,
+            "source_strength": source_strength,
+            "num_frames": int(trajectory.shape[0]),
+            "trajectory_shape": list(map(int, trajectory.shape)),
+            "timestamps_shape": list(map(int, timestamps.shape)),
+            "dt_history_shape": list(map(int, dt_hist.shape)),
+            "bathymetry_shape": list(map(int, bathymetry.shape)),
+            "source_shape": list(map(int, source_field.shape)),
+            "eta0_shape": list(map(int, eta0.shape)),
+            "h0_shape": list(map(int, h0.shape)),
+            "free_surface0_shape": list(map(int, free_surface0.shape)),
+            "dataset_config_path": str(self.config_path),
+            "bathymetry_config_path": str(self.bathy_cfg_path),
+            "source_config_path": str(self.source_cfg_path),
+            "solver": self.solver_cfg
+        }
 
     def _save_sample(self, sample_idx: int, bathymetry: np.ndarray, bathy_type: str,
-                     source_field: np.ndarray, source_type: str, rest_depth: np.ndarray,
-                     eta0: np.ndarray, h0: np.ndarray, free_surface0: np.ndarray, trajectory: np.ndarray,
-                     timestamps: np.ndarray, dt_hist: np.ndarray, source_strength: float) -> None:
+            source_field: np.ndarray, source_type: str, rest_depth: np.ndarray,
+            eta0: np.ndarray, h0: np.ndarray, free_surface0: np.ndarray, trajectory: np.ndarray,
+            timestamps: np.ndarray, dt_hist: np.ndarray, source_strength: float
+        ) -> None:
 
         sample_dir = self.samples_dir / f"sample_{sample_idx:06d}"
         sample_dir.mkdir(parents=True, exist_ok=True)
 
-        np.savez_compressed(sample_dir / "sample.npz",
-                            bathymetry=bathymetry.astype(np.float32),
-                            source_field=source_field.astype(np.float32),
-                            rest_depth=rest_depth.astype(np.float32),
-                            eta0=eta0.astype(np.float32),
-                            initial_depth=h0.astype(np.float32),
-                            free_surface0=free_surface0.astype(np.float32),
-                            trajectory=trajectory.astype(np.float32),
-                            timestamps=timestamps.astype(np.float32),
-                            dt_history=dt_hist.astype(np.float32))
+        np.savez_compressed(
+            sample_dir / "sample.npz",
+            bathymetry=bathymetry.astype(np.float32),
+            source_field=source_field.astype(np.float32),
+            rest_depth=rest_depth.astype(np.float32),
+            eta0=eta0.astype(np.float32),
+            initial_depth=h0.astype(np.float32),
+            free_surface0=free_surface0.astype(np.float32),
+            trajectory=trajectory.astype(np.float32),
+            timestamps=timestamps.astype(np.float32),
+            dt_history=dt_hist.astype(np.float32)
+        )
 
-        meta = self._sample_meta(sample_idx=sample_idx,
-                                 bathy_type=bathy_type,
-                                 source_type=source_type,
-                                 source_strength=source_strength,
-                                 trajectory=trajectory,
-                                 timestamps=timestamps,
-                                 dt_hist=dt_hist,
-                                 bathymetry=bathymetry,
-                                 source_field=source_field,
-                                 eta0=eta0,
-                                 h0=h0,
-                                 free_surface0=free_surface0)
+        meta = self._sample_meta(
+            sample_idx=sample_idx,
+            bathy_type=bathy_type,
+            source_type=source_type,
+            source_strength=source_strength,
+            trajectory=trajectory,
+            timestamps=timestamps,
+            dt_hist=dt_hist,
+            bathymetry=bathymetry,
+            source_field=source_field,
+            eta0=eta0,
+            h0=h0,
+            free_surface0=free_surface0
+        )
 
         with (sample_dir / "meta.json").open("w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)

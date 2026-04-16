@@ -1,0 +1,20 @@
+\section{Introduction}
+\setlength{\parskip}{1em}
+
+Physics-based tsunami prediction remains computationally expensive, often requiring large-scale parallel computation when evaluated across many scenarios, parameter sweeps, or inverse problems. This motivates the search for surrogate models that can approximate tsunami propagation far more efficiently while preserving useful predictive accuracy.
+
+\noindent
+In this work, we cast surrogate modeling as an operator-learning problem: given a bathymetry field and an initial disturbance, the model predicts the wave-height field over future timesteps. Fourier Neural Operators (FNOs) are a compelling choice because they learn mappings between functions and have shown strong performance on PDE-driven tasks.
+
+\noindent
+Our aim is not to present an operational warning system. Instead, we establish a clean research benchmark that lets us ask a sharper question: can a neural operator deliver a meaningful speed--accuracy trade-off for tsunami-like wave propagation under controlled synthetic conditions?
+
+\noindent
+The main contributions of this study are:
+
+\begin{enumerate}[leftmargin=3.6em]
+    \item A realistic, reproducible synthetic tsunami data pipeline built from a shallow-water solver,
+    \item a neural-operator benchmark centered on FNOs with CNN, U-Net, and ConvLSTM baselines,
+    \item an evaluation suite covering accuracy, speed, generalization, and uncertainty, and
+    \item a curriculum-by-resolution experiment that tests whether progressive training improves high-resolution prediction quality.
+\end{enumerate}

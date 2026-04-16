@@ -38,7 +38,8 @@ class SourceGenerator:
 
         self.x, self.y = np.meshgrid(self.x, self.y, indexing="ij")
 
-        self.s_type = cfg.get("source_type", VALID_TYPES)
+        requested_types = cfg.get("source_type", list(VALID_TYPES))
+        self.s_type = self._parse_source_type(requested_types)
 
         def _parse_array_int(host: str, key: str, default: Optional[list[int, int]] = None) -> np.ndarray:
             section = cfg.get(host, {})
@@ -73,26 +74,34 @@ class SourceGenerator:
                 raise ValueError(f"{key} must have min <= max")
 
             return arr
+
+        def _parse_array_float_direct(value: object, key: str) -> np.ndarray:
+            arr = np.array(value, dtype=float)
+            if arr.size != 2:
+                raise ValueError(f"{key} must have 2 values [min, max]")
+            if arr[0] > arr[1]:
+                raise ValueError(f"{key} must have min <= max")
+            return arr
         
         # gaussian
-        self.enabled_g = bool(cfg.get("gaussian").get("enabled", True))
+        self.enabled_g = bool(cfg.get("gaussian", {}).get("enabled", True))
         self.amp_range_g = _parse_array_float("gaussian", "amp_range", [0.2, 2.0])
         self.sigma_range_g = _parse_array_float("gaussian", "sigma_range", [0.01, 0.08])
         self.num_range_g = _parse_array_int("gaussian", "num_range", [1, 3])
 
         # multi gaussian
-        self.enabled_mg = bool(cfg.get("multi").get("enabled", True))
+        self.enabled_mg = bool(cfg.get("multi", {}).get("enabled", True))
         self.num_sources = _parse_array_int("multi", "num_sources", [1, 3])
 
         # dipole
-        self.enabled_d = bool(cfg.get("dipole").get("enabled", True))
+        self.enabled_d = bool(cfg.get("dipole", {}).get("enabled", True))
         self.amp_range_d = _parse_array_float("dipole", "amp_range", [0.5, 2.5])
         self.sigma_range_d = _parse_array_float("dipole", "sigma_range", [0.02, 0.08])
         self.sep_range_d = _parse_array_float("dipole", "separation_range", [0.05, 0.15])
         self.angle_range_d = _parse_array_float("dipole", "angle_range", [0.0, 3.14])
 
         # fault
-        self.enabled_f = bool(cfg.get("fault").get("enabled", True))
+        self.enabled_f = bool(cfg.get("fault", {}).get("enabled", True))
         self.amp_range_f = _parse_array_float("fault", "amp_range", [0.5, 2.0])
         self.len_range_f = _parse_array_float("fault", "length_range", [0.2, 0.6])
         self.width_range_f = _parse_array_float("fault", "width_range", [0.02, 0.08])
@@ -100,12 +109,12 @@ class SourceGenerator:
         self.smoothing_sigma_f = _parse_array_float("fault", "smoothing_sigma", [0.01, 0.03])
 
         # rough
-        self.enabled_r = bool(cfg.get("rough").get("enabled", True))
+        self.enabled_r = bool(cfg.get("rough", {}).get("enabled", True))
         self.amp_range_r = _parse_array_float("rough", "amp_range", [0.5, 2.0])
         self.smoothing_sigma_r = _parse_array_float("rough", "smoothing_sigma", [1.0, 3.0])
 
         # okada-like
-        self.enabled_o = bool(cfg.get("okada").get("enabled", True))
+        self.enabled_o = bool(cfg.get("okada", {}).get("enabled", True))
         self.len_range_o = _parse_array_float("okada", "length_range", [0.1, 0.4])
         self.width_range_o = _parse_array_float("okada", "width_range", [0.05, 0.2])
         self.slip_range_o = _parse_array_float("okada", "slip_range", [0.5, 2.0])
@@ -115,33 +124,72 @@ class SourceGenerator:
         self.smoothing_sigma_o = _parse_array_float("okada", "smoothing_sigma", [0.01, 0.03])
 
         # noise
-        self.enabled_n = bool(cfg.get("noise").get("enabled", True))
+        self.enabled_n = bool(cfg.get("noise", {}).get("enabled", True))
         self.scale_range_n = _parse_array_float("noise", "scale_range", [0.01, 0.05])
         self.smoothing_sigma_n = _parse_array_float("noise", "smoothing_sigma", [1.0, 3.0])
 
-        # normalization
-        self.height_scale = _parse_array_float("normalization", "height_scale", [-1.0, 1.0])
+        # normalization / output shaping
+        norm_cfg = cfg.get("normalization", {})
+        legacy_height_scale = cfg.get("height_scale", None)
+        if "height_scale" in norm_cfg:
+            self.height_scale = _parse_array_float("normalization", "height_scale", [-1.0, 1.0])
+        elif legacy_height_scale is not None:
+            self.height_scale = _parse_array_float_direct(legacy_height_scale, "height_scale")
+        else:
+            self.height_scale = np.array([-1.0, 1.0], dtype=float)
+
+        self.normalize_mode = str(norm_cfg.get("mode", "none")).strip().lower()
+        if self.normalize_mode not in ("none", "per_sample"):
+            raise ValueError("normalization.mode must be one of: none, per_sample")
+
+        self.clip_output = bool(norm_cfg.get("clip_output", self.normalize_mode == "per_sample"))
+
+    @staticmethod
+    def _parse_source_type(source_type: object) -> tuple[str, ...]:
+        if isinstance(source_type, str):
+            requested = [source_type]
+
+        elif isinstance(source_type, (list, tuple)):
+            requested = [str(s) for s in source_type]
+
+        else:
+            raise ValueError("source_type must be a string or a list of strings")
+
+        if not requested:
+            raise ValueError("source_type cannot be empty")
+
+        invalid = [s for s in requested if s not in VALID_TYPES]
+        if invalid:
+            raise ValueError(f"unknown source type(s): {invalid}; valid: {VALID_TYPES}")
+
+        # preserve order while removing duplicates
+        return tuple(dict.fromkeys(requested))
 
     def source_type(self) -> Type:
-        available = []
+        enabled = []
 
         if self.enabled_g:
-            available.append("gaussian")
+            enabled.append("gaussian")
         
         if self.enabled_mg:
-            available.append("multi-gauss")
+            enabled.append("multi-gauss")
 
         if self.enabled_d:
-            available.append("dipole")
+            enabled.append("dipole")
         
         if self.enabled_f:
-            available.append("fault")
+            enabled.append("fault")
 
         if self.enabled_r:
-            available.append("rough")
+            enabled.append("rough")
         
         if self.enabled_o:
-            available.append("okada-like")
+            enabled.append("okada-like")
+
+        available = [s for s in self.s_type if s in enabled]
+
+        if not available:
+            raise ValueError("no source types are available (check source_type and enabled flags)")
 
         return self.rng.choice(available)
     
@@ -359,10 +407,16 @@ class SourceGenerator:
         return norm * (self.height_scale[1] - self.height_scale[0]) + self.height_scale[0]
 
     def build_output(self, h: np.ndarray) -> np.ndarray:
-        h = self.add_noise(h)
-        h = self.normalize(h)
+        if self.enabled_n:
+            h = self.add_noise(h)
 
-        return np.clip(h, self.height_scale[0], self.height_scale[1])
+        if self.normalize_mode == "per_sample":
+            h = self.normalize(h)
+
+        if self.clip_output:
+            h = np.clip(h, self.height_scale[0], self.height_scale[1])
+
+        return h
     
 """
 Reference notes:

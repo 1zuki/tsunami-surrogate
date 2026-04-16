@@ -51,15 +51,15 @@ class TsunamiPreprocessor:
 
         raw_dir = pathlib.Path(cfg.get("raw_dir", "data/raw/samples"))
         processed_dir = pathlib.Path(cfg.get("processed_dir", "data/processed"))
-        manifest_path = pathlib.Path(cfg.get("manifest_path", "data/synthetic/manifest.json"))
+        manifest_path = pathlib.Path(cfg.get("manifest_path", "data/synthetic/manifest.jsonl"))
 
-        split_cfg = cfg.get("spilt", {})
+        split_cfg = cfg.get("split", cfg.get("spilt", {}))
         train_ratio = float(split_cfg.get("train", 0.7))
         val_ratio = float(split_cfg.get("val", 0.15))
         test_ratio = float(split_cfg.get("test", 0.15))
         seed = int(split_cfg.get("seed", 42))
 
-        input_cfg = cfg.get("intput", {})
+        input_cfg = cfg.get("input", cfg.get("intput", {}))
         use_bathy = bool(input_cfg.get("use_bathymetry", True))
         use_src = bool(input_cfg.get("use_source", True))
         use_init_depth = bool(input_cfg.get("use_initial_depth", True))
@@ -167,7 +167,7 @@ class TsunamiPreprocessor:
 
         return data
 
-    def build_example(self, raw_sample: Dict[str, Any]) -> Tuple[Dict[str, np.ndarray]]:
+    def build_example(self, raw_sample: Dict[str, Any]) -> Tuple[Dict[str, np.ndarray], np.ndarray]:
         """ convert one raw sample into model-ready IO tensors """
         X = self.select_input_channels(raw_sample)
         Y = self.select_target_channels(raw_sample)
@@ -201,9 +201,12 @@ class TsunamiPreprocessor:
             X["initial_depth"] = sample["initial_depth"]
 
         if self.cfg.use_initial_surface:
-            if "initial_surface" not in sample:
-                raise KeyError("initial free surface not present in sample")
-            X["initial_surface"] = sample["initial_surface"]
+            if "initial_surface" in sample:
+                X["initial_surface"] = sample["initial_surface"]
+            elif "free_surface0" in sample:
+                X["initial_surface"] = sample["free_surface0"]
+            else:
+                raise KeyError("initial free surface not present in sample (expected initial_surface or free_surface0)")
 
         return X
 
@@ -387,7 +390,7 @@ class TsunamiPreprocessor:
         X_val, Y_val = _normalize(X_val_raw, Y_val_raw)
         X_test, Y_test = _normalize(X_test_raw, Y_test_raw)
 
-        print("Saving spilt")
+        print("Saving split")
         self.save_split("train", X_train, Y_train, meta_train)
         self.save_split("val", X_val, Y_val, meta_val)
         self.save_split("test", X_test, Y_test, meta_test)

@@ -16,8 +16,8 @@ input:
   use_initial_surface: false
 
 target:
-  mode: next_step   # or multi_step / final_state
-  forecast_steps: 10
+  mode: multi_step   # or multi_step / final_state
+  forecast_steps: 100
   stride: 1
 
 normalization:

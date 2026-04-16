@@ -3,8 +3,8 @@ configs:
   source: "configs/source.yaml"
 
 dataset:
-  num_samples: 100
-  n_steps: 200
+  num_samples: 16
+  n_steps: 500
   save_every: 5
   auto_dt: true
   target_cfl: 0.45
