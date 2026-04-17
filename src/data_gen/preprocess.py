@@ -25,6 +25,7 @@ class PreprocessConfig:
     use_initial_surface: bool
 
     target_mode: str # next_step / multi_step / final_state
+    target_variable: str # eta / depth / state
     forecast_steps: int
     stride: int
 
@@ -35,6 +36,14 @@ class PreprocessConfig:
     save_format: str # npy
     compress: bool
     include_meta: bool
+
+    export_eval_arrays: bool
+    eval_input_order: List[str]
+    eval_inputs_name: str
+    eval_targets_name: str
+    eval_ids_name: str
+    eval_archive_name: str
+    eval_manifest_name: str
 
 class TsunamiPreprocessor:
     def __init__(self, config_path: str) -> None:
@@ -67,8 +76,12 @@ class TsunamiPreprocessor:
 
         target_cfg = cfg.get("target", {})
         target_mode = str(target_cfg.get("mode", "next_step"))
+        target_variable = str(target_cfg.get("variable", "eta")).strip().lower()
         forecast_steps = int(target_cfg.get("forecast_steps", 10))
         stride = int(target_cfg.get("stride", 1))
+
+        if target_variable not in ("eta", "depth", "state"):
+            raise ValueError("target.variable must be one of: eta, depth, state")
 
         norm_cfg = cfg.get("normalization", {})
         norm_method = str(norm_cfg.get("method", "standardize"))
@@ -83,6 +96,15 @@ class TsunamiPreprocessor:
         save_format = str(saving_cfg.get("format", "npy"))
         compress = bool(saving_cfg.get("compress", True))
         include_meta = bool(saving_cfg.get("include_meta", True))
+
+        eval_cfg = cfg.get("eval_export", {})
+        export_eval_arrays = bool(eval_cfg.get("enabled", True))
+        eval_input_order = list(eval_cfg.get("input_order", ["bathymetry", "source", "initial_depth", "initial_surface"]))
+        eval_inputs_name = str(eval_cfg.get("inputs_name", "inputs.npy"))
+        eval_targets_name = str(eval_cfg.get("targets_name", "targets.npy"))
+        eval_ids_name = str(eval_cfg.get("ids_name", "sample_id.npy"))
+        eval_archive_name = str(eval_cfg.get("archive_name", "eval_dataset.npz"))
+        eval_manifest_name = str(eval_cfg.get("manifest_name", "eval_manifest.json"))
 
         total = train_ratio + val_ratio + test_ratio
 
@@ -102,6 +124,7 @@ class TsunamiPreprocessor:
             use_initial_depth=use_init_depth,
             use_initial_surface=use_init_surface,
             target_mode=target_mode,
+            target_variable=target_variable,
             forecast_steps=forecast_steps,
             stride=stride,
             norm_method=norm_method,
@@ -109,7 +132,14 @@ class TsunamiPreprocessor:
             eps=eps,
             save_format=save_format,
             compress=compress,
-            include_meta=include_meta
+            include_meta=include_meta,
+            export_eval_arrays=export_eval_arrays,
+            eval_input_order=eval_input_order,
+            eval_inputs_name=eval_inputs_name,
+            eval_targets_name=eval_targets_name,
+            eval_ids_name=eval_ids_name,
+            eval_archive_name=eval_archive_name,
+            eval_manifest_name=eval_manifest_name,
         )
 
         # create output dir
@@ -220,17 +250,45 @@ class TsunamiPreprocessor:
         - final-state forecast
         """
         traj: np.ndarray = sample["trajectory"]
+        traj = np.asarray(traj, dtype=np.float32)
+
+        if traj.ndim not in (3, 4):
+            raise ValueError(f"trajectory must have shape [T,H,W] or [T,C,H,W], got {traj.shape}")
+
+        variable = self.cfg.target_variable
+        if variable == "state":
+            target_source = traj
+        else:
+            if traj.ndim == 4:
+                depth_frames = traj[:, 0]
+            else:
+                depth_frames = traj
+
+            if variable == "depth":
+                target_source = depth_frames
+            else:  # eta
+                if "bathymetry" not in sample:
+                    raise KeyError("bathymetry is required to build eta targets")
+                bathy = np.asarray(sample["bathymetry"], dtype=np.float32)
+                target_source = depth_frames + bathy[None, ...]
 
         if self.cfg.target_mode == "next_step":
-            return traj[1]
+            index = min(max(1, self.cfg.stride), target_source.shape[0] - 1)
+            selected = target_source[index]
+            if variable in ("eta", "depth"):
+                return selected[None, ...]
+            return selected
 
         if self.cfg.target_mode == "multi_step":
             end = 1 + self.cfg.forecast_steps * self.cfg.stride
 
-            return traj[1: end: self.cfg.stride]
+            return target_source[1: end: self.cfg.stride]
 
         if self.cfg.target_mode == "final_state":
-            return traj[-1]
+            selected = target_source[-1]
+            if variable in ("eta", "depth"):
+                return selected[None, ...]
+            return selected
         
         raise ValueError(f"Unsupported target mode: {self.cfg.target_mode}")
 
@@ -306,7 +364,13 @@ class TsunamiPreprocessor:
 
         return train, val, test
 
-    def save_split(self, split_name: str, X: List[Dict[str, np.ndarray]], Y: List[np.ndarray], meta_list: List[Dict[str, Any]]) -> None:
+    def _resolved_eval_input_order(self, sample_inputs: Dict[str, np.ndarray]) -> List[str]:
+        preferred = [name for name in self.cfg.eval_input_order if name in sample_inputs]
+        extras = [name for name in sample_inputs.keys() if name not in preferred]
+        return preferred + extras
+
+    def save_split(self, split_name: str, X: List[Dict[str, np.ndarray]], Y: List[np.ndarray],
+                   meta_list: List[Dict[str, Any]], sample_ids: List[str]) -> None:
         """ save processed arrays and metadata """
         out_dir = self.cfg.processed_dir / split_name
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -328,6 +392,40 @@ class TsunamiPreprocessor:
         Y_arr = np.stack(Y, axis=0)
         Y_path = out_dir / "Y.npy"
         np.save(Y_path, Y_arr)
+
+        if self.cfg.export_eval_arrays:
+            input_order = self._resolved_eval_input_order(X[0])
+            eval_inputs = np.stack(
+                [np.stack([sample[channel] for channel in input_order], axis=0) for sample in X],
+                axis=0,
+            ).astype(np.float32)
+            eval_targets = Y_arr.astype(np.float32)
+            eval_ids = np.asarray(sample_ids, dtype=np.str_)
+
+            np.save(out_dir / self.cfg.eval_inputs_name, eval_inputs)
+            np.save(out_dir / self.cfg.eval_targets_name, eval_targets)
+            np.save(out_dir / self.cfg.eval_ids_name, eval_ids)
+            np.savez_compressed(
+                out_dir / self.cfg.eval_archive_name,
+                inputs=eval_inputs,
+                targets=eval_targets,
+                sample_id=eval_ids,
+            )
+
+            eval_manifest = {
+                "split": split_name,
+                "inputs_name": self.cfg.eval_inputs_name,
+                "targets_name": self.cfg.eval_targets_name,
+                "ids_name": self.cfg.eval_ids_name,
+                "archive_name": self.cfg.eval_archive_name,
+                "input_order": input_order,
+                "target_mode": self.cfg.target_mode,
+                "target_variable": self.cfg.target_variable,
+                "inputs_shape": list(map(int, eval_inputs.shape)),
+                "targets_shape": list(map(int, eval_targets.shape)),
+            }
+            with (out_dir / self.cfg.eval_manifest_name).open("w", encoding="utf-8") as f:
+                json.dump(eval_manifest, f, indent=2)
 
         if self.cfg.include_meta:
             meta_path = out_dir / "meta.jsonl"
@@ -351,10 +449,14 @@ class TsunamiPreprocessor:
         print("Splitting dataset")
         train_records, val_records, test_records = self.split_dataset(manifest)
 
-        def _process(records: List[Dict[str, Any]]) -> Tuple[List[Dict[str, np.ndarray]], List[np.ndarray], List[Dict[str, Any]]]:
+        def _process(
+            records: List[Dict[str, Any]]
+        ) -> Tuple[List[Dict[str, np.ndarray]], List[np.ndarray], List[Dict[str, Any]], List[str]]:
+            
             Xs: List[Dict[str, np.ndarray]] = []
             Ys: List[np.ndarray] = []
             metas: List[Dict[str, Any]] = []
+            sample_ids: List[str] = []
 
             for rec in records:
                 raw = self.load_sample(rec["sample_dir"])
@@ -362,14 +464,18 @@ class TsunamiPreprocessor:
                 Xs.append(X)
                 Ys.append(Y)
                 metas.append(raw["meta"])
+                if "sample_index" in rec:
+                    sample_ids.append(f"sample_{int(rec['sample_index']):06d}")
+                else:
+                    sample_ids.append(pathlib.Path(rec["sample_dir"]).name)
 
-            return Xs, Ys, metas
+            return Xs, Ys, metas, sample_ids
 
         print("Building dataset")
 
-        X_train_raw, Y_train_raw, meta_train = _process(train_records)
-        X_val_raw, Y_val_raw, meta_val = _process(val_records)
-        X_test_raw, Y_test_raw, meta_test = _process(test_records)
+        X_train_raw, Y_train_raw, meta_train, ids_train = _process(train_records)
+        X_val_raw, Y_val_raw, meta_val, ids_val = _process(val_records)
+        X_test_raw, Y_test_raw, meta_test, ids_test = _process(test_records)
 
         # normalizer on training data
         self.fit_normalizer(list(zip(X_train_raw, Y_train_raw)))
@@ -391,9 +497,9 @@ class TsunamiPreprocessor:
         X_test, Y_test = _normalize(X_test_raw, Y_test_raw)
 
         print("Saving split")
-        self.save_split("train", X_train, Y_train, meta_train)
-        self.save_split("val", X_val, Y_val, meta_val)
-        self.save_split("test", X_test, Y_test, meta_test)
+        self.save_split("train", X_train, Y_train, meta_train, ids_train)
+        self.save_split("val", X_val, Y_val, meta_val, ids_val)
+        self.save_split("test", X_test, Y_test, meta_test, ids_test)
 
 def _build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Pre-process raw tsunami surrogate data.")
