@@ -1,0 +1,95 @@
+\section{Data generation pipeline}
+
+\subsection{Synthetic Bathymetry Generation}
+
+\subsubsection{Objective and Motivation}
+
+We model bathymetry procedurally so that each training sample contains a different seafloor geometry rather than a fixed coastal map. This design choice lets us generate large numbers of physically plausible bathymetric fields with controlled variation in slope, roughness, basin structure, and nearshore features, while keeping all samples on a common numerical grid and depth range.
+
+The motivation is twofold. First, tsunami propagation and coastal amplification depend strongly on seafloor structure, so a surrogate model trained on only one or a few bathymetries would risk learning location-specific patterns instead of broadly useful wave dynamics. Second, real bathymetric products are often incomplete, heterogeneous, or expensive to assemble at scale. A procedural generator therefore provides a reproducible way to create diverse training environments without requiring a large curated database of real coastlines.
+
+This diversity is especially important for the Fourier Neural Operator (FNO), which is intended to learn an operator that maps from bathymetry and initial disturbance to future wave fields. To encourage the model to learn transferable wave physics rather than memorizing the spectral signature of a particular domain, we treat bathymetry as a variable input. In this sense, synthetic bathymetry generation is not only a data augmentation step, but a core part of the benchmark design for evaluating generalization.
+
+\subsubsection{Domain and sign convention}
+
+All synthetic samples are defined on a fixed two-dimensional Cartesian grid of size $n_x \times n_y$. The bathymetry and source generators are configured to use the same spartial resolution as the shallow-water solver, so every field is represented on a shared lattice with spacings $\Delta x$ and $\Delta y$. In the default setup, the procedural bathymetry is first generated on normalized coordinates over the unit square and then passed to the solver on the corresponding discrete grid.
+
+We adopt a convention that bathymetry values are non-positive under sea-level, with $b(x, y) = 0$ at mean sea-level, and $b(x, y) < 0$ for submerged regions. After generation, the bathymetry is clipped into a prescribed dept ranges, which in our experiments places the seafloor between the maxium dept and zero elavation. Then the still water is then computed as:
+\[
+h_{\mathrm{rest}}(x,y) = \max\bigl(-b(x,y) + \eta_{\mathrm{sea}},\, 0\bigr),
+\]
+where $\eta_{\mathrm{sea}}$ is an optional sea-level offset. This ensures non-negative resting depth even in cells that would overwise be dry.
+
+The tsunami source field is interpreted as an initial free-surface displacement template and scaled by a randomly sampled source strength. If $\eta_0(x,y)$ denotes this initial surface perturbation, then the initial total water depth supplied to the solver is:
+\[
+h_0(x,y) = \max\bigl(h_{\mathrm{rest}}(x,y) + \eta_0(x,y),\, 0\bigr),
+\]
+and the free-surface elevation is recovered as:
+\[
+\eta(x, y, 0) = h_0(x, y) + b(x, y).
+\]
+
+Under this convention, positive $\eta$ corresponds to an uplift of the water surface and negative $\eta$ corresponds to a depression. This sign choice is used consistently throughout dataset generation, simulation, and preprocessing.
+
+\subsubsection{Bathymetry generation pipeline}
+
+For each samples, a terrain famili is first sampled uniformly from:
+\[
+\{\texttt{trench}, \texttt{continental}, \texttt {seamounts}, \texttt{canyon}, \texttt{island} \}
+\]
+
+The final bathymetry is then constructed as the sum of a coarse base field, a terrain-type-dependent morphology term, additional Gaussian structures, ridge-like structures, and multi-scale roughness, followed by normalization:
+\[
+b(x, y) = \mathcal{N}
+\bigl(
+    b_{\mathrm{base}}(x, y) +
+    b_{\mathrm{type\_bias}}(x_w, y_w) +
+    \sum_i G_i(x, y) +
+    \sum_j R_j(x, y) +
+    N(x, y)
+\bigr),
+\]
+where $\mathcal{N}(\cdot)$ denotes the final normalization into $[d_{\mathrm{min}}, d_{\mathrm{max}}]$, and the normalization step is:
+\[
+b \leftarrow \frac{b - min(b)}{max(b) - min(b)}(d_{\mathrm{max}} - d_{\mathrm{min}}) + d_{\mathrm{min}},
+\]
+followed by clipping into $[d_{\mathrm{min}}, d_{\mathrm{max}}]$.
+
+\paragraph{Base field.}
+
+The generator supports three coarse base models: \texttt{flat}, \texttt{basin}, \texttt{slope}. In the current configuration, the base is set to \texttt{flat} so the initial coarse field is zero, $b_{\mathrm{base}}(x, y) = 0$ , everywhere. The alternative \texttt{basin} mode introduces a broad Gaussian mound-like structure, while \texttt{slope} produces a rotated planar gradient with random orientation and slope magnitude. These modes provide optional low-frequency global structure before terrain-specific features are added. This means most of the variability comes from the later morphology and stochastic-details rather than a large deterministic background gradient.
+
+\paragraph{Coordinate warping.} 
+
+To reduce axis-aligned artifacts, the spatial coordinates are smoothly warped before the terrain-family bias is evaluated. Two Gaussian-filtered random displacement fields perturb the $x$ and $y$ coordinates:
+\[
+x_w = \mathrm{clip}(x + \alpha g_x(x, y), 0, 1), \qquad
+y_w = \mathrm{clip}(y + \alpha g_y(x, y), 0, 1),
+\]
+where $\alpha$ is the warp scale and and $g_x, g_y$ are smoothed random field. This step is there to avoid terrain that looks too axis-aliged or artificially clean and many generated feature would follow the grid too neatly. While with warping, the terrain family bias is evaluated on a slightly distored coordinates, which make the final morphology look more natural and less repetitive.
+
+\paragraph{Terrain-specific morphology.}
+
+The main large-scale shape comes from a terrain-family-specific bias term. The code samples one of five terrain types and then applies a cooresponding morphology function. The bias amplitude scale is
+\[
+\mathrm{bias\_scale} = \frac{d_{\mathrm{max}} - d_{\mathrm{min}}}{2} \mathrm{x} \mathrm{bias\_strength}.
+\]
+So the family-specific morphology is the dominant large-scale contributor, with trench samples consist of one or two elongated, curved negative channels with finite-length envelopes. Canyon samples contain one to three narrower curvilinear negative incisions. Island samples are formed from one dominant positive mound together with several smaller satellite islets and an additional asymmetry term. Seamount samples contain many scattered positive Gaussian peaks. Continental shelf samples combine a broad large-scale slope, a localized shelf-break feature, and several gentle ridges. This terrain-specific stage provides the dominant morphological identity of each sample.
+
+\paragraph{Secondary stochastic detail.}
+
+After the main terrain-family bias is applied, the generator adds additional small-to-medium-scale detail. First, several Gaussian perturbations are sampled, with their sign biased by terrain family so that trench and canyon samples prefer negative additions, while island, seamount, and continental cases prefer positive ones. Second, several elongated Gaussian ridge structures are added, again with sign rules chosen to reinforce the intended terrain family. Finally, multi-scale roughness is introduced through a low-frequency smoothed random field plus a weaker micro-roughness layer, preventing unrealistically smooth surfaces.
+
+\paragraph{Normalization and interpretation.}
+
+Once all components are combined, the field is min--max normalized to the configured depth range and clipped to ensure bounded bathymetry values. In the current setup, the final depth range is fixed to
+\[
+[d_{\min}, d_{\max}] = [-10, 0].
+\]
+This means the generator preserves structural and morphological diversity more strongly than absolute amplitude realism across samples. That trade-off is acceptable in the present work because the aim is to create a controlled synthetic benchmark with diverse seabed geometries for surrogate-model training and generalization evaluation, rather than to reproduce real bathymetric surveys exactly.
+
+\subsection{Earthquake source}
+
+
+
+\subsection{Dataset generator}

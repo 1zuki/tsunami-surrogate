@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Literal, NamedTuple, Optional, Tuple, Union
+from typing import Any, Literal, Mapping, NamedTuple, Optional, Tuple, Union
 import numpy as np
 
 BoundaryMode = Literal["open", "reflective", "periodic"]
@@ -517,6 +517,55 @@ class ShallowWaterSolver:
         
         return self.dt
 
+    def _boundary_state_x (self, h: np.ndarray, hu: np.ndarray, hv: np.ndarray, b: np.ndarray, 
+                           j: int, side: Literal["left", "right"]) -> tuple[float, float, float, float]:
+        if side == "left":
+            inside_i = 0
+            periodic_i = self.nx - 1
+        elif side == "right":
+            inside_i = self.nx - 1
+            periodic_i = 0
+        else:
+            raise ValueError("side must be 'left' or 'right'")
+
+        if self.boundary_x == "periodic":
+            return h[periodic_i, j], hu[periodic_i, j], hv[periodic_i, j], b[periodic_i, j]
+
+        h_g = h[inside_i, j]
+        hu_g = hu[inside_i, j]
+        hv_g = hv[inside_i, j]
+        b_g = b[inside_i, j]
+
+        if self.boundary_x == "reflective":
+            hu_g = -hu_g
+
+        return h_g, hu_g, hv_g, b_g
+
+    def _boundary_state_y(self, h: np.ndarray, hu: np.ndarray, hv: np.ndarray, b: np.ndarray,
+                          i: int, side: Literal["bottom", "top"]) -> tuple[float, float, float, float]:
+
+        if side == "bottom":
+            inside_j = 0
+            periodic_j = self.ny - 1
+        elif side == "top":
+            inside_j = self.ny - 1
+            periodic_j = 0
+        else:
+            raise ValueError("side must be 'bottom' or 'top'")
+
+        if self.boundary_y == "periodic":
+            return h[i, periodic_j], hu[i, periodic_j], hv[i, periodic_j], b[i, periodic_j]
+
+        h_g = h[i, inside_j]
+        hu_g = hu[i, inside_j]
+        hv_g = hv[i, inside_j]
+        b_g = b[i, inside_j]
+
+        if self.boundary_y == "reflective":
+            hv_g = -hv_g
+
+        return h_g, hu_g, hv_g, b_g
+
     def update(self, dt: float) -> None:
         """ advance the solution by one explicit finite-volume step """
         if dt <= 0:
@@ -533,44 +582,52 @@ class ShallowWaterSolver:
 
         for i in range(self.nx):
             for j in range(self.ny):
+                hC = h_old[i, j]
+                huC = hu_old[i, j]
+                hvC = hv_old[i, j]
+                bC = b[i, j]
+
                 # x-direction fluxes
                 if i == 0:
-                    # open/zero-gradient ghost state
-                    FxL = self._hydro_face_x(h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
-                                             h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
-                                             use_left_correction=False)
+                    hL, huL, hvL, bL = self._boundary_state_x(h_old, hu_old, hv_old, b, j, side="left")
                 else:
-                    FxL = self._hydro_face_x(h_old[i - 1, j], hu_old[i - 1, j], hv_old[i - 1, j], b[i - 1, j],
-                                             h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
-                                             use_left_correction=False)
+                    hL = h_old[i - 1, j]
+                    huL = hu_old[i - 1, j]
+                    hvL = hv_old[i - 1, j]
+                    bL = b[i - 1, j]
+
+                FxL = self._hydro_face_x (hL, huL, hvL, bL, hC, huC, hvC, bC, use_left_correction=False)
 
                 if i == self.nx - 1:
-                    FxR = self._hydro_face_x(h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
-                                             h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
-                                             use_left_correction=True)
+                    hR, huR, hvR, bR = self._boundary_state_x(h_old, hu_old, hv_old, b, j, side="right")
                 else:
-                    FxR = self._hydro_face_x(h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
-                                             h_old[i + 1, j], hu_old[i + 1, j], hv_old[i + 1, j], b[i + 1, j],
-                                             use_left_correction=True)
+                    hR = h_old[i + 1, j]
+                    huR = hu_old[i + 1, j]
+                    hvR = hv_old[i + 1, j]
+                    bR = b[i + 1, j]
+
+                FxR = self._hydro_face_x (hC, huC, hvC, bC, hR, huR, hvR, bR, use_left_correction=True)
 
                 # y-direction fluxes
                 if j == 0:
-                    FyB = self._hydro_face_y(h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
-                                             h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
-                                             use_left_correction=False)
+                    hB, huB, hvB, bB = self._boundary_state_y(h_old, hu_old, hv_old, b, i, side="bottom")
                 else:
-                    FyB = self._hydro_face_y(h_old[i, j - 1], hu_old[i, j - 1], hv_old[i, j - 1], b[i, j - 1],
-                                             h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
-                                             use_left_correction=False)
+                    hB = h_old[i, j - 1]
+                    huB = hu_old[i, j - 1]
+                    hvB = hv_old[i, j - 1]
+                    bB = b[i, j - 1]
+
+                FyB = self._hydro_face_y (hB, huB, hvB, bB, hC, huC, hvC, bC, use_left_correction=False)
 
                 if j == self.ny - 1:
-                    FyT = self._hydro_face_y(h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
-                                             h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
-                                             use_left_correction=True)
+                    hT, huT, hvT, bT = self._boundary_state_y(h_old, hu_old, hv_old, b, i, side="top")
                 else:
-                    FyT = self._hydro_face_y(h_old[i, j], hu_old[i, j], hv_old[i, j], b[i, j],
-                                             h_old[i, j + 1], hu_old[i, j + 1], hv_old[i, j + 1], b[i, j + 1],
-                                             use_left_correction=True)
+                    hT = h_old[i, j + 1]
+                    huT = hu_old[i, j + 1]
+                    hvT = hv_old[i, j + 1]
+                    bT = b[i, j + 1]
+
+                FyT = self._hydro_face_y (hC, huC, hvC, bC, hT, huT, hvT, bT, use_left_correction=True)
 
                 # finite-volume update
                 h_new[i, j] = (h_old[i, j] - (dt / self.dx) * (FxR[0] - FxL[0]) - (dt / self.dy) * (FyT[0] - FyB[0]))
@@ -593,8 +650,8 @@ class ShallowWaterSolver:
         """
         this is kept for API compatibility
 
-        the actual numerical boundaries are enforced through ghost-cell padding
-        inside the flux computation, so this method only ensures dry-cell cleanup
+        boundary conditions are handled during update() through per-face ghost
+        states. this method keeps the dry-cell cleanup contract.
         """
         self._zero_momentum_in_dry_cells()
 
@@ -644,6 +701,128 @@ class ShallowWaterSolver:
         """ return desc of the solver configuration """
         return SolverInfo(nx=self.nx, ny=self.ny, dx=self.dx, dy=self.dy, dt=self.dt, g=self.g, cfl=self.cfl,
                           dry_tolerance=self.dry_tolerance, boundary_x=self.boundary_x, boundary_y=self.boundary_y,)
+
+def _to_sample_array(sample_inputs: Any) -> np.ndarray:
+    if hasattr(sample_inputs, "detach"):
+        sample_inputs = sample_inputs.detach().cpu().numpy()
+
+    arr = np.asarray(sample_inputs, dtype=float)
+    if arr.ndim == 4:
+        # [B,C,H,W] -> first sample
+        arr = arr[0]
+    if arr.ndim != 3:
+        raise ValueError(f"sample_inputs must have shape [C,H,W] or [B,C,H,W], got {arr.shape}")
+
+    return arr
+
+def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
+    """
+    Run a shallow-water rollout from an evaluation input sample.
+
+    Expected input channel layout (overridable via channel_map):
+    - bathymetry: channel 0
+    - source: channel 1
+    - initial_depth: channel 2
+    - initial_surface: channel 3
+
+    Returns:
+        np.ndarray with shape [T, H, W] for output_field in {eta, depth}
+        or [T, 3, H, W] for output_field == state.
+    """
+    channels = _to_sample_array(sample_inputs)
+    _, nx, ny = channels.shape
+
+    channel_map_cfg = kwargs.get("channel_map", {})
+
+    if not isinstance(channel_map_cfg, Mapping):
+        raise ValueError("channel_map must be a mapping")
+
+    def _idx(name: str, default: int) -> Optional[int]:
+        value = channel_map_cfg.get(name, default)
+        if value is None:
+            return None
+        idx = int(value)
+        if idx < 0 or idx >= channels.shape[0]:
+            return None
+
+        return idx
+
+    idx_bathy = _idx("bathymetry", 0)
+    idx_source = _idx("source", 1)
+    idx_h0 = _idx("initial_depth", 2)
+    idx_eta0 = _idx("initial_surface", 3)
+
+    bathymetry = channels[idx_bathy] if idx_bathy is not None else np.zeros((nx, ny), dtype=float)
+    source_field = channels[idx_source] if idx_source is not None else np.zeros((nx, ny), dtype=float)
+    sea_level_offset = float(kwargs.get("sea_level_offset", 0.0))
+    source_scale = float(kwargs.get("source_scale", 1.0))
+
+    if idx_h0 is not None:
+        h0 = np.maximum(channels[idx_h0], 0.0)
+    elif idx_eta0 is not None:
+        h0 = np.maximum(channels[idx_eta0] - bathymetry, 0.0)
+    else:
+        rest_depth = np.maximum(-bathymetry + sea_level_offset, 0.0)
+        h0 = np.maximum(rest_depth + source_scale * source_field, 0.0)
+
+    solver = ShallowWaterSolver(
+        nx=nx,
+        ny=ny,
+        dx=float(kwargs.get("dx", 1.0 / max(nx, 1))),
+        dy=float(kwargs.get("dy", 1.0 / max(ny, 1))),
+        dt=float(kwargs.get("dt", 1e-3)),
+        g=float(kwargs.get("g", 9.81)),
+        cfl=float(kwargs.get("cfl", 0.45)),
+        dry_tolerance=float(kwargs.get("dry_tolerance", 1e-6)),
+        boundary=kwargs.get("boundary", "open"),
+        use_sponge=bool(kwargs.get("use_sponge", True)),
+        sponge_width=int(kwargs.get("sponge_width", 20)),
+        sponge_min_factor=float(kwargs.get("sponge_min_factor", 0.9)),
+    )
+
+    solver.set_bathymetry(bathymetry)
+    solver.set_initial_condition(h0, hu0=np.zeros_like(h0), hv0=np.zeros_like(h0))
+
+    n_steps = int(kwargs.get("n_steps", 200))
+    record_every = int(kwargs.get("record_every", 1))
+
+    if record_every <= 0:
+        raise ValueError("record_every must be positive")
+
+    auto_dt = bool(kwargs.get("auto_dt", True))
+    target_cfl = float(kwargs.get("target_cfl", solver.cfl))
+    include_initial_state = bool(kwargs.get("include_initial_state", True))
+    output_field = str(kwargs.get("output_field", "eta")).strip().lower()
+
+    if output_field not in ("eta", "depth", "state"):
+        raise ValueError("output_field must be one of: eta, depth, state")
+
+    def _snapshot() -> np.ndarray:
+        if output_field == "eta":
+            return solver.compute_free_surface().copy()
+        if output_field == "depth":
+            return solver.h.copy()
+
+        return solver.get_state().copy()
+
+    frames: list[np.ndarray] = []
+    if include_initial_state:
+        frames.append(_snapshot())
+
+    for step_idx in range(max(0, n_steps)):
+        if auto_dt:
+            dt = solver.suggest_dt(target_cfl=target_cfl)
+        else:
+            dt = solver.dt
+
+        solver.step(dt=dt, auto_dt=False)
+        if (step_idx + 1) % record_every == 0:
+            frames.append(_snapshot())
+
+    if not frames:
+        frames.append(_snapshot())
+
+    return np.stack(frames, axis=0).astype(np.float32)
 
 """
 Reference notes:

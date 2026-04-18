@@ -16,8 +16,8 @@ gaussian:
 ridges:
   enabled: True
   range: [0, 3]
-  len_scale: [-0.3, 0.3]
-  amp_range: [0.02, 0.15]
+  amp_range: [-0.3, 0.3]
+  len_scale: [0.02, 0.15]
 
 noise:
   enabled: True

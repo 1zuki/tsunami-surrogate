@@ -16,8 +16,9 @@ input:
   use_initial_surface: false
 
 target:
-  mode: next_step   # or multi_step / final_state
-  forecast_steps: 10
+  mode: multi_step   # or multi_step / final_state
+  variable: eta      # eta / depth / state
+  forecast_steps: 100
   stride: 1
 
 normalization:
@@ -32,3 +33,12 @@ saving:
   format: npy
   compress: true
   include_meta: true
+
+eval_export:
+  enabled: true
+  input_order: [bathymetry, source, initial_depth, initial_surface]
+  inputs_name: inputs.npy
+  targets_name: targets.npy
+  ids_name: sample_id.npy
+  archive_name: eval_dataset.npz
+  manifest_name: eval_manifest.json
