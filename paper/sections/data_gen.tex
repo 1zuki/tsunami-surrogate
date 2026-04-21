@@ -8,37 +8,24 @@ We model bathymetry procedurally so that each training sample contains a differe
 
 The motivation is twofold. First, tsunami propagation and coastal amplification depend strongly on seafloor structure, so a surrogate model trained on only one or a few bathymetries would risk learning location-specific patterns instead of broadly useful wave dynamics. Second, real bathymetric products are often incomplete, heterogeneous, or expensive to assemble at scale. A procedural generator therefore provides a reproducible way to create diverse training environments without requiring a large curated database of real coastlines.
 
-This diversity is especially important for the Fourier Neural Operator (FNO), which is intended to learn an operator that maps from bathymetry and initial disturbance to future wave fields. To encourage the model to learn transferable wave physics rather than memorizing the spectral signature of a particular domain, we treat bathymetry as a variable input. In this sense, synthetic bathymetry generation is not only a data augmentation step, but a core part of the benchmark design for evaluating generalization.
-
 \subsubsection{Domain and sign convention}
 
-All synthetic samples are defined on a fixed two-dimensional Cartesian grid of size $n_x \times n_y$. The bathymetry and source generators are configured to use the same spartial resolution as the shallow-water solver, so every field is represented on a shared lattice with spacings $\Delta x$ and $\Delta y$. In the default setup, the procedural bathymetry is first generated on normalized coordinates over the unit square and then passed to the solver on the corresponding discrete grid.
+All synthetic samples are defined on a fixed two-dimensional Cartesian grid of size $n_x \times n_y$. The bathymetry and source generators are configured to use the same spatial resolution as the shallow-water solver, so every field is represented on a shared lattice with spacings $\Delta x$ and $\Delta y$. In the default setup, the procedural bathymetry is first generated on normalized coordinates over the unit square and then passed to the solver on the corresponding discrete grid.
 
-We adopt a convention that bathymetry values are non-positive under sea-level, with $b(x, y) = 0$ at mean sea-level, and $b(x, y) < 0$ for submerged regions. After generation, the bathymetry is clipped into a prescribed dept ranges, which in our experiments places the seafloor between the maxium dept and zero elavation. Then the still water is then computed as:
+We adopt a convention that bathymetry values are non-positive under sea-level, with $b(x, y) = 0$ at mean sea-level, and $b(x, y) < 0$ for submerged regions. After generation, the bathymetry is clipped into a prescribed depth ranges, which in our experiments places the seafloor between the maximum depth and zero elevation. The still-water is then computed as:
 \[
 h_{\mathrm{rest}}(x,y) = \max\bigl(-b(x,y) + \eta_{\mathrm{sea}},\, 0\bigr),
 \]
 where $\eta_{\mathrm{sea}}$ is an optional sea-level offset. This ensures non-negative resting depth even in cells that would overwise be dry.
 
-The tsunami source field is interpreted as an initial free-surface displacement template and scaled by a randomly sampled source strength. If $\eta_0(x,y)$ denotes this initial surface perturbation, then the initial total water depth supplied to the solver is:
-\[
-h_0(x,y) = \max\bigl(h_{\mathrm{rest}}(x,y) + \eta_0(x,y),\, 0\bigr),
-\]
-and the free-surface elevation is recovered as:
-\[
-\eta(x, y, 0) = h_0(x, y) + b(x, y).
-\]
-
-Under this convention, positive $\eta$ corresponds to an uplift of the water surface and negative $\eta$ corresponds to a depression. This sign choice is used consistently throughout dataset generation, simulation, and preprocessing.
-
 \subsubsection{Bathymetry generation pipeline}
 
-For each samples, a terrain famili is first sampled uniformly from:
+For each samples, a terrain family is first sampled uniformly from:
 \[
-\{\texttt{trench}, \texttt{continental}, \texttt {seamounts}, \texttt{canyon}, \texttt{island} \}
+\{\texttt{trench}, \texttt{continental}, \texttt{seamounts}, \texttt{canyon}, \texttt{island} \}
 \]
 
-The final bathymetry is then constructed as the sum of a coarse base field, a terrain-type-dependent morphology term, additional Gaussian structures, ridge-like structures, and multi-scale roughness, followed by normalization:
+The final bathymetry is then constructed as the sum of a coarse base field, a terrain-type-dependent morphology term, additional Gaussian structures, ridge-like structures, and multi-scale roughness, with:
 \[
 b(x, y) = \mathcal{N}
 \bigl(
@@ -57,7 +44,7 @@ followed by clipping into $[d_{\mathrm{min}}, d_{\mathrm{max}}]$.
 
 \paragraph{Base field.}
 
-The generator supports three coarse base models: \texttt{flat}, \texttt{basin}, \texttt{slope}. In the current configuration, the base is set to \texttt{flat} so the initial coarse field is zero, $b_{\mathrm{base}}(x, y) = 0$ , everywhere. The alternative \texttt{basin} mode introduces a broad Gaussian mound-like structure, while \texttt{slope} produces a rotated planar gradient with random orientation and slope magnitude. These modes provide optional low-frequency global structure before terrain-specific features are added. This means most of the variability comes from the later morphology and stochastic-details rather than a large deterministic background gradient.
+The generator supports three coarse base models: \texttt{flat}, \texttt{basin}, \texttt{slope}. In the current configuration, the base is set to \texttt{flat} so the initial coarse field is zero, $b_{\mathrm{base}}(x, y) = 0$ everywhere. The alternative \texttt{basin} mode introduces a broad Gaussian mound-like structure, while \texttt{slope} produces a rotated planar gradient with random orientation and slope magnitude. These modes provide optional low-frequency global structure before terrain-specific features are added. Consequently, most variability arises from the terrain-specific and stochastic detail terms.
 
 \paragraph{Coordinate warping.} 
 
@@ -66,15 +53,15 @@ To reduce axis-aligned artifacts, the spatial coordinates are smoothly warped be
 x_w = \mathrm{clip}(x + \alpha g_x(x, y), 0, 1), \qquad
 y_w = \mathrm{clip}(y + \alpha g_y(x, y), 0, 1),
 \]
-where $\alpha$ is the warp scale and and $g_x, g_y$ are smoothed random field. This step is there to avoid terrain that looks too axis-aliged or artificially clean and many generated feature would follow the grid too neatly. While with warping, the terrain family bias is evaluated on a slightly distored coordinates, which make the final morphology look more natural and less repetitive.
+where $\alpha$ is the warp scale and $g_x, g_y$ are smoothed random field. This step reduce too axis-aligned or artificially clean and many generated feature would otherwise follow the grid too neatly. While with warping, the terrain family bias is evaluated on a slightly distorted coordinates, which makes the final morphology look more natural and less repetitive.
 
 \paragraph{Terrain-specific morphology.}
 
-The main large-scale shape comes from a terrain-family-specific bias term. The code samples one of five terrain types and then applies a cooresponding morphology function. The bias amplitude scale is
+The main large-scale shape comes from a terrain-family-specific bias term. The code samples one of five terrain types and then applies a corresponding morphology function. The bias amplitude scale is:
 \[
-\mathrm{bias\_scale} = \frac{d_{\mathrm{max}} - d_{\mathrm{min}}}{2} \mathrm{x} \mathrm{bias\_strength}.
+\mathrm{bias\_scale} = \frac{d_{\mathrm{max}} - d_{\mathrm{min}}}{2} \times \mathrm{bias\_strength}.
 \]
-So the family-specific morphology is the dominant large-scale contributor, with trench samples consist of one or two elongated, curved negative channels with finite-length envelopes. Canyon samples contain one to three narrower curvilinear negative incisions. Island samples are formed from one dominant positive mound together with several smaller satellite islets and an additional asymmetry term. Seamount samples contain many scattered positive Gaussian peaks. Continental shelf samples combine a broad large-scale slope, a localized shelf-break feature, and several gentle ridges. This terrain-specific stage provides the dominant morphological identity of each sample.
+Thus, the family-specific morphology is the dominant large-scale contributor. Trench samples typically contain one or two elongated, curved negative channels with finite-length envelopes, whereas canyon samples are narrower and more curvilinear. Island samples are formed from one dominant positive mound together with several smaller satellite islets and an additional asymmetry term, whereas seamount samples are more scattered and steeper. Continental shelf samples combine a broad large-scale slope, a localized shelf-break feature, and several gentle ridges. This terrain-specific stage provides the dominant morphological identity of each sample.
 
 \paragraph{Secondary stochastic detail.}
 
@@ -82,14 +69,45 @@ After the main terrain-family bias is applied, the generator adds additional sma
 
 \paragraph{Normalization and interpretation.}
 
-Once all components are combined, the field is min--max normalized to the configured depth range and clipped to ensure bounded bathymetry values. In the current setup, the final depth range is fixed to
+Once all components are combined, the field is min--max normalized to the configured depth range and clipped to ensure bounded bathymetry values. In the current setup, the final depth range is fixed to:
 \[
 [d_{\min}, d_{\max}] = [-10, 0].
 \]
-This means the generator preserves structural and morphological diversity more strongly than absolute amplitude realism across samples. That trade-off is acceptable in the present work because the aim is to create a controlled synthetic benchmark with diverse seabed geometries for surrogate-model training and generalization evaluation, rather than to reproduce real bathymetric surveys exactly.
+This means the generator preserves structural and morphological diversity more strongly than absolute amplitude realism across samples. This trade-off is acceptable because the aim is to create a controlled synthetic benchmark with diverse seabed geometries for surrogate-model training and generalization evaluation, rather than to reproduce real bathymetric surveys exactly.
 
-\subsection{Earthquake source}
+\subsection{Earthquake Source Generation}
 
+\subsubsection{Objective and Motivation}
 
+In addition to varying bathymetry, we also vary the initial tsunami source so that the surrogate model is not tied to a single disturbance pattern. The source generator produces synthetic initial free-surface displacement templates on the same grid as the bathymetry and shallow-water solver. Its purpose is to expose the model to different spatial structures of uplift and subsidence, ranging from simple localized bumps to more extended fault-like and rough deformation patterns.
+
+This diversity is important because the downstream surrogate is expected to learn a mapping from bathymetry and initial disturbance to future wave evolution. If the training set only contained one source type, the model could overfit to a narrow class of initial conditions and fail to generalize when the spatial structure of the disturbance changes. The source generator is therefore designed to provide controlled variability in source geometry, amplitude, orientation, and spatial smoothness.
+
+\subsubsection{Source Generation Pipeline}
+
+For each sample, a source family is selected from a configurable set of enabled source types. In the current implementation, the generator supports six families:
+\[
+\{\texttt{gaussian},\ \texttt{multi\mbox{-}gauss},\ \texttt{dipole},\ \texttt{fault},\ \texttt{rough},\ \texttt{okada\mbox{-}like}\}.
+\]
+
+Each family produces a two-dimensional source field on the normalized unit-square grid. After the family-specific field is generated, an optional smoothed noise term may be added, followed by an optional normalization and clipping stage.
+
+\paragraph{Source family sampling and overall construction.}
+The source generator first validates the requested list of source families and checks which of them are enabled in the configuration. One available family is then sampled uniformly for the current example. The selected family determines which parametric generator is called. This design allows individual source classes to be disabled or emphasized through configuration without modifying the main generation pipeline.
+
+\paragraph{Localized Gaussian uplift sources.}
+The simplest family is the Gaussian source, which places one or more localized Gaussian perturbations at random positions on the grid. Their amplitudes and spatial widths are sampled from configurable ranges. A related family, \texttt{multi-gauss}, forms a source by summing several Gaussian components, thereby producing more spatially complex but still smooth displacement patterns. These two families provide simple localized uplift templates and are useful as low-complexity initial conditions.
+
+\paragraph{Dipole and fault-like sources.}
+The dipole family models the classic uplift-subsidence pattern by placing two Gaussian lobes of opposite sign with a sampled separation and orientation. This produces a source field with both positive and negative regions and therefore better resembles deformation patterns associated with fault motion than a single Gaussian bump. The fault family generates an elongated, rotated Gaussian ridge with sampled length, width, orientation, and amplitude, followed by optional smoothing. Compared with the dipole family, this produces a more contiguous fault-like uplift structure.
+
+\paragraph{Okada-like deformational sources.}
+To introduce a more physically structured earthquake-style source, the generator also includes an \texttt{okada-like} family. This model samples parameters such as slip, fault length, width, angle, dip, and source depth, then computes a simplified displacement field using a corner-contribution construction inspired by Okada-style half-space deformation formulas. Although still simplified relative to a full geophysical Okada solver, this family introduces richer anisotropic deformation patterns than the purely Gaussian templates.
+
+\paragraph{Stochastic rough sources and post-processing.}
+The rough family generates a source from smoothed random fields at two spatial scales: a coarse large-scale roughness component and a weaker micro-scale component. This creates irregular perturbations that are useful for broadening the variety of source structures seen during training. After any family-specific field is generated, the code may add an additional smoothed noise term. Finally, the output passes through a configurable shaping stage in which per-sample normalization may be applied, and clipping can optionally constrain the field to a prescribed range.
+
+\paragraph{Interpretation and role in the dataset.}
+The generated source field is interpreted downstream as an initial free-surface displacement template rather than a full dynamic forcing term. In the current configuration, normalization is disabled, so source families preserve their relative amplitude semantics instead of being forced into a common per-sample range. This is useful because it allows the dataset builder to scale already meaningful source fields further through an independently sampled source-strength factor. Overall, the source generator complements the bathymetry generator by introducing diversity not in the seabed geometry, but in the initial disturbance that excites the shallow-water system.
 
 \subsection{Dataset generator}
