@@ -829,10 +829,13 @@ Reference notes:
 
 [1] LeVeque, R. J. (2002)
 Finite volume methods for hyperbolic problems.
+https://doi.org/10.1017/CBO9780511791253
 
 [2] Delis A. I., Katsaounis T. D., and Mitsotakis D. (2005)
 Numerical solution of the two-dimensional shallow water equations by the application of relaxation methods.
+DOI:10.1016/j.apm.2004.11.001
 
 [3] Eleuterio F. T, & Tokareva S. A. (2026)
 Rusanov-type schemes for hyperbolic equations: Wave-speed estimates, monotonicity and stability
+https://doi.org/10.48550/arXiv.2412.03522
 """
