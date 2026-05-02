@@ -2,10 +2,10 @@
 from pathlib import Path
 import sys
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'src'))
+sys.path.insert(0, str(ROOT))
 
 import argparse
-from tsunami_surrogate.data_gen.simulate_dataset import simulate_dataset, save_npz
+from src.data.dataset import make_toy_dataset, save_npz
 
 
 def main():
@@ -16,7 +16,7 @@ def main():
     p.add_argument('--solver', default='shallow_water', choices=['shallow_water', 'boussinesq'])
     p.add_argument('--out', default='data/processed/toy_32.npz')
     args = p.parse_args()
-    x, y, metadata = simulate_dataset(args.num_samples, args.resolution, seed=args.seed, solver=args.solver)
+    x, y, metadata = make_toy_dataset(args.num_samples, args.resolution, seed=args.seed)
     save_npz(args.out, x, y, metadata)
     print(f'Saved {args.out} with x={x.shape}, y={y.shape}')
 

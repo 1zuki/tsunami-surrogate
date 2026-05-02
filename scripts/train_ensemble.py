@@ -2,17 +2,17 @@
 from pathlib import Path
 import sys
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'src'))
+sys.path.insert(0, str(ROOT))
 
 import argparse
 from copy import deepcopy
-from tsunami_surrogate.utils.config import load_config
-from tsunami_surrogate.utils.seed import seed_everything
-from tsunami_surrogate.utils.device import resolve_device
-from tsunami_surrogate.utils.experiment import init_run
-from tsunami_surrogate.data.dataset import create_dataloaders
-from tsunami_surrogate.models import build_model
-from tsunami_surrogate.training.trainer import Trainer
+from src.utils.config import load_config
+from src.utils.seed import seed_everything
+from src.utils.device import resolve_device
+from src.utils.experiment import init_run
+from src.data.dataset import create_dataloaders
+from src.models import build_model
+from src.training.train import Trainer
 
 
 def main():

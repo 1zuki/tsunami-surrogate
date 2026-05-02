@@ -2,16 +2,16 @@
 from pathlib import Path
 import sys
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'src'))
+sys.path.insert(0, str(ROOT))
 
 import argparse
 from torch.utils.data import DataLoader
-from tsunami_surrogate.utils.config import load_config
-from tsunami_surrogate.utils.device import resolve_device
-from tsunami_surrogate.data.multires_dataset import MultiResolutionDataset
-from tsunami_surrogate.models import build_model
-from tsunami_surrogate.training.metrics import compute_metrics
-from tsunami_surrogate.utils.io import save_json
+from src.utils.config import load_config
+from src.utils.device import resolve_device
+from src.data.multires_dataset import MultiResolutionDataset
+from src.models import build_model
+from src.training.metrics import compute_metrics
+from src.utils.io import save_json
 import torch
 
 

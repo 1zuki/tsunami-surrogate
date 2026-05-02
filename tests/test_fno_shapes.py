@@ -1,9 +1,9 @@
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import torch
-from tsunami_surrogate.models.fno2d import FNO2D
+from src.models.fno2d import FNO2D
 
 
 def test_fno_shape_same_resolution():

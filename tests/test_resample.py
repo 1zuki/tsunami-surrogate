@@ -1,9 +1,9 @@
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import torch
-from tsunami_surrogate.utils.resample import resize_field, project_coarse_to_fine, restrict_fine_to_coarse
+from src.utils.resample import resize_field, project_coarse_to_fine, restrict_fine_to_coarse
 
 
 def test_resize():
