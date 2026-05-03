@@ -111,3 +111,56 @@ The rough family generates a source from smoothed random fields at two spatial s
 The generated source field is interpreted downstream as an initial free-surface displacement template rather than a full dynamic forcing term. In the current configuration, normalization is disabled, so source families preserve their relative amplitude semantics instead of being forced into a common per-sample range. This is useful because it allows the dataset builder to scale already meaningful source fields further through an independently sampled source-strength factor. Overall, the source generator complements the bathymetry generator by introducing diversity not in the seabed geometry, but in the initial disturbance that excites the shallow-water system.
 
 \subsection{Dataset generator}
+
+\subsubsection{Objective and role in the pipeline}
+
+The dataset generator is the stage that couples the procedural bathymetry and earthquake-source samplers to the water simulators and converts them into full simulation trajectories. In the implementation, this role is handled by the dataset-building script, which acts as the top-level controller for raw data generation. For each sample, it draws one bathymetry, one source field, constructs physically meaningful initial conditions, advances the shallow-water equations in time, and saves the resulting tensors and metadata to disk.
+
+This stage is important because the bathymetry and source generators by themselves only produce static spatial fields. The learning problem of interest, however, is dynamical: given seabed geometry and an initial disturbance, predict the subsequent tsunami evolution. The dataset generator therefore provides the bridge between static procedural fields and time-dependent wave trajectories.
+
+\subsubsection{Coupling to the water simulators}
+
+TODO: finish the \texttt{src/solver/*} and write
+
+\subsubsection{Grid consistency and initial-condition construction}
+
+Before simulation starts, the dataset builder verifies that the bathymetry generator, source generator, and shallow-water solver all use the same grid dimensions $(n_x,n_y)$. This check is important because every field is passed directly into the solver without interpolation. Enforcing grid consistency prevents shape mismatches when setting the bathymetry, forming the initial state, and storing trajectories.
+
+Once one bathymetry field and one source field have been sampled, the script converts them into physically meaningful initial conditions. The source generator produces a dimensionless spatial template, which is scaled by a randomly sampled source-strength factor to obtain the initial free-surface perturbation,
+\[
+\eta_0(x,y) = s\, \eta_{\mathrm{src}}(x,y),
+\]
+where $s$ is drawn from a prescribed interval. In parallel, the resting water depth is computed from the signed bathymetry as:
+\[
+h_{\mathrm{rest}}(x,y) = \max\bigl(-b(x,y)+\eta_{\mathrm{sea}},\,0\bigr),
+\]
+with $\eta_{\mathrm{sea}}$ the optional sea-level offset used throughout the dataset configuration. The initial depth passed to the solver is then:
+\[
+h_0(x,y) = \max\bigl(h_{\mathrm{rest}}(x,y) + \eta_0(x,y),\, 0\bigr),
+\]
+and the corresponding initial free surface saved to disk is:
+\[
+\eta(x,y,0) = h_0(x,y) + b(x,y).
+\]
+
+In the current implementation, the horizontal momentum components are initialized to zero, so the initial state represents a static ocean surface displaced by the synthetic source.
+
+\subsubsection{Trajectory generation and raw-data storage}
+
+After initialization, the script advances the shallow-water solver for a prescribed number of time steps. It supports either a fixed time step or an automatically suggested step size based on a target CFL-like stability criterion. Rather than saving every internal solver step, the code stores the state every \texttt{save\_every} iterations, which reduces storage volume while preserving the macroscopic wave evolution needed for surrogate learning.
+
+The recorded trajectory is a time-ordered tensor of solver states together with two auxiliary time arrays. First, the script stores the physical timestamp associated with every saved frame. Second, it records the actual step size used by the solver at each saved step. This is particularly useful when automatic time stepping is enabled, because it preserves the exact temporal spacing of the rollout rather than assuming a constant $\Delta t$ afterwards. Optionally, the initial state at time $t=0$ can also be included in the saved trajectory.
+
+The raw dataset is organized sample by sample. For each run, the builder creates a dedicated directory of the form \texttt{sample\_000001}, \texttt{sample\_000002}, and so on. Inside each sample directory, a compressed \texttt{sample.npz} archive stores the main numerical arrays, including bathymetry, source field, resting depth, scaled initial displacement, initial water depth, initial free surface, full trajectory, timestamps, and step-size history. A companion \texttt{meta.json} file stores descriptive metadata such as the sampled bathymetry family, source family, source-strength factor, tensor shapes, and configuration paths. In addition, the top-level builder appends one line per sample to a \texttt{manifest.jsonl} file, which acts as a ledger for all generated runs and later serves as the entry point for preprocessing.
+
+\subsubsection{Preprocessing into learning-ready tensors}
+
+The second stage of the dataset pipeline is implemented in \texttt{src/data\_gen/preprocess.py}. Its purpose is not to generate new physics, but to transform the raw simulation archive into model-ready inputs and targets for supervised learning. This stage reads the manifest, loads each raw sample, partitions the dataset into training, validation, and test splits, computes normalization statistics on the training split only, applies those statistics consistently to all splits, and saves the processed arrays in a form that can be consumed directly by downstream learning code.
+
+The preprocessing script first constructs the model inputs by selecting a configurable subset of the saved channels. Depending on the experiment, the input tensor can include only bathymetry, bathymetry plus source, or additional physically informative channels such as the initial depth and initial free surface. This design makes it easy to perform ablation studies and test how much predictive benefit is obtained from exposing the surrogate to richer initial-condition information.
+
+The target construction is similarly configurable. The script can produce a one-step-ahead target, a multi-step forecast window, or only the final state of the rollout. It also supports multiple target variables: the full solver state, the water depth, or the free-surface elevation reconstructed from the saved depth and bathymetry. As a result, the same raw simulation archive can be repurposed for autoregressive prediction, short-horizon forecasting, or direct end-state estimation without rerunning the physical simulations.
+
+Normalization is handled carefully to avoid data leakage. The preprocessing code computes either standardization statistics or min--max statistics using only the training subset, then applies the same transformation parameters to validation and test samples. This separation is important in a scientific machine-learning setting because it ensures that evaluation splits do not influence the feature scaling used during training.
+
+Finally, the processed outputs are saved split by split. Individual input channels are stacked and written to compressed archives, the target arrays are stored separately, and optional evaluation exports collect all selected inputs, targets, and sample identifiers into a single \texttt{.npz} archive. Metadata for each split can also be preserved in \texttt{jsonl} form. Together, \texttt{simulate\_dataset.py} and \texttt{preprocess.py} therefore define the full dataset pipeline: the first script produces physically simulated tsunami trajectories from procedurally generated environments, and the second converts those trajectories into normalized learning-ready tensors.
