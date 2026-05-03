@@ -506,7 +506,7 @@ def _build_argparser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/preprocess.yaml",
+        default="configs/data/preprocess.yaml",
         help="path to the preprocessing yaml configuration.",
     )
     return parser

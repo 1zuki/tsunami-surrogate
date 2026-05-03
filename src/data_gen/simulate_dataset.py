@@ -397,7 +397,7 @@ def _build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="generate raw tsunami surrogate samples")
     parser.add_argument("--config",
                         type=str,
-                        default="configs/dataset.yaml",
+                        default="configs/data/dataset.yaml",
                         help="Path to the dataset YAML config.")
     return parser
 

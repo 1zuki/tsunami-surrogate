@@ -140,6 +140,16 @@ class BathymetryGenerator:
         terrain = np.clip(terrain, self.depth_min, self.depth_max)
 
         return terrain, t_type
+    
+    def quick_generate(resolution: int, rng: np.random.Generator, bathymetry_id: int = 0) -> np.ndarray:
+        y = np.linspace(0, 1, resolution, dtype=np.float32)[:, None]
+        x = np.linspace(0, 1, resolution, dtype=np.float32)[None, :]
+
+        shelf = -4500 + 4300 * np.exp(-((y - 0.85) ** 2) / 0.05)
+        ridge = 600 * np.sin(2 * np.pi * (x * (bathymetry_id % 3 + 1))) * np.exp(-((y - 0.45) ** 2) / 0.08)
+        noise = 80 * rng.normal(size=(resolution, resolution)).astype(np.float32)
+
+        return (shelf + ridge + noise).astype(np.float32)
 
     def generate_base(self) -> np.ndarray:
         if self.base_kind == "flat":
@@ -382,7 +392,7 @@ class BathymetryGenerator:
         return terrain
 
 if __name__ == "__main__":
-    generator = BathymetryGenerator("configs/bathymetry.yaml")
+    generator = BathymetryGenerator("configs/data/bathymetry.yaml")
 
     for i in range(10):
         bathymetry, t_type = generator.generate()
@@ -396,27 +406,19 @@ References notes:
 Finite Volume Methods for Hyperbolic Problems
 https://doi.org/10.1017/CBO9780511791253
 
-[2] Titov, V. V., & Synolakis, C. E. (1998)
-Numerical modeling of tidal wave runup
-https://doi.org/10.1061/(ASCE)0733-950X(1998)124:4(157)
-
-[3] Musgrave, F. K., Kolb, C. E., & Mace, R. S. (1989)
+[2] Musgrave, F. K., Kolb, C. E., & Mace, R. S. (1989)
 The synthesis and rendering of eroded fractal terrains
 https://doi.org/10.1145/74334.74337
 
-[4] Ebert, D. S., et al. (2003)
-Texturing and Modeling: A Procedural Approach
-ISBN 0-12-228730-4
-
-[5] Rasmussen, C. E., & Williams, C. K. I. (2006)
+[3] Rasmussen, C. E., & Williams, C. K. I. (2006)
 Gaussian Processes for Machine Learning
 ISBN 026218253X
 
-[6] Sandwell, D. T., et al. (2014)
-New global marine gravity model
+[4] Sandwell, D. T., et al. (2014)
+New global marine gravity model from CryoSat-2 and Jason-1 reveals buried tectonic structure
 doi: 10.1126/science.1258213.
 
-[7] Toro, E. F. (2009)
+[5] Toro, E. F. (2009)
 Riemann Solvers and Numerical Methods for Fluid Dynamics
 DOI 10.1007/978-3-540-49834-6
 """

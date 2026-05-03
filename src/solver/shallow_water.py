@@ -824,6 +824,55 @@ def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
 
     return np.stack(frames, axis=0).astype(np.float32)
 
+class SimpleWaterSolver:
+    """
+    toy wave-like solver for framework testing and/or training (to compare with above more accurate FDE).
+
+    faster and smoother -> easier to learn    
+    """
+    def simple_shallow_water_solver(source: np.ndarray, bathymetry: np.ndarray, steps: int = 30, dt: float = 0.15) -> np.ndarray:
+        def laplacian(u: np.ndarray) -> np.ndarray:
+            return (
+                np.roll(u, 1, axis=-2) + np.roll(u, -1, axis=-2) +
+                np.roll(u, 1, axis=-1) + np.roll(u, -1, axis=-1) - 4 * u
+            )
+        
+        def reflective_boundary(field: np.ndarray) -> np.ndarray:
+            out = field.copy()
+            out[..., 0, :] = out[..., 1, :]
+            out[..., -1, :] = out[..., -2, :]
+            out[..., :, 0] = out[..., :, 1]
+            out[..., :, -1] = out[..., :, -2]
+
+            return out
+
+        def sponge_mask(h: int, w: int, width: int = 4) -> np.ndarray:
+            mask = np.ones((h, w), dtype=np.float32)
+            
+            for i in range(width):
+                val = (i + 1) / (width + 1)
+                mask[i, :] *= val
+                mask[-i-1, :] *= val
+                mask[:, i] *= val
+                mask[:, -i-1] *= val
+                
+            return mask
+
+        eta_prev = source.astype(np.float32)
+        eta = source.astype(np.float32)
+        h, w = source.shape
+        damp = sponge_mask(h, w, width=max(2, h // 16))
+        depth_speed = np.clip(np.abs(bathymetry) / (np.abs(bathymetry).max() + 1e-6), 0.1, 1.0)
+        c2 = 0.18 + 0.82 * depth_speed
+
+        for _ in range(steps):
+            nxt = 2 * eta - eta_prev + (dt ** 2) * c2 * laplacian(eta)
+            nxt = reflective_boundary(nxt[None, ...])[0]
+            nxt *= damp
+            eta_prev, eta = eta, nxt.astype(np.float32)
+
+        return eta.astype(np.float32)
+
 """
 Reference notes:
 
@@ -831,7 +880,7 @@ Reference notes:
 Finite volume methods for hyperbolic problems.
 https://doi.org/10.1017/CBO9780511791253
 
-[2] Delis A. I., Katsaounis T. D., and Mitsotakis D. (2005)
+[2] Delis A. I., Katsaounis Th. (2004)
 Numerical solution of the two-dimensional shallow water equations by the application of relaxation methods.
 DOI:10.1016/j.apm.2004.11.001
 
