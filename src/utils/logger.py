@@ -33,14 +33,17 @@ def setup_logger(
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(level)
         console_handler.setFormatter(formatter)
+
         logger.addHandler(console_handler)
 
     if save_dir is not None:
         save_dir = Path(save_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
+
         file_handler = logging.FileHandler(save_dir / filename, encoding="utf-8")
         file_handler.setLevel(level)
         file_handler.setFormatter(formatter)
+
         logger.addHandler(file_handler)
 
     return logger
@@ -49,6 +52,7 @@ def setup_logger(
 def save_json(path: Union[str, Path], data: Mapping[str, Any]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+
     with path.open("w", encoding="utf-8") as handle:
         json.dump(data, handle, indent=2, sort_keys=True)
 
@@ -56,6 +60,7 @@ def save_json(path: Union[str, Path], data: Mapping[str, Any]) -> None:
 def save_yaml(path: Union[str, Path], data: Mapping[str, Any]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+
     with path.open("w", encoding="utf-8") as handle:
         yaml.safe_dump(dict(data), handle, sort_keys=False)
 
@@ -63,6 +68,7 @@ def save_yaml(path: Union[str, Path], data: Mapping[str, Any]) -> None:
 def append_jsonl(path: Union[str, Path], data: Mapping[str, Any]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(dict(data), sort_keys=True) + "\n")
 
@@ -80,8 +86,10 @@ class ExperimentLogger:
 
     def log_metrics(self, step: int, metrics: Mapping[str, Any], prefix: str = "") -> None:
         payload: Dict[str, Any] = {"step": int(step)}
+
         for key, value in metrics.items():
             payload[f"{prefix}{key}"] = value
+
         append_jsonl(self.metrics_path, payload)
 
     def save_config(self, config: Mapping[str, Any], filename: str = "config.yaml") -> None:

@@ -6,7 +6,7 @@ from torch import nn
 
 
 class EnsemblePredictor(nn.Module):
-    """Aggregates predictions from multiple trained models."""
+    """aggregates predictions from multiple trained models"""
 
     def __init__(self, members: Iterable[nn.Module]):
         super().__init__()
@@ -15,12 +15,16 @@ class EnsemblePredictor(nn.Module):
     @torch.no_grad()
     def forward(self, x: torch.Tensor):
         preds: List[torch.Tensor] = []
+ 
         for model in self.members:
             out = model(x)
             if isinstance(out, tuple):
                 out = out[0]
+
             preds.append(out)
+
         stack = torch.stack(preds, dim=0)
+
         return {
             'members': stack,
             'mean': stack.mean(dim=0),

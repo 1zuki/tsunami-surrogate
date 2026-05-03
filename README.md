@@ -4,224 +4,166 @@
 
 # Tsunami Surrogate Modeling with Neural Operators
 
-This project aims to approximate tsunami wave propagation using neural operators 
-(e.g. Fourier Neural Operator) as a fast surrogate for traditional physics simulations.
+## 1) Project Idea
 
-Instead of solving PDEs directly, we train a model to learn the mapping:
-bathymetry + initial disturbance → wave evolution over time.
+This repository builds a research benchmark for fast surrogate modeling of tsunami-like wave propagation in a controlled synthetic setting.
 
-## Motivation
+Instead of running a numerical PDE solver online for every scenario, we train neural surrogates to learn:
 
-Traditional tsunami simulations are computationally expensive.
-This project explores whether neural operators can approximate them
-orders of magnitude faster while maintaining acceptable accuracy.
+`(bathymetry, source/initial disturbance) -> future wave-height trajectory`
 
+The scope is research and benchmarking, not an operational early-warning deployment system.
 
-## Model
+## 2) Research Questions
 
-We use the Fourier Neural Operator (FNO), which is designed to learn mappings between functions and is well-suited for PDE problems.
+The current forward-surrogate benchmark focuses on:
 
-## Installation
+1. Fidelity: how closely predictions match the shallow-water solver.
+2. Speed: how much inference acceleration is gained over full numerical rollout.
+3. Robustness: how performance changes under distribution shift (unseen bathymetry/source families) and cross-resolution transfer.
+4. Uncertainty quality: whether predictive confidence tracks actual error.
 
-```
-bash
-git clone https://github.com/xxx/tsunami-surrogate.git
+Planned paper extension:
+
+5. Inverse problem: recover source characteristics from observed wave signals/fields.
+
+## 3) What Is Implemented vs Planned
+
+- Implemented core: synthetic data generation, preprocessing, forward surrogate training, and benchmark evaluation.
+- Implemented models: FNO (primary) with CNN/U-Net and ensemble paths for comparison.
+- Implemented evaluations: accuracy, speed, generalization, resolution transfer, and uncertainty.
+- Planned extension: dedicated inverse-problem experiments and paper section.
+
+## 4) Canonical Workflow
+
+The default full-module pipeline in this repo is:
+
+1. Generate synthetic physics rollouts.
+2. Preprocess into train/val/test tensors.
+3. Train surrogate models.
+4. Evaluate solver-fidelity, speed, robustness, and uncertainty.
+5. Export plots/tables and map outputs into paper sections.
+6. Add inverse-problem workflow and reporting as a separate extension track.
+
+## 5) Setup
+
+```bash
+git clone https://github.com/1zuki/tsunami-surrogate.git
 cd tsunami-surrogate
-pip install -r requirements.txt
-```
-## Usage
-** Generate dataset **
-```
-python src/data_gen/simulate_dataset.py
-```
-** Train model **
-```
-python src/training/train.py --config configs/fno.yaml
-```
-** Evaluate model **
-```
-python src/evaluation/eval_accuracy.py
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirement.txt
 ```
 
-## Stage 1 — Define the mini-problem
-**  Use: ** 
+## 6) Run Commands
 
-- 2D grid
-- simple bathymetry
-- simple earthquake source
-- output = wave height over time
+### 6.1 Generate Raw Dataset
 
-** Start small: ** 
-
-- grid: 32x32
-- timesteps: 20
-
-## Stage 2 — Build the physics simulator
-
-** Make a basic shallow water equation simulator in NumPy. **
-
-** This is your data generator. ** 
-
-** For each sample: ** 
-
-- random seabed
-- random quake location / strength
-- simulate wave propagation
-
-** Save: ** 
-
-- input: bathymetry + initial disturbance
-- target: wave maps over time
-
-## Stage 3 — Generate dataset
-
-** Create many simulated examples. ** 
-
-** Example: ** 
-
-- train: 5k–20k samples
-- val/test: smaller split
-
-** Important: ** 
-
-- vary earthquake position
-- vary strength
-- vary seabed shapes
-
-## Stage 4 — Build the model
-
-Use FNO, not CNN.
-
-** Why: ** 
-
-- wave motion is global
-- FNO works naturally with grids + PDE-like problems
-- more research-worthy
-
-** Model learns: ** 
-
-- from spatial fields
-- to future wave field-s
-
-## Stage 5 — Train it
-
-** Train model to minimize error between: ** 
-
-- predicted wave evolution
-- simulated wave evolution
-
-** Use: ** 
-
-- MSE loss
-- PyTorch
-## Stage 6 — Evaluate properly
-
-** This part matters a lot. ** 
- 
-** Compare: ** 
-
-- accuracy: how close to simulator?
-- speed: how much faster than simulator?
-
-## Main result should look like:
-
-> “Our neural operator is X times faster with Y error.”
-
-That’s your core contribution.
-
-## Stage 7 — Make it paper-worthy
-
-** Add one extra angle: ** 
-
-** Pick one: ** 
-
-- uncertainty estimation
-- multi-resolution test
-- different seabed generalization
-- sensor-to-wave inverse version
-
-## Results
-
-| Model | Speedup | MSE |
-|------|--------|-----|
-| Simulator | 1x | 0 |
-| FNO | 50x | 0.02 |
-
-## Visualization
-
-(Add gifs or plots here) //will make latter 
-
-## Research Questions
-
-- Can neural operators generalize to unseen bathymetry?
-- How does resolution affect performance?
-- What is the speed vs accuracy trade-off?
-
-## Final structure of the project
-1/ Build shallow-water simulator
-2/ Generate synthetic tsunami dataset
-3/ Train FNO surrogate
-4/ Compare speed vs accuracy
-5/ Write up results like a mini paper
-
-
+```bash
+python scripts/make_dataset.py --config configs/data/dataset.yaml
 ```
+
+### 6.2 Preprocess
+
+```bash
+python src/data_gen/preprocess.py --config configs/data/preprocess.yaml
+```
+
+### 6.3 Train
+
+```bash
+python scripts/train.py --config configs/model/fno.yaml
+```
+
+Optional ensemble run:
+
+```bash
+python scripts/train_ensemble.py --config configs/model/fno.yaml
+```
+
+### 6.4 Evaluate
+
+```bash
+python scripts/eval_accuracy.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt
+python scripts/eval_speed.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt
+python scripts/eval_generalization.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt
+python scripts/eval_resolution_transfer.py --config configs/train/train_32_to_64.yaml --checkpoint experiments/fno_32_to_64/best.pt
+python scripts/eval_uncertainty.py --config configs/model/fno.yaml
+```
+
+### 6.5 Quick Smoke Run
+
+```bash
+bash scripts/quickstart.sh
+```
+
+### 6.6 Visualize One Sample (Truth vs Prediction + Uncertainty)
+
+```bash
+python scripts/visualize_rollout.py \
+  --config configs/model/fno.yaml \
+  --checkpoint experiments/fno/best.pt \
+  --processed-path data/processed/test \
+  --raw-dir data/raw/samples \
+  --sample-index 0
+```
+
+## 7) Repository Structure (with inline folder purpose)
+
+```text
 tsunami-surrogate/
 ├─ README.md
-├─ requirements.txt
-├─ configs/
-│  ├─ base.yaml
-│  ├─ fno.yaml
-│  ├─ unet.yaml
-│  ├─ cnn.yaml
-│  ├─ physics_loss.yaml
-│  └─ train_32_to_64.yaml
-├─ data/
-│  ├─ raw/
-│  ├─ processed/
-│  ├─ bathymetry/
-│  └─ synthetic/
-├─ src/
-│  ├─ solver/
-│  │  ├─ shallow_water.py
-│  │  ├─ boussinesq.py
-│  │  ├─ boundary_problems.py
-│  │  └─ source_modelling.py
-│  ├─ data_gen/
-│  │  ├─ generate_bathymetry.py
-│  │  ├─ generate_sources.py
-│  │  ├─ simulate_dataset.py
-│  │  └─ preprocess.py
-│  ├─ models/
-│  │  ├─ fno.py
-│  │  ├─ unet.py
-│  │  ├─ cnn.py
-│  │  ├─ convlstm.py
-│  │  └─ uncertainty.py
-│  ├─ training/
-│  │  ├─ train.py
-│  │  ├─ losses.py
-│  │  ├─ metrics.py
-│  │  └─ callbacks.py
-│  ├─ evaluation/
-│  │  ├─ eval_speed.py
-│  │  ├─ eval_accuracy.py
-│  │  ├─ eval_generalization.py
-│  │  └─ eval_uncertainty.py
-│  └─ utils/
-│     ├─ seed.py
-│     ├─ logger.py
-│     └─ visualization.py
-├─ experiments/
-│  ├─ exp1_same_resolution/
-│  ├─ exp2_unseen_bathymetry/
-│  ├─ exp3_cross_resolution/
-│  ├─ exp4_physics_loss_ablation/
-│  └─ exp5_uncertainty/
-├─ figures/
-├─ results/
-└─ paper/
-   ├─ main.tex
-   ├─ references.bib
-   └─ figs/
-``` 
+├─ LICENSE
+├─ requirement.txt
+├─ configs/                        # all experiment/data/model/eval configs
+│  ├─ data/                        # data-generation and preprocessing configs
+│  │  ├─ dataset.yaml              # simulator dataset generation entry config
+│  │  ├─ preprocess.yaml           # raw -> processed split/export config
+│  │  ├─ bathymetry.yaml           # bathymetry synthesis controls
+│  │  └─ source.yaml               # tsunami source family controls
+│  ├─ model/                       # model-centered train/eval configs
+│  │  ├─ fno.yaml                  # primary FNO config
+│  │  ├─ cnn.yaml                  # CNN baseline config
+│  │  └─ unet.yaml                 # U-Net baseline config
+│  ├─ train/                       # shared/base + training variants
+│  │  ├─ base.yaml                 # common seed/device/data/train defaults
+│  │  ├─ physics_loss.yaml         # physics-regularized FNO variant
+│  │  └─ train_32_to_64.yaml       # resolution-transfer training setup
+│  └─ eval/
+│     └─ eval_template.yaml        # template for standalone eval scripts
+├─ scripts/                        # CLI entrypoints (generate/train/eval/export)
+├─ src/                            # implementation modules
+│  ├─ data_gen/                    # simulation + preprocess pipeline internals
+│  ├─ data/                        # dataset loaders and multires dataset wrappers
+│  ├─ solver/                      # shallow-water and related numerical solvers
+│  ├─ models/                      # FNO/CNN/U-Net/ensemble/uncertainty models
+│  ├─ training/                    # trainer, losses, metrics, callbacks, checkpoints
+│  ├─ evaluation/                  # accuracy/speed/generalization/UQ evaluation utils
+│  └─ utils/                       # config/io/logger/device/seed/visualization helpers
+├─ data/                           # generated artifacts (raw, processed, manifests)
+├─ experiments/                    # run outputs (checkpoints, history, eval json)
+├─ figures/                        # exported figures/plots
+├─ results/                        # aggregate result dumps
+├─ tests/                          # unit/integration checks
+├─ paper/                          # LaTeX manuscript workspace
+│  ├─ main.tex                     # paper entrypoint
+│  ├─ figs/                        # paper figures
+│  ├─ build/                       # latex build artifacts
+│  └─ sections/                    # section files (role-only naming)
+└─ references-notes/               # literature notes for writing and framing
+```
+
+## 8) Paper Alignment
+
+This README follows the same framing as the paper abstract/introduction:
+
+- controlled synthetic benchmark setting;
+- FNO-centered surrogate evaluation against convolutional baselines;
+- emphasis on speed-accuracy-robustness trade-offs;
+- explicit non-operational scope (research benchmark, not production warning stack);
+- explicit plan to include inverse-problem analysis as an additional paper section.
+
+## 9) Notes
+
+- Prefer `scripts/make_dataset.py` as the default data-generation path.
+- Keep `make_toy_data.py` as a compatibility helper, not the primary workflow.

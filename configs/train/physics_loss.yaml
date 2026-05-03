@@ -1,0 +1,7 @@
+defaults:
+  - ../model/fno.yaml
+
+output_dir: experiments/fno_physics_loss
+
+train:
+  loss: coastal_weighted_mse

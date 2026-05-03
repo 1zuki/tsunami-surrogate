@@ -1,10 +1,13 @@
 from .fno2d import FNO2D
 from .uncertainty import ProbabilisticFNO2D
+from .cnn import CNNBaseline
+from .unet import UNetSmall
 
 
 def build_model(cfg):
     model_cfg = cfg.get('model', cfg)
     name = model_cfg.get('name', 'fno2d')
+
     if name == 'fno2d':
         return FNO2D(
             in_channels=model_cfg.get('in_channels', 3),
@@ -27,4 +30,17 @@ def build_model(cfg):
             padding=model_cfg.get('padding', 6),
             use_grid=model_cfg.get('use_grid', True),
         )
+    if name == 'cnn':
+        return CNNBaseline(
+            in_channels=model_cfg.get('in_channels', 3),
+            out_channels=model_cfg.get('out_channels', 1),
+            width=model_cfg.get('width', 32),
+        )
+    if name == 'unet':
+        return UNetSmall(
+            in_channels=model_cfg.get('in_channels', 3),
+            out_channels=model_cfg.get('out_channels', 1),
+            width=model_cfg.get('width', 32),
+        )
+
     raise ValueError(f'Unknown model name: {name}')

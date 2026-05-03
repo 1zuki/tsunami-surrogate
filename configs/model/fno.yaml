@@ -1,0 +1,15 @@
+defaults:
+  - ../train/base.yaml
+
+output_dir: experiments/fno
+
+model:
+  name: fno2d
+  in_channels: 3
+  out_channels: 100
+  modes1: 12
+  modes2: 12
+  width: 32
+  depth: 4
+  padding: 6
+  use_grid: true

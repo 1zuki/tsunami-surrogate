@@ -16,20 +16,27 @@ from src.evaluation.accuracy import evaluate_accuracy
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--config', required=True)
-    p.add_argument('--checkpoint', required=True)
+    p.add_argument("--config", required=True)
+    p.add_argument("--checkpoint", required=True)
+
     args = p.parse_args()
     cfg = load_config(args.config)
-    if 'data' not in cfg:
-        cfg['data'] = {'path': cfg['eval']['dataset_path'], 'batch_size': cfg['eval'].get('batch_size', 8), 'split': {'type': 'iid'}}
-    device = resolve_device(cfg.get('device', 'auto'))
+
+    if "data" not in cfg:
+        cfg["data"] = {
+            "path": cfg["eval"]["dataset_path"],
+            "batch_size": cfg["eval"].get("batch_size", 8),
+            "split": {"type": "iid"},
+        }
+
+    device = resolve_device(cfg.get("device", "auto"))
     loaders = create_dataloaders(cfg)
     model = build_model(cfg).to(device)
     load_checkpoint(args.checkpoint, model, map_location=device)
-    metrics = evaluate_accuracy(model, loaders.get('test') or list(loaders.values())[-1], device)
+    metrics = evaluate_accuracy(model, loaders.get("test") or list(loaders.values())[-1], device)
     print(metrics)
     save_json(metrics, f"{cfg.get('eval', {}).get('output_dir', 'experiments/eval_accuracy')}/metrics.json")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

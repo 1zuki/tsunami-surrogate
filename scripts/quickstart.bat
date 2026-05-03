@@ -1,5 +1,6 @@
 @echo off
-python scripts\make_toy_data.py --num-samples 4 --resolution 8 --out data\processed\toy_8_smoke.npz
-python scripts\train.py --config configs\experiments\exp000_smoke.yaml
-python scripts\evaluate.py --config configs\eval\eval_accuracy.yaml --checkpoint experiments\exp000_smoke\best.pt
+python scripts\make_dataset.py --config configs\data\dataset.yaml --num-samples 8 --n-steps 60 --save-every 10
+python src\data_gen\preprocess.py --config configs\data\preprocess.yaml
+python scripts\train.py --config configs\model\fno.yaml
+python scripts\eval_accuracy.py --config configs\model\fno.yaml --checkpoint experiments\fno\best.pt
 echo Done.

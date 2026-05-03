@@ -5,9 +5,8 @@ from .fno2d import FNO2D
 
 
 class TemporalFNO2D(nn.Module):
-    """Simple temporal wrapper that predicts T output frames as channels.
-
-    For more advanced work, replace this with recurrent decoding or a 3D FNO.
+    """simple temporal wrapper that predicts T output frames as channels
+    for more advanced work, replace this with recurrent decoding or a 3D FNO
     """
 
     def __init__(self, in_channels: int, field_channels: int, time_steps: int, **kwargs):

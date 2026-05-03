@@ -24,6 +24,14 @@ def main():
     cfg['output_dir'] = str(out)
     device = resolve_device(cfg.get('device', 'auto'))
     loaders = create_dataloaders(cfg)
+    split_sizes = {name: len(loader.dataset) for name, loader in loaders.items()}
+    print(f"[train] split sizes: {split_sizes}")
+    train_n = split_sizes.get("train", 0)
+    if train_n < 100:
+        print(
+            f"[train][warning] train split has only {train_n} samples. "
+            "For stable surrogate learning, this is usually too small and can collapse to near-mean predictions."
+        )
     model = build_model(cfg)
     trainer = Trainer(model, loaders, cfg, device)
     trainer.fit()

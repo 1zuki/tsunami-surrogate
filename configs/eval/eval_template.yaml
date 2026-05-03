@@ -19,7 +19,7 @@ model:
 # or dataset.inputs_path + dataset.targets_path
 
 dataset:
-  path: data/processed/test.npz
+  path: data/processed/test
   inputs_key: inputs
   targets_key: targets
   ids_key: sample_id
@@ -61,15 +61,15 @@ speed:
 generalization:
   suites:
     - label: same_resolution
-      path: data/processed/test_same_resolution.npz
+      path: data/processed/test_same_resolution
       inputs_key: inputs
       targets_key: targets
     - label: unseen_bathymetry
-      path: data/processed/test_unseen_bathymetry.npz
+      path: data/processed/test_unseen_bathymetry
       inputs_key: inputs
       targets_key: targets
     - label: cross_resolution
-      path: data/processed/test_cross_resolution.npz
+      path: data/processed/test_cross_resolution
       inputs_key: inputs
       targets_key: targets
 

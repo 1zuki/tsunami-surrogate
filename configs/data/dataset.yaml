@@ -1,6 +1,6 @@
 configs:
-  bathymetry: "configs/bathymetry.yaml"
-  source: "configs/source.yaml"
+  bathymetry: "configs/data/bathymetry.yaml"
+  source: "configs/data/source.yaml"
 
 dataset:
   num_samples: 16

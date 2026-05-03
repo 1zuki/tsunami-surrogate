@@ -26,8 +26,10 @@ def main():
     model = build_model(cfg).to(device).eval()
     load_checkpoint(args.checkpoint, model, map_location=device)
     batch = next(iter(loaders['test']))
+
     with torch.no_grad():
         pred = model(batch['x'].to(device)).cpu()
+
     save_prediction_triplet(batch['x'], pred, batch['y'], args.out)
     print(f'Saved {args.out}')
 

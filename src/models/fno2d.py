@@ -31,7 +31,9 @@ class FNO2D(nn.Module):
         super().__init__()
         self.use_grid = use_grid
         self.padding = padding
+
         lifted_channels = in_channels + (2 if use_grid else 0)
+
         self.lift = nn.Conv2d(lifted_channels, width, 1)
         self.blocks = nn.ModuleList([FNOBlock(width, modes1, modes2) for _ in range(depth)])
         self.proj1 = nn.Conv2d(width, width * 2, 1)
@@ -41,17 +43,22 @@ class FNO2D(nn.Module):
         b, _, h, w = x.shape
         grid_y = torch.linspace(0, 1, h, device=x.device, dtype=x.dtype).view(1, 1, h, 1).repeat(b, 1, 1, w)
         grid_x = torch.linspace(0, 1, w, device=x.device, dtype=x.dtype).view(1, 1, 1, w).repeat(b, 1, h, 1)
+
         return torch.cat([grid_x, grid_y], dim=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.use_grid:
             x = torch.cat([x, self.get_grid(x)], dim=1)
+
         x = self.lift(x)
+
         if self.padding > 0:
             x = F.pad(x, [0, self.padding, 0, self.padding])
         for block in self.blocks:
             x = block(x)
         if self.padding > 0:
             x = x[..., :-self.padding, :-self.padding]
+
         x = F.gelu(self.proj1(x))
+
         return self.proj2(x)

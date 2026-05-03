@@ -1,0 +1,54 @@
+seed: 42
+device: auto
+
+output_dir: experiments/default
+
+data:
+  path: data/processed
+  batch_size: 8
+  num_workers: 0
+  split:
+    type: iid
+    train: 0.7
+    val: 0.15
+    test: 0.15
+
+model:
+  name: fno2d
+  in_channels: 3
+  out_channels: 100
+  modes1: 12
+  modes2: 12
+  width: 32
+  depth: 4
+  padding: 6
+  use_grid: true
+
+train:
+  epochs: 40
+  lr: 0.001
+  weight_decay: 1.0e-6
+  loss: mse
+  grad_clip: null
+  checkpoint_metric: val_rel_l2
+  early_stopping:
+    patience: 10
+    mode: min
+
+eval:
+  dataset_path: data/processed/test
+  batch_size: 8
+  output_dir: experiments/eval
+  warmup_steps: 5
+  timed_steps: 20
+
+ensemble:
+  seeds: [11, 22, 33]
+  member_dir_template: experiments/ensemble/member_{seed}
+
+resolution_transfer:
+  eval_resolutions: [32, 64]
+
+uncertainty:
+  ensemble_checkpoints: []
+  interval_levels: [0.5, 0.8, 0.9, 0.95]

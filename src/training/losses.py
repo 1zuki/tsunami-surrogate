@@ -11,15 +11,19 @@ def relative_l2(pred: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> 
 def spectral_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     pred_ft = torch.fft.rfft2(pred)
     target_ft = torch.fft.rfft2(target)
+
     return torch.mean(torch.abs(pred_ft - target_ft) ** 2)
 
 
 def coastal_weighted_mse(pred: torch.Tensor, target: torch.Tensor, coastal_mask: torch.Tensor | None = None, weight: float = 4.0) -> torch.Tensor:
     if coastal_mask is None:
         return F.mse_loss(pred, target)
+
     while coastal_mask.dim() < pred.dim():
         coastal_mask = coastal_mask.unsqueeze(1)
+
     weights = 1.0 + (weight - 1.0) * coastal_mask.to(pred.device)
+
     return torch.mean(weights * (pred - target) ** 2)
 
 
@@ -36,4 +40,5 @@ def build_loss(name: str):
         return lambda pred, target, batch=None: spectral_loss(pred, target)
     if name == 'coastal_weighted_mse':
         return lambda pred, target, batch=None: coastal_weighted_mse(pred, target, batch['x'][:, 2:3] if batch is not None else None)
+
     raise ValueError(f'Unknown loss: {name}')

@@ -1,3 +1,18 @@
+# note to self
+note.md
+NOTE.md
+note-to-self.md
+note_to_self.md
+nts.md
+NTS.md
+
+references-notes
+
+# test script
+test.py
+TEST.py
+tsunami-vis-test.py
+
 data/raw/*
 data/processed/*
 data/synthetic/*

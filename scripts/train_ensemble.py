@@ -22,6 +22,7 @@ def main():
     cfg = load_config(args.config)
     seeds = cfg.get('ensemble', {}).get('seeds', [cfg.get('seed', 42)])
     device = resolve_device(cfg.get('device', 'auto'))
+    
     for seed in seeds:
         member_cfg = deepcopy(cfg)
         member_cfg['seed'] = int(seed)

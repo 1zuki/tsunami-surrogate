@@ -1,0 +1,21 @@
+defaults:
+  - ../model/fno.yaml
+
+output_dir: experiments/fno_32_to_64
+
+data:
+  path: data/processed/train_32
+  batch_size: 8
+  split:
+    type: iid
+    train: 0.7
+    val: 0.15
+    test: 0.15
+
+eval:
+  dataset_path: data/processed/test_64
+  batch_size: 8
+  output_dir: experiments/fno_32_to_64/eval
+
+resolution_transfer:
+  eval_resolutions: [32, 64, 128]
