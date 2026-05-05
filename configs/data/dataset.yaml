@@ -4,7 +4,9 @@ configs:
 
 dataset:
   num_samples: 16
-  n_steps: 500
+  seed: 42
+  num_workers: 8
+  n_steps: 400
   save_every: 5
   auto_dt: true
   target_cfl: 0.45

@@ -19,6 +19,7 @@ def main() -> None:
     parser.add_argument("--num-samples", type=int, default=None)
     parser.add_argument("--n-steps", type=int, default=None)
     parser.add_argument("--save-every", type=int, default=None)
+    parser.add_argument("--num-workers", type=int, default=None)
     parser.add_argument("--output-dir", type=str, default=None)
     parser.add_argument("--manifest-path", type=str, default=None)
     args = parser.parse_args()
@@ -35,6 +36,8 @@ def main() -> None:
         ds["n_steps"] = int(args.n_steps)
     if args.save_every is not None:
         ds["save_every"] = int(args.save_every)
+    if args.num_workers is not None:
+        ds["num_workers"] = int(args.num_workers)
     if args.output_dir is not None:
         ds["output_dir"] = str(args.output_dir)
     if args.manifest_path is not None:

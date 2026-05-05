@@ -1,7 +1,10 @@
 from __future__ import annotations
 import argparse
 import json
+import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
+from multiprocessing import get_context
 from pathlib import Path
 from typing import Any, Dict, Tuple
 import numpy as np
@@ -24,6 +27,8 @@ except ImportError:
 class DatasetConfig:
     """ convenience wrapper for the top-level dataset config """
     num_samples: int
+    seed: int | None
+    num_workers: int
     n_steps: int
     save_every: int
     auto_dt: bool
@@ -34,6 +39,161 @@ class DatasetConfig:
     output_dir: Path
     manifest_path: Path
     copy_configs: bool
+
+def _make_solver_from_cfg(sv: Dict[str, Any]) -> ShallowWaterSolver:
+    boundary = sv.get("boundary", "open")
+
+    return ShallowWaterSolver(
+        nx=int(sv["nx"]),
+        ny=int(sv["ny"]),
+        dx=float(sv["dx"]),
+        dy=float(sv["dy"]),
+        dt=float(sv["dt"]),
+        g=float(sv.get("g", 9.81)),
+        cfl=float(sv.get("cfl", 0.45)),
+        dry_tolerance=float(sv.get("dry_tolerance", 1e-6)),
+        boundary=boundary,
+        use_sponge=bool(sv.get("use_sponge", True)),
+        sponge_width=int(sv.get("sponge_width", 20)),
+        sponge_min_factor=float(sv.get("sponge_min_factor", 0.9))
+    )
+
+def _simulate_one_local(
+    solver: ShallowWaterSolver,
+    n_steps: int,
+    save_every: int,
+    auto_dt: bool,
+    target_cfl: float,
+    include_initial_state: bool,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    frames: list[np.ndarray] = []
+    timestamps: list[float] = []
+    dt_hist: list[float] = []
+    current_time = 0.0
+
+    if include_initial_state:
+        state = solver.get_state().astype(np.float32)
+        frames.append(state)
+        timestamps.append(current_time)
+        dt_hist.append(0.0)
+
+    for step_idx in range(n_steps):
+        if auto_dt:
+            dt = solver.suggest_dt(target_cfl=target_cfl)
+            solver.dt = dt
+        else:
+            dt = solver.dt
+
+        solver.step(dt=dt, auto_dt=False)
+        current_time += float(dt)
+
+        if (step_idx + 1) % save_every == 0:
+            state = solver.get_state().astype(np.float32)
+            frames.append(state)
+            timestamps.append(current_time)
+            dt_hist.append(float(dt))
+
+    if not frames:
+        state = solver.get_state().astype(np.float32)
+        frames.append(state)
+        timestamps.append(current_time)
+        dt_hist.append(0.0)
+
+    return (
+        np.stack(frames, axis=0),
+        np.asarray(timestamps, dtype=np.float32),
+        np.asarray(dt_hist, dtype=np.float32),
+    )
+
+
+def _generate_one_worker(
+    sample_idx: int,
+    run_seed: int,
+    dataset: DatasetConfig,
+    solver_cfg: Dict[str, Any],
+    bathy_cfg_path: str,
+    source_cfg_path: str,
+    config_path: str,
+    samples_dir: str,
+) -> Dict[str, Any]:
+    sample_seed = int(run_seed + sample_idx * 10007)
+    bathy_generator = BathymetryGenerator(bathy_cfg_path)
+    source_generator = SourceGenerator(source_cfg_path)
+    bathy_generator.rng = np.random.default_rng([sample_seed, 11])
+    source_generator.rng = np.random.default_rng([sample_seed, 23])
+    strength_rng = np.random.default_rng([sample_seed, 37])
+
+    bathymetry, bathy_type = bathy_generator.generate()
+    source_field, source_type = source_generator.generate()
+    lo, hi = dataset.source_strength_range
+    source_strength = float(strength_rng.uniform(lo, hi))
+
+    sea_level_offset = dataset.sea_level_offset
+    eta0 = source_strength * source_field
+    rest_depth = np.maximum(-bathymetry + sea_level_offset, 0.0)
+    h0 = np.maximum(rest_depth + eta0, 0.0)
+    free_surface0 = h0 + bathymetry
+
+    solver = _make_solver_from_cfg(solver_cfg)
+    solver.set_bathymetry(bathymetry)
+    solver.set_initial_condition(h0, hu0=np.zeros_like(h0), hv0=np.zeros_like(h0))
+
+    trajectory, timestamps, dt_hist = _simulate_one_local(
+        solver=solver,
+        n_steps=dataset.n_steps,
+        save_every=dataset.save_every,
+        auto_dt=dataset.auto_dt,
+        target_cfl=dataset.target_cfl,
+        include_initial_state=dataset.include_initial_state,
+    )
+
+    sample_dir = Path(samples_dir) / f"sample_{sample_idx:06d}"
+    sample_dir.mkdir(parents=True, exist_ok=True)
+
+    np.savez_compressed(
+        sample_dir / "sample.npz",
+        bathymetry=bathymetry.astype(np.float32),
+        source_field=source_field.astype(np.float32),
+        rest_depth=rest_depth.astype(np.float32),
+        eta0=eta0.astype(np.float32),
+        initial_depth=h0.astype(np.float32),
+        free_surface0=free_surface0.astype(np.float32),
+        trajectory=trajectory.astype(np.float32),
+        timestamps=timestamps.astype(np.float32),
+        dt_history=dt_hist.astype(np.float32)
+    )
+
+    meta = {
+        "sample_index": sample_idx,
+        "bathymetry_type": bathy_type,
+        "source_type": source_type,
+        "source_strength": source_strength,
+        "num_frames": int(trajectory.shape[0]),
+        "trajectory_shape": list(map(int, trajectory.shape)),
+        "timestamps_shape": list(map(int, timestamps.shape)),
+        "dt_history_shape": list(map(int, dt_hist.shape)),
+        "bathymetry_shape": list(map(int, bathymetry.shape)),
+        "source_shape": list(map(int, source_field.shape)),
+        "eta0_shape": list(map(int, eta0.shape)),
+        "h0_shape": list(map(int, h0.shape)),
+        "free_surface0_shape": list(map(int, free_surface0.shape)),
+        "dataset_config_path": config_path,
+        "bathymetry_config_path": bathy_cfg_path,
+        "source_config_path": source_cfg_path,
+        "solver": solver_cfg
+    }
+    with (sample_dir / "meta.json").open("w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+
+    return {
+        "sample_index": sample_idx,
+        "sample_dir": str(sample_dir),
+        "bathy_type": bathy_type,
+        "source_type": source_type,
+        "num_frames": int(trajectory.shape[0]),
+        "trajectory_shape": list(map(int, trajectory.shape)),
+        "source_strength": source_strength,
+    }
 
 class TsunamiDatasetBuilder:
     """ generate raw tsunami surrogate samples """
@@ -69,6 +229,9 @@ class TsunamiDatasetBuilder:
 
         self.bathy_generator = BathymetryGenerator(str(self.bathy_cfg_path))
         self.source_generator = SourceGenerator(str(self.source_cfg_path))
+ 
+        # root seed used to derive per-sample independent seeds.
+        self.run_seed = int(np.random.SeedSequence().entropy) if self.dataset.seed is None else int(self.dataset.seed)
         
         # validate grid consistency
         solver_nx = int(self.solver_cfg["nx"])
@@ -114,6 +277,15 @@ class TsunamiDatasetBuilder:
             raise ValueError("dataset section must be a mapping")
 
         num_samples = int(ds.get("num_samples", 100))
+        seed = ds.get("seed", None)
+
+ 
+        if seed is not None:
+            seed = int(seed)
+            if seed < 0:
+                raise ValueError("dataset.seed must be >= 0")
+
+        num_workers = int(ds.get("num_workers", 1))
         n_steps = int(ds.get("n_steps", 200))
         save_every = int(ds.get("save_every", 5))
         auto_dt = bool(ds.get("auto_dt", True))
@@ -134,6 +306,8 @@ class TsunamiDatasetBuilder:
 
         if n_steps <= 0:
             raise ValueError("dataset.n_steps must be positive")
+        if num_workers <= 0:
+            raise ValueError("dataset.num_workers must be positive")
 
         if save_every <= 0:
             raise ValueError("dataset.save_every must be positive")
@@ -143,6 +317,8 @@ class TsunamiDatasetBuilder:
 
         return DatasetConfig(
             num_samples=num_samples,
+            seed=seed,
+            num_workers=num_workers,
             n_steps=n_steps,
             save_every=save_every,
             auto_dt=auto_dt,
@@ -197,9 +373,15 @@ class TsunamiDatasetBuilder:
         )
 
     def _sample_strength(self) -> float:
-        lo, hi = self.dataset.source_strength_range
+        return self._sample_strength_with_rng(self.bathy_generator.rng)
 
-        return float(self.bathy_generator.rng.uniform(lo, hi))
+    def _sample_strength_with_rng(self, rng: np.random.Generator) -> float:
+        lo, hi = self.dataset.source_strength_range
+        return float(rng.uniform(lo, hi))
+
+    def _seed_for_sample(self, sample_idx: int) -> int:
+        # sample_idx is 1-based; keep derivation stable across workers/runs.
+        return int(self.run_seed + sample_idx * 10007)
 
     def _build_initial_conditions(self,  bathymetry: np.ndarray, source_field: np.ndarray,
                                  ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -327,6 +509,63 @@ class TsunamiDatasetBuilder:
         with (sample_dir / "meta.json").open("w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
 
+    def _generate_one(self, sample_idx: int) -> Dict[str, Any]:
+        # independent per-sample RNG streams avoid collisions in parallel mode
+        sample_seed = self._seed_for_sample(sample_idx)
+        bathy_generator = BathymetryGenerator(str(self.bathy_cfg_path))
+        source_generator = SourceGenerator(str(self.source_cfg_path))
+        bathy_generator.rng = np.random.default_rng([sample_seed, 11])
+        source_generator.rng = np.random.default_rng([sample_seed, 23])
+        strength_rng = np.random.default_rng([sample_seed, 37])
+
+        bathymetry, bathy_type = bathy_generator.generate()
+        source_field, source_type = source_generator.generate()
+
+        sea_level_offset = self.dataset.sea_level_offset
+        source_strength = self._sample_strength_with_rng(strength_rng)
+        eta0 = source_strength * source_field
+        rest_depth = np.maximum(-bathymetry + sea_level_offset, 0.0)
+        h0 = np.maximum(rest_depth + eta0, 0.0)
+        free_surface0 = h0 + bathymetry
+
+        solver = self._make_solver()
+        solver.set_bathymetry(bathymetry)
+        solver.set_initial_condition(h0, hu0=np.zeros_like(h0), hv0=np.zeros_like(h0))
+
+        trajectory, timestamps, dt_hist = self._simulate_one(
+            solver=solver,
+            n_steps=self.dataset.n_steps,
+            save_every=self.dataset.save_every,
+            auto_dt=self.dataset.auto_dt,
+            target_cfl=self.dataset.target_cfl,
+        )
+
+        self._save_sample(
+            sample_idx=sample_idx,
+            bathymetry=bathymetry,
+            bathy_type=bathy_type,
+            source_field=source_field,
+            source_type=source_type,
+            rest_depth=rest_depth,
+            eta0=eta0,
+            h0=h0,
+            free_surface0=free_surface0,
+            trajectory=trajectory,
+            timestamps=timestamps,
+            dt_hist=dt_hist,
+            source_strength=source_strength,
+        )
+
+        return {
+            "sample_index": sample_idx,
+            "sample_dir": str(self.samples_dir / f"sample_{sample_idx:06d}"),
+            "bathy_type": bathy_type,
+            "source_type": source_type,
+            "num_frames": int(trajectory.shape[0]),
+            "trajectory_shape": list(map(int, trajectory.shape)),
+            "source_strength": source_strength,
+        }
+
     def _append_manifest(self, record: Dict[str, Any]) -> None:
         with self.manifest_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
@@ -338,60 +577,56 @@ class TsunamiDatasetBuilder:
         if self.manifest_path.exists():
             self.manifest_path.unlink()
 
-        for idx in range(1, self.dataset.num_samples + 1):
-            bathymetry, bathy_type = self.bathy_generator.generate()
-            source_field, source_type = self.source_generator.generate()
+        total = self.dataset.num_samples
+        records: list[Dict[str, Any]] = []
 
-            rest_depth, eta0, h0, free_surface0, strength_arr = self._build_initial_conditions(
-                bathymetry=bathymetry,
-                source_field=source_field,
-            )
+        if self.dataset.num_workers <= 1:
+            print(f"[dataset] sequential generation: samples={total}, seed={self.run_seed}")
 
-            source_strength = float(strength_arr[0])
+            for idx in range(1, total + 1):
+                rec = self._generate_one(idx)
+                records.append(rec)
 
-            solver = self._make_solver()
-            solver.set_bathymetry(bathymetry)
-            solver.set_initial_condition(h0, hu0=np.zeros_like(h0), hv0=np.zeros_like(h0))
+                print(f"[{idx:06d}/{total:06d}] "
+                      f"bathy={rec['bathy_type']:<11} source={rec['source_type']:<11} "
+                      f"frames={rec['num_frames']}")
 
-            trajectory, timestamps, dt_hist = self._simulate_one(
-                solver=solver,
-                n_steps=self.dataset.n_steps,
-                save_every=self.dataset.save_every,
-                auto_dt=self.dataset.auto_dt,
-                target_cfl=self.dataset.target_cfl,
-            )
+        else:
+            workers = min(self.dataset.num_workers, max(1, os.cpu_count() or 1))
+            print(f"[dataset] process generation: workers={workers}, samples={total}, seed={self.run_seed}")
+            done = 0
+            mp_ctx = get_context("spawn")
 
-            self._save_sample(
-                sample_idx=idx,
-                bathymetry=bathymetry,
-                bathy_type=bathy_type,
-                source_field=source_field,
-                source_type=source_type,
-                rest_depth=rest_depth,
-                eta0=eta0,
-                h0=h0,
-                free_surface0=free_surface0,
-                trajectory=trajectory,
-                timestamps=timestamps,
-                dt_hist=dt_hist,
-                source_strength=source_strength,
-            )
+            with ProcessPoolExecutor(max_workers=workers, mp_context=mp_ctx) as ex:
+                futures = {
+                    ex.submit(
+                        _generate_one_worker,
+                        idx,
+                        self.run_seed,
+                        self.dataset,
+                        self.solver_cfg,
+                        str(self.bathy_cfg_path),
+                        str(self.source_cfg_path),
+                        str(self.config_path),
+                        str(self.samples_dir),
+                    ): idx
+                    for idx in range(1, total + 1)
+                }
 
-            manifest_record = {
-                "sample_index": idx,
-                "sample_dir": str(self.samples_dir / f"sample_{idx:06d}"),
-                "bathy_type": bathy_type,
-                "source_type": source_type,
-                "num_frames": int(trajectory.shape[0]),
-                "trajectory_shape": list(map(int, trajectory.shape)),
-                "source_strength": source_strength,
-            }
+                for fut in as_completed(futures):
+                    rec = fut.result()
+                    records.append(rec)
+                    done += 1
 
-            self._append_manifest(manifest_record)
+                    print(f"[{done:06d}/{total:06d}] "
+                          f"sample={rec['sample_index']:06d} "
+                          f"bathy={rec['bathy_type']:<11} source={rec['source_type']:<11} "
+                          f"frames={rec['num_frames']}")
 
-            print(f"[{idx:06d}/{self.dataset.num_samples:06d}] "
-                  f"bathy={bathy_type:<11} source={source_type:<11} "
-                  f"frames={trajectory.shape[0]}")
+        records.sort(key=lambda r: int(r["sample_index"]))
+
+        for rec in records:
+            self._append_manifest(rec)
 
 def _build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="generate raw tsunami surrogate samples")
