@@ -1,15 +1,34 @@
 defaults:
   - ../train/base.yaml
 
-output_dir: experiments/fno
+output_dir: experiments/fno-1
 
 model:
   name: fno2d
   in_channels: 3
-  out_channels: 100
-  modes1: 12
-  modes2: 12
-  width: 32
-  depth: 4
+  out_channels: 80
+  modes1: 14
+  modes2: 14
+  width: 48
+  depth: 6
   padding: 6
   use_grid: true
+
+train:
+  epochs: 256
+  lr: 0.0005
+  min_lr: 0.00005
+  scheduler: cosine
+  weight_decay: 1.0e-6
+  grad_clip: 1.0
+
+  loss: horizon_weighted_mse
+  horizon_min_weight: 0.8
+  horizon_max_weight: 2.0
+  horizon_power: 1.7
+  
+  checkpoint_metric: val_rel_l2
+  
+  early_stopping:
+    patience: 20
+    mode: min

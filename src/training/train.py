@@ -31,7 +31,15 @@ class Trainer:
             weight_decay=float(train_cfg.get("weight_decay", 1e-6)),
         )
 
-        self.loss_fn = build_loss(train_cfg.get("loss", "mse"))
+        self.loss_fn = build_loss(train_cfg.get("loss", "mse"), train_cfg=train_cfg)
+        scheduler_name = str(train_cfg.get("scheduler", "none")).lower()
+        if scheduler_name == "cosine":
+            t_max = max(1, int(train_cfg.get("epochs", 5)))
+            min_lr = float(train_cfg.get("min_lr", 1e-5))
+            self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=t_max, eta_min=min_lr)
+        else:
+            self.scheduler = None
+
         early_cfg = train_cfg.get("early_stopping", {})
         self.early = EarlyStopping(early_cfg.get("patience", 10), early_cfg.get("mode", "min"))
 
@@ -47,6 +55,7 @@ class Trainer:
             val_metrics = evaluate_epoch(self.model, self.loaders["val"], self.loss_fn, self.device) if "val" in self.loaders else {}
 
             row = {"epoch": epoch, **{f"train_{k}": v for k, v in train_metrics.items()}, **{f"val_{k}": v for k, v in val_metrics.items()}}
+            row["lr"] = float(self.optimizer.param_groups[0]["lr"])
             history.append(row)
             metric_name = train_cfg.get("checkpoint_metric", "val_rel_l2")
             value = row.get(metric_name, row.get("val_loss", row.get("train_loss")))
@@ -62,7 +71,9 @@ class Trainer:
                 print(f"Early stopping at epoch {epoch}")
                 break
 
+            if self.scheduler is not None:
+                self.scheduler.step()
+
         save_checkpoint(self.checkpoint_dir / "last.pt", self.model, self.optimizer, epoch, history[-1], self.cfg)
 
         return history
-
