@@ -2,6 +2,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from multiprocessing import get_context
@@ -9,6 +11,10 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 import numpy as np
 import yaml
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 try:
     from src.data_gen.generate_bathymetry import BathymetryGenerator
@@ -570,30 +576,82 @@ class TsunamiDatasetBuilder:
         with self.manifest_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
 
+    def _existing_sample_indices(self) -> set[int]:
+        out: set[int] = set()
+        patt = re.compile(r"^sample_(\d{6})$")
+
+        for p in self.samples_dir.iterdir():
+            if not p.is_dir():
+                continue
+            m = patt.match(p.name)
+            if m is None:
+                continue
+            out.add(int(m.group(1)))
+        return out
+
     # generate loop
-    def run(self) -> None:
+    def run(self, continue_from_last: bool = False, start_at: int | None = None) -> None:
         """ generate all raw samples """
-        # start fresh manifest for each run
-        if self.manifest_path.exists():
-            self.manifest_path.unlink()
+        if start_at is not None and start_at < 1:
+            raise ValueError("--start-at must be >= 1")
 
         total = self.dataset.num_samples
+        existing_indices = self._existing_sample_indices()
+
+        if start_at is not None:
+            start_idx = int(start_at)
+        elif continue_from_last:
+            start_idx = max(existing_indices) + 1 if existing_indices else 1
+        else:
+            start_idx = 1
+
+        if start_idx == 1 and not continue_from_last and start_at is None:
+            # fresh run: overwrite manifest to match this run exactly.
+            if self.manifest_path.exists():
+                self.manifest_path.unlink()
+        else:
+            # resume mode: keep and append to existing manifest.
+            print(f"[dataset] resume mode: start_at={start_idx}")
+
+        if start_idx > total:
+            print(f"[dataset] nothing to do: start_at={start_idx} > num_samples={total}")
+            return
+
+        planned_indices = list(range(start_idx, total + 1))
+        to_generate = [idx for idx in planned_indices if idx not in existing_indices]
+        skipped = len(planned_indices) - len(to_generate)
+        if skipped > 0:
+            print(f"[dataset] skipping {skipped} existing samples (already present on disk)")
+
         records: list[Dict[str, Any]] = []
 
-        if self.dataset.num_workers <= 1:
-            print(f"[dataset] sequential generation: samples={total}, seed={self.run_seed}")
+        if not to_generate:
+            print("[dataset] nothing new to generate.")
+            return
 
-            for idx in range(1, total + 1):
+        if self.dataset.num_workers <= 1:
+            print(
+                f"[dataset] sequential generation: generate={len(to_generate)}, "
+                f"range=[{to_generate[0]}, {to_generate[-1]}], seed={self.run_seed}"
+            )
+            done = 0
+
+            for idx in to_generate:
                 rec = self._generate_one(idx)
                 records.append(rec)
+                done += 1
 
-                print(f"[{idx:06d}/{total:06d}] "
+                print(f"[{done:06d}/{len(to_generate):06d}] "
+                      f"sample={idx:06d} "
                       f"bathy={rec['bathy_type']:<11} source={rec['source_type']:<11} "
                       f"frames={rec['num_frames']}")
 
         else:
             workers = min(self.dataset.num_workers, max(1, os.cpu_count() or 1))
-            print(f"[dataset] process generation: workers={workers}, samples={total}, seed={self.run_seed}")
+            print(
+                f"[dataset] process generation: workers={workers}, generate={len(to_generate)}, "
+                f"range=[{to_generate[0]}, {to_generate[-1]}], seed={self.run_seed}"
+            )
             done = 0
             mp_ctx = get_context("spawn")
 
@@ -610,7 +668,7 @@ class TsunamiDatasetBuilder:
                         str(self.config_path),
                         str(self.samples_dir),
                     ): idx
-                    for idx in range(1, total + 1)
+                    for idx in to_generate
                 }
 
                 for fut in as_completed(futures):
@@ -618,7 +676,7 @@ class TsunamiDatasetBuilder:
                     records.append(rec)
                     done += 1
 
-                    print(f"[{done:06d}/{total:06d}] "
+                    print(f"[{done:06d}/{len(to_generate):06d}] "
                           f"sample={rec['sample_index']:06d} "
                           f"bathy={rec['bathy_type']:<11} source={rec['source_type']:<11} "
                           f"frames={rec['num_frames']}")
@@ -634,12 +692,20 @@ def _build_argparser() -> argparse.ArgumentParser:
                         type=str,
                         default="configs/data/dataset.yaml",
                         help="Path to the dataset YAML config.")
+    parser.add_argument("--continue",
+                        dest="continue_from_last",
+                        action="store_true",
+                        help="Resume from the largest existing sample index instead of starting at 1.")
+    parser.add_argument("--start-at",
+                        type=int,
+                        default=None,
+                        help="Explicit 1-based sample index to start generating from.")
     return parser
 
 def main() -> None:
     args = _build_argparser().parse_args()
     builder = TsunamiDatasetBuilder(args.config)
-    builder.run()
+    builder.run(continue_from_last=bool(args.continue_from_last), start_at=args.start_at)
 
 if __name__ == "__main__":
     main()

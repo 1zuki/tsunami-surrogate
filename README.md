@@ -63,6 +63,18 @@ pip install -r requirement.txt
 python scripts/make_dataset.py --config configs/data/dataset.yaml
 ```
 
+Resume an interrupted run:
+
+```bash
+python scripts/make_dataset.py --config configs/data/dataset.yaml --continue
+```
+
+Resume from an explicit sample index (1-based):
+
+```bash
+python scripts/make_dataset.py --config configs/data/dataset.yaml --start-at 142
+```
+
 ### 6.2 Preprocess
 
 ```bash

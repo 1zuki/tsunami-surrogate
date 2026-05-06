@@ -22,6 +22,8 @@ def main() -> None:
     parser.add_argument("--num-workers", type=int, default=None)
     parser.add_argument("--output-dir", type=str, default=None)
     parser.add_argument("--manifest-path", type=str, default=None)
+    parser.add_argument("--continue", dest="continue_from_last", action="store_true")
+    parser.add_argument("--start-at", type=int, default=None)
     args = parser.parse_args()
 
     cfg_path = Path(args.config)
@@ -49,7 +51,7 @@ def main() -> None:
 
     try:
         builder = TsunamiDatasetBuilder(str(tmp_cfg))
-        builder.run()
+        builder.run(continue_from_last=bool(args.continue_from_last), start_at=args.start_at)
         print(f"Dataset generation complete using {cfg_path}")
     finally:
         try:
