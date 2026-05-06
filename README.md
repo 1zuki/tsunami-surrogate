@@ -63,6 +63,12 @@ pip install -r requirement.txt
 python scripts/make_dataset.py --config configs/data/dataset.yaml
 ```
 
+`make_dataset.py` now runs in two phases:
+- phase 1: generate/cache all bathymetry samples first (default cache: `data/bathymetry`);
+- phase 2: load cached bathymetry and run all configured FDE rollouts from `fdes.enabled` in `configs/data/dataset.yaml`.
+
+Right now, the runnable FDE is `swe_hydrostatic`. `swe_muscl` and `boussinesq` can already be listed in config naming, but their rollout kernels are still pending implementation.
+
 Resume an interrupted run:
 
 ```bash
@@ -129,7 +135,7 @@ tsunami-surrogate/
 ├─ requirement.txt
 ├─ configs/                        # all experiment/data/model/eval configs
 │  ├─ data/                        # data-generation and preprocessing configs
-│  │  ├─ dataset.yaml              # simulator dataset generation entry config
+│  │  ├─ dataset.yaml              # two-phase generation config (bathymetry cache + FDE list)
 │  │  ├─ preprocess.yaml           # raw -> processed split/export config
 │  │  ├─ bathymetry.yaml           # bathymetry synthesis controls
 │  │  └─ source.yaml               # tsunami source family controls

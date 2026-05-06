@@ -5,7 +5,7 @@ configs:
 dataset:
   num_samples: 16
   seed: 42
-  num_workers: 8
+  num_workers: 10
   n_steps: 400
   save_every: 5
   auto_dt: true
@@ -13,9 +13,14 @@ dataset:
   include_initial_state: true
   sea_level_offset: 0.0
   source_strength_range: [0.5, 2.0]
+  bathymetry_dir: "data/bathymetry"
   output_dir: "data/raw"
   manifest_path: "data/synthetic/manifest.jsonl"
   copy_configs: true
+
+fdes:
+  enabled: ["swe_hydrostatic"]
+  primary: "swe_hydrostatic"
 
 solver:
   nx: 64
