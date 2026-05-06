@@ -1,10 +1,12 @@
-# note to self
+# note
 note.md
 NOTE.md
 note-to-self.md
 note_to_self.md
 nts.md
 NTS.md
+
+boussinesq.md
 
 references-notes
 
@@ -16,6 +18,10 @@ tsunami-vis-test.py
 data/raw/*
 data/processed/*
 data/synthetic/*
+data/bathymetry/*
+data/fno/*
+data/cnn/*
+
 !data/**/.gitkeep
 
 results/*
