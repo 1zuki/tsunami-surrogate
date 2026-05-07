@@ -1,0 +1,44 @@
+configs:
+  bathymetry: "configs/data/bathymetry.yaml"
+  source: "configs/data/source.yaml"
+
+dataset:
+  num_samples: 2
+  seed: 42
+  num_workers: 1
+  n_steps: 20
+  save_every: 5
+  auto_dt: true
+  target_cfl: 0.25
+  include_initial_state: true
+  sea_level_offset: 0.0
+  source_strength_range: [0.5, 2.0]
+  bathymetry_dir: "data/bathymetry"
+  output_dir: "data/raw_boussinesq_smoke"
+  manifest_path: "data/synthetic/manifest_boussinesq_smoke.jsonl"
+  copy_configs: true
+
+fdes:
+  enabled: ["swe_hydrostatic", "boussinesq"]
+  primary: "swe_hydrostatic"
+
+solver:
+  nx: 64
+  ny: 64
+  dx: 0.00390625
+  dy: 0.00390625
+  dt: 0.001
+  g: 9.81
+  rho: 1000
+  cfl: 0.25
+  dry_tolerance: 1e-6
+  boundary: "open"
+  use_sponge: true
+  sponge_width: 20
+  sponge_min_factor: 0.9
+  alpha: 0.3333333333333333
+  min_depth: 1e-3
+  mode: "linear_variable_depth"
+  filter_strength: 0.0
+  linear_solver_tol: 1e-8
+  linear_solver_max_iter: 80
