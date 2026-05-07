@@ -247,11 +247,14 @@ class BoussinesqSolver:
         return self.g * self.divergence(self.H * eta_x, self.H * eta_y)
 
     def apply_mass_operator(self, a: np.ndarray) -> np.ndarray:
-        """Apply M(a) = a - alpha * H^2 * Laplacian(a)."""
+        """Apply M(a) = a - alpha * div(H^2 * grad(a))."""
         a = self._check_shape(a, "a")
         if self.alpha == 0.0:
             return a.copy()
-        return a - self.alpha * self.H * self.H * self.laplacian(a)
+        a_x, a_y = self.gradient(a)
+        h2 = self.H * self.H
+        dispersive = self.divergence(h2 * a_x, h2 * a_y)
+        return a - self.alpha * dispersive
 
     def solve_acceleration(self, eta: Optional[np.ndarray] = None) -> np.ndarray:
         """Solve M(a) = rhs(eta) using a small matrix-free conjugate-gradient loop."""
