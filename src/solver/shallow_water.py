@@ -2,7 +2,14 @@ from __future__ import annotations
 from typing import Any, Literal, Mapping, NamedTuple, Optional, Tuple, Union
 import numpy as np
 
-BoundaryMode = Literal["open", "reflective", "periodic"]
+from src.solver.boundary_conditions import (
+    BoundaryMode,
+    boundary_state_x,
+    boundary_state_y,
+    pad_scalar_field,
+    pad_state_with_reflective_momentum,
+    resolve_boundary_modes,
+)
 
 class SolverInfo(NamedTuple):
     """ metadata bundle for logging / experiment tracking"""
@@ -47,15 +54,7 @@ class ShallowWaterSolver:
         self.cfl = float(cfl)
         self.dry_tolerance = float(dry_tolerance)
 
-        if isinstance(boundary, tuple):
-            self.boundary_x, self.boundary_y = boundary
-
-        else:
-            self.boundary_x = boundary
-            self.boundary_y = boundary
-
-        self._validate_boundary(self.boundary_x, "boundary_x")
-        self._validate_boundary(self.boundary_y, "boundary_y")
+        self.boundary_x, self.boundary_y = resolve_boundary_modes(boundary)
 
         self.h = np.zeros((self.nx, self.ny), dtype=float)
         self.hu = np.zeros((self.nx, self.ny), dtype=float)
@@ -73,12 +72,6 @@ class ShallowWaterSolver:
         if self.use_sponge:
             self._init_sponge_layer(width=self.sponge_width, min_factor=self.sponge_min_factor)
 
-
-    # validation
-    @staticmethod
-    def _validate_boundary(mode: BoundaryMode, name: str) -> None:
-        if mode not in ("open", "reflective", "periodic"):
-            raise ValueError(f"{name} must be one of: open, reflective, periodic")
 
     def _check_shape(self, arr: np.ndarray, name: str) -> np.ndarray:
         arr = np.asarray(arr, dtype=float)
@@ -360,55 +353,18 @@ class ShallowWaterSolver:
         elevation = self.h - h_rest
         self.h = h_rest + (elevation * self.sponge_mask)
 
-    # boundary padding
-    @staticmethod
-    def _pad_mode(mode: BoundaryMode) -> str:
-        return "wrap" if mode == "periodic" else "edge"
-
     def _pad_state(self, U: np.ndarray) -> np.ndarray:
         """ pad a stacked state array with one ghost cell on every side """
         if U.shape != (3, self.nx, self.ny):
             raise ValueError(f"U shape must be {(3, self.nx, self.ny)}, got {U.shape}")
 
-        padded = np.pad(U,
-                        pad_width=((0, 0), (1, 1), (1, 1)),
-                        mode=self._pad_mode(self.boundary_x if self.boundary_x == self.boundary_y else "open"))
-
-        # if x and y use different boundary modes -> repad from the original state
-        # axis-by-axis so that the two modes are respected independently
-        if self.boundary_x != self.boundary_y:
-            padded = np.pad(U, pad_width=((0, 0), (1, 1), (0, 0)), mode=self._pad_mode(self.boundary_x))
-            
-            if self.boundary_x == "reflective":
-                padded[1, 0, :] *= -1
-                padded[1, -1, :] *= -1
-
-            padded = np.pad(padded, pad_width=((0, 0), (0, 0), (1, 1)), mode=self._pad_mode(self.boundary_y))
-            
-            if self.boundary_y == "reflective":
-                padded[2, :, 0] *= -1
-                padded[2, :, -1] *= -1
-
-            return padded
-
-        if self.boundary_x == "reflective":
-            padded[1, 0, :] *= -1
-            padded[1, -1, :] *= -1
-            padded[2, :, 0] *= -1
-            padded[2, :, -1] *= -1
-
-        return padded
+        return pad_state_with_reflective_momentum(U, self.boundary_x, self.boundary_y)
 
     def _pad_scalar(self, A: np.ndarray) -> np.ndarray:
         """ pad a scalar field with one ghost cell on every side """
         A = self._check_shape(A, "scalar field")
-        if self.boundary_x == self.boundary_y:
-            return np.pad(A, pad_width=1, mode=self._pad_mode(self.boundary_x))
 
-        padded = np.pad(A, pad_width=((1, 1), (0, 0)), mode=self._pad_mode(self.boundary_x))
-        padded = np.pad(padded, pad_width=((0, 0), (1, 1)), mode=self._pad_mode(self.boundary_y))
-
-        return padded
+        return pad_scalar_field(A, self.boundary_x, self.boundary_y)
 
     # fluxes
     def _rusanov_flux(self, U_L: np.ndarray, U_R: np.ndarray, axis: Literal["x", "y"]) -> np.ndarray:
@@ -519,52 +475,11 @@ class ShallowWaterSolver:
 
     def _boundary_state_x (self, h: np.ndarray, hu: np.ndarray, hv: np.ndarray, b: np.ndarray, 
                            j: int, side: Literal["left", "right"]) -> tuple[float, float, float, float]:
-        if side == "left":
-            inside_i = 0
-            periodic_i = self.nx - 1
-        elif side == "right":
-            inside_i = self.nx - 1
-            periodic_i = 0
-        else:
-            raise ValueError("side must be 'left' or 'right'")
-
-        if self.boundary_x == "periodic":
-            return h[periodic_i, j], hu[periodic_i, j], hv[periodic_i, j], b[periodic_i, j]
-
-        h_g = h[inside_i, j]
-        hu_g = hu[inside_i, j]
-        hv_g = hv[inside_i, j]
-        b_g = b[inside_i, j]
-
-        if self.boundary_x == "reflective":
-            hu_g = -hu_g
-
-        return h_g, hu_g, hv_g, b_g
+        return boundary_state_x(h, hu, hv, b, j, side, self.boundary_x)
 
     def _boundary_state_y(self, h: np.ndarray, hu: np.ndarray, hv: np.ndarray, b: np.ndarray,
                           i: int, side: Literal["bottom", "top"]) -> tuple[float, float, float, float]:
-
-        if side == "bottom":
-            inside_j = 0
-            periodic_j = self.ny - 1
-        elif side == "top":
-            inside_j = self.ny - 1
-            periodic_j = 0
-        else:
-            raise ValueError("side must be 'bottom' or 'top'")
-
-        if self.boundary_y == "periodic":
-            return h[i, periodic_j], hu[i, periodic_j], hv[i, periodic_j], b[i, periodic_j]
-
-        h_g = h[i, inside_j]
-        hu_g = hu[i, inside_j]
-        hv_g = hv[i, inside_j]
-        b_g = b[i, inside_j]
-
-        if self.boundary_y == "reflective":
-            hv_g = -hv_g
-
-        return h_g, hu_g, hv_g, b_g
+        return boundary_state_y(h, hu, hv, b, i, side, self.boundary_y)
 
     def update(self, dt: float) -> None:
         """ advance the solution by one explicit finite-volume step """
