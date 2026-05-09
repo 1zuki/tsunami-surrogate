@@ -148,6 +148,10 @@ class TsunamiPreprocessor:
         # placeholders
         self._mean: Dict[str, float] = {}
         self._stds: Dict[str, float] = {}
+        self._target_mean: float = 0.0
+        self._target_std: float = 1.0
+        self._target_min: float = 0.0
+        self._target_max: float = 1.0
 
     def load_manifest(self) -> List[Dict[str, Any]]:
         """ load the raw manifest file and sample metadata """
@@ -300,7 +304,13 @@ class TsunamiPreprocessor:
         maxs: Dict[str, float] = {}
         counts: Dict[str, float] = {}
 
-        for X, _ in train_samples:
+        target_sum = 0.0
+        target_sq_sum = 0.0
+        target_count = 0.0
+        target_min = np.inf
+        target_max = -np.inf
+
+        for X, Y in train_samples:
             for name, arr in X.items():
                 if not self.cfg.norm_channels.get(name, False):
                     continue
@@ -311,6 +321,14 @@ class TsunamiPreprocessor:
                 mins[name] = min(mins.get(name, np.inf), flat.min())
                 maxs[name] = max(maxs.get(name, -np.inf), flat.max())
                 counts[name] = counts.get(name, 0) + flat.size
+
+            if self.cfg.norm_channels.get("trajectory", False):
+                y_flat = np.asarray(Y, dtype=np.float32).ravel()
+                target_sum += float(y_flat.sum())
+                target_sq_sum += float((y_flat ** 2).sum())
+                target_count += float(y_flat.size)
+                target_min = min(target_min, float(y_flat.min()))
+                target_max = max(target_max, float(y_flat.max()))
 
         for name in sums:
             if self.cfg.norm_method == "standardize":
@@ -325,6 +343,28 @@ class TsunamiPreprocessor:
                 self._mean[name] = float(mins[name])
                 self._stds[name] = float(maxs[name] - mins[name] + self.cfg.eps)
             
+            else:
+                raise ValueError(f"Unsupported normalization method: {self.cfg.norm_method}")
+
+        if self.cfg.norm_channels.get("trajectory", False):
+            if target_count <= 0:
+                raise ValueError("trajectory normalization is enabled but no target samples were found.")
+
+            if self.cfg.norm_method == "standardize":
+                mean = target_sum / target_count
+                var = target_sq_sum / target_count - mean ** 2
+                std = np.sqrt(max(var, self.cfg.eps))
+                self._target_mean = float(mean)
+                self._target_std = float(std)
+                self._target_min = float(target_min)
+                self._target_max = float(target_max)
+
+            elif self.cfg.norm_method == "minmax":
+                self._target_mean = float(target_min)
+                self._target_std = float(target_max - target_min + self.cfg.eps)
+                self._target_min = float(target_min)
+                self._target_max = float(target_max)
+
             else:
                 raise ValueError(f"Unsupported normalization method: {self.cfg.norm_method}")
 
@@ -346,7 +386,27 @@ class TsunamiPreprocessor:
             else:
                 X_norm[name] = (arr - self._mean[name]) / self._stds[name]
 
-        return X_norm, Y
+        Y_norm = np.asarray(Y, dtype=np.float32)
+        if self.cfg.norm_channels.get("trajectory", False):
+            Y_norm = (Y_norm - self._target_mean) / self._target_std
+
+        return X_norm, Y_norm
+
+    @staticmethod
+    def _meta_string(meta: Dict[str, Any], key: str, default: str = "unknown") -> str:
+        value = meta.get(key, default)
+        if value is None:
+            return default
+
+        return str(value)
+
+    @staticmethod
+    def _meta_float(meta: Dict[str, Any], key: str, default: float = np.nan) -> float:
+        value = meta.get(key, default)
+        try:
+            return float(value)
+        except Exception:
+            return float(default)
 
     def split_dataset(self, records: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
         """ split raw samples into train / val / test """
@@ -401,6 +461,36 @@ class TsunamiPreprocessor:
             ).astype(np.float32)
             eval_targets = Y_arr.astype(np.float32)
             eval_ids = np.asarray(sample_ids, dtype=np.str_)
+            source_types = np.asarray(
+                [self._meta_string(meta, "source_type", "unknown") for meta in meta_list],
+                dtype=np.str_,
+            )
+            bathymetry_types = np.asarray(
+                [self._meta_string(meta, "bathymetry_type", "unknown") for meta in meta_list],
+                dtype=np.str_,
+            )
+            source_strengths = np.asarray(
+                [self._meta_float(meta, "source_strength", np.nan) for meta in meta_list],
+                dtype=np.float32,
+            )
+            scenario_ids = np.asarray(
+                [
+                    self._meta_string(meta, "scenario_id", default=sample_ids[i])
+                    for i, meta in enumerate(meta_list)
+                ],
+                dtype=np.str_,
+            )
+            solver_names = np.asarray(
+                [
+                    self._meta_string(
+                        meta,
+                        "solver_name",
+                        default=self._meta_string(meta, "primary_fde", "unknown"),
+                    )
+                    for meta in meta_list
+                ],
+                dtype=np.str_,
+            )
 
             np.save(out_dir / self.cfg.eval_inputs_name, eval_inputs)
             np.save(out_dir / self.cfg.eval_targets_name, eval_targets)
@@ -410,6 +500,17 @@ class TsunamiPreprocessor:
                 inputs=eval_inputs,
                 targets=eval_targets,
                 sample_id=eval_ids,
+                source_id=source_types,
+                source_type=source_types,
+                bathymetry_type=bathymetry_types,
+                source_strength=source_strengths,
+                scenario_id=scenario_ids,
+                solver_name=solver_names,
+                target_variable=np.asarray([self.cfg.target_variable], dtype=np.str_),
+                target_mean=np.asarray([self._target_mean], dtype=np.float32),
+                target_std=np.asarray([self._target_std], dtype=np.float32),
+                target_min=np.asarray([self._target_min], dtype=np.float32),
+                target_max=np.asarray([self._target_max], dtype=np.float32),
             )
 
             eval_manifest = {
@@ -421,6 +522,7 @@ class TsunamiPreprocessor:
                 "input_order": input_order,
                 "target_mode": self.cfg.target_mode,
                 "target_variable": self.cfg.target_variable,
+                "normalized_targets": bool(self.cfg.norm_channels.get("trajectory", False)),
                 "inputs_shape": list(map(int, eval_inputs.shape)),
                 "targets_shape": list(map(int, eval_targets.shape)),
             }
@@ -433,6 +535,29 @@ class TsunamiPreprocessor:
             with meta_path.open("w", encoding="utf-8") as f:
                 for m in meta_list:
                     f.write(json.dumps(m) + "\n")
+
+    def _save_normalization_stats(self) -> None:
+        stats = {
+            "method": self.cfg.norm_method,
+            "eps": float(self.cfg.eps),
+            "inputs": {
+                name: {
+                    "offset": float(self._mean[name]),
+                    "scale": float(self._stds[name]),
+                }
+                for name in sorted(self._mean.keys())
+            },
+            "targets": {
+                "enabled": bool(self.cfg.norm_channels.get("trajectory", False)),
+                "variable": self.cfg.target_variable,
+                "offset": float(self._target_mean),
+                "scale": float(self._target_std),
+                "min": float(self._target_min),
+                "max": float(self._target_max),
+            },
+        }
+        with (self.cfg.processed_dir / "normalization_stats.json").open("w", encoding="utf-8") as f:
+            json.dump(stats, f, indent=2)
 
     def run(self) -> None:
         """
@@ -479,6 +604,7 @@ class TsunamiPreprocessor:
 
         # normalizer on training data
         self.fit_normalizer(list(zip(X_train_raw, Y_train_raw)))
+        self._save_normalization_stats()
 
         def _normalize(X_raw: List[Dict[str, np.ndarray]], Y_raw: List[np.ndarray]) -> Tuple[List[Dict[str, np.ndarray]], List[np.ndarray]]:
             X_norm: List[Dict[str, np.ndarray]] = []

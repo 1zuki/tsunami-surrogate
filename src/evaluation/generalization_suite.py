@@ -29,15 +29,15 @@ def evaluate_by_regime(model, loader, device, key: str = "source_id") -> Dict[st
         y = batch["y"].to(device)
 
         pred = _model_output(model, x)
-        metrics = compute_metrics(pred, y)
         labels = batch.get(key, ["unknown"] * x.size(0))
 
         for i in range(x.size(0)):
+            metrics_i = compute_metrics(pred[i : i + 1], y[i : i + 1])
             label = str(labels[i])
-            sums[label]["mae"] += float(metrics["mae"])
-            sums[label]["rmse"] += float(metrics["rmse"])
-            sums[label]["rel_l2"] += float(metrics["rel_l2"])
-            sums[label]["max_error"] += float(metrics["max_error"])
+            sums[label]["mae"] += float(metrics_i["mae"])
+            sums[label]["rmse"] += float(metrics_i["rmse"])
+            sums[label]["rel_l2"] += float(metrics_i["rel_l2"])
+            sums[label]["max_error"] += float(metrics_i["max_error"])
             sums[label]["n"] += 1
 
     out: Dict[str, Dict[str, float]] = {}

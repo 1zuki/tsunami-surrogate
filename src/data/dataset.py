@@ -49,7 +49,39 @@ def save_npz(path: str | Path, x: np.ndarray, y: np.ndarray, metadata: Dict[str,
 class LoadedArrays:
     x: np.ndarray
     y: np.ndarray
+    sample_id: np.ndarray
     source_id: np.ndarray
+    source_type: np.ndarray
+    bathymetry_type: np.ndarray
+    source_strength: np.ndarray
+    scenario_id: np.ndarray
+    solver_name: np.ndarray
+
+
+def _string_array(data: Any, n: int, default: str) -> np.ndarray:
+    arr = np.asarray(data) if data is not None else np.asarray([], dtype=object)
+    if arr.size == 0:
+        return np.asarray([default] * n, dtype=object)
+
+    arr = arr.reshape(-1)
+    out = np.asarray([str(v) for v in arr], dtype=object)
+
+    if out.shape[0] != n:
+        return np.asarray([default] * n, dtype=object)
+
+    return out
+
+
+def _float_array(data: Any, n: int, default: float = np.nan) -> np.ndarray:
+    arr = np.asarray(data) if data is not None else np.asarray([], dtype=float)
+    if arr.size == 0:
+        return np.full((n,), float(default), dtype=np.float32)
+
+    arr = arr.reshape(-1).astype(np.float32)
+    if arr.shape[0] != n:
+        return np.full((n,), float(default), dtype=np.float32)
+
+    return arr
 
 
 def _load_arrays(path: str | Path) -> LoadedArrays:
@@ -82,19 +114,61 @@ def _load_arrays(path: str | Path) -> LoadedArrays:
         else:
             raise KeyError(f"Unsupported dataset keys in {path}. Expected x/y or inputs/targets.")
 
-        if "source_id" in data:
-            source_id = np.asarray(data["source_id"])
+        n = x.shape[0]
 
-        elif "sample_id" in data:
-            source_id = np.asarray(data["sample_id"])
+        sample_id = _string_array(
+            data["sample_id"] if "sample_id" in data else None,
+            n,
+            default="",
+        )
+        if not np.any(sample_id != ""):
+            sample_id = np.asarray([f"sample_{i:06d}" for i in range(n)], dtype=object)
 
-        else:
-            source_id = np.asarray([f"sample_{i:06d}" for i in range(x.shape[0])], dtype=object)
+        source_type = _string_array(
+            data["source_type"] if "source_type" in data else None,
+            n,
+            default="unknown",
+        )
+        source_id = _string_array(
+            data["source_id"] if "source_id" in data else source_type,
+            n,
+            default="unknown",
+        )
+        bathymetry_type = _string_array(
+            data["bathymetry_type"] if "bathymetry_type" in data else None,
+            n,
+            default="unknown",
+        )
+        source_strength = _float_array(
+            data["source_strength"] if "source_strength" in data else None,
+            n,
+            default=np.nan,
+        )
+        scenario_id = _string_array(
+            data["scenario_id"] if "scenario_id" in data else sample_id,
+            n,
+            default="",
+        )
+        solver_name = _string_array(
+            data["solver_name"] if "solver_name" in data else None,
+            n,
+            default="unknown",
+        )
 
     if x.shape[0] != y.shape[0]:
         raise ValueError(f"Mismatched sample count: x={x.shape[0]} y={y.shape[0]}")
 
-    return LoadedArrays(x=x.astype(np.float32), y=y.astype(np.float32), source_id=source_id)
+    return LoadedArrays(
+        x=x.astype(np.float32),
+        y=y.astype(np.float32),
+        sample_id=sample_id,
+        source_id=source_id,
+        source_type=source_type,
+        bathymetry_type=bathymetry_type,
+        source_strength=source_strength,
+        scenario_id=scenario_id,
+        solver_name=solver_name,
+    )
 
 
 class TsunamiDataset(Dataset):
@@ -102,7 +176,13 @@ class TsunamiDataset(Dataset):
         arrays = _load_arrays(path)
         self.x = torch.from_numpy(arrays.x)
         self.y = torch.from_numpy(arrays.y)
+        self.sample_id = arrays.sample_id
         self.source_id = arrays.source_id
+        self.source_type = arrays.source_type
+        self.bathymetry_type = arrays.bathymetry_type
+        self.source_strength = arrays.source_strength
+        self.scenario_id = arrays.scenario_id
+        self.solver_name = arrays.solver_name
 
     def __len__(self) -> int:
         return int(self.x.shape[0])
@@ -111,8 +191,13 @@ class TsunamiDataset(Dataset):
         return {
             "x": self.x[idx],
             "y": self.y[idx],
+            "sample_id": str(self.sample_id[idx]),
             "source_id": str(self.source_id[idx]),
-            "sample_id": str(self.source_id[idx]),
+            "source_type": str(self.source_type[idx]),
+            "bathymetry_type": str(self.bathymetry_type[idx]),
+            "source_strength": float(self.source_strength[idx]),
+            "scenario_id": str(self.scenario_id[idx]),
+            "solver_name": str(self.solver_name[idx]),
         }
 
 
@@ -184,9 +269,6 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
     batch_size = int(data_cfg.get("batch_size", 8))
     num_workers = int(data_cfg.get("num_workers", 0))
     seed = int(cfg.get("seed", data_cfg.get("seed", 42)))
-    path = data_cfg.get("path")
-    if path is None:
-        raise KeyError("data.path is required.")
 
     loaders: Dict[str, DataLoader] = {}
 
@@ -208,7 +290,13 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
                 seed=seed + {"train": 0, "val": 1, "test": 2}[split_name],
                 num_workers=num_workers,
             )
+        if not loaders:
+            raise ValueError("Explicit split-path mode was requested, but no split dataset could be loaded.")
         return loaders
+
+    path = data_cfg.get("path")
+    if path is None:
+        raise KeyError("data.path is required when explicit train_path/val_path/test_path are not provided.")
 
     # Auto-detect common pre-split folder layout:
     # data/processed/{train,val,test}/eval_dataset.npz
