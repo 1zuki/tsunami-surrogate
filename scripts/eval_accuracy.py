@@ -24,9 +24,8 @@ def main():
 
     if "data" not in cfg:
         cfg["data"] = {
-            "path": cfg["eval"]["dataset_path"],
+            "test_path": cfg["eval"]["dataset_path"],
             "batch_size": cfg["eval"].get("batch_size", 8),
-            "split": {"type": "iid"},
         }
 
     device = resolve_device(cfg.get("device", "auto"))

@@ -29,7 +29,7 @@ def main():
         print('No ensemble_checkpoints configured; uncertainty eval skipped gracefully.')
         return
 
-    cfg['data'] = {'path': cfg['eval']['dataset_path'], 'batch_size': cfg['eval'].get('batch_size', 8), 'split': {'type': 'iid'}}
+    cfg['data'] = {'test_path': cfg['eval']['dataset_path'], 'batch_size': cfg['eval'].get('batch_size', 8)}
     device = resolve_device(cfg.get('device', 'auto'))
     members = []
 

@@ -21,7 +21,7 @@ def main():
 
     args = p.parse_args()
     cfg = load_config(args.config)
-    cfg['data'] = {'path': cfg['eval']['dataset_path'], 'batch_size': cfg['eval'].get('batch_size', 8), 'split': {'type': 'iid'}}
+    cfg['data'] = {'test_path': cfg['eval']['dataset_path'], 'batch_size': cfg['eval'].get('batch_size', 8)}
     device = resolve_device(cfg.get('device', 'auto'))
     loaders = create_dataloaders(cfg)
     model = build_model(cfg).to(device)
