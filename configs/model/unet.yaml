@@ -6,5 +6,5 @@ output_dir: experiments/unet
 model:
   name: unet
   in_channels: 3
-  out_channels: 100
+  out_channels: 80
   width: 32

@@ -1,7 +1,7 @@
 defaults:
   - ../train/base.yaml
 
-output_dir: experiments/fno-1
+output_dir: experiments/fno
 
 model:
   name: fno2d

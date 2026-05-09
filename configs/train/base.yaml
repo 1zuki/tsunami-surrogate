@@ -4,14 +4,11 @@ device: auto
 output_dir: experiments/default
 
 data:
-  path: data/processed
+  train_path: data/processed/train/eval_dataset.npz
+  val_path: data/processed/val/eval_dataset.npz
+  test_path: data/processed/test/eval_dataset.npz
   batch_size: 8
   num_workers: 0
-  split:
-    type: iid
-    train: 0.7
-    val: 0.15
-    test: 0.15
 
 model:
   name: fno2d
