@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -49,6 +50,7 @@ class DatasetConfig:
     source_strength_range: Tuple[float, float]
     output_dir: Path
     bathymetry_dir: Path
+    source_dir: Path
     manifest_path: Path
     copy_configs: bool
     enabled_fdes: tuple[str, ...]
@@ -60,6 +62,9 @@ def _seed_for_sample(run_seed: int, sample_idx: int) -> int:
 
 def _bathymetry_file_path(bathymetry_dir: str | Path, sample_idx: int) -> Path:
     return Path(bathymetry_dir) / f"sample_{sample_idx:06d}.npz"
+
+def _source_file_path(source_dir: str | Path, sample_idx: int) -> Path:
+    return Path(source_dir) / f"sample_{sample_idx:06d}.npz"
 
 def _make_solver_from_cfg(sv: Dict[str, Any]) -> ShallowWaterSolver:
     boundary = sv.get("boundary", "open")
@@ -174,6 +179,38 @@ def _generate_bathymetry_worker(
         "bathymetry_path": str(out_path),
     }
 
+def _generate_source_worker(
+    sample_idx: int,
+    run_seed: int,
+    source_cfg_path: str,
+    source_dir: str,
+    source_strength_range: Tuple[float, float],
+) -> Dict[str, Any]:
+    sample_seed = _seed_for_sample(run_seed, sample_idx)
+    source_generator = SourceGenerator(source_cfg_path)
+    source_generator.rng = np.random.default_rng([sample_seed, 23])
+    strength_rng = np.random.default_rng([sample_seed, 37])
+
+    source_field, source_type = source_generator.generate()
+    lo, hi = source_strength_range
+    source_strength = float(strength_rng.uniform(lo, hi))
+
+    out_path = _source_file_path(source_dir, sample_idx)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        out_path,
+        source_field=np.asarray(source_field, dtype=np.float32),
+        source_type=np.array([str(source_type)], dtype="U64"),
+        source_strength=np.array([source_strength], dtype=np.float32),
+        sample_seed=np.array([sample_seed], dtype=np.int64),
+    )
+    return {
+        "sample_index": sample_idx,
+        "source_type": str(source_type),
+        "source_strength": source_strength,
+        "source_path": str(out_path),
+    }
+
 def _generate_sample_worker(
     sample_idx: int,
     run_seed: int,
@@ -183,25 +220,27 @@ def _generate_sample_worker(
     config_path: str,
     bathy_cfg_path: str,
     bathymetry_dir: str,
+    source_dir: str,
     samples_dir: str,
+    allow_override: bool = False,
 ) -> Dict[str, Any]:
-    sample_seed = _seed_for_sample(run_seed, sample_idx)
     bathy_path = _bathymetry_file_path(bathymetry_dir, sample_idx)
+    source_path = _source_file_path(source_dir, sample_idx)
 
     if not bathy_path.exists():
         raise FileNotFoundError(f"Missing bathymetry cache for sample {sample_idx}: {bathy_path}")
 
-    bathy_npz = np.load(bathy_path)
-    bathymetry = np.asarray(bathy_npz["bathymetry"], dtype=np.float32)
-    bathy_type = str(np.asarray(bathy_npz["bathymetry_type"]).reshape(-1)[0])
+    if not source_path.exists():
+        raise FileNotFoundError(f"Missing source cache for sample {sample_idx}: {source_path}")
 
-    source_generator = SourceGenerator(source_cfg_path)
-    source_generator.rng = np.random.default_rng([sample_seed, 23])
-    strength_rng = np.random.default_rng([sample_seed, 37])
+    with np.load(bathy_path) as bathy_npz:
+        bathymetry = np.asarray(bathy_npz["bathymetry"], dtype=np.float32)
+        bathy_type = str(np.asarray(bathy_npz["bathymetry_type"]).reshape(-1)[0])
 
-    source_field, source_type = source_generator.generate()
-    lo, hi = dataset.source_strength_range
-    source_strength = float(strength_rng.uniform(lo, hi))
+    with np.load(source_path) as src_npz:
+        source_field = np.asarray(src_npz["source_field"], dtype=np.float32)
+        source_type = str(np.asarray(src_npz["source_type"]).reshape(-1)[0])
+        source_strength = float(np.asarray(src_npz["source_strength"]).reshape(-1)[0])
 
     eta0 = source_strength * source_field
     rest_depth = np.maximum(-bathymetry + dataset.sea_level_offset, 0.0)
@@ -209,6 +248,8 @@ def _generate_sample_worker(
     free_surface0 = h0 + bathymetry
 
     sample_dir = Path(samples_dir) / f"sample_{sample_idx:06d}"
+    if allow_override and sample_dir.exists():
+        shutil.rmtree(sample_dir)
     sample_dir.mkdir(parents=True, exist_ok=True)
 
     runnable_fdes = [name for name in dataset.enabled_fdes if name in IMPLEMENTED_FDES]
@@ -280,6 +321,7 @@ def _generate_sample_worker(
         "source_config_path": source_cfg_path,
         "solver": solver_cfg,
         "bathymetry_cache_path": str(bathy_path),
+        "source_cache_path": str(source_path),
         "fdes_requested": list(dataset.enabled_fdes),
         "fdes_run": runnable_fdes,
         "fdes_skipped_unimplemented": skipped_unimplemented,
@@ -323,11 +365,13 @@ class TsunamiDatasetBuilder:
         self.output_dir = self.dataset.output_dir
         self.samples_dir = self.output_dir / "samples"
         self.bathymetry_dir = self.dataset.bathymetry_dir
+        self.source_dir = self.dataset.source_dir
         self.manifest_path = self.dataset.manifest_path
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.samples_dir.mkdir(parents=True, exist_ok=True)
         self.bathymetry_dir.mkdir(parents=True, exist_ok=True)
+        self.source_dir.mkdir(parents=True, exist_ok=True)
         self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
 
         if self.dataset.copy_configs:
@@ -417,6 +461,7 @@ class TsunamiDatasetBuilder:
 
         output_dir = Path(ds.get("output_dir", "data/raw"))
         bathymetry_dir = Path(ds.get("bathymetry_dir", "data/bathymetry"))
+        source_dir = Path(ds.get("source_dir", "data/source"))
         manifest_path = Path(ds.get("manifest_path", "data/synthetic/manifest.jsonl"))
         copy_configs = bool(ds.get("copy_configs", True))
 
@@ -444,6 +489,7 @@ class TsunamiDatasetBuilder:
             source_strength_range=source_strength_range,
             output_dir=output_dir,
             bathymetry_dir=bathymetry_dir,
+            source_dir=source_dir,
             manifest_path=manifest_path,
             copy_configs=copy_configs,
             enabled_fdes=tuple(enabled_fdes),
@@ -471,6 +517,35 @@ class TsunamiDatasetBuilder:
         with self.manifest_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
 
+    def _purge_manifest_indices(self, indices: set[int]) -> None:
+        if not indices:
+            return
+        if not self.manifest_path.exists():
+            return
+
+        keep_lines: list[str] = []
+        with self.manifest_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line_s = line.strip()
+                if not line_s:
+                    continue
+                try:
+                    rec = json.loads(line_s)
+                except Exception:
+                    keep_lines.append(line)
+                    continue
+                idx = rec.get("sample_index")
+                if idx is None:
+                    keep_lines.append(line)
+                    continue
+                if int(idx) in indices:
+                    continue
+                keep_lines.append(line)
+
+        with self.manifest_path.open("w", encoding="utf-8") as f:
+            for line in keep_lines:
+                f.write(line if line.endswith("\n") else line + "\n")
+
     def _existing_sample_indices(self) -> set[int]:
         out: set[int] = set()
         patt = re.compile(r"^sample_(\d{6})$")
@@ -482,6 +557,14 @@ class TsunamiDatasetBuilder:
                 continue
             out.add(int(m.group(1)))
         return out
+
+    def _resume_rollback_start_index(self, existing_indices: set[int]) -> int:
+        if not existing_indices:
+            return 1
+        workers = max(1, int(self.dataset.num_workers))
+        n = max(existing_indices)
+        start_idx = n - (n % workers)
+        return max(1, int(start_idx))
 
     def _existing_bathymetry_indices(self) -> set[int]:
         out: set[int] = set()
@@ -497,16 +580,28 @@ class TsunamiDatasetBuilder:
 
         return out
 
-    def _phase_generate_bathymetry(self, indices: list[int]) -> None:
+    def _existing_source_indices(self) -> set[int]:
+        out: set[int] = set()
+        patt = re.compile(r"^sample_(\d{6})\.npz$")
+        for p in self.source_dir.iterdir():
+            if not p.is_file():
+                continue
+            m = patt.match(p.name)
+            if m is None:
+                continue
+            out.add(int(m.group(1)))
+        return out
+
+    def _phase_generate_bathymetry(self, indices: list[int], allow_override: bool = False) -> None:
         existing = self._existing_bathymetry_indices()
-        pending = [idx for idx in indices if idx not in existing]
+        pending = indices if allow_override else [idx for idx in indices if idx not in existing]
 
         if not pending:
-            print("[dataset] phase 1/2 bathymetry cache already complete for this range")
+            print("[dataset] phase 1/3 bathymetry cache already complete for this range")
             return
 
         print(
-            f"[dataset] phase 1/2 generate bathymetry: pending={len(pending)}, "
+            f"[dataset] phase 1/3 generate bathymetry: pending={len(pending)}, "
             f"range=[{pending[0]}, {pending[-1]}], out='{self.bathymetry_dir}'"
         )
 
@@ -549,9 +644,63 @@ class TsunamiDatasetBuilder:
                     f"sample={rec['sample_index']:06d} type={rec['bathymetry_type']:<11}"
                 )
 
-    def _phase_generate_rollouts(self, indices: list[int]) -> list[Dict[str, Any]]:
+    def _phase_generate_sources(self, indices: list[int], allow_override: bool = False) -> None:
+        existing = self._existing_source_indices()
+        pending = indices if allow_override else [idx for idx in indices if idx not in existing]
+
+        if not pending:
+            print("[dataset] phase 2/3 source cache already complete for this range")
+            return
+
         print(
-            f"[dataset] phase 2/2 run FDEs={list(self.dataset.enabled_fdes)} "
+            f"[dataset] phase 2/3 generate sources: pending={len(pending)}, "
+            f"range=[{pending[0]}, {pending[-1]}], out='{self.source_dir}'"
+        )
+
+        if self.dataset.num_workers <= 1:
+            done = 0
+            for idx in pending:
+                rec = _generate_source_worker(
+                    idx,
+                    self.run_seed,
+                    str(self.source_cfg_path),
+                    str(self.source_dir),
+                    self.dataset.source_strength_range,
+                )
+                done += 1
+                print(
+                    f"[source {done:06d}/{len(pending):06d}] "
+                    f"sample={idx:06d} type={rec['source_type']:<11} amp={rec['source_strength']:.4f}"
+                )
+            return
+
+        workers = min(self.dataset.num_workers, max(1, os.cpu_count() or 1))
+        mp_ctx = get_context("spawn")
+        done = 0
+        with ProcessPoolExecutor(max_workers=workers, mp_context=mp_ctx) as ex:
+            futures = {
+                ex.submit(
+                    _generate_source_worker,
+                    idx,
+                    self.run_seed,
+                    str(self.source_cfg_path),
+                    str(self.source_dir),
+                    self.dataset.source_strength_range,
+                ): idx
+                for idx in pending
+            }
+
+            for fut in as_completed(futures):
+                rec = fut.result()
+                done += 1
+                print(
+                    f"[source {done:06d}/{len(pending):06d}] "
+                    f"sample={rec['sample_index']:06d} type={rec['source_type']:<11} amp={rec['source_strength']:.4f}"
+                )
+
+    def _phase_generate_rollouts(self, indices: list[int], allow_override: bool = False) -> list[Dict[str, Any]]:
+        print(
+            f"[dataset] phase 3/3 run FDEs={list(self.dataset.enabled_fdes)} "
             f"on samples={len(indices)}"
         )
 
@@ -568,7 +717,9 @@ class TsunamiDatasetBuilder:
                     config_path=str(self.config_path),
                     bathy_cfg_path=str(self.bathy_cfg_path),
                     bathymetry_dir=str(self.bathymetry_dir),
+                    source_dir=str(self.source_dir),
                     samples_dir=str(self.samples_dir),
+                    allow_override=allow_override,
                 )
                 records.append(rec)
                 done += 1
@@ -594,7 +745,9 @@ class TsunamiDatasetBuilder:
                     str(self.config_path),
                     str(self.bathy_cfg_path),
                     str(self.bathymetry_dir),
+                    str(self.source_dir),
                     str(self.samples_dir),
+                    allow_override,
                 ): idx
                 for idx in indices
             }
@@ -611,8 +764,13 @@ class TsunamiDatasetBuilder:
 
         return records
 
-    def run(self, continue_from_last: bool = False, start_at: int | None = None) -> None:
-        """ generate all raw samples in two phases: bathymetry pool then FDEs rollouts """
+    def run(
+        self,
+        continue_from_last: bool = False,
+        start_at: int | None = None,
+        allow_override: bool = False,
+    ) -> None:
+        """generate all raw samples in three phases: bathymetry, source, and FDE rollouts."""
         if start_at is not None and start_at < 1:
             raise ValueError("--start-at must be >= 1")
 
@@ -622,7 +780,7 @@ class TsunamiDatasetBuilder:
         if start_at is not None:
             start_idx = int(start_at)
         elif continue_from_last:
-            start_idx = max(existing_indices) + 1 if existing_indices else 1
+            start_idx = self._resume_rollback_start_index(existing_indices)
         else:
             start_idx = 1
 
@@ -637,10 +795,16 @@ class TsunamiDatasetBuilder:
             return
 
         planned_indices = list(range(start_idx, total + 1))
-        to_generate = [idx for idx in planned_indices if idx not in existing_indices]
-        skipped = len(planned_indices) - len(to_generate)
-        if skipped > 0:
-            print(f"[dataset] skipping {skipped} existing samples (already present on disk)")
+        if allow_override:
+            to_generate = planned_indices
+            existing_in_range = len([idx for idx in planned_indices if idx in existing_indices])
+            if existing_in_range > 0:
+                print(f"[dataset] allow-override: regenerating {existing_in_range} existing samples in range")
+        else:
+            to_generate = [idx for idx in planned_indices if idx not in existing_indices]
+            skipped = len(planned_indices) - len(to_generate)
+            if skipped > 0:
+                print(f"[dataset] skipping {skipped} existing samples (already present on disk)")
 
         if not to_generate:
             print("[dataset] nothing new to generate.")
@@ -651,10 +815,13 @@ class TsunamiDatasetBuilder:
             f"range=[{to_generate[0]}, {to_generate[-1]}], seed={self.run_seed}"
         )
 
-        self._phase_generate_bathymetry(to_generate)
-        records = self._phase_generate_rollouts(to_generate)
+        self._phase_generate_bathymetry(to_generate, allow_override=allow_override)
+        self._phase_generate_sources(to_generate, allow_override=allow_override)
+        records = self._phase_generate_rollouts(to_generate, allow_override=allow_override)
 
         records.sort(key=lambda r: int(r["sample_index"]))
+        if allow_override:
+            self._purge_manifest_indices(set(int(r["sample_index"]) for r in records))
         for rec in records:
             self._append_manifest(rec)
 
@@ -676,14 +843,18 @@ def _build_argparser() -> argparse.ArgumentParser:
         "--start-at",
         type=int,
         default=None,
-        help="Explicit 1-based sample index to start generating from.",
+        help="Explicit 1-based sample index to start generating from exist.",
     )
     return parser
 
 def main() -> None:
     args = _build_argparser().parse_args()
     builder = TsunamiDatasetBuilder(args.config)
-    builder.run(continue_from_last=bool(args.continue_from_last), start_at=args.start_at)
+    builder.run(
+        continue_from_last=bool(args.continue_from_last),
+        start_at=args.start_at,
+        allow_override=bool(args.allow_override),
+    )
 
 if __name__ == "__main__":
     main()

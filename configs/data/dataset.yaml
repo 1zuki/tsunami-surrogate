@@ -14,6 +14,7 @@ dataset:
   sea_level_offset: 0.0
   source_strength_range: [0.5, 2.0]
   bathymetry_dir: "data/bathymetry"
+  source_dir: "data/source"
   output_dir: "data/raw"
   manifest_path: "data/synthetic/manifest.jsonl"
   copy_configs: true

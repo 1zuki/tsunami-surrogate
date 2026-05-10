@@ -63,9 +63,10 @@ pip install -r requirement.txt
 python scripts/make_dataset.py --config configs/data/dataset.yaml
 ```
 
-`make_dataset.py` now runs in two phases:
-- phase 1: generate/cache all bathymetry samples first (default cache: `data/bathymetry`);
-- phase 2: load cached bathymetry and run all configured FDE rollouts from `fdes.enabled` in `configs/data/dataset.yaml`.
+`make_dataset.py` now runs in three stages:
+- stage 1: generate/cache all bathymetry samples first (default cache: `data/bathymetry`);
+- stage 2: generate/cache all source samples (default cache: `data/source`);
+- stage 3: load cached bathymetry + source pairs and run configured FDE rollouts from `fdes.enabled` in `configs/data/dataset.yaml`.
 
 Right now, the runnable FDE is `swe_hydrostatic`. `swe_muscl` and `boussinesq` can already be listed in config naming, but their rollout kernels are still pending implementation.
 
@@ -75,10 +76,18 @@ Resume an interrupted run:
 python scripts/make_dataset.py --config configs/data/dataset.yaml --continue
 ```
 
+`--continue` rolls back to the last completed worker batch boundary before resuming (using `num_workers`) to reduce partial-batch holes after interruptions.
+
 Resume from an explicit sample index (1-based):
 
 ```bash
 python scripts/make_dataset.py --config configs/data/dataset.yaml --start-at 142
+```
+
+Force regeneration in a range even if outputs already exist:
+
+```bash
+python scripts/make_dataset.py --config configs/data/dataset.yaml --start-at 142 --allow-override
 ```
 
 ### 6.2 Preprocess

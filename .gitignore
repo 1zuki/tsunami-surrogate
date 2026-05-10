@@ -20,6 +20,7 @@ data/raw/*
 data/processed/*
 data/synthetic/*
 data/bathymetry/*
+data/source/*
 data/fno/*
 data/cnn/*
 

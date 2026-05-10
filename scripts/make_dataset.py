@@ -21,9 +21,12 @@ def main() -> None:
     parser.add_argument("--save-every", type=int, default=None)
     parser.add_argument("--num-workers", type=int, default=None)
     parser.add_argument("--output-dir", type=str, default=None)
+    parser.add_argument("--bathymetry-dir", type=str, default=None)
+    parser.add_argument("--source-dir", type=str, default=None)
     parser.add_argument("--manifest-path", type=str, default=None)
     parser.add_argument("--continue", dest="continue_from_last", action="store_true")
     parser.add_argument("--start-at", type=int, default=None)
+    parser.add_argument("--allow-override", action="store_true")
     args = parser.parse_args()
 
     cfg_path = Path(args.config)
@@ -42,6 +45,10 @@ def main() -> None:
         ds["num_workers"] = int(args.num_workers)
     if args.output_dir is not None:
         ds["output_dir"] = str(args.output_dir)
+    if args.bathymetry_dir is not None:
+        ds["bathymetry_dir"] = str(args.bathymetry_dir)
+    if args.source_dir is not None:
+        ds["source_dir"] = str(args.source_dir)
     if args.manifest_path is not None:
         ds["manifest_path"] = str(args.manifest_path)
 
@@ -51,7 +58,11 @@ def main() -> None:
 
     try:
         builder = TsunamiDatasetBuilder(str(tmp_cfg))
-        builder.run(continue_from_last=bool(args.continue_from_last), start_at=args.start_at)
+        builder.run(
+            continue_from_last=bool(args.continue_from_last),
+            start_at=args.start_at,
+            allow_override=bool(args.allow_override),
+        )
         print(f"Dataset generation complete using {cfg_path}")
     finally:
         try:
