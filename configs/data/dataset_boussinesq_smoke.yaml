@@ -26,11 +26,10 @@ fdes:
 solver:
   nx: 64
   ny: 64
-  dx: 0.015625
-  dy: 0.015625
+  dx: 0.015873015873015872
+  dy: 0.015873015873015872
   dt: 0.001
   g: 9.81
-  rho: 1000
   cfl: 0.25
   dry_tolerance: 1e-6
   boundary: "open"

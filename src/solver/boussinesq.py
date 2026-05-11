@@ -4,7 +4,12 @@ from typing import Literal, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 
-BoundaryMode = Literal["open", "reflective", "periodic"]
+from src.solver.boundary_conditions import (
+    BoundaryMode,
+    pad_scalar_field,
+    resolve_boundary_modes,
+)
+
 BoussinesqMode = Literal[
     "linear_constant_depth",
     "linear_variable_depth",
@@ -35,7 +40,7 @@ class BoussinesqSolver:
     Elevation-only weakly dispersive Boussinesq-type solver.
 
     First-version model:
-        (I - alpha * H^2 * Laplacian) eta_tt = g * div(H * grad(eta))
+        (I - alpha * div(H^2 * grad)) eta_tt = g * div(H * grad(eta))
 
     State:
         eta   : free-surface elevation above still water level, shape [nx, ny]
@@ -61,7 +66,7 @@ class BoussinesqSolver:
         sea_level_offset: float = 0.0,
         boundary: Union[BoundaryMode, Tuple[BoundaryMode, BoundaryMode]] = "open",
         mode: BoussinesqMode = "linear_variable_depth",
-        use_sponge: bool = True,
+        use_sponge: Optional[bool] = None,
         sponge_width: int = 20,
         sponge_min_factor: float = 0.9,
         filter_strength: float = 0.0,
@@ -108,14 +113,7 @@ class BoussinesqSolver:
         self.linear_solver_tol = float(linear_solver_tol)
         self.linear_solver_max_iter = int(linear_solver_max_iter)
 
-        if isinstance(boundary, tuple):
-            self.boundary_x, self.boundary_y = boundary
-        else:
-            self.boundary_x = boundary
-            self.boundary_y = boundary
-
-        self._validate_boundary(self.boundary_x, "boundary_x")
-        self._validate_boundary(self.boundary_y, "boundary_y")
+        self.boundary_x, self.boundary_y = resolve_boundary_modes(boundary)
         self._validate_mode(self.mode)
 
         self.eta = np.zeros((self.nx, self.ny), dtype=float)
@@ -123,17 +121,19 @@ class BoussinesqSolver:
         self.b = np.zeros((self.nx, self.ny), dtype=float)
         self.H = np.ones((self.nx, self.ny), dtype=float)
 
-        self.use_sponge = bool(use_sponge)
+        if use_sponge is None:
+            self.use_sponge = "periodic" not in (self.boundary_x, self.boundary_y)
+        else:
+            self.use_sponge = bool(use_sponge)
         self.sponge_width = int(sponge_width)
         self.sponge_min_factor = float(sponge_min_factor)
         self.sponge_mask = np.ones((self.nx, self.ny), dtype=float)
+        self.last_cg_iterations = 0
+        self.last_cg_initial_residual = 0.0
+        self.last_cg_final_residual = 0.0
+        self.last_cg_converged = True
         if self.use_sponge:
             self._init_sponge_layer(width=self.sponge_width, min_factor=self.sponge_min_factor)
-
-    @staticmethod
-    def _validate_boundary(mode: BoundaryMode, name: str) -> None:
-        if mode not in ("open", "reflective", "periodic"):
-            raise ValueError(f"{name} must be one of: open, reflective, periodic")
 
     @staticmethod
     def _validate_mode(mode: BoussinesqMode) -> None:
@@ -199,19 +199,10 @@ class BoussinesqSolver:
         """Compatibility helper: Boussinesq state already stores eta."""
         return self.eta.copy()
 
-    @staticmethod
-    def _pad_mode(mode: BoundaryMode) -> str:
-        return "wrap" if mode == "periodic" else "edge"
-
     def _pad_scalar(self, A: np.ndarray) -> np.ndarray:
         A = self._check_shape(A, "scalar field")
 
-        if self.boundary_x == self.boundary_y:
-            return np.pad(A, pad_width=1, mode=self._pad_mode(self.boundary_x))
-
-        padded = np.pad(A, pad_width=((1, 1), (0, 0)), mode=self._pad_mode(self.boundary_x))
-        padded = np.pad(padded, pad_width=((0, 0), (1, 1)), mode=self._pad_mode(self.boundary_y))
-        return padded
+        return pad_scalar_field(A, self.boundary_x, self.boundary_y)
 
     def gradient(self, field: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Centered finite-difference gradient with configured scalar boundaries."""
@@ -236,6 +227,22 @@ class BoussinesqSolver:
         d2y = (A[1:-1, 2:] - 2.0 * center + A[1:-1, :-2]) / (self.dy * self.dy)
         return d2x + d2y
 
+    def _flux_divergence(self, field: np.ndarray, coefficient: np.ndarray) -> np.ndarray:
+        """Compute div(coefficient * grad(field)) from face-centered fluxes."""
+        field = self._check_shape(field, "field")
+        coefficient = self._check_shape(coefficient, "coefficient")
+
+        A = self._pad_scalar(field)
+        C = self._pad_scalar(coefficient)
+
+        coeff_x = 0.5 * (C[1:, 1:-1] + C[:-1, 1:-1])
+        q_x = coeff_x * (A[1:, 1:-1] - A[:-1, 1:-1]) / self.dx
+
+        coeff_y = 0.5 * (C[1:-1, 1:] + C[1:-1, :-1])
+        q_y = coeff_y * (A[1:-1, 1:] - A[1:-1, :-1]) / self.dy
+
+        return (q_x[1:, :] - q_x[:-1, :]) / self.dx + (q_y[:, 1:] - q_y[:, :-1]) / self.dy
+
     def rhs(self, eta: Optional[np.ndarray] = None) -> np.ndarray:
         """Compute g * div(H * grad(eta))."""
         if eta is None:
@@ -243,17 +250,14 @@ class BoussinesqSolver:
         else:
             eta = self._check_shape(eta, "eta")
 
-        eta_x, eta_y = self.gradient(eta)
-        return self.g * self.divergence(self.H * eta_x, self.H * eta_y)
+        return self.g * self._flux_divergence(eta, self.H)
 
     def apply_mass_operator(self, a: np.ndarray) -> np.ndarray:
         """Apply M(a) = a - alpha * div(H^2 * grad(a))."""
         a = self._check_shape(a, "a")
         if self.alpha == 0.0:
             return a.copy()
-        a_x, a_y = self.gradient(a)
-        h2 = self.H * self.H
-        dispersive = self.divergence(h2 * a_x, h2 * a_y)
+        dispersive = self._flux_divergence(a, self.H * self.H)
         return a - self.alpha * dispersive
 
     def solve_acceleration(self, eta: Optional[np.ndarray] = None) -> np.ndarray:
@@ -261,21 +265,35 @@ class BoussinesqSolver:
         b = self.rhs(eta)
 
         if self.alpha == 0.0:
+            self.last_cg_iterations = 0
+            self.last_cg_initial_residual = 0.0
+            self.last_cg_final_residual = 0.0
+            self.last_cg_converged = True
             return b
 
         x = np.zeros_like(b)
         r = b - self.apply_mass_operator(x)
         p = r.copy()
         rs_old = float(np.sum(r * r))
+        rs0 = rs_old
+        residual0 = float(np.sqrt(rs0))
+        threshold = (self.linear_solver_tol * residual0) ** 2
+        self.last_cg_iterations = 0
+        self.last_cg_initial_residual = residual0
+        self.last_cg_final_residual = residual0
+        self.last_cg_converged = rs0 == 0.0
 
-        if rs_old <= self.linear_solver_tol * self.linear_solver_tol:
+        if rs0 == 0.0:
             return x
 
         eps = 1e-30
-        for _ in range(self.linear_solver_max_iter):
+        for iteration in range(1, self.linear_solver_max_iter + 1):
             Ap = self.apply_mass_operator(p)
             denom = float(np.sum(p * Ap))
             if abs(denom) <= eps:
+                self.last_cg_iterations = iteration - 1
+                self.last_cg_final_residual = float(np.sqrt(rs_old))
+                self.last_cg_converged = False
                 break
 
             alpha_cg = rs_old / denom
@@ -283,12 +301,17 @@ class BoussinesqSolver:
             r = r - alpha_cg * Ap
 
             rs_new = float(np.sum(r * r))
-            if rs_new <= self.linear_solver_tol * self.linear_solver_tol:
+            self.last_cg_iterations = iteration
+            self.last_cg_final_residual = float(np.sqrt(rs_new))
+            if rs_new <= threshold:
+                self.last_cg_converged = True
                 break
 
             beta = rs_new / max(rs_old, eps)
             p = r + beta * p
             rs_old = rs_new
+        else:
+            self.last_cg_converged = False
 
         return x
 

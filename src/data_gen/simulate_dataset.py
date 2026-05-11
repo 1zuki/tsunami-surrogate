@@ -31,8 +31,25 @@ try:
 except ImportError:
     from shallow_water import ShallowWaterSolver
 
+try:
+    from src.solver.boussinesq import BoussinesqSolver
+except ImportError:
+    from boussinesq import BoussinesqSolver
+
 KNOWN_FDES = {"swe_hydrostatic", "swe_muscl", "boussinesq"}
-IMPLEMENTED_FDES = {"swe_hydrostatic"}
+IMPLEMENTED_FDES = {"swe_hydrostatic", "boussinesq"}
+
+COMMON_SOLVER_KEYS = {"nx", "ny", "dx", "dy", "dt", "g", "cfl", "boundary", "use_sponge", "sponge_width", "sponge_min_factor"}
+SWE_SOLVER_KEYS = COMMON_SOLVER_KEYS | {"dry_tolerance"}
+BOUSSINESQ_SOLVER_KEYS = COMMON_SOLVER_KEYS | {
+    "alpha",
+    "min_depth",
+    "sea_level_offset",
+    "mode",
+    "filter_strength",
+    "linear_solver_tol",
+    "linear_solver_max_iter",
+}
 
 @dataclass
 class DatasetConfig:
@@ -56,6 +73,13 @@ class DatasetConfig:
     enabled_fdes: tuple[str, ...]
     primary_fde: str
 
+@dataclass
+class RolloutResult:
+    trajectory: np.ndarray
+    trajectory_eta: np.ndarray
+    timestamps: np.ndarray
+    dt_history: np.ndarray
+
 def _seed_for_sample(run_seed: int, sample_idx: int) -> int:
     # sample_idx is 1-based; keep derivation stable across workers/runs.
     return int(run_seed + sample_idx * 10007)
@@ -66,25 +90,52 @@ def _bathymetry_file_path(bathymetry_dir: str | Path, sample_idx: int) -> Path:
 def _source_file_path(source_dir: str | Path, sample_idx: int) -> Path:
     return Path(source_dir) / f"sample_{sample_idx:06d}.npz"
 
+def _filter_solver_cfg(sv: Dict[str, Any], allowed: set[str]) -> Dict[str, Any]:
+    return {key: sv[key] for key in allowed if key in sv}
+
 def _make_solver_from_cfg(sv: Dict[str, Any]) -> ShallowWaterSolver:
-    boundary = sv.get("boundary", "open")
+    cfg = _filter_solver_cfg(sv, SWE_SOLVER_KEYS)
+    boundary = cfg.get("boundary", "open")
     return ShallowWaterSolver(
-        nx=int(sv["nx"]),
-        ny=int(sv["ny"]),
-        dx=float(sv["dx"]),
-        dy=float(sv["dy"]),
-        dt=float(sv["dt"]),
-        g=float(sv.get("g", 9.81)),
-        cfl=float(sv.get("cfl", 0.45)),
-        dry_tolerance=float(sv.get("dry_tolerance", 1e-6)),
+        nx=int(cfg["nx"]),
+        ny=int(cfg["ny"]),
+        dx=float(cfg["dx"]),
+        dy=float(cfg["dy"]),
+        dt=float(cfg["dt"]),
+        g=float(cfg.get("g", 9.81)),
+        cfl=float(cfg.get("cfl", 0.45)),
+        dry_tolerance=float(cfg.get("dry_tolerance", 1e-6)),
         boundary=boundary,
-        use_sponge=bool(sv.get("use_sponge", True)),
-        sponge_width=int(sv.get("sponge_width", 20)),
-        sponge_min_factor=float(sv.get("sponge_min_factor", 0.9)),
+        use_sponge=bool(cfg.get("use_sponge", True)),
+        sponge_width=int(cfg.get("sponge_width", 20)),
+        sponge_min_factor=float(cfg.get("sponge_min_factor", 0.9)),
+    )
+
+def _make_boussinesq_solver_from_cfg(sv: Dict[str, Any]) -> BoussinesqSolver:
+    cfg = _filter_solver_cfg(sv, BOUSSINESQ_SOLVER_KEYS)
+    return BoussinesqSolver(
+        nx=int(cfg["nx"]),
+        ny=int(cfg["ny"]),
+        dx=float(cfg["dx"]),
+        dy=float(cfg["dy"]),
+        dt=float(cfg["dt"]),
+        g=float(cfg.get("g", 9.81)),
+        cfl=float(cfg.get("cfl", 0.35)),
+        alpha=float(cfg.get("alpha", 1.0 / 3.0)),
+        min_depth=float(cfg.get("min_depth", 1e-3)),
+        sea_level_offset=float(cfg.get("sea_level_offset", 0.0)),
+        boundary=cfg.get("boundary", "open"),
+        mode=cfg.get("mode", "linear_variable_depth"),
+        use_sponge=cfg["use_sponge"] if "use_sponge" in cfg else None,
+        sponge_width=int(cfg.get("sponge_width", 20)),
+        sponge_min_factor=float(cfg.get("sponge_min_factor", 0.9)),
+        filter_strength=float(cfg.get("filter_strength", 0.0)),
+        linear_solver_tol=float(cfg.get("linear_solver_tol", 1e-8)),
+        linear_solver_max_iter=int(cfg.get("linear_solver_max_iter", 80)),
     )
 
 def _simulate_one_local(
-    solver: ShallowWaterSolver,
+    solver: Any,
     n_steps: int,
     save_every: int,
     auto_dt: bool,
@@ -132,15 +183,16 @@ def _run_fde_rollout(
     solver_cfg: Dict[str, Any],
     dataset: DatasetConfig,
     bathymetry: np.ndarray,
+    eta0: np.ndarray,
     h0: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> RolloutResult:
 
     if fde_name == "swe_hydrostatic":
         solver = _make_solver_from_cfg(solver_cfg)
         solver.set_bathymetry(bathymetry)
         solver.set_initial_condition(h0, hu0=np.zeros_like(h0), hv0=np.zeros_like(h0))
 
-        return _simulate_one_local(
+        trajectory, timestamps, dt_hist = _simulate_one_local(
             solver=solver,
             n_steps=dataset.n_steps,
             save_every=dataset.save_every,
@@ -148,6 +200,24 @@ def _run_fde_rollout(
             target_cfl=dataset.target_cfl,
             include_initial_state=dataset.include_initial_state,
         )
+        trajectory_eta = trajectory[:, 0] + bathymetry[None, ...]
+        return RolloutResult(trajectory, trajectory_eta, timestamps, dt_hist)
+
+    if fde_name == "boussinesq":
+        solver = _make_boussinesq_solver_from_cfg(solver_cfg)
+        solver.set_bathymetry(bathymetry)
+        solver.set_initial_condition(eta0, eta_t0=np.zeros_like(eta0))
+
+        trajectory, timestamps, dt_hist = _simulate_one_local(
+            solver=solver,
+            n_steps=dataset.n_steps,
+            save_every=dataset.save_every,
+            auto_dt=dataset.auto_dt,
+            target_cfl=dataset.target_cfl,
+            include_initial_state=dataset.include_initial_state,
+        )
+        trajectory_eta = trajectory[:, 0]
+        return RolloutResult(trajectory, trajectory_eta, timestamps, dt_hist)
 
     raise NotImplementedError(f"FDE '{fde_name}' is not implemented yet")
 
@@ -263,30 +333,38 @@ def _generate_sample_worker(
     per_fde: dict[str, dict[str, Any]] = {}
 
     for fde_name in runnable_fdes:
-        trajectory, timestamps, dt_hist = _run_fde_rollout(
+        rollout = _run_fde_rollout(
             fde_name=fde_name,
             solver_cfg=solver_cfg,
             dataset=dataset,
             bathymetry=bathymetry,
+            eta0=eta0,
             h0=h0,
         )
 
         np.savez_compressed(
             sample_dir / f"rollout_{fde_name}.npz",
-            trajectory=trajectory.astype(np.float32),
-            timestamps=timestamps.astype(np.float32),
-            dt_history=dt_hist.astype(np.float32),
+            trajectory=rollout.trajectory.astype(np.float32),
+            trajectory_eta=rollout.trajectory_eta.astype(np.float32),
+            timestamps=rollout.timestamps.astype(np.float32),
+            dt_history=rollout.dt_history.astype(np.float32),
             fde_name=np.array([fde_name], dtype="U64"),
+        )
+        np.save(
+            sample_dir / f"trajectory_eta_{fde_name}.npy",
+            rollout.trajectory_eta.astype(np.float32),
         )
 
         per_fde[fde_name] = {
-            "trajectory": trajectory,
-            "timestamps": timestamps,
-            "dt_history": dt_hist,
+            "trajectory": rollout.trajectory,
+            "trajectory_eta": rollout.trajectory_eta,
+            "timestamps": rollout.timestamps,
+            "dt_history": rollout.dt_history,
         }
 
     primary_fde = dataset.primary_fde if dataset.primary_fde in per_fde else runnable_fdes[0]
     primary = per_fde[primary_fde]
+    np.save(sample_dir / "trajectory_eta.npy", primary["trajectory_eta"].astype(np.float32))
 
     # keep sample.npz backward compatible for downstream preprocess/training
     np.savez_compressed(
@@ -298,6 +376,7 @@ def _generate_sample_worker(
         initial_depth=h0.astype(np.float32),
         free_surface0=free_surface0.astype(np.float32),
         trajectory=primary["trajectory"].astype(np.float32),
+        trajectory_eta=primary["trajectory_eta"].astype(np.float32),
         timestamps=primary["timestamps"].astype(np.float32),
         dt_history=primary["dt_history"].astype(np.float32),
     )
@@ -309,6 +388,7 @@ def _generate_sample_worker(
         "source_strength": source_strength,
         "num_frames": int(primary["trajectory"].shape[0]),
         "trajectory_shape": list(map(int, primary["trajectory"].shape)),
+        "trajectory_eta_shape": list(map(int, primary["trajectory_eta"].shape)),
         "timestamps_shape": list(map(int, primary["timestamps"].shape)),
         "dt_history_shape": list(map(int, primary["dt_history"].shape)),
         "bathymetry_shape": list(map(int, bathymetry.shape)),
@@ -326,6 +406,7 @@ def _generate_sample_worker(
         "fdes_run": runnable_fdes,
         "fdes_skipped_unimplemented": skipped_unimplemented,
         "primary_fde": primary_fde,
+        "solver_name": primary_fde,
     }
     with (sample_dir / "meta.json").open("w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
@@ -337,6 +418,7 @@ def _generate_sample_worker(
         "source_type": source_type,
         "num_frames": int(primary["trajectory"].shape[0]),
         "trajectory_shape": list(map(int, primary["trajectory"].shape)),
+        "trajectory_eta_shape": list(map(int, primary["trajectory_eta"].shape)),
         "source_strength": source_strength,
         "primary_fde": primary_fde,
         "fdes_run": runnable_fdes,
@@ -844,6 +926,11 @@ def _build_argparser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Explicit 1-based sample index to start generating from exist.",
+    )
+    parser.add_argument(
+        "--allow-override",
+        action="store_true",
+        help="Regenerate samples even if their output directories already exist.",
     )
     return parser
 

@@ -52,6 +52,62 @@ def test_boussinesq_flat_surface_remains_flat_after_one_step() -> None:
     assert np.allclose(state[1], 0.0)
 
 
+def test_boussinesq_zero_source_rest_stays_zero() -> None:
+    nx, ny = 10, 12
+    rng = np.random.default_rng(2)
+    solver = BoussinesqSolver(
+        nx=nx,
+        ny=ny,
+        dx=0.1,
+        dy=0.1,
+        dt=1e-3,
+        boundary="periodic",
+    )
+
+    bathymetry = -rng.uniform(0.5, 2.0, size=(nx, ny))
+    solver.set_bathymetry(bathymetry)
+    solver.set_initial_condition(np.zeros((nx, ny)), eta_t0=np.zeros((nx, ny)))
+    solver.run(8, return_history=False)
+
+    state = solver.get_state()
+    assert np.isfinite(state).all()
+    assert np.allclose(state[0], 0.0)
+    assert np.allclose(state[1], 0.0)
+
+
+def test_boussinesq_alpha_zero_matches_face_flux_wave_operator() -> None:
+    nx, ny = 16, 12
+    dx = 1.0 / nx
+    dy = 1.0 / ny
+    depth = 1.7
+    g = 9.81
+    rng = np.random.default_rng(3)
+    eta = rng.standard_normal((nx, ny)) * 1e-3
+
+    solver = BoussinesqSolver(
+        nx=nx,
+        ny=ny,
+        dx=dx,
+        dy=dy,
+        dt=1e-4,
+        g=g,
+        alpha=0.0,
+        boundary="periodic",
+        use_sponge=False,
+        mode="linear_constant_depth",
+    )
+    solver.set_bathymetry(-depth * np.ones((nx, ny), dtype=float))
+
+    expected_laplacian = (
+        (np.roll(eta, -1, axis=0) - 2.0 * eta + np.roll(eta, 1, axis=0)) / (dx * dx)
+        + (np.roll(eta, -1, axis=1) - 2.0 * eta + np.roll(eta, 1, axis=1)) / (dy * dy)
+    )
+    expected = g * depth * expected_laplacian
+
+    assert np.allclose(solver.rhs(eta), expected)
+    assert np.allclose(solver.solve_acceleration(eta), expected)
+
+
 def test_boussinesq_one_step_with_gaussian_is_finite() -> None:
     nx, ny = 16, 16
     x = np.linspace(-1.0, 1.0, nx)
@@ -79,6 +135,39 @@ def test_boussinesq_one_step_with_gaussian_is_finite() -> None:
     assert np.isfinite(state).all()
 
 
+def test_boussinesq_flat_bottom_gaussian_remains_stable_without_checkerboard() -> None:
+    nx, ny = 32, 32
+    dx = 1.0 / nx
+    dy = 1.0 / ny
+    x = np.arange(nx) * dx
+    y = np.arange(ny) * dy
+    X, Y = np.meshgrid(x, y, indexing="ij")
+    eta0 = 0.01 * np.exp(-80.0 * ((X - 0.5) ** 2 + (Y - 0.5) ** 2))
+
+    solver = BoussinesqSolver(
+        nx=nx,
+        ny=ny,
+        dx=dx,
+        dy=dy,
+        dt=5e-4,
+        boundary="periodic",
+        mode="linear_constant_depth",
+        use_sponge=False,
+    )
+
+    solver.set_bathymetry(-np.ones((nx, ny), dtype=float))
+    solver.set_initial_condition(eta0)
+    solver.run(40, return_history=False)
+
+    state = solver.get_state()
+    checker = (-1.0) ** np.indices((nx, ny)).sum(axis=0)
+    checker_fraction = abs(float(np.sum(state[0] * checker))) / max(float(np.sum(np.abs(state[0]))), 1e-30)
+
+    assert np.isfinite(state).all()
+    assert float(np.max(np.abs(state[0]))) < 0.05
+    assert checker_fraction < 0.05
+
+
 def test_boussinesq_suggest_dt_is_positive() -> None:
     solver = BoussinesqSolver(
         nx=8,
@@ -94,3 +183,45 @@ def test_boussinesq_suggest_dt_is_positive() -> None:
     dt = solver.suggest_dt(target_cfl=0.25)
     assert dt > 0.0
     assert np.isfinite(dt)
+
+
+def test_boussinesq_fourier_mode_dispersion_constant_depth_periodic() -> None:
+    nx, ny = 64, 16
+    dx = 1.0 / nx
+    dy = 1.0 / ny
+    depth = 1.25
+    alpha = 1.0 / 3.0
+    g = 9.81
+    mode = 2
+    x = np.arange(nx) * dx
+    eta = 1e-3 * np.cos(2.0 * np.pi * mode * x)[:, None] * np.ones((1, ny))
+
+    solver = BoussinesqSolver(
+        nx=nx,
+        ny=ny,
+        dx=dx,
+        dy=dy,
+        dt=1e-4,
+        g=g,
+        alpha=alpha,
+        boundary="periodic",
+        use_sponge=False,
+        mode="linear_constant_depth",
+        linear_solver_tol=1e-12,
+        linear_solver_max_iter=200,
+    )
+    solver.set_bathymetry(-depth * np.ones((nx, ny), dtype=float))
+
+    acceleration = solver.solve_acceleration(eta)
+    omega2_measured = -float(np.sum(acceleration * eta) / np.sum(eta * eta))
+
+    k = 2.0 * np.pi * mode
+    omega2_continuous = g * depth * k * k / (1.0 + alpha * depth * depth * k * k)
+    k2_discrete = (2.0 * np.sin(0.5 * k * dx) / dx) ** 2
+    omega2_discrete = g * depth * k2_discrete / (1.0 + alpha * depth * depth * k2_discrete)
+
+    assert np.isclose(omega2_measured, omega2_continuous, rtol=1e-2)
+    assert np.isclose(omega2_measured, omega2_discrete, rtol=1e-8)
+    assert solver.last_cg_iterations > 0
+    assert solver.last_cg_converged
+    assert solver.last_cg_final_residual <= solver.linear_solver_tol * solver.last_cg_initial_residual * 1.01

@@ -263,18 +263,25 @@ class TsunamiPreprocessor:
         if variable == "state":
             target_source = traj
         else:
-            if traj.ndim == 4:
-                depth_frames = traj[:, 0]
+            if variable == "eta" and "trajectory_eta" in sample:
+                target_source = np.asarray(sample["trajectory_eta"], dtype=np.float32)
+                if target_source.ndim != 3:
+                    raise ValueError(
+                        f"trajectory_eta must have shape [T,H,W], got {target_source.shape}"
+                    )
             else:
-                depth_frames = traj
+                if traj.ndim == 4:
+                    depth_frames = traj[:, 0]
+                else:
+                    depth_frames = traj
 
-            if variable == "depth":
-                target_source = depth_frames
-            else:  # eta
-                if "bathymetry" not in sample:
-                    raise KeyError("bathymetry is required to build eta targets")
-                bathy = np.asarray(sample["bathymetry"], dtype=np.float32)
-                target_source = depth_frames + bathy[None, ...]
+                if variable == "depth":
+                    target_source = depth_frames
+                else:  # eta
+                    if "bathymetry" not in sample:
+                        raise KeyError("bathymetry is required to build eta targets")
+                    bathy = np.asarray(sample["bathymetry"], dtype=np.float32)
+                    target_source = depth_frames + bathy[None, ...]
 
         if self.cfg.target_mode == "next_step":
             index = min(max(1, self.cfg.stride), target_source.shape[0] - 1)
