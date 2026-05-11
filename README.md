@@ -68,7 +68,7 @@ python scripts/make_dataset.py --config configs/data/dataset.yaml
 - stage 2: generate/cache all source samples (default cache: `data/source`);
 - stage 3: load cached bathymetry + source pairs and run configured FDE rollouts from `fdes.enabled` in `configs/data/dataset.yaml`.
 
-Right now, the runnable FDE is `swe_hydrostatic`. `swe_muscl` and `boussinesq` can already be listed in config naming, but their rollout kernels are still pending implementation.
+Runnable FDEs currently include `swe_hydrostatic`, `swe_muscl`, and `boussinesq`.
 
 Resume an interrupted run:
 
@@ -194,3 +194,4 @@ This README follows the same framing as the paper abstract/introduction:
 
 - Prefer `scripts/make_dataset.py` as the default data-generation path.
 - Keep `make_toy_data.py` as a compatibility helper, not the primary workflow.
+- Development note: Portions of the codebase were developed with AI-assisted programming support. All code should be treated as author-reviewed research software, with tests and validation required before use in reported experiments.
