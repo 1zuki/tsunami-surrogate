@@ -3,9 +3,9 @@ configs:
   source: "configs/data/source.yaml"
 
 dataset:
-  num_samples: 8192
+  num_samples: 128
   seed: 42
-  num_workers: 10
+  num_workers: 8
   n_steps: 400
   save_every: 5
   auto_dt: true
@@ -20,7 +20,7 @@ dataset:
   copy_configs: true
 
 fdes:
-  enabled: ["swe_hydrostatic"]
+  enabled: ["swe_hydrostatic", "swe_muscl", "boussinesq"]
   primary: "swe_hydrostatic"
 
 solver:
@@ -33,6 +33,7 @@ solver:
   rho: 1000
   cfl: 0.45
   dry_tolerance: 1e-6
+  max_velocity: 50.0
   boundary: "open"
   use_sponge: true
   sponge_width: 20

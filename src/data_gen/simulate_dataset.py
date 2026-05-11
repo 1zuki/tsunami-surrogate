@@ -27,9 +27,14 @@ except ImportError:
     from generate_sources import SourceGenerator
 
 try:
-    from src.solver.shallow_water import ShallowWaterSolver
+    from src.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
 except ImportError:
-    from shallow_water import ShallowWaterSolver
+    from hydrostatic_swe import HydrostaticShallowWaterSolver
+
+try:
+    from src.solver.muscl_swe import MUSCLShallowWaterSolver
+except ImportError:
+    from muscl_swe import MUSCLShallowWaterSolver
 
 try:
     from src.solver.boussinesq import BoussinesqSolver
@@ -37,10 +42,10 @@ except ImportError:
     from boussinesq import BoussinesqSolver
 
 KNOWN_FDES = {"swe_hydrostatic", "swe_muscl", "boussinesq"}
-IMPLEMENTED_FDES = {"swe_hydrostatic", "boussinesq"}
+IMPLEMENTED_FDES = {"swe_hydrostatic", "swe_muscl", "boussinesq"}
 
 COMMON_SOLVER_KEYS = {"nx", "ny", "dx", "dy", "dt", "g", "cfl", "boundary", "use_sponge", "sponge_width", "sponge_min_factor"}
-SWE_SOLVER_KEYS = COMMON_SOLVER_KEYS | {"dry_tolerance"}
+SWE_SOLVER_KEYS = COMMON_SOLVER_KEYS | {"dry_tolerance", "max_velocity"}
 BOUSSINESQ_SOLVER_KEYS = COMMON_SOLVER_KEYS | {
     "alpha",
     "min_depth",
@@ -93,10 +98,10 @@ def _source_file_path(source_dir: str | Path, sample_idx: int) -> Path:
 def _filter_solver_cfg(sv: Dict[str, Any], allowed: set[str]) -> Dict[str, Any]:
     return {key: sv[key] for key in allowed if key in sv}
 
-def _make_hydrostatic_solver_from_cfg(sv: Dict[str, Any]) -> ShallowWaterSolver:
+def _make_hydrostatic_solver_from_cfg(sv: Dict[str, Any]) -> HydrostaticShallowWaterSolver:
     cfg = _filter_solver_cfg(sv, SWE_SOLVER_KEYS)
     boundary = cfg.get("boundary", "open")
-    return ShallowWaterSolver(
+    return HydrostaticShallowWaterSolver(
         nx=int(cfg["nx"]),
         ny=int(cfg["ny"]),
         dx=float(cfg["dx"]),
@@ -109,6 +114,27 @@ def _make_hydrostatic_solver_from_cfg(sv: Dict[str, Any]) -> ShallowWaterSolver:
         use_sponge=bool(cfg.get("use_sponge", True)),
         sponge_width=int(cfg.get("sponge_width", 20)),
         sponge_min_factor=float(cfg.get("sponge_min_factor", 0.9)),
+        max_velocity=float(cfg.get("max_velocity", 50.0)),
+    )
+
+
+def _make_muscl_solver_from_cfg(sv: Dict[str, Any]) -> MUSCLShallowWaterSolver:
+    cfg = _filter_solver_cfg(sv, SWE_SOLVER_KEYS)
+    boundary = cfg.get("boundary", "open")
+    return MUSCLShallowWaterSolver(
+        nx=int(cfg["nx"]),
+        ny=int(cfg["ny"]),
+        dx=float(cfg["dx"]),
+        dy=float(cfg["dy"]),
+        dt=float(cfg["dt"]),
+        g=float(cfg.get("g", 9.81)),
+        cfl=float(cfg.get("cfl", 0.45)),
+        dry_tolerance=float(cfg.get("dry_tolerance", 1e-6)),
+        boundary=boundary,
+        use_sponge=bool(cfg.get("use_sponge", True)),
+        sponge_width=int(cfg.get("sponge_width", 20)),
+        sponge_min_factor=float(cfg.get("sponge_min_factor", 0.9)),
+        max_velocity=float(cfg.get("max_velocity", 50.0)),
     )
 
 def _make_boussinesq_solver_from_cfg(sv: Dict[str, Any]) -> BoussinesqSolver:
@@ -189,6 +215,22 @@ def _run_fde_rollout(
 
     if fde_name == "swe_hydrostatic":
         solver = _make_hydrostatic_solver_from_cfg(solver_cfg)
+        solver.set_bathymetry(bathymetry)
+        solver.set_initial_condition(h0, hu0=np.zeros_like(h0), hv0=np.zeros_like(h0))
+
+        trajectory, timestamps, dt_hist = _simulate_one_local(
+            solver=solver,
+            n_steps=dataset.n_steps,
+            save_every=dataset.save_every,
+            auto_dt=dataset.auto_dt,
+            target_cfl=dataset.target_cfl,
+            include_initial_state=dataset.include_initial_state,
+        )
+        trajectory_eta = trajectory[:, 0] + bathymetry[None, ...]
+        return RolloutResult(trajectory, trajectory_eta, timestamps, dt_hist)
+
+    if fde_name == "swe_muscl":
+        solver = _make_muscl_solver_from_cfg(solver_cfg)
         solver.set_bathymetry(bathymetry)
         solver.set_initial_condition(h0, hu0=np.zeros_like(h0), hv0=np.zeros_like(h0))
 
@@ -327,7 +369,7 @@ def _generate_sample_worker(
 
     if not runnable_fdes:
         raise RuntimeError(
-            "No runnable FDE selected. Enable at least one implemented solver (currently: swe_hydrostatic)."
+            "No runnable FDE selected. Enable at least one implemented solver (swe_hydrostatic, swe_muscl, boussinesq)."
         )
 
     per_fde: dict[str, dict[str, Any]] = {}

@@ -52,7 +52,7 @@ speed:
   num_batches: 3
   model_warmup: 10
   model_repeats: 50
-  simulator_callable: src.solver.shallow_water:simulate_rollout
+  simulator_callable: src.solver.hydrostatic_swe:simulate_rollout
   simulator_warmup: 2
   simulator_repeats: 5
   simulator_num_cases: 1

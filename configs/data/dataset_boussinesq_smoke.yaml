@@ -32,6 +32,7 @@ solver:
   g: 9.81
   cfl: 0.25
   dry_tolerance: 1e-6
+  max_velocity: 50.0
   boundary: "open"
   use_sponge: true
   sponge_width: 20

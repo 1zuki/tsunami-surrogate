@@ -2,14 +2,24 @@ from __future__ import annotations
 from typing import Any, Literal, Mapping, NamedTuple, Optional, Tuple, Union
 import numpy as np
 
-from src.solver.boundary_conditions import (
-    BoundaryMode,
-    boundary_state_x,
-    boundary_state_y,
-    pad_scalar_field,
-    pad_state_with_reflective_momentum,
-    resolve_boundary_modes,
-)
+try:
+    from src.solver.boundary_conditions import (
+        BoundaryMode,
+        boundary_state_x,
+        boundary_state_y,
+        pad_scalar_field,
+        pad_state_with_reflective_momentum,
+        resolve_boundary_modes,
+    )
+except ImportError:
+    from boundary_conditions import (
+        BoundaryMode,
+        boundary_state_x,
+        boundary_state_y,
+        pad_scalar_field,
+        pad_state_with_reflective_momentum,
+        resolve_boundary_modes,
+    )
 
 class SolverInfo(NamedTuple):
     """ metadata bundle for logging / experiment tracking"""
@@ -27,7 +37,8 @@ class SolverInfo(NamedTuple):
 class ShallowWaterSolver:
     def __init__(self, nx: int, ny: int, dx: float, dy: float, dt: float, g: float = 9.81, cfl: float = 0.45,
                  dry_tolerance: float = 1e-6, boundary: Union[BoundaryMode, Tuple[BoundaryMode, BoundaryMode]] = "open",
-                 use_sponge: bool = True, sponge_width = 20, sponge_min_factor: float = 0.9) -> None:
+                 use_sponge: bool = True, sponge_width = 20, sponge_min_factor: float = 0.9,
+                 eps: float = 1e-9, max_velocity: float = 50.0) -> None:
         if nx <= 1 or ny <= 1:
             raise ValueError("nx and ny must be greater than 1")
         if dx <= 0 or dy <= 0:
@@ -44,6 +55,8 @@ class ShallowWaterSolver:
             raise ValueError("sponge_width must be non-negative")
         if not (0.0 < sponge_min_factor <= 1.0):
             raise ValueError("sponge_min_factor must be in (0, 1]")
+        if max_velocity <= 0:
+            raise ValueError("max_velocity must be positive")
 
         self.nx = int(nx)
         self.ny = int(ny)
@@ -53,6 +66,8 @@ class ShallowWaterSolver:
         self.g = float(g)
         self.cfl = float(cfl)
         self.dry_tolerance = float(dry_tolerance)
+        self.eps = float(eps)
+        self.max_velocity = float(max_velocity)
 
         self.boundary_x, self.boundary_y = resolve_boundary_modes(boundary)
 
@@ -367,19 +382,69 @@ class ShallowWaterSolver:
         return pad_scalar_field(A, self.boundary_x, self.boundary_y)
 
     # fluxes
+    def _stabilized_conserved(self, U: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Bound momentum by local depth to prevent hu^2/h overflows in MUSCL fluxes.
+        """
+        h_raw = U[0]
+        h = np.maximum(h_raw, 0.0)
+        wet = h > self.dry_tolerance
+        h_safe = np.maximum(h, self.dry_tolerance)
+
+        hu = np.where(wet, U[1], 0.0)
+        hv = np.where(wet, U[2], 0.0)
+
+        momentum_cap = self.max_velocity * h_safe
+        hu = np.clip(hu, -momentum_cap, momentum_cap)
+        hv = np.clip(hv, -momentum_cap, momentum_cap)
+
+        U_stable = np.stack([h, hu, hv], axis=0)
+        return U_stable, h_safe
+
+    def flux_x_from_U(self, U: np.ndarray) -> np.ndarray:
+        U_stable, h_safe = self._stabilized_conserved(U)
+        h = U_stable[0]
+        hu = U_stable[1]
+        hv = U_stable[2]
+
+        return np.stack(
+            [
+                hu,
+                hu ** 2 / h_safe + 0.5 * self.g * h ** 2,
+                hu * hv / h_safe,
+            ],
+            axis=0,
+        )
+
+
+    def flux_y_from_U(self, U: np.ndarray) -> np.ndarray:
+        U_stable, h_safe = self._stabilized_conserved(U)
+        h = U_stable[0]
+        hu = U_stable[1]
+        hv = U_stable[2]
+
+        return np.stack(
+            [
+                hv,
+                hu * hv / h_safe,
+                hv ** 2 / h_safe + 0.5 * self.g * h ** 2,
+            ],
+            axis=0,
+        )
+
     def _rusanov_flux(self, U_L: np.ndarray, U_R: np.ndarray, axis: Literal["x", "y"]) -> np.ndarray:
         """ compute the rusanov flux at all interfaces """
-        h_L = np.maximum(U_L[0], self.dry_tolerance)
-        h_R = np.maximum(U_R[0], self.dry_tolerance)
+        U_Ls, h_L = self._stabilized_conserved(U_L)
+        U_Rs, h_R = self._stabilized_conserved(U_R)
 
-        hu_L = U_L[1]
-        hu_R = U_R[1]
-        hv_L = U_L[2]
-        hv_R = U_R[2]
+        hu_L = U_Ls[1]
+        hu_R = U_Rs[1]
+        hv_L = U_Ls[2]
+        hv_R = U_Rs[2]
 
         if axis == "x":
-            F_L = self.flux_x_from_U(U_L)
-            F_R = self.flux_x_from_U(U_R)
+            F_L = self.flux_x_from_U(U_Ls)
+            F_R = self.flux_x_from_U(U_Rs)
 
             u_L = hu_L / h_L
             u_R = hu_R / h_R
@@ -389,8 +454,8 @@ class ShallowWaterSolver:
             wave_speed = np.maximum(np.abs(u_L) + c_L, np.abs(u_R) + c_R)
         
         elif axis == "y":
-            F_L = self.flux_y_from_U(U_L)
-            F_R = self.flux_y_from_U(U_R)
+            F_L = self.flux_y_from_U(U_Ls)
+            F_R = self.flux_y_from_U(U_Rs)
 
             v_L = hv_L / h_L
             v_R = hv_R / h_R
@@ -403,8 +468,9 @@ class ShallowWaterSolver:
             raise ValueError("axis must be 'x' or 'y'")
 
         wave_speed = wave_speed[None, :, :]
-        
-        return 0.5 * (F_L + F_R) - 0.5 * wave_speed * (U_R - U_L)
+
+        flux = 0.5 * (F_L + F_R) - 0.5 * wave_speed * (U_Rs - U_Ls)
+        return np.nan_to_num(flux, nan=0.0, posinf=0.0, neginf=0.0)
 
     def _flux_divergence_x(self, U: np.ndarray) -> np.ndarray:
         """ return dF/dx on the physical domain """
@@ -415,8 +481,8 @@ class ShallowWaterSolver:
         U_R = U_pad[:, 1:, :] - 0.5 * slope_x[:, 1:, :]
 
         F_half = self._rusanov_flux(U_L, U_R, axis="x")
-        
-        return (F_half[:, 1 : self.nx + 1, 1:-1] - F_half[:, 0:self.nx, 1:-1]) / self.dx
+        div = (F_half[:, 1 : self.nx + 1, 1:-1] - F_half[:, 0:self.nx, 1:-1]) / self.dx
+        return np.nan_to_num(div, nan=0.0, posinf=0.0, neginf=0.0)
 
     def _flux_divergence_y(self, U: np.ndarray) -> np.ndarray:
         """ return dG/dy on the physical domain """
@@ -427,8 +493,8 @@ class ShallowWaterSolver:
         U_R = U_pad[:, :, 1:] - 0.5 * slope_y[:, :, 1:]
 
         G_half = self._rusanov_flux(U_L, U_R, axis="y")
-        
-        return (G_half[:, 1:-1, 1 : self.ny + 1] - G_half[:, 1:-1, 0:self.ny]) / self.dy
+        div = (G_half[:, 1:-1, 1 : self.ny + 1] - G_half[:, 1:-1, 0:self.ny]) / self.dy
+        return np.nan_to_num(div, nan=0.0, posinf=0.0, neginf=0.0)
 
     # time step
     def _zero_momentum_in_dry_cells(self) -> None:
@@ -617,6 +683,9 @@ class ShallowWaterSolver:
         return SolverInfo(nx=self.nx, ny=self.ny, dx=self.dx, dy=self.dy, dt=self.dt, g=self.g, cfl=self.cfl,
                           dry_tolerance=self.dry_tolerance, boundary_x=self.boundary_x, boundary_y=self.boundary_y,)
 
+
+HydrostaticShallowWaterSolver = ShallowWaterSolver
+
 def _to_sample_array(sample_inputs: Any) -> np.ndarray:
     if hasattr(sample_inputs, "detach"):
         sample_inputs = sample_inputs.detach().cpu().numpy()
@@ -693,6 +762,7 @@ def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
         use_sponge=bool(kwargs.get("use_sponge", True)),
         sponge_width=int(kwargs.get("sponge_width", 20)),
         sponge_min_factor=float(kwargs.get("sponge_min_factor", 0.9)),
+        max_velocity=float(kwargs.get("max_velocity", 50.0)),
     )
 
     solver.set_bathymetry(bathymetry)
