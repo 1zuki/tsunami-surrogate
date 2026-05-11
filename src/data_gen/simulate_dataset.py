@@ -93,7 +93,7 @@ def _source_file_path(source_dir: str | Path, sample_idx: int) -> Path:
 def _filter_solver_cfg(sv: Dict[str, Any], allowed: set[str]) -> Dict[str, Any]:
     return {key: sv[key] for key in allowed if key in sv}
 
-def _make_solver_from_cfg(sv: Dict[str, Any]) -> ShallowWaterSolver:
+def _make_hydrostatic_solver_from_cfg(sv: Dict[str, Any]) -> ShallowWaterSolver:
     cfg = _filter_solver_cfg(sv, SWE_SOLVER_KEYS)
     boundary = cfg.get("boundary", "open")
     return ShallowWaterSolver(
@@ -188,7 +188,7 @@ def _run_fde_rollout(
 ) -> RolloutResult:
 
     if fde_name == "swe_hydrostatic":
-        solver = _make_solver_from_cfg(solver_cfg)
+        solver = _make_hydrostatic_solver_from_cfg(solver_cfg)
         solver.set_bathymetry(bathymetry)
         solver.set_initial_condition(h0, hu0=np.zeros_like(h0), hv0=np.zeros_like(h0))
 
