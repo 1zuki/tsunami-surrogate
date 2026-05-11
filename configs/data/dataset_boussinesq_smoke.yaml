@@ -30,7 +30,6 @@ solver:
   dy: 0.015625
   dt: 0.001
   g: 9.81
-  rho: 1000
   cfl: 0.25
   dry_tolerance: 1e-6
   boundary: "open"
