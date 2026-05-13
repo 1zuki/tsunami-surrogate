@@ -6,7 +6,7 @@ import numpy as np
 import yaml
 import argparse
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Set, Tuple, Union
 
 @dataclass
 class PreprocessConfig:
@@ -58,9 +58,9 @@ class TsunamiPreprocessor:
         if cfg is None:
             raise ValueError("yaml config is empty/invalid")
 
-        raw_dir = pathlib.Path(cfg.get("raw_dir", "data/raw/samples"))
+        raw_dir = pathlib.Path(cfg.get("raw_dir", "data/raw/hydrostatic/samples"))
         processed_dir = pathlib.Path(cfg.get("processed_dir", "data/processed"))
-        manifest_path = pathlib.Path(cfg.get("manifest_path", "data/synthetic/manifest.jsonl"))
+        manifest_path = pathlib.Path(cfg.get("manifest_path", "data/synthetic/hydrostatic_manifest.jsonl"))
 
         split_cfg = cfg.get("split", cfg.get("spilt", {}))
         train_ratio = float(split_cfg.get("train", 0.7))
@@ -77,6 +77,8 @@ class TsunamiPreprocessor:
         target_cfg = cfg.get("target", {})
         target_mode = str(target_cfg.get("mode", "next_step"))
         target_variable = str(target_cfg.get("variable", "eta")).strip().lower()
+        if target_mode.strip().lower() == "rollout":
+            target_mode = "multi_step"
         forecast_steps = int(target_cfg.get("forecast_steps", 10))
         stride = int(target_cfg.get("stride", 1))
 
@@ -105,6 +107,33 @@ class TsunamiPreprocessor:
         eval_ids_name = str(eval_cfg.get("ids_name", "sample_id.npy"))
         eval_archive_name = str(eval_cfg.get("archive_name", "eval_dataset.npz"))
         eval_manifest_name = str(eval_cfg.get("manifest_name", "eval_manifest.json"))
+
+        raw_cfg = cfg.get("raw", {})
+        self.scenario_manifest_path: pathlib.Path | None = None
+        self.fde_manifest_paths: Dict[str, pathlib.Path] = {}
+        self.fde_raw_dirs: Dict[str, pathlib.Path] = {}
+        if isinstance(raw_cfg, dict):
+            scenario_manifest = raw_cfg.get("scenario_manifest")
+            if scenario_manifest:
+                self.scenario_manifest_path = pathlib.Path(str(scenario_manifest))
+
+            for key, value in dict(raw_cfg.get("fde_manifests", {})).items():
+                self.fde_manifest_paths[self._canonical_fde_name(str(key))] = pathlib.Path(str(value))
+            for key, value in dict(raw_cfg.get("raw_dirs", {})).items():
+                self.fde_raw_dirs[self._canonical_fde_name(str(key))] = pathlib.Path(str(value))
+
+        fde_cfg = cfg.get("fde", {})
+        if not isinstance(fde_cfg, dict):
+            fde_cfg = {}
+        self.fde_mode = str(fde_cfg.get("mode", "legacy")).strip().lower()
+        self.fde_targets = [self._canonical_fde_name(str(v)) for v in list(fde_cfg.get("targets", []))]
+
+        if not self.fde_targets and self.fde_manifest_paths:
+            self.fde_targets = [next(iter(self.fde_manifest_paths.keys()))]
+
+        target_field = fde_cfg.get("target_field", None)
+        if target_field is not None:
+            target_variable = str(target_field).strip().lower()
 
         total = train_ratio + val_ratio + test_ratio
 
@@ -188,7 +217,11 @@ class TsunamiPreprocessor:
         data = dict(np.load(npz_path))
 
         for k, v in data.items():
-            data[k] = v.astype(np.float32)
+            arr = np.asarray(v)
+            if np.issubdtype(arr.dtype, np.number):
+                data[k] = arr.astype(np.float32)
+            else:
+                data[k] = arr
 
         meta: Dict[str, Any] = {}
 
@@ -415,6 +448,69 @@ class TsunamiPreprocessor:
         except Exception:
             return float(default)
 
+    @staticmethod
+    def _canonical_fde_name(name: str) -> str:
+        n = str(name).strip().lower()
+        mapping = {
+            "swe_hydrostatic": "hydrostatic",
+            "hydrostatic": "hydrostatic",
+            "swe_muscl": "muscl",
+            "muscl": "muscl",
+            "boussinesq": "boussinesq",
+        }
+        return mapping.get(n, n)
+
+    @staticmethod
+    def _load_manifest_path(manifest_path: pathlib.Path) -> List[Dict[str, Any]]:
+        if not manifest_path.is_file():
+            raise FileNotFoundError(f"Could not find {manifest_path}")
+
+        records: List[Dict[str, Any]] = []
+        with manifest_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
+        return records
+
+    @staticmethod
+    def _scenario_id_from_record(rec: Dict[str, Any]) -> str:
+        if "scenario_id" in rec and rec["scenario_id"] is not None:
+            return str(rec["scenario_id"])
+        if "sample_index" in rec:
+            try:
+                return f"scenario_{int(rec['sample_index']):06d}"
+            except Exception:
+                pass
+        if "sample_dir" in rec:
+            name = pathlib.Path(str(rec["sample_dir"])).name
+            if name.startswith("sample_"):
+                suffix = name.split("sample_", 1)[-1]
+                if suffix.isdigit():
+                    return f"scenario_{int(suffix):06d}"
+        return "scenario_unknown"
+
+    def _split_scenario_ids(self, records: List[Dict[str, Any]]) -> Tuple[Set[str], Set[str], Set[str]]:
+        scenario_ids = sorted({self._scenario_id_from_record(rec) for rec in records})
+        random.seed(self.cfg.seed)
+        random.shuffle(scenario_ids)
+
+        n = len(scenario_ids)
+        n_train = int(self.cfg.split_train * n)
+        n_val = int(self.cfg.split_val * n)
+
+        train_ids = set(scenario_ids[:n_train])
+        val_ids = set(scenario_ids[n_train:n_train + n_val])
+        test_ids = set(scenario_ids[n_train + n_val:])
+        return train_ids, val_ids, test_ids
+
+    def _records_for_scenarios(
+        self,
+        records: List[Dict[str, Any]],
+        scenario_ids: Set[str],
+    ) -> List[Dict[str, Any]]:
+        return [rec for rec in records if self._scenario_id_from_record(rec) in scenario_ids]
+
     def split_dataset(self, records: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
         """ split raw samples into train / val / test """
         random.seed(self.cfg.seed)
@@ -431,6 +527,76 @@ class TsunamiPreprocessor:
 
         return train, val, test
 
+    def _process_records(
+        self,
+        records: List[Dict[str, Any]],
+    ) -> Tuple[List[Dict[str, np.ndarray]], List[np.ndarray], List[Dict[str, Any]], List[str]]:
+        Xs: List[Dict[str, np.ndarray]] = []
+        Ys: List[np.ndarray] = []
+        metas: List[Dict[str, Any]] = []
+        sample_ids: List[str] = []
+
+        for rec in records:
+            raw = self.load_sample(rec["sample_dir"])
+            X, Y = self.build_example(raw)
+            Xs.append(X)
+            Ys.append(Y)
+            if "sample_index" in rec:
+                sample_id = f"sample_{int(rec['sample_index']):06d}"
+            else:
+                sample_id = pathlib.Path(rec["sample_dir"]).name
+            sample_ids.append(sample_id)
+
+            merged_meta: Dict[str, Any] = {}
+            merged_meta.update(rec if isinstance(rec, dict) else {})
+            raw_meta = raw.get("meta", {})
+            if isinstance(raw_meta, dict):
+                merged_meta.update(raw_meta)
+
+            merged_meta.setdefault("source_type", "unknown")
+            merged_meta.setdefault("bathymetry_type", "unknown")
+            merged_meta.setdefault("source_strength", np.nan)
+            merged_meta.setdefault("scenario_id", merged_meta.get("scenario_id", sample_id))
+            merged_meta.setdefault("solver_name", merged_meta.get("solver_name", "unknown"))
+            metas.append(merged_meta)
+
+        return Xs, Ys, metas, sample_ids
+
+    def _normalize_and_save(
+        self,
+        train_records: List[Dict[str, Any]],
+        val_records: List[Dict[str, Any]],
+        test_records: List[Dict[str, Any]],
+        output_dir: pathlib.Path,
+    ) -> None:
+        X_train_raw, Y_train_raw, meta_train, ids_train = self._process_records(train_records)
+        X_val_raw, Y_val_raw, meta_val, ids_val = self._process_records(val_records)
+        X_test_raw, Y_test_raw, meta_test, ids_test = self._process_records(test_records)
+
+        self.fit_normalizer(list(zip(X_train_raw, Y_train_raw)))
+
+        def _normalize(X_raw: List[Dict[str, np.ndarray]], Y_raw: List[np.ndarray]) -> Tuple[List[Dict[str, np.ndarray]], List[np.ndarray]]:
+            X_norm: List[Dict[str, np.ndarray]] = []
+            Y_norm: List[np.ndarray] = []
+            for X, Y in zip(X_raw, Y_raw):
+                X_n, Y_n = self.normalize_sample(X, Y)
+                X_norm.append(X_n)
+                Y_norm.append(Y_n)
+            return X_norm, Y_norm
+
+        X_train, Y_train = _normalize(X_train_raw, Y_train_raw)
+        X_val, Y_val = _normalize(X_val_raw, Y_val_raw)
+        X_test, Y_test = _normalize(X_test_raw, Y_test_raw)
+
+        original_processed_dir = self.cfg.processed_dir
+        self.cfg.processed_dir = output_dir
+        self.cfg.processed_dir.mkdir(parents=True, exist_ok=True)
+        self._save_normalization_stats()
+        self.save_split("train", X_train, Y_train, meta_train, ids_train)
+        self.save_split("val", X_val, Y_val, meta_val, ids_val)
+        self.save_split("test", X_test, Y_test, meta_test, ids_test)
+        self.cfg.processed_dir = original_processed_dir
+
     def _resolved_eval_input_order(self, sample_inputs: Dict[str, np.ndarray]) -> List[str]:
         preferred = [name for name in self.cfg.eval_input_order if name in sample_inputs]
         extras = [name for name in sample_inputs.keys() if name not in preferred]
@@ -441,6 +607,12 @@ class TsunamiPreprocessor:
         """ save processed arrays and metadata """
         out_dir = self.cfg.processed_dir / split_name
         out_dir.mkdir(parents=True, exist_ok=True)
+
+        if len(X) == 0 or len(Y) == 0:
+            if self.cfg.include_meta:
+                with (out_dir / "meta.jsonl").open("w", encoding="utf-8") as f:
+                    f.write("")
+            return
 
         # save each input channel
         channel_names = list(X[0].keys())
@@ -567,72 +739,66 @@ class TsunamiPreprocessor:
             json.dump(stats, f, indent=2)
 
     def run(self) -> None:
-        """
-        Full preprocessing pipeline:
-        - load raw records
-        - split
-        - fit normalization on train
-        - transform all splits
-        - save processed outputs
-        """
+        mode = self.fde_mode
+        if mode in {"single", "separate_all", "multifidelity"} and self.fde_manifest_paths:
+            requested = self.fde_targets if self.fde_targets else list(self.fde_manifest_paths.keys())
+            targets = [name for name in requested if name in self.fde_manifest_paths]
+            if not targets:
+                raise ValueError(
+                    f"No valid fde.targets found for mode={mode}. Available: {sorted(self.fde_manifest_paths.keys())}"
+                )
+
+            # Build one shared scenario split for fair cross-FDE comparison.
+            if self.scenario_manifest_path is not None and self.scenario_manifest_path.exists():
+                split_source = self._load_manifest_path(self.scenario_manifest_path)
+            else:
+                split_source = self._load_manifest_path(self.fde_manifest_paths[targets[0]])
+            train_ids, val_ids, test_ids = self._split_scenario_ids(split_source)
+
+            if mode == "single":
+                fde_name = targets[0]
+                records = self._load_manifest_path(self.fde_manifest_paths[fde_name])
+                train_records = self._records_for_scenarios(records, train_ids)
+                val_records = self._records_for_scenarios(records, val_ids)
+                test_records = self._records_for_scenarios(records, test_ids)
+                out_dir = self.cfg.processed_dir / fde_name
+                print(f"[preprocess] mode=single fde={fde_name} out={out_dir}")
+                self._normalize_and_save(train_records, val_records, test_records, out_dir)
+                return
+
+            if mode == "separate_all":
+                for fde_name in targets:
+                    records = self._load_manifest_path(self.fde_manifest_paths[fde_name])
+                    train_records = self._records_for_scenarios(records, train_ids)
+                    val_records = self._records_for_scenarios(records, val_ids)
+                    test_records = self._records_for_scenarios(records, test_ids)
+                    out_dir = self.cfg.processed_dir / fde_name
+                    print(f"[preprocess] mode=separate_all fde={fde_name} out={out_dir}")
+                    self._normalize_and_save(train_records, val_records, test_records, out_dir)
+                return
+
+            # multifidelity
+            train_records: List[Dict[str, Any]] = []
+            val_records: List[Dict[str, Any]] = []
+            test_records: List[Dict[str, Any]] = []
+            for fde_name in targets:
+                records = self._load_manifest_path(self.fde_manifest_paths[fde_name])
+                train_records.extend(self._records_for_scenarios(records, train_ids))
+                val_records.extend(self._records_for_scenarios(records, val_ids))
+                test_records.extend(self._records_for_scenarios(records, test_ids))
+
+            out_dir = self.cfg.processed_dir / "multifidelity"
+            print(f"[preprocess] mode=multifidelity targets={targets} out={out_dir}")
+            self._normalize_and_save(train_records, val_records, test_records, out_dir)
+            return
+
+        # Legacy mode (single manifest path + one processed root).
         print("Loading manifest")
         manifest = self.load_manifest()
-
         print("Splitting dataset")
         train_records, val_records, test_records = self.split_dataset(manifest)
-
-        def _process(
-            records: List[Dict[str, Any]]
-        ) -> Tuple[List[Dict[str, np.ndarray]], List[np.ndarray], List[Dict[str, Any]], List[str]]:
-            
-            Xs: List[Dict[str, np.ndarray]] = []
-            Ys: List[np.ndarray] = []
-            metas: List[Dict[str, Any]] = []
-            sample_ids: List[str] = []
-
-            for rec in records:
-                raw = self.load_sample(rec["sample_dir"])
-                X, Y = self.build_example(raw)
-                Xs.append(X)
-                Ys.append(Y)
-                metas.append(raw["meta"])
-                if "sample_index" in rec:
-                    sample_ids.append(f"sample_{int(rec['sample_index']):06d}")
-                else:
-                    sample_ids.append(pathlib.Path(rec["sample_dir"]).name)
-
-            return Xs, Ys, metas, sample_ids
-
         print("Building dataset")
-
-        X_train_raw, Y_train_raw, meta_train, ids_train = _process(train_records)
-        X_val_raw, Y_val_raw, meta_val, ids_val = _process(val_records)
-        X_test_raw, Y_test_raw, meta_test, ids_test = _process(test_records)
-
-        # normalizer on training data
-        self.fit_normalizer(list(zip(X_train_raw, Y_train_raw)))
-        self._save_normalization_stats()
-
-        def _normalize(X_raw: List[Dict[str, np.ndarray]], Y_raw: List[np.ndarray]) -> Tuple[List[Dict[str, np.ndarray]], List[np.ndarray]]:
-            X_norm: List[Dict[str, np.ndarray]] = []
-            Y_norm: List[np.ndarray] = []
-
-            for X, Y in zip(X_raw, Y_raw):
-                X_n, Y_n = self.normalize_sample(X, Y)
-
-                X_norm.append(X_n)
-                Y_norm.append(Y_n)
-
-            return X_norm, Y_norm
-        
-        X_train, Y_train = _normalize(X_train_raw, Y_train_raw)
-        X_val, Y_val = _normalize(X_val_raw, Y_val_raw)
-        X_test, Y_test = _normalize(X_test_raw, Y_test_raw)
-
-        print("Saving split")
-        self.save_split("train", X_train, Y_train, meta_train, ids_train)
-        self.save_split("val", X_val, Y_val, meta_val, ids_val)
-        self.save_split("test", X_test, Y_test, meta_test, ids_test)
+        self._normalize_and_save(train_records, val_records, test_records, self.cfg.processed_dir)
 
 def _build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Pre-process raw tsunami surrogate data.")

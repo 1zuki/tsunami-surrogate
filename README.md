@@ -68,6 +68,15 @@ python scripts/make_dataset.py --config configs/data/dataset.yaml
 - stage 2: generate/cache all source samples (default cache: `data/source`);
 - stage 3: load cached bathymetry + source pairs and run configured FDE rollouts from `fdes.enabled` in `configs/data/dataset.yaml`.
 
+Raw rollouts are separated by solver under `data/raw/`:
+- `data/raw/hydrostatic/samples/...`
+- `data/raw/muscl/samples/...`
+- `data/raw/boussinesq/samples/...`
+
+Manifests are separated as:
+- scenario-level: `data/synthetic/scenario_manifest.jsonl`
+- solver-level: `data/synthetic/hydrostatic_manifest.jsonl`, `data/synthetic/muscl_manifest.jsonl`, `data/synthetic/boussinesq_manifest.jsonl`
+
 Runnable FDEs currently include `swe_hydrostatic`, `swe_muscl`, and `boussinesq`.
 
 Resume an interrupted run:
@@ -96,10 +105,27 @@ python scripts/make_dataset.py --config configs/data/dataset.yaml --start-at 142
 python src/data_gen/preprocess.py --config configs/data/preprocess.yaml
 ```
 
+`preprocess.yaml` now supports FDE-aware modes:
+- `fde.mode: single` with `fde.targets: [hydrostatic]` writes to `data/processed/hydrostatic/...`
+- `fde.mode: separate_all` writes one processed dataset per solver (`hydrostatic`, `muscl`, `boussinesq`) using the same scenario split
+- `fde.mode: multifidelity` writes a combined dataset to `data/processed/multifidelity/...`
+
 ### 6.3 Train
 
 ```bash
 python scripts/train.py --config configs/model/fno.yaml
+```
+
+Train on MUSCL labels:
+
+```bash
+python scripts/train.py --config configs/model/fno_muscl.yaml
+```
+
+Train on Boussinesq labels:
+
+```bash
+python scripts/train.py --config configs/model/fno_boussinesq.yaml
 ```
 
 Optional ensemble run:
@@ -130,8 +156,8 @@ bash scripts/quickstart.sh
 python scripts/visualize_rollout.py \
   --config configs/model/fno.yaml \
   --checkpoint experiments/fno/best.pt \
-  --processed-path data/processed/test \
-  --raw-dir data/raw/samples \
+  --processed-path data/processed/hydrostatic/test \
+  --raw-dir data/raw/hydrostatic/samples \
   --sample-index 0
 ```
 
@@ -144,12 +170,14 @@ tsunami-surrogate/
 ├─ requirement.txt
 ├─ configs/                        # all experiment/data/model/eval configs
 │  ├─ data/                        # data-generation and preprocessing configs
-│  │  ├─ dataset.yaml              # two-phase generation config (bathymetry cache + FDE list)
+│  │  ├─ dataset.yaml              # three-stage generation config + per-FDE raw outputs
 │  │  ├─ preprocess.yaml           # raw -> processed split/export config
 │  │  ├─ bathymetry.yaml           # bathymetry synthesis controls
 │  │  └─ source.yaml               # tsunami source family controls
 │  ├─ model/                       # model-centered train/eval configs
 │  │  ├─ fno.yaml                  # primary FNO config
+│  │  ├─ fno_muscl.yaml            # FNO on MUSCL processed labels
+│  │  ├─ fno_boussinesq.yaml       # FNO on Boussinesq processed labels
 │  │  ├─ cnn.yaml                  # CNN baseline config
 │  │  └─ unet.yaml                 # U-Net baseline config
 │  ├─ train/                       # shared/base + training variants

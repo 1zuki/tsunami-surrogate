@@ -43,6 +43,11 @@ except ImportError:
 
 KNOWN_FDES = {"swe_hydrostatic", "swe_muscl", "boussinesq"}
 IMPLEMENTED_FDES = {"swe_hydrostatic", "swe_muscl", "boussinesq"}
+FDE_OUTPUT_DIRNAME = {
+    "swe_hydrostatic": "hydrostatic",
+    "swe_muscl": "muscl",
+    "boussinesq": "boussinesq",
+}
 
 COMMON_SOLVER_KEYS = {"nx", "ny", "dx", "dy", "dt", "g", "cfl", "boundary", "use_sponge", "sponge_width", "sponge_min_factor"}
 SWE_SOLVER_KEYS = COMMON_SOLVER_KEYS | {"dry_tolerance", "max_velocity"}
@@ -84,6 +89,12 @@ class RolloutResult:
     trajectory_eta: np.ndarray
     timestamps: np.ndarray
     dt_history: np.ndarray
+
+
+def _fde_dirname(fde_name: str) -> str:
+    if fde_name in FDE_OUTPUT_DIRNAME:
+        return FDE_OUTPUT_DIRNAME[fde_name]
+    return str(fde_name).replace("swe_", "")
 
 def _seed_for_sample(run_seed: int, sample_idx: int) -> int:
     # sample_idx is 1-based; keep derivation stable across workers/runs.
@@ -333,7 +344,7 @@ def _generate_sample_worker(
     bathy_cfg_path: str,
     bathymetry_dir: str,
     source_dir: str,
-    samples_dir: str,
+    fde_samples_dirs: Dict[str, str],
     allow_override: bool = False,
 ) -> Dict[str, Any]:
     bathy_path = _bathymetry_file_path(bathymetry_dir, sample_idx)
@@ -359,11 +370,6 @@ def _generate_sample_worker(
     h0 = np.maximum(rest_depth + eta0, 0.0)
     free_surface0 = h0 + bathymetry
 
-    sample_dir = Path(samples_dir) / f"sample_{sample_idx:06d}"
-    if allow_override and sample_dir.exists():
-        shutil.rmtree(sample_dir)
-    sample_dir.mkdir(parents=True, exist_ok=True)
-
     runnable_fdes = [name for name in dataset.enabled_fdes if name in IMPLEMENTED_FDES]
     skipped_unimplemented = [name for name in dataset.enabled_fdes if name not in IMPLEMENTED_FDES]
 
@@ -372,9 +378,13 @@ def _generate_sample_worker(
             "No runnable FDE selected. Enable at least one implemented solver (swe_hydrostatic, swe_muscl, boussinesq)."
         )
 
-    per_fde: dict[str, dict[str, Any]] = {}
+    scenario_id = f"scenario_{sample_idx:06d}"
+    solver_records: list[Dict[str, Any]] = []
 
     for fde_name in runnable_fdes:
+        if fde_name not in fde_samples_dirs:
+            raise KeyError(f"Missing output samples directory for FDE '{fde_name}'")
+
         rollout = _run_fde_rollout(
             fde_name=fde_name,
             solver_cfg=solver_cfg,
@@ -384,87 +394,103 @@ def _generate_sample_worker(
             h0=h0,
         )
 
+        sample_dir = Path(fde_samples_dirs[fde_name]) / f"sample_{sample_idx:06d}"
+        if allow_override and sample_dir.exists():
+            shutil.rmtree(sample_dir)
+        sample_dir.mkdir(parents=True, exist_ok=True)
+
         np.savez_compressed(
-            sample_dir / f"rollout_{fde_name}.npz",
+            sample_dir / "rollout.npz",
             trajectory=rollout.trajectory.astype(np.float32),
             trajectory_eta=rollout.trajectory_eta.astype(np.float32),
             timestamps=rollout.timestamps.astype(np.float32),
             dt_history=rollout.dt_history.astype(np.float32),
             fde_name=np.array([fde_name], dtype="U64"),
         )
-        np.save(
-            sample_dir / f"trajectory_eta_{fde_name}.npy",
-            rollout.trajectory_eta.astype(np.float32),
+        np.save(sample_dir / "trajectory_eta.npy", rollout.trajectory_eta.astype(np.float32))
+
+        # keep sample.npz backward compatible for downstream preprocess/training
+        np.savez_compressed(
+            sample_dir / "sample.npz",
+            bathymetry=bathymetry.astype(np.float32),
+            source_field=source_field.astype(np.float32),
+            rest_depth=rest_depth.astype(np.float32),
+            eta0=eta0.astype(np.float32),
+            initial_depth=h0.astype(np.float32),
+            free_surface0=free_surface0.astype(np.float32),
+            trajectory=rollout.trajectory.astype(np.float32),
+            trajectory_eta=rollout.trajectory_eta.astype(np.float32),
+            timestamps=rollout.timestamps.astype(np.float32),
+            dt_history=rollout.dt_history.astype(np.float32),
+            solver_name=np.array([fde_name], dtype="U64"),
+            scenario_id=np.array([scenario_id], dtype="U64"),
         )
 
-        per_fde[fde_name] = {
-            "trajectory": rollout.trajectory,
-            "trajectory_eta": rollout.trajectory_eta,
-            "timestamps": rollout.timestamps,
-            "dt_history": rollout.dt_history,
+        meta = {
+            "sample_index": sample_idx,
+            "scenario_id": scenario_id,
+            "solver_name": fde_name,
+            "bathymetry_type": bathy_type,
+            "source_type": source_type,
+            "source_strength": source_strength,
+            "num_frames": int(rollout.trajectory.shape[0]),
+            "trajectory_shape": list(map(int, rollout.trajectory.shape)),
+            "trajectory_eta_shape": list(map(int, rollout.trajectory_eta.shape)),
+            "timestamps_shape": list(map(int, rollout.timestamps.shape)),
+            "dt_history_shape": list(map(int, rollout.dt_history.shape)),
+            "bathymetry_shape": list(map(int, bathymetry.shape)),
+            "source_shape": list(map(int, source_field.shape)),
+            "eta0_shape": list(map(int, eta0.shape)),
+            "h0_shape": list(map(int, h0.shape)),
+            "free_surface0_shape": list(map(int, free_surface0.shape)),
+            "dataset_config_path": config_path,
+            "bathymetry_config_path": bathy_cfg_path,
+            "source_config_path": source_cfg_path,
+            "solver": solver_cfg,
+            "bathymetry_cache_path": str(bathy_path),
+            "source_cache_path": str(source_path),
+            "fdes_requested": list(dataset.enabled_fdes),
+            "fdes_run": runnable_fdes,
+            "fdes_skipped_unimplemented": skipped_unimplemented,
         }
+        with (sample_dir / "meta.json").open("w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
 
-    primary_fde = dataset.primary_fde if dataset.primary_fde in per_fde else runnable_fdes[0]
-    primary = per_fde[primary_fde]
-    np.save(sample_dir / "trajectory_eta.npy", primary["trajectory_eta"].astype(np.float32))
+        solver_records.append(
+            {
+                "sample_index": sample_idx,
+                "scenario_id": scenario_id,
+                "sample_dir": str(sample_dir),
+                "solver_name": fde_name,
+                "bathymetry_type": bathy_type,
+                "source_type": source_type,
+                "source_strength": source_strength,
+                "num_frames": int(rollout.trajectory.shape[0]),
+                "trajectory_shape": list(map(int, rollout.trajectory.shape)),
+                "trajectory_eta_shape": list(map(int, rollout.trajectory_eta.shape)),
+                "fdes_run": runnable_fdes,
+                "fdes_skipped_unimplemented": skipped_unimplemented,
+            }
+        )
 
-    # keep sample.npz backward compatible for downstream preprocess/training
-    np.savez_compressed(
-        sample_dir / "sample.npz",
-        bathymetry=bathymetry.astype(np.float32),
-        source_field=source_field.astype(np.float32),
-        rest_depth=rest_depth.astype(np.float32),
-        eta0=eta0.astype(np.float32),
-        initial_depth=h0.astype(np.float32),
-        free_surface0=free_surface0.astype(np.float32),
-        trajectory=primary["trajectory"].astype(np.float32),
-        trajectory_eta=primary["trajectory_eta"].astype(np.float32),
-        timestamps=primary["timestamps"].astype(np.float32),
-        dt_history=primary["dt_history"].astype(np.float32),
-    )
-
-    meta = {
+    scenario_record = {
         "sample_index": sample_idx,
+        "scenario_id": scenario_id,
         "bathymetry_type": bathy_type,
         "source_type": source_type,
         "source_strength": source_strength,
-        "num_frames": int(primary["trajectory"].shape[0]),
-        "trajectory_shape": list(map(int, primary["trajectory"].shape)),
-        "trajectory_eta_shape": list(map(int, primary["trajectory_eta"].shape)),
-        "timestamps_shape": list(map(int, primary["timestamps"].shape)),
-        "dt_history_shape": list(map(int, primary["dt_history"].shape)),
-        "bathymetry_shape": list(map(int, bathymetry.shape)),
-        "source_shape": list(map(int, source_field.shape)),
-        "eta0_shape": list(map(int, eta0.shape)),
-        "h0_shape": list(map(int, h0.shape)),
-        "free_surface0_shape": list(map(int, free_surface0.shape)),
-        "dataset_config_path": config_path,
-        "bathymetry_config_path": bathy_cfg_path,
-        "source_config_path": source_cfg_path,
-        "solver": solver_cfg,
         "bathymetry_cache_path": str(bathy_path),
         "source_cache_path": str(source_path),
         "fdes_requested": list(dataset.enabled_fdes),
         "fdes_run": runnable_fdes,
         "fdes_skipped_unimplemented": skipped_unimplemented,
-        "primary_fde": primary_fde,
-        "solver_name": primary_fde,
     }
-    with (sample_dir / "meta.json").open("w", encoding="utf-8") as f:
-        json.dump(meta, f, indent=2)
 
     return {
         "sample_index": sample_idx,
-        "sample_dir": str(sample_dir),
-        "bathy_type": bathy_type,
-        "source_type": source_type,
-        "num_frames": int(primary["trajectory"].shape[0]),
-        "trajectory_shape": list(map(int, primary["trajectory"].shape)),
-        "trajectory_eta_shape": list(map(int, primary["trajectory_eta"].shape)),
-        "source_strength": source_strength,
-        "primary_fde": primary_fde,
-        "fdes_run": runnable_fdes,
-        "fdes_skipped_unimplemented": skipped_unimplemented,
+        "scenario_id": scenario_id,
+        "scenario_record": scenario_record,
+        "solver_records": solver_records,
     }
 
 class TsunamiDatasetBuilder:
@@ -487,16 +513,31 @@ class TsunamiDatasetBuilder:
         self.source_cfg_path = self._require_path(cfg, ["configs", "source"])
 
         self.output_dir = self.dataset.output_dir
-        self.samples_dir = self.output_dir / "samples"
         self.bathymetry_dir = self.dataset.bathymetry_dir
         self.source_dir = self.dataset.source_dir
-        self.manifest_path = self.dataset.manifest_path
+        self.scenario_manifest_path = self.dataset.manifest_path
+        self.fde_samples_dirs: Dict[str, Path] = {}
+        self.fde_manifest_paths: Dict[str, Path] = {}
+
+        for fde_name in self.dataset.enabled_fdes:
+            if fde_name not in IMPLEMENTED_FDES:
+                continue
+            folder_name = _fde_dirname(fde_name)
+            self.fde_samples_dirs[fde_name] = self.output_dir / folder_name / "samples"
+            self.fde_manifest_paths[fde_name] = self.scenario_manifest_path.parent / f"{folder_name}_manifest.jsonl"
+
+        if self.dataset.primary_fde in self.fde_samples_dirs:
+            self.samples_dir = self.fde_samples_dirs[self.dataset.primary_fde]
+        else:
+            self.samples_dir = self.output_dir / "samples"
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.samples_dir.mkdir(parents=True, exist_ok=True)
+        for p in self.fde_samples_dirs.values():
+            p.mkdir(parents=True, exist_ok=True)
         self.bathymetry_dir.mkdir(parents=True, exist_ok=True)
         self.source_dir.mkdir(parents=True, exist_ok=True)
-        self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        self.scenario_manifest_path.parent.mkdir(parents=True, exist_ok=True)
 
         if self.dataset.copy_configs:
             self._copy_config_snapshot()
@@ -586,7 +627,7 @@ class TsunamiDatasetBuilder:
         output_dir = Path(ds.get("output_dir", "data/raw"))
         bathymetry_dir = Path(ds.get("bathymetry_dir", "data/bathymetry"))
         source_dir = Path(ds.get("source_dir", "data/source"))
-        manifest_path = Path(ds.get("manifest_path", "data/synthetic/manifest.jsonl"))
+        manifest_path = Path(ds.get("manifest_path", "data/synthetic/scenario_manifest.jsonl"))
         copy_configs = bool(ds.get("copy_configs", True))
 
         if num_samples <= 0:
@@ -637,18 +678,20 @@ class TsunamiDatasetBuilder:
         with snapshot_path.open("w", encoding="utf-8") as f:
             yaml.safe_dump(self.cfg, f, sort_keys=False)
 
-    def _append_manifest(self, record: Dict[str, Any]) -> None:
-        with self.manifest_path.open("a", encoding="utf-8") as f:
+    @staticmethod
+    def _append_manifest(manifest_path: Path, record: Dict[str, Any]) -> None:
+        with manifest_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
 
-    def _purge_manifest_indices(self, indices: set[int]) -> None:
+    @staticmethod
+    def _purge_manifest_indices(manifest_path: Path, indices: set[int]) -> None:
         if not indices:
             return
-        if not self.manifest_path.exists():
+        if not manifest_path.exists():
             return
 
         keep_lines: list[str] = []
-        with self.manifest_path.open("r", encoding="utf-8") as f:
+        with manifest_path.open("r", encoding="utf-8") as f:
             for line in f:
                 line_s = line.strip()
                 if not line_s:
@@ -666,21 +709,31 @@ class TsunamiDatasetBuilder:
                     continue
                 keep_lines.append(line)
 
-        with self.manifest_path.open("w", encoding="utf-8") as f:
+        with manifest_path.open("w", encoding="utf-8") as f:
             for line in keep_lines:
                 f.write(line if line.endswith("\n") else line + "\n")
 
     def _existing_sample_indices(self) -> set[int]:
-        out: set[int] = set()
         patt = re.compile(r"^sample_(\d{6})$")
-        for p in self.samples_dir.iterdir():
-            if not p.is_dir():
+        per_fde_sets: list[set[int]] = []
+
+        for samples_dir in self.fde_samples_dirs.values():
+            idxs: set[int] = set()
+            if not samples_dir.exists():
+                per_fde_sets.append(idxs)
                 continue
-            m = patt.match(p.name)
-            if m is None:
-                continue
-            out.add(int(m.group(1)))
-        return out
+            for p in samples_dir.iterdir():
+                if not p.is_dir():
+                    continue
+                m = patt.match(p.name)
+                if m is None:
+                    continue
+                idxs.add(int(m.group(1)))
+            per_fde_sets.append(idxs)
+
+        if not per_fde_sets:
+            return set()
+        return set.intersection(*per_fde_sets)
 
     def _resume_rollback_start_index(self, existing_indices: set[int]) -> int:
         if not existing_indices:
@@ -842,15 +895,15 @@ class TsunamiDatasetBuilder:
                     bathy_cfg_path=str(self.bathy_cfg_path),
                     bathymetry_dir=str(self.bathymetry_dir),
                     source_dir=str(self.source_dir),
-                    samples_dir=str(self.samples_dir),
+                    fde_samples_dirs={k: str(v) for k, v in self.fde_samples_dirs.items()},
                     allow_override=allow_override,
                 )
                 records.append(rec)
                 done += 1
+                solver_names = [str(s.get("solver_name", "unknown")) for s in rec.get("solver_records", [])]
                 print(
                     f"[{done:06d}/{len(indices):06d}] sample={idx:06d} "
-                    f"bathy={rec['bathy_type']:<11} source={rec['source_type']:<11} "
-                    f"frames={rec['num_frames']} primary_fde={rec['primary_fde']}"
+                    f"scenario={rec['scenario_id']} solvers={solver_names}"
                 )
             return records
 
@@ -870,7 +923,7 @@ class TsunamiDatasetBuilder:
                     str(self.bathy_cfg_path),
                     str(self.bathymetry_dir),
                     str(self.source_dir),
-                    str(self.samples_dir),
+                    {k: str(v) for k, v in self.fde_samples_dirs.items()},
                     allow_override,
                 ): idx
                 for idx in indices
@@ -880,10 +933,10 @@ class TsunamiDatasetBuilder:
                 rec = fut.result()
                 records.append(rec)
                 done += 1
+                solver_names = [str(s.get("solver_name", "unknown")) for s in rec.get("solver_records", [])]
                 print(
                     f"[{done:06d}/{len(indices):06d}] sample={rec['sample_index']:06d} "
-                    f"bathy={rec['bathy_type']:<11} source={rec['source_type']:<11} "
-                    f"frames={rec['num_frames']} primary_fde={rec['primary_fde']}"
+                    f"scenario={rec['scenario_id']} solvers={solver_names}"
                 )
 
         return records
@@ -909,8 +962,11 @@ class TsunamiDatasetBuilder:
             start_idx = 1
 
         if start_idx == 1 and not continue_from_last and start_at is None:
-            if self.manifest_path.exists():
-                self.manifest_path.unlink()
+            if self.scenario_manifest_path.exists():
+                self.scenario_manifest_path.unlink()
+            for path in self.fde_manifest_paths.values():
+                if path.exists():
+                    path.unlink()
         else:
             print(f"[dataset] resume mode: start_at={start_idx}")
 
@@ -945,9 +1001,17 @@ class TsunamiDatasetBuilder:
 
         records.sort(key=lambda r: int(r["sample_index"]))
         if allow_override:
-            self._purge_manifest_indices(set(int(r["sample_index"]) for r in records))
+            sample_indices = set(int(r["sample_index"]) for r in records)
+            self._purge_manifest_indices(self.scenario_manifest_path, sample_indices)
+            for manifest_path in self.fde_manifest_paths.values():
+                self._purge_manifest_indices(manifest_path, sample_indices)
+
         for rec in records:
-            self._append_manifest(rec)
+            self._append_manifest(self.scenario_manifest_path, rec["scenario_record"])
+            for srec in rec.get("solver_records", []):
+                solver_name = str(srec.get("solver_name", "unknown"))
+                if solver_name in self.fde_manifest_paths:
+                    self._append_manifest(self.fde_manifest_paths[solver_name], srec)
 
 def _build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="generate raw tsunami surrogate samples")
