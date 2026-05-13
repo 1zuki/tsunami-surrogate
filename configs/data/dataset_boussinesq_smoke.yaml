@@ -16,7 +16,7 @@ dataset:
   bathymetry_dir: "data/bathymetry"
   source_dir: "data/source"
   output_dir: "data/raw_boussinesq_smoke"
-  manifest_path: "data/synthetic/manifest_boussinesq_smoke.jsonl"
+  manifest_path: "data/synthetic/scenario_manifest_boussinesq_smoke.jsonl"
   copy_configs: true
 
 fdes:

@@ -3,7 +3,7 @@ configs:
   source: "configs/data/source.yaml"
 
 dataset:
-  num_samples: 128
+  num_samples: 512
   seed: 42
   num_workers: 8
   n_steps: 400
@@ -16,7 +16,7 @@ dataset:
   bathymetry_dir: "data/bathymetry"
   source_dir: "data/source"
   output_dir: "data/raw"
-  manifest_path: "data/synthetic/manifest.jsonl"
+  manifest_path: "data/synthetic/scenario_manifest.jsonl"
   copy_configs: true
 
 fdes:

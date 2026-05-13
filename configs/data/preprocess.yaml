@@ -1,7 +1,20 @@
-raw_dir: data/raw/samples
+raw:
+  scenario_manifest: data/synthetic/scenario_manifest.jsonl
+  fde_manifests:
+    hydrostatic: data/synthetic/hydrostatic_manifest.jsonl
+    muscl: data/synthetic/muscl_manifest.jsonl
+    boussinesq: data/synthetic/boussinesq_manifest.jsonl
+  raw_dirs:
+    hydrostatic: data/raw/hydrostatic/samples
+    muscl: data/raw/muscl/samples
+    boussinesq: data/raw/boussinesq/samples
+
 processed_dir: data/processed
 
-manifest_path: data/synthetic/manifest.jsonl
+fde:
+  mode: single          # single / separate_all / multifidelity
+  targets: [hydrostatic]
+  target_field: eta     # eta / depth / state
 
 split:
   train: 0.7
@@ -16,13 +29,13 @@ input:
   use_initial_surface: false
 
 target:
-  mode: multi_step   # or multi_step / final_state
-  variable: eta      # eta / depth / state
+  mode: multi_step      # next_step / multi_step / final_state
+  variable: eta         # eta / depth / state
   forecast_steps: 100
   stride: 1
 
 normalization:
-  method: standardize   # or minmax
+  method: standardize   # standardize / minmax
   channels:
     bathymetry: true
     source: true
