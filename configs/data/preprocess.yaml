@@ -12,8 +12,8 @@ raw:
 processed_dir: data/processed
 
 fde:
-  mode: single          # single / separate_all / multifidelity
-  targets: [hydrostatic]
+  mode: separate_all          # single / separate_all / multifidelity
+  targets: [hydrostatic, muscl, boussinesq]
   target_field: eta     # eta / depth / state
 
 split:

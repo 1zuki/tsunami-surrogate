@@ -32,9 +32,9 @@ except ImportError:
     from hydrostatic_swe import HydrostaticShallowWaterSolver
 
 try:
-    from src.solver.muscl_swe import MUSCLShallowWaterSolver
+    from src.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
 except ImportError:
-    from muscl_swe import MUSCLShallowWaterSolver
+    from muscl_hr_swe import MUSCLHRShallowWaterSolver
 
 try:
     from src.solver.boussinesq import BoussinesqSolver
@@ -129,10 +129,10 @@ def _make_hydrostatic_solver_from_cfg(sv: Dict[str, Any]) -> HydrostaticShallowW
     )
 
 
-def _make_muscl_solver_from_cfg(sv: Dict[str, Any]) -> MUSCLShallowWaterSolver:
+def _make_muscl_solver_from_cfg(sv: Dict[str, Any]) -> MUSCLHRShallowWaterSolver:
     cfg = _filter_solver_cfg(sv, SWE_SOLVER_KEYS)
     boundary = cfg.get("boundary", "open")
-    return MUSCLShallowWaterSolver(
+    return MUSCLHRShallowWaterSolver(
         nx=int(cfg["nx"]),
         ny=int(cfg["ny"]),
         dx=float(cfg["dx"]),

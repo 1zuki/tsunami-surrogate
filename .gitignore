@@ -6,6 +6,10 @@ note_to_self.md
 nts.md
 NTS.md
 
+basin_note.md
+train.md
+swe.md
+
 boussinesq.md
 direction.md
 
@@ -35,6 +39,9 @@ figures/*
 checkpoints/*
 *.pt
 *.pth
+
+experiments/fno/
+experiments/fno_*/
 
 .DS_Store
 .ipynb_checkpoints/
