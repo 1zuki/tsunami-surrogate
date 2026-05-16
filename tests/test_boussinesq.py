@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.solver.boussinesq import BoussinesqSolver
+from src.solver.boussinesq import BoussinesqSolver, simulate_rollout
 
 
 def test_boussinesq_initial_state_shape() -> None:
@@ -225,3 +225,31 @@ def test_boussinesq_fourier_mode_dispersion_constant_depth_periodic() -> None:
     assert solver.last_cg_iterations > 0
     assert solver.last_cg_converged
     assert solver.last_cg_final_residual <= solver.linear_solver_tol * solver.last_cg_initial_residual * 1.01
+
+
+def test_boussinesq_simulate_rollout_converts_depth_to_eta() -> None:
+    nx, ny = 12, 10
+    x = np.linspace(-1.0, 1.0, nx)
+    y = np.linspace(-1.0, 1.0, ny)
+    X, Y = np.meshgrid(x, y, indexing="ij")
+    eta0 = 0.02 * np.exp(-20.0 * (X * X + Y * Y))
+    bathymetry = -np.ones((nx, ny), dtype=float)
+    initial_depth = -bathymetry + eta0
+    source = np.zeros((nx, ny), dtype=float)
+
+    sample = np.stack([bathymetry, source, initial_depth], axis=0)
+    rollout = simulate_rollout(
+        sample,
+        n_steps=2,
+        record_every=1,
+        include_initial_state=True,
+        boundary="periodic",
+        use_sponge=False,
+        alpha=0.0,
+        auto_dt=False,
+        dt=1e-4,
+    )
+
+    assert rollout.shape == (3, nx, ny)
+    assert np.isfinite(rollout).all()
+    assert np.allclose(rollout[0], eta0.astype(np.float32))

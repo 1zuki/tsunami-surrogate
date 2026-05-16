@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, NamedTuple, Optional, Tuple, Union
+from typing import Any, Literal, Mapping, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 
@@ -432,3 +432,154 @@ class BoussinesqSolver:
             boundary_y=self.boundary_y,
             mode=self.mode,
         )
+
+
+def _to_sample_array(sample_inputs: Any) -> np.ndarray:
+    if hasattr(sample_inputs, "detach"):
+        sample_inputs = sample_inputs.detach().cpu().numpy()
+
+    arr = np.asarray(sample_inputs, dtype=float)
+    if arr.ndim == 4:
+        arr = arr[0]
+    if arr.ndim != 3:
+        raise ValueError(f"sample_inputs must have shape [C,H,W] or [B,C,H,W], got {arr.shape}")
+
+    return arr
+
+
+def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
+    """
+    Run a Boussinesq rollout from an evaluation input sample.
+
+    Expected input channel layout (overridable via channel_map):
+    - bathymetry: channel 0
+    - source: channel 1
+    - initial_depth: channel 2
+    - initial_surface: channel 3
+
+    Boussinesq state uses eta, not shallow-water depth. When an initial
+    depth channel is available, convert it to the free-surface disturbance
+    with eta0 = initial_depth + bathymetry - sea_level_offset.
+
+    Returns:
+        np.ndarray with shape [T,H,W] for output_field in {eta, depth, eta_t}
+        or [T,2,H,W] for output_field == state.
+    """
+    channels = _to_sample_array(sample_inputs)
+    _, nx, ny = channels.shape
+
+    channel_map_cfg = kwargs.get("channel_map", {})
+    if not isinstance(channel_map_cfg, Mapping):
+        raise ValueError("channel_map must be a mapping")
+
+    def _idx(name: str, default: int) -> Optional[int]:
+        value = channel_map_cfg.get(name, default)
+        if value is None:
+            return None
+
+        idx = int(value)
+        if idx < 0 or idx >= channels.shape[0]:
+            return None
+
+        return idx
+
+    idx_bathy = _idx("bathymetry", 0)
+    idx_source = _idx("source", 1)
+    idx_h0 = _idx("initial_depth", 2)
+    idx_eta0 = _idx("initial_surface", 3)
+
+    sea_level_offset = float(kwargs.get("sea_level_offset", 0.0))
+    default_depth = float(kwargs.get("default_depth", 1.0))
+    source_scale = float(kwargs.get("source_scale", 1.0))
+
+    if idx_bathy is not None:
+        bathymetry = channels[idx_bathy]
+    else:
+        bathymetry = -max(default_depth, 0.0) * np.ones((nx, ny), dtype=float)
+
+    source_field = channels[idx_source] if idx_source is not None else None
+
+    eta0_override = kwargs.get("eta0", None)
+    if eta0_override is not None:
+        eta0 = np.asarray(eta0_override, dtype=float)
+        if eta0.shape != (nx, ny):
+            raise ValueError(f"eta0 shape must be {(nx, ny)}, got {eta0.shape}")
+    elif idx_eta0 is not None:
+        eta0 = channels[idx_eta0] - sea_level_offset
+    elif idx_h0 is not None:
+        eta0 = channels[idx_h0] + bathymetry - sea_level_offset
+    elif source_field is not None:
+        eta0 = source_scale * source_field
+    else:
+        eta0 = np.zeros((nx, ny), dtype=float)
+
+    eta_t0_override = kwargs.get("eta_t0", None)
+    if eta_t0_override is None:
+        eta_t0 = np.zeros_like(eta0)
+    else:
+        eta_t0 = np.asarray(eta_t0_override, dtype=float)
+        if eta_t0.shape != (nx, ny):
+            raise ValueError(f"eta_t0 shape must be {(nx, ny)}, got {eta_t0.shape}")
+
+    use_sponge = kwargs.get("use_sponge", None)
+    solver = BoussinesqSolver(
+        nx=nx,
+        ny=ny,
+        dx=float(kwargs.get("dx", 1.0 / max(nx, 1))),
+        dy=float(kwargs.get("dy", 1.0 / max(ny, 1))),
+        dt=float(kwargs.get("dt", 1e-3)),
+        g=float(kwargs.get("g", 9.81)),
+        cfl=float(kwargs.get("cfl", 0.35)),
+        alpha=float(kwargs.get("alpha", 1.0 / 3.0)),
+        min_depth=float(kwargs.get("min_depth", 1e-3)),
+        sea_level_offset=sea_level_offset,
+        boundary=kwargs.get("boundary", "open"),
+        mode=kwargs.get("mode", "linear_variable_depth"),
+        use_sponge=None if use_sponge is None else bool(use_sponge),
+        sponge_width=int(kwargs.get("sponge_width", 20)),
+        sponge_min_factor=float(kwargs.get("sponge_min_factor", 0.9)),
+        filter_strength=float(kwargs.get("filter_strength", 0.0)),
+        linear_solver_tol=float(kwargs.get("linear_solver_tol", 1e-8)),
+        linear_solver_max_iter=int(kwargs.get("linear_solver_max_iter", 80)),
+    )
+    solver.set_bathymetry(bathymetry)
+    solver.set_initial_condition(eta0, eta_t0=eta_t0)
+
+    n_steps = int(kwargs.get("n_steps", 200))
+    record_every = int(kwargs.get("record_every", 1))
+    if record_every <= 0:
+        raise ValueError("record_every must be positive")
+
+    auto_dt = bool(kwargs.get("auto_dt", True))
+    target_cfl = float(kwargs.get("target_cfl", solver.cfl))
+    include_initial_state = bool(kwargs.get("include_initial_state", True))
+    output_field = str(kwargs.get("output_field", "eta")).strip().lower()
+
+    if output_field not in ("eta", "depth", "eta_t", "state"):
+        raise ValueError("output_field must be one of: eta, depth, eta_t, state")
+
+    def _snapshot() -> np.ndarray:
+        if output_field == "eta":
+            return solver.compute_free_surface().copy()
+        if output_field == "depth":
+            return solver.H + solver.eta
+        if output_field == "eta_t":
+            return solver.eta_t.copy()
+
+        return solver.get_state().copy()
+
+    frames: list[np.ndarray] = []
+    if include_initial_state:
+        frames.append(_snapshot())
+
+    for step_idx in range(max(0, n_steps)):
+        dt = solver.suggest_dt(target_cfl=target_cfl) if auto_dt else solver.dt
+        solver.step(dt=dt, auto_dt=False)
+
+        if (step_idx + 1) % record_every == 0:
+            frames.append(_snapshot())
+
+    if not frames:
+        frames.append(_snapshot())
+
+    return np.stack(frames, axis=0).astype(np.float32)
