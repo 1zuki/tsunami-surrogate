@@ -40,15 +40,23 @@ def main():
 
     ensemble = EnsemblePredictor(members).to(device).eval()
     loaders = create_dataloaders(cfg)
+    test_loader = loaders.get("test")
+    if test_loader is None:
+        print("No test loader found; uncertainty eval skipped gracefully.")
+        return
     levels = cfg.get('uncertainty', {}).get('interval_levels', [0.5, 0.8, 0.9, 0.95])
     results = []
 
-    for batch in loaders['test']:
+    for batch in test_loader:
         x, y = batch['x'].to(device), batch['y'].to(device)
         out = ensemble(x)
         row = interval_calibration(out['mean'], out['variance'], y, levels)
         row['error_uncertainty_corr'] = error_uncertainty_correlation(out['mean'], out['variance'], y)
         results.append(row)
+
+    if not results:
+        print("Test loader had zero batches; uncertainty eval skipped gracefully.")
+        return
 
     mean_results = {k: sum(r[k] for r in results) / len(results) for k in results[0]}
     print(mean_results)

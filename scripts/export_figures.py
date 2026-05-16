@@ -14,6 +14,15 @@ from src.training.checkpointing import load_checkpoint
 from src.evaluation.visualize import save_prediction_triplet
 
 
+def _model_output(model, x: torch.Tensor) -> torch.Tensor:
+    out = model(x)
+    if isinstance(out, tuple):
+        return out[0]
+    if isinstance(out, dict):
+        return out.get("mean", next(iter(out.values())))
+    return out
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--config', required=True)
@@ -28,7 +37,7 @@ def main():
     batch = next(iter(loaders['test']))
 
     with torch.no_grad():
-        pred = model(batch['x'].to(device)).cpu()
+        pred = _model_output(model, batch['x'].to(device)).cpu()
 
     save_prediction_triplet(batch['x'], pred, batch['y'], args.out)
     print(f'Saved {args.out}')

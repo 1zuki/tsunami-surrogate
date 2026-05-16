@@ -16,6 +16,15 @@ from src.utils.io import save_json
 import torch
 
 
+def _model_output(model, x: torch.Tensor) -> torch.Tensor:
+    out = model(x)
+    if isinstance(out, tuple):
+        return out[0]
+    if isinstance(out, dict):
+        return out.get("mean", next(iter(out.values())))
+    return out
+
+
 @torch.no_grad()
 def main():
     p = argparse.ArgumentParser()
@@ -26,14 +35,21 @@ def main():
     cfg = load_config(args.config)
     device = resolve_device(cfg.get('device', 'auto'))
     resolutions = cfg.get('resolution_transfer', {}).get('eval_resolutions', [32, 64])
-    data_path = Path(cfg['data']['path'])
+    eval_cfg = cfg.get("eval", {})
+    data_cfg = cfg.get("data", {})
+    data_path = Path(eval_cfg.get("dataset_path", data_cfg.get("path", "")))
+    if not str(data_path):
+        raise KeyError(
+            "Resolution-transfer dataset path is missing. Set `eval.dataset_path` (preferred) "
+            "or `data.path` in the config."
+        )
     if not data_path.exists():
         raise FileNotFoundError(
             f"Resolution-transfer dataset not found: {data_path}. "
             "Prepare the dedicated cross-resolution data first (e.g., train_32/test_64)."
         )
     ds = MultiResolutionDataset(data_path, resolutions)
-    loader = DataLoader(ds, batch_size=cfg['data'].get('batch_size', 8))
+    loader = DataLoader(ds, batch_size=eval_cfg.get('batch_size', data_cfg.get('batch_size', 8)))
     model = build_model(cfg).to(device).eval()
     load_checkpoint(args.checkpoint, model, map_location=device)
     rows = {}
@@ -44,7 +60,7 @@ def main():
         for batch in loader:
             x = batch[f'x_{res}'].to(device)
             y = batch[f'y_{res}'].to(device)
-            pred = model(x)
+            pred = _model_output(model, x)
             metrics = compute_metrics(pred, y)
 
             for k, v in metrics.items():

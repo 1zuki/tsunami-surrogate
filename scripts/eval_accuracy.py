@@ -22,17 +22,26 @@ def main():
     args = p.parse_args()
     cfg = load_config(args.config)
 
-    if "data" not in cfg:
-        cfg["data"] = {
-            "test_path": cfg["eval"]["dataset_path"],
-            "batch_size": cfg["eval"].get("batch_size", 8),
-        }
+    eval_cfg = cfg.get("eval", {})
+    data_cfg = dict(cfg.get("data", {}))
+    dataset_path = eval_cfg.get("dataset_path")
+    if dataset_path:
+        data_cfg["test_path"] = dataset_path
+    if "batch_size" in eval_cfg:
+        data_cfg["batch_size"] = eval_cfg["batch_size"]
+    cfg["data"] = data_cfg
 
     device = resolve_device(cfg.get("device", "auto"))
     loaders = create_dataloaders(cfg)
+    test_loader = loaders.get("test")
+    if test_loader is None:
+        raise KeyError(
+            "No test dataloader found. Set `eval.dataset_path` (preferred) or `data.test_path` "
+            "to a valid evaluation dataset."
+        )
     model = build_model(cfg).to(device)
     load_checkpoint(args.checkpoint, model, map_location=device)
-    metrics = evaluate_accuracy(model, loaders.get("test") or list(loaders.values())[-1], device)
+    metrics = evaluate_accuracy(model, test_loader, device)
     print(metrics)
     save_json(metrics, f"{cfg.get('eval', {}).get('output_dir', 'experiments/eval_accuracy')}/metrics.json")
 
