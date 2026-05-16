@@ -55,10 +55,12 @@ BOUSSINESQ_SOLVER_KEYS = COMMON_SOLVER_KEYS | {
     "alpha",
     "min_depth",
     "sea_level_offset",
+    "depth_scale",
     "mode",
     "filter_strength",
     "linear_solver_tol",
     "linear_solver_max_iter",
+    "check_finite",
 }
 
 @dataclass
@@ -161,6 +163,7 @@ def _make_boussinesq_solver_from_cfg(sv: Dict[str, Any]) -> BoussinesqSolver:
         alpha=float(cfg.get("alpha", 1.0 / 3.0)),
         min_depth=float(cfg.get("min_depth", 1e-3)),
         sea_level_offset=float(cfg.get("sea_level_offset", 0.0)),
+        depth_scale=float(cfg.get("depth_scale", 1.0)),
         boundary=cfg.get("boundary", "open"),
         mode=cfg.get("mode", "linear_variable_depth"),
         use_sponge=cfg["use_sponge"] if "use_sponge" in cfg else None,
@@ -169,6 +172,7 @@ def _make_boussinesq_solver_from_cfg(sv: Dict[str, Any]) -> BoussinesqSolver:
         filter_strength=float(cfg.get("filter_strength", 0.0)),
         linear_solver_tol=float(cfg.get("linear_solver_tol", 1e-8)),
         linear_solver_max_iter=int(cfg.get("linear_solver_max_iter", 80)),
+        check_finite=bool(cfg.get("check_finite", True)),
     )
 
 def _simulate_one_local(

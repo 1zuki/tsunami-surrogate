@@ -13,7 +13,7 @@ data:
 model:
   name: fno2d
   in_channels: 3
-  out_channels: 80
+  out_channels: 50
   modes1: 14
   modes2: 14
   width: 48

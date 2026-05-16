@@ -227,6 +227,7 @@ def test_boussinesq_fourier_mode_dispersion_constant_depth_periodic() -> None:
     assert solver.last_cg_final_residual <= solver.linear_solver_tol * solver.last_cg_initial_residual * 1.01
 
 
+
 def test_boussinesq_simulate_rollout_converts_depth_to_eta() -> None:
     nx, ny = 12, 10
     x = np.linspace(-1.0, 1.0, nx)
@@ -248,8 +249,120 @@ def test_boussinesq_simulate_rollout_converts_depth_to_eta() -> None:
         alpha=0.0,
         auto_dt=False,
         dt=1e-4,
+        channel_map={"bathymetry": 0, "source": None, "initial_depth": 2, "initial_surface": None},
     )
 
     assert rollout.shape == (3, nx, ny)
     assert np.isfinite(rollout).all()
     assert np.allclose(rollout[0], eta0.astype(np.float32))
+
+
+def test_boussinesq_simulate_rollout_uses_source_as_default_eta0() -> None:
+    nx, ny = 24, 24
+    x = np.linspace(0.0, 1.0, nx, endpoint=False)
+    y = np.linspace(0.0, 1.0, ny, endpoint=False)
+    X, Y = np.meshgrid(x, y, indexing="ij")
+
+    bathymetry = -np.ones((nx, ny), dtype=np.float32)
+    source = np.exp(-((X - 0.4) ** 2 + (Y - 0.6) ** 2) / (2 * 0.08 ** 2)).astype(np.float32)
+    initial_depth = np.ones((nx, ny), dtype=np.float32)
+    sample = np.stack([bathymetry, source, initial_depth], axis=0)
+
+    frames = simulate_rollout(
+        sample,
+        n_steps=8,
+        record_every=1,
+        include_initial_state=True,
+        output_field="eta",
+        source_scale=0.6,
+        alpha=0.0,
+        boundary="periodic",
+        use_sponge=False,
+        filter_strength=0.0,
+        auto_dt=True,
+        target_cfl=0.35,
+    )
+
+    assert frames.shape[0] >= 2
+    assert np.isfinite(frames).all()
+    assert np.allclose(frames[0], 0.6 * source, atol=1e-6)
+    assert not np.allclose(frames[1], frames[0])
+
+
+def test_boussinesq_simulate_rollout_depth_fallback_when_source_missing() -> None:
+    nx, ny = 18, 18
+    bathymetry = -np.full((nx, ny), 1.25, dtype=np.float32)
+    initial_depth = np.full((nx, ny), 1.4, dtype=np.float32)
+    sample = np.stack([bathymetry, np.zeros_like(bathymetry), initial_depth], axis=0)
+
+    frames = simulate_rollout(
+        sample,
+        n_steps=1,
+        record_every=1,
+        include_initial_state=True,
+        output_field="eta",
+        source_scale=1.0,
+        boundary="open",
+        use_sponge=False,
+        filter_strength=0.0,
+        channel_map={"bathymetry": 0, "source": None, "initial_depth": 2, "initial_surface": None},
+    )
+
+    expected_eta0 = initial_depth + bathymetry
+    assert np.isfinite(frames).all()
+    assert np.allclose(frames[0], expected_eta0, atol=1e-6)
+
+
+def test_boussinesq_simulate_rollout_sea_level_conversion_and_depth_output() -> None:
+    nx, ny = 12, 10
+    bathymetry = -np.full((nx, ny), 1.2, dtype=np.float32)
+    initial_depth = np.full((nx, ny), 1.5, dtype=np.float32)
+    sample = np.stack([bathymetry, np.zeros_like(bathymetry), initial_depth], axis=0)
+
+    sea_level_offset = 0.2
+    frames = simulate_rollout(
+        sample,
+        n_steps=1,
+        record_every=1,
+        include_initial_state=True,
+        output_field="depth",
+        sea_level_offset=sea_level_offset,
+        boundary="periodic",
+        use_sponge=False,
+        filter_strength=0.0,
+        alpha=0.0,
+        channel_map={"bathymetry": 0, "source": None, "initial_depth": 2, "initial_surface": None},
+    )
+
+    # eta0 = h0 + b - sea_level_offset => 1.5 - 1.2 - 0.2 = 0.1
+    # H   = -b + sea_level_offset      => 1.2 + 0.2 = 1.4
+    # depth = H + eta = 1.5
+    assert np.isfinite(frames).all()
+    assert np.allclose(frames[0], initial_depth, atol=1e-6)
+
+
+def test_boussinesq_simulate_rollout_eta_overrides_and_default_bathymetry() -> None:
+    nx, ny = 14, 14
+    source = np.ones((nx, ny), dtype=np.float32) * 0.25
+    # no bathymetry channel: source only
+    sample = source[None, ...]
+    eta0 = np.full((nx, ny), 0.03, dtype=np.float32)
+    eta_t0 = np.full((nx, ny), -0.01, dtype=np.float32)
+
+    frames = simulate_rollout(
+        sample,
+        n_steps=0,
+        include_initial_state=True,
+        output_field="state",
+        default_depth=2.0,
+        eta0=eta0,
+        eta_t0=eta_t0,
+        channel_map={"bathymetry": None, "source": 0, "initial_depth": None, "initial_surface": None},
+        use_sponge=False,
+        filter_strength=0.0,
+    )
+
+    assert frames.shape == (1, 2, nx, ny)
+    assert np.isfinite(frames).all()
+    assert np.allclose(frames[0, 0], eta0, atol=1e-6)
+    assert np.allclose(frames[0, 1], eta_t0, atol=1e-6)

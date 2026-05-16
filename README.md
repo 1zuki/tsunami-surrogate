@@ -79,6 +79,13 @@ Manifests are separated as:
 
 Runnable FDEs currently include `swe_hydrostatic`, `swe_muscl`, and `boussinesq`.
 
+Recommended Boussinesq configs:
+
+```bash
+# Production-like profile: alpha=1/3, variable depth, light damping
+python scripts/make_dataset.py --config configs/data/dataset_boussinesq.yaml
+```
+
 Resume an interrupted run:
 
 ```bash
@@ -171,9 +178,12 @@ tsunami-surrogate/
 ├─ configs/                        # all experiment/data/model/eval configs
 │  ├─ data/                        # data-generation and preprocessing configs
 │  │  ├─ dataset.yaml              # three-stage generation config + per-FDE raw outputs
+│  │  ├─ dataset_boussinesq.yaml
 │  │  ├─ preprocess.yaml           # raw -> processed split/export config
 │  │  ├─ bathymetry.yaml           # bathymetry synthesis controls
-│  │  └─ source.yaml               # tsunami source family controls
+│  │  ├─ bathymetry_boussinesq.yaml
+│  │  ├─ source.yaml               # tsunami source family controls
+│  │  └─ source_boussinesq.yaml
 │  ├─ model/                       # model-centered train/eval configs
 │  │  ├─ fno.yaml                  # primary FNO config
 │  │  ├─ fno_muscl.yaml            # FNO on MUSCL processed labels

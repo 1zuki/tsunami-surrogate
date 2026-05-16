@@ -30,9 +30,11 @@ class BoussinesqInfo(NamedTuple):
     alpha: float
     min_depth: float
     sea_level_offset: float
+    depth_scale: float
     boundary_x: BoundaryMode
     boundary_y: BoundaryMode
     mode: BoussinesqMode
+    check_finite: bool
 
 
 class BoussinesqSolver:
@@ -64,6 +66,7 @@ class BoussinesqSolver:
         alpha: float = 1.0 / 3.0,
         min_depth: float = 1e-3,
         sea_level_offset: float = 0.0,
+        depth_scale: float = 1.0,
         boundary: Union[BoundaryMode, Tuple[BoundaryMode, BoundaryMode]] = "open",
         mode: BoussinesqMode = "linear_variable_depth",
         use_sponge: Optional[bool] = None,
@@ -72,6 +75,7 @@ class BoussinesqSolver:
         filter_strength: float = 0.0,
         linear_solver_tol: float = 1e-8,
         linear_solver_max_iter: int = 80,
+        check_finite: bool = True,
     ) -> None:
         if nx <= 1 or ny <= 1:
             raise ValueError("nx and ny must be greater than 1")
@@ -87,6 +91,8 @@ class BoussinesqSolver:
             raise ValueError("alpha must be non-negative")
         if min_depth <= 0:
             raise ValueError("min_depth must be positive")
+        if depth_scale <= 0:
+            raise ValueError("depth_scale must be positive")
         if sponge_width < 0:
             raise ValueError("sponge_width must be non-negative")
         if not (0.0 < sponge_min_factor <= 1.0):
@@ -108,10 +114,12 @@ class BoussinesqSolver:
         self.alpha = float(alpha)
         self.min_depth = float(min_depth)
         self.sea_level_offset = float(sea_level_offset)
+        self.depth_scale = float(depth_scale)
         self.mode = mode
         self.filter_strength = float(filter_strength)
         self.linear_solver_tol = float(linear_solver_tol)
         self.linear_solver_max_iter = int(linear_solver_max_iter)
+        self.check_finite = bool(check_finite)
 
         self.boundary_x, self.boundary_y = resolve_boundary_modes(boundary)
         self._validate_mode(self.mode)
@@ -164,7 +172,7 @@ class BoussinesqSolver:
             H = max(-b + sea_level_offset, min_depth)
         """
         self.b = self._check_shape(b, "b").copy()
-        H = np.maximum(-self.b + self.sea_level_offset, self.min_depth)
+        H = np.maximum((-self.b + self.sea_level_offset) * self.depth_scale, self.min_depth)
 
         if self.mode == "linear_constant_depth":
             H0 = float(np.mean(H))
@@ -393,6 +401,17 @@ class BoussinesqSolver:
         self.apply_filter()
         self.apply_sponge_layer()
 
+        if self.check_finite:
+            state = self.get_state()
+            if not np.isfinite(state).all():
+                raise FloatingPointError(
+                    "Non-finite Boussinesq state detected after step. "
+                    f"eta_range=({float(np.nanmin(self.eta)):.6e}, {float(np.nanmax(self.eta)):.6e}), "
+                    f"eta_t_range=({float(np.nanmin(self.eta_t)):.6e}, {float(np.nanmax(self.eta_t)):.6e}), "
+                    f"dt={float(dt):.6e}, alpha={self.alpha:.6e}, depth_scale={self.depth_scale:.6e}, "
+                    f"mode={self.mode}"
+                )
+
     def run(
         self,
         n_steps: int,
@@ -428,10 +447,13 @@ class BoussinesqSolver:
             alpha=self.alpha,
             min_depth=self.min_depth,
             sea_level_offset=self.sea_level_offset,
+            depth_scale=self.depth_scale,
             boundary_x=self.boundary_x,
             boundary_y=self.boundary_y,
             mode=self.mode,
+            check_finite=self.check_finite,
         )
+
 
 
 def _to_sample_array(sample_inputs: Any) -> np.ndarray:
@@ -455,15 +477,18 @@ def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
     - bathymetry: channel 0
     - source: channel 1
     - initial_depth: channel 2
-    - initial_surface: channel 3
+    - initial_surface: optional channel, default None
+    - initial_surface_t: optional channel, default None
 
-    Boussinesq state uses eta, not shallow-water depth. When an initial
-    depth channel is available, convert it to the free-surface disturbance
-    with eta0 = initial_depth + bathymetry - sea_level_offset.
+    For Boussinesq, eta0 defaults to source-based initialization
+    (eta0 = source_scale * source_field) unless overridden.
 
-    Returns:
-        np.ndarray with shape [T,H,W] for output_field in {eta, depth, eta_t}
-        or [T,2,H,W] for output_field == state.
+    Priority:
+    1) eta0 keyword override
+    2) initial_surface channel (absolute surface -> eta via sea_level_offset)
+    3) source channel
+    4) initial_depth channel (depth -> eta via bathymetry and sea_level_offset)
+    5) zeros
     """
     channels = _to_sample_array(sample_inputs)
     _, nx, ny = channels.shape
@@ -472,7 +497,7 @@ def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
     if not isinstance(channel_map_cfg, Mapping):
         raise ValueError("channel_map must be a mapping")
 
-    def _idx(name: str, default: int) -> Optional[int]:
+    def _idx(name: str, default: Optional[int]) -> Optional[int]:
         value = channel_map_cfg.get(name, default)
         if value is None:
             return None
@@ -486,7 +511,8 @@ def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
     idx_bathy = _idx("bathymetry", 0)
     idx_source = _idx("source", 1)
     idx_h0 = _idx("initial_depth", 2)
-    idx_eta0 = _idx("initial_surface", 3)
+    idx_eta0 = _idx("initial_surface", None)
+    idx_eta_t0 = _idx("initial_surface_t", None)
 
     sea_level_offset = float(kwargs.get("sea_level_offset", 0.0))
     default_depth = float(kwargs.get("default_depth", 1.0))
@@ -505,21 +531,25 @@ def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
         if eta0.shape != (nx, ny):
             raise ValueError(f"eta0 shape must be {(nx, ny)}, got {eta0.shape}")
     elif idx_eta0 is not None:
+        # Convert absolute free surface to disturbance above still-water level.
         eta0 = channels[idx_eta0] - sea_level_offset
-    elif idx_h0 is not None:
-        eta0 = channels[idx_h0] + bathymetry - sea_level_offset
     elif source_field is not None:
         eta0 = source_scale * source_field
+    elif idx_h0 is not None:
+        # Convert depth to disturbance: eta = h + b - sea_level_offset.
+        eta0 = channels[idx_h0] + bathymetry - sea_level_offset
     else:
         eta0 = np.zeros((nx, ny), dtype=float)
 
     eta_t0_override = kwargs.get("eta_t0", None)
-    if eta_t0_override is None:
-        eta_t0 = np.zeros_like(eta0)
-    else:
+    if eta_t0_override is not None:
         eta_t0 = np.asarray(eta_t0_override, dtype=float)
         if eta_t0.shape != (nx, ny):
             raise ValueError(f"eta_t0 shape must be {(nx, ny)}, got {eta_t0.shape}")
+    elif idx_eta_t0 is not None:
+        eta_t0 = channels[idx_eta_t0].copy()
+    else:
+        eta_t0 = np.zeros_like(eta0)
 
     use_sponge = kwargs.get("use_sponge", None)
     solver = BoussinesqSolver(
@@ -533,14 +563,16 @@ def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
         alpha=float(kwargs.get("alpha", 1.0 / 3.0)),
         min_depth=float(kwargs.get("min_depth", 1e-3)),
         sea_level_offset=sea_level_offset,
+        depth_scale=float(kwargs.get("depth_scale", 1.0)),
         boundary=kwargs.get("boundary", "open"),
         mode=kwargs.get("mode", "linear_variable_depth"),
-        use_sponge=None if use_sponge is None else bool(use_sponge),
+        use_sponge=bool(use_sponge) if use_sponge is not None else None,
         sponge_width=int(kwargs.get("sponge_width", 20)),
         sponge_min_factor=float(kwargs.get("sponge_min_factor", 0.9)),
         filter_strength=float(kwargs.get("filter_strength", 0.0)),
         linear_solver_tol=float(kwargs.get("linear_solver_tol", 1e-8)),
         linear_solver_max_iter=int(kwargs.get("linear_solver_max_iter", 80)),
+        check_finite=bool(kwargs.get("check_finite", True)),
     )
     solver.set_bathymetry(bathymetry)
     solver.set_initial_condition(eta0, eta_t0=eta_t0)

@@ -39,6 +39,7 @@ solver:
   sponge_min_factor: 0.9
   alpha: 0.3333333333333333
   min_depth: 1e-3
+  depth_scale: 10.0
   mode: "linear_variable_depth"
   filter_strength: 0.0
   linear_solver_tol: 1e-8
