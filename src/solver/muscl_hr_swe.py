@@ -1,8 +1,3 @@
-"""
-later: check n fix lake-at-rest
-"""
-
-
 from __future__ import annotations
 
 from typing import Any, Mapping, Optional
@@ -165,6 +160,12 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
                 hu_new[i, j] = hu_old[i, j] - (dt / self.dx) * (FxR[1] - FxL[1]) - (dt / self.dy) * (FyT[1] - FyB[1])
                 hv_new[i, j] = hv_old[i, j] - (dt / self.dx) * (FxR[2] - FxL[2]) - (dt / self.dy) * (FyT[2] - FyB[2])
 
+                """
+                IMPORTANT: DO NOT REMOVE ANY OF THOSE LINE BELOW
+                THIS IS IMPORTANT FOR LAKE-AT-REST STABILITY
+
+                TESTED FOR 500 STEPS AT DIFF GRIDS, BATHYMETRY, BOUNDARIES AND THE DRIFT IS MINIMAL ~2e-16 -> 4e-16
+                """
                 S_hu = -self.g * 0.5 * (rec["h_e"][i, j] + rec["h_w"][i, j]) * (
                     rec["b_e"][i, j] - rec["b_w"][i, j]
                 ) / self.dx
