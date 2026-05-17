@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, Optional, Tuple
 
 import torch
 
 from src.training.metrics import compute_metrics
+from src.evaluation.target_scaling import apply_target_denorm
 
 
 def _model_output(model, x: torch.Tensor) -> torch.Tensor:
@@ -20,7 +21,13 @@ def _model_output(model, x: torch.Tensor) -> torch.Tensor:
 
 
 @torch.no_grad()
-def evaluate_by_regime(model, loader, device, key: str = "source_id") -> Dict[str, Dict[str, float]]:
+def evaluate_by_regime(
+    model,
+    loader,
+    device,
+    key: str = "source_id",
+    target_denorm: Optional[Tuple[float, float]] = None,
+) -> Dict[str, Dict[str, float]]:
     model.eval()
     sums = defaultdict(lambda: {"mae": 0.0, "rmse": 0.0, "rel_l2": 0.0, "max_error": 0.0, "n": 0})
 
@@ -29,10 +36,12 @@ def evaluate_by_regime(model, loader, device, key: str = "source_id") -> Dict[st
         y = batch["y"].to(device)
 
         pred = _model_output(model, x)
+        pred_eval = apply_target_denorm(pred, target_denorm)
+        y_eval = apply_target_denorm(y, target_denorm)
         labels = batch.get(key, ["unknown"] * x.size(0))
 
         for i in range(x.size(0)):
-            metrics_i = compute_metrics(pred[i : i + 1], y[i : i + 1])
+            metrics_i = compute_metrics(pred_eval[i : i + 1], y_eval[i : i + 1])
             label = str(labels[i])
             sums[label]["mae"] += float(metrics_i["mae"])
             sums[label]["rmse"] += float(metrics_i["rmse"])

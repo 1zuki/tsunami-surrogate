@@ -12,6 +12,7 @@ from src.data.multires_dataset import MultiResolutionDataset
 from src.models import build_model
 from src.training.checkpointing import load_checkpoint
 from src.training.metrics import compute_metrics
+from src.evaluation.target_scaling import load_target_denorm
 from src.utils.io import save_json
 import torch
 
@@ -23,6 +24,28 @@ def _model_output(model, x: torch.Tensor) -> torch.Tensor:
     if isinstance(out, dict):
         return out.get("mean", next(iter(out.values())))
     return out
+
+
+def _validate_resolution_transfer_channels(cfg, loader, resolutions) -> None:
+    model_cfg = cfg.get("model", cfg)
+    expected_in = int(model_cfg.get("in_channels", 0))
+    expected_out = int(model_cfg.get("out_channels", 0))
+    batch = next(iter(loader))
+    ref_res = int(resolutions[0])
+    x_key = f"x_{ref_res}"
+    y_key = f"y_{ref_res}"
+    if x_key not in batch or y_key not in batch:
+        raise KeyError(f"Expected keys '{x_key}' and '{y_key}' in resolution-transfer batch.")
+    actual_in = int(batch[x_key].shape[1])
+    actual_out = int(batch[y_key].shape[1])
+    if expected_in and expected_in != actual_in:
+        raise ValueError(
+            f"model.in_channels ({expected_in}) does not match dataset x channels ({actual_in}) at resolution {ref_res}."
+        )
+    if expected_out and expected_out != actual_out:
+        raise ValueError(
+            f"model.out_channels ({expected_out}) does not match dataset y channels ({actual_out}) at resolution {ref_res}."
+        )
 
 
 @torch.no_grad()
@@ -37,6 +60,10 @@ def main():
     resolutions = cfg.get('resolution_transfer', {}).get('eval_resolutions', [32, 64])
     eval_cfg = cfg.get("eval", {})
     data_cfg = cfg.get("data", {})
+    
+    if not data_cfg and isinstance(cfg.get("dataset", {}), dict):
+        data_cfg = {"path": cfg.get("dataset", {}).get("path"), "batch_size": cfg.get("dataset", {}).get("batch_size", 8)}
+    
     data_path = Path(eval_cfg.get("dataset_path", data_cfg.get("path", "")))
     if not str(data_path):
         raise KeyError(
@@ -50,12 +77,15 @@ def main():
         )
     ds = MultiResolutionDataset(data_path, resolutions)
     loader = DataLoader(ds, batch_size=eval_cfg.get('batch_size', data_cfg.get('batch_size', 8)))
+    _validate_resolution_transfer_channels(cfg, loader, resolutions)
     model = build_model(cfg).to(device).eval()
     load_checkpoint(args.checkpoint, model, map_location=device)
+    target_denorm = load_target_denorm(data_path) if bool(eval_cfg.get("report_physical_metrics", True)) else None
     rows = {}
 
     for res in resolutions:
         sums, n = {'mae':0.0,'rmse':0.0,'rel_l2':0.0,'max_error':0.0}, 0
+        sums_physical = {'mae':0.0,'rmse':0.0,'rel_l2':0.0,'max_error':0.0}
 
         for batch in loader:
             x = batch[f'x_{res}'].to(device)
@@ -66,12 +96,28 @@ def main():
             for k, v in metrics.items():
                 sums[k] += v * x.size(0)
 
+            if target_denorm is not None:
+                offset, scale = target_denorm
+                pred_physical = pred * float(scale) + float(offset)
+                y_physical = y * float(scale) + float(offset)
+                metrics_physical = compute_metrics(pred_physical, y_physical)
+            
+                for k, v in metrics_physical.items():
+                    sums_physical[k] += v * x.size(0)
+
             n += x.size(0)
 
         rows[str(res)] = {k: v / max(1, n) for k, v in sums.items()}
+        if target_denorm is not None:
+            rows[str(res)].update({f"{k}_physical": v / max(1, n) for k, v in sums_physical.items()})
+            rows[str(res)]["target_offset"] = float(target_denorm[0])
+            rows[str(res)]["target_scale"] = float(target_denorm[1])
 
+    output_dir = str(eval_cfg.get("output_dir", "")).strip()
+    if not output_dir or output_dir == "experiments/eval":
+        output_dir = f"{cfg.get('output_dir', 'experiments/default')}/eval"
     print(rows)
-    save_json(rows, f"{cfg.get('output_dir', 'experiments/crossres')}/resolution_transfer.json")
+    save_json(rows, f"{output_dir}/resolution_transfer.json")
 
 
 if __name__ == '__main__':

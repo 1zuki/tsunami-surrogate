@@ -8,3 +8,8 @@ model:
   in_channels: 3
   out_channels: 80
   width: 48
+
+eval:
+  dataset_path: data/processed/hydrostatic/test
+  batch_size: 8
+  output_dir: experiments/cnn/eval

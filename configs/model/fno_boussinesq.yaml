@@ -39,3 +39,8 @@ train:
   early_stopping:
     patience: 20
     mode: min
+
+eval:
+  dataset_path: data/processed/boussinesq/test
+  batch_size: 8
+  output_dir: experiments/fno_boussinesq/eval

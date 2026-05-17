@@ -9,6 +9,7 @@ from src.utils.config import load_config
 from src.utils.seed import seed_everything
 from src.utils.device import resolve_device
 from src.utils.experiment import init_run
+from src.utils.model_io import validate_model_io_channels
 from src.data.dataset import create_dataloaders
 from src.models import build_model
 from src.training.train import Trainer
@@ -24,6 +25,7 @@ def main():
     cfg['output_dir'] = str(out)
     device = resolve_device(cfg.get('device', 'auto'))
     loaders = create_dataloaders(cfg)
+    validate_model_io_channels(cfg, loaders, preferred_splits=("train", "val", "test"))
     split_sizes = {name: len(loader.dataset) for name, loader in loaders.items()}
     print(f"[train] split sizes: {split_sizes}")
     train_n = split_sizes.get("train", 0)

@@ -52,7 +52,7 @@ git clone https://github.com/1zuki/tsunami-surrogate.git
 cd tsunami-surrogate
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirement.txt
+pip install -r requirements.txt
 ```
 
 ## 6) Run Commands
@@ -82,7 +82,6 @@ Runnable FDEs currently include `swe_hydrostatic`, `swe_muscl`, and `boussinesq`
 Recommended Boussinesq configs:
 
 ```bash
-# Production-like profile: alpha=1/3, variable depth, light damping
 python scripts/make_dataset.py --config configs/data/dataset_boussinesq.yaml
 ```
 
@@ -116,6 +115,7 @@ python src/data_gen/preprocess.py --config configs/data/preprocess.yaml
 - `fde.mode: single` with `fde.targets: [hydrostatic]` writes to `data/processed/hydrostatic/...`
 - `fde.mode: separate_all` writes one processed dataset per solver (`hydrostatic`, `muscl`, `boussinesq`) using the same scenario split
 - `fde.mode: multifidelity` writes a combined dataset to `data/processed/multifidelity/...`
+- For `multifidelity`, keep `input.use_solver_id: true` (or omit it, since it auto-enables by default) so the model can condition on solver identity instead of learning an ambiguous one-to-many mapping.
 
 ### 6.3 Train
 
@@ -148,8 +148,17 @@ python scripts/eval_accuracy.py --config configs/model/fno.yaml --checkpoint exp
 python scripts/eval_speed.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt
 python scripts/eval_generalization.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt
 python scripts/eval_resolution_transfer.py --config configs/train/train_32_to_64.yaml --checkpoint experiments/fno_32_to_64/best.pt
-python scripts/eval_uncertainty.py --config configs/model/fno.yaml
+python scripts/eval_uncertainty.py --config configs/model/fno.yaml \
+  --checkpoint experiments/ensemble/member_11/best.pt \
+  --checkpoint experiments/ensemble/member_22/best.pt \
+  --checkpoint experiments/ensemble/member_33/best.pt
 ```
+
+Notes:
+- `eval_accuracy.py`, `eval_generalization.py`, and `eval_resolution_transfer.py` report normalized metrics by default and add `*_physical` metrics automatically when target denormalization stats are available in the evaluation dataset archive.
+- `eval_generalization.py` supports explicit OOD suites via `eval.generalization.suites` (or top-level `generalization.suites`) in config, so you can evaluate separate unseen-regime datasets instead of a single grouped test split.
+- For uncertainty evaluation, pass at least 2 checkpoints (or configure `uncertainty.ensemble_checkpoints` with at least 2 members). Single-member ensembles are blocked because they produce degenerate variance.
+- Train/eval entrypoints now validate dataset-vs-model I/O channels early, so if multifidelity adds `solver_id`, a stale `model.in_channels` mismatch fails fast with a clear message.
 
 ### 6.5 Quick Smoke Run
 
@@ -168,7 +177,7 @@ python scripts/visualize_rollout.py \
   --sample-index 0
 ```
 
-## 7) Repository Structure (with inline folder purpose)
+## 7) Current Repository Structure
 
 ```text
 tsunami-surrogate/
@@ -230,6 +239,4 @@ This README follows the same framing as the paper abstract/introduction:
 
 ## 9) Notes
 
-- Prefer `scripts/make_dataset.py` as the default data-generation path.
-- Keep `make_toy_data.py` as a compatibility helper, not the primary workflow.
 - Development note: Portions of the codebase were developed with AI-assisted programming support. All code should be treated as author-reviewed research software, with tests and validation required before use in reported experiments.

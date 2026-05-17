@@ -10,6 +10,7 @@ from src.utils.config import load_config
 from src.utils.seed import seed_everything
 from src.utils.device import resolve_device
 from src.utils.experiment import init_run
+from src.utils.model_io import validate_model_io_channels
 from src.data.dataset import create_dataloaders
 from src.models import build_model
 from src.training.train import Trainer
@@ -30,6 +31,7 @@ def main():
         seed_everything(int(seed))
         init_run(member_cfg['output_dir'], member_cfg)
         loaders = create_dataloaders(member_cfg)
+        validate_model_io_channels(member_cfg, loaders, preferred_splits=("train", "val", "test"))
         model = build_model(member_cfg)
         Trainer(model, loaders, member_cfg, device).fit()
 

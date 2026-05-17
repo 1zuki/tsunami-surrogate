@@ -23,6 +23,7 @@ class PreprocessConfig:
     use_source: bool
     use_initial_depth: bool
     use_initial_surface: bool
+    use_solver_id: bool
 
     target_mode: str # next_step / multi_step / final_state
     target_variable: str # eta / depth / state
@@ -68,11 +69,22 @@ class TsunamiPreprocessor:
         test_ratio = float(split_cfg.get("test", 0.15))
         seed = int(split_cfg.get("seed", 42))
 
+        fde_cfg = cfg.get("fde", {})
+
+        if not isinstance(fde_cfg, dict):
+            fde_cfg = {}
+
+        fde_mode = str(fde_cfg.get("mode", "legacy")).strip().lower()
+
         input_cfg = cfg.get("input", cfg.get("intput", {}))
         use_bathy = bool(input_cfg.get("use_bathymetry", True))
         use_src = bool(input_cfg.get("use_source", True))
         use_init_depth = bool(input_cfg.get("use_initial_depth", True))
         use_init_surface = bool(input_cfg.get("use_initial_surface", False))
+        if "use_solver_id" in input_cfg:
+            use_solver_id = bool(input_cfg.get("use_solver_id"))
+        else:
+            use_solver_id = (fde_mode == "multifidelity")
 
         target_cfg = cfg.get("target", {})
         target_mode = str(target_cfg.get("mode", "next_step"))
@@ -90,6 +102,7 @@ class TsunamiPreprocessor:
         norm_channels = {
             "bathymetry": bool(norm_cfg.get("channels", {}).get("bathymetry", True)),
             "source": bool(norm_cfg.get("channels", {}).get("source", True)),
+            "solver_id": bool(norm_cfg.get("channels", {}).get("solver_id", False)),
             "trajectory": bool(norm_cfg.get("channels", {}).get("trajectory", True)),
         }
         eps = float(norm_cfg.get("eps", 1e-6))
@@ -122,10 +135,7 @@ class TsunamiPreprocessor:
             for key, value in dict(raw_cfg.get("raw_dirs", {})).items():
                 self.fde_raw_dirs[self._canonical_fde_name(str(key))] = pathlib.Path(str(value))
 
-        fde_cfg = cfg.get("fde", {})
-        if not isinstance(fde_cfg, dict):
-            fde_cfg = {}
-        self.fde_mode = str(fde_cfg.get("mode", "legacy")).strip().lower()
+        self.fde_mode = fde_mode
         self.fde_targets = [self._canonical_fde_name(str(v)) for v in list(fde_cfg.get("targets", []))]
 
         if not self.fde_targets and self.fde_manifest_paths:
@@ -152,6 +162,7 @@ class TsunamiPreprocessor:
             use_source=use_src,
             use_initial_depth=use_init_depth,
             use_initial_surface=use_init_surface,
+            use_solver_id=use_solver_id,
             target_mode=target_mode,
             target_variable=target_variable,
             forecast_steps=forecast_steps,
@@ -181,6 +192,12 @@ class TsunamiPreprocessor:
         self._target_std: float = 1.0
         self._target_min: float = 0.0
         self._target_max: float = 1.0
+        solver_vocab = self.fde_targets if self.fde_targets else sorted(set(self.fde_manifest_paths.keys()))
+
+        if not solver_vocab:
+            solver_vocab = ["hydrostatic", "muscl", "boussinesq"]
+        
+        self._solver_id_map: Dict[str, float] = {name: float(i) for i, name in enumerate(solver_vocab)}
 
     def load_manifest(self) -> List[Dict[str, Any]]:
         """ load the raw manifest file and sample metadata """
@@ -274,6 +291,27 @@ class TsunamiPreprocessor:
                 X["initial_surface"] = sample["free_surface0"]
             else:
                 raise KeyError("initial free surface not present in sample (expected initial_surface or free_surface0)")
+
+        if self.cfg.use_solver_id:
+            raw_meta = sample.get("meta", {})
+            meta: Dict[str, Any] = raw_meta if isinstance(raw_meta, dict) else {}
+            solver_name = self._canonical_fde_name(
+                str(meta.get("solver_name", meta.get("primary_fde", "unknown")))
+            )
+            solver_code = float(self._solver_id_map.get(solver_name, -1.0))
+
+            if X:
+                ref = next(iter(X.values()))
+            elif "bathymetry" in sample:
+                ref = sample["bathymetry"]
+            elif "source_field" in sample:
+                ref = sample["source_field"]
+            elif "initial_depth" in sample:
+                ref = sample["initial_depth"]
+            else:
+                raise KeyError("could not infer shape for solver_id channel")
+
+            X["solver_id"] = np.full_like(np.asarray(ref, dtype=np.float32), solver_code, dtype=np.float32)
 
         return X
 

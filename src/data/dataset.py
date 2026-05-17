@@ -260,6 +260,18 @@ def _make_loader(
     )
 
 
+def _has_npz_dataset(path: str | Path) -> bool:
+    p = Path(path)
+    if not p.exists():
+        return False
+    if p.is_file():
+        return p.suffix == ".npz"
+    if (p / "eval_dataset.npz").exists():
+        return True
+    
+    return any(p.glob("*.npz"))
+
+
 def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
     data_cfg = cfg.get("data", cfg.get("dataset", {}))
 
@@ -281,6 +293,8 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
     if any(v is not None for v in split_paths.values()):
         for split_name, split_path in split_paths.items():
             if split_path is None:
+                continue
+            if not _has_npz_dataset(split_path):
                 continue
             split_dataset = TsunamiDataset(split_path)
             loaders[split_name] = _make_loader(
@@ -310,6 +324,8 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
         if any(p.exists() for p in pre_split.values()):
             for split_name, split_path in pre_split.items():
                 if not split_path.exists():
+                    continue
+                if not _has_npz_dataset(split_path):
                     continue
                 split_dataset = TsunamiDataset(split_path)
                 loaders[split_name] = _make_loader(

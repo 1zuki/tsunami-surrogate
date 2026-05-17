@@ -27,6 +27,8 @@ input:
   use_source: true
   use_initial_depth: true
   use_initial_surface: false
+  # if omitted, defaults to true when fde.mode == multifidelity.
+  use_solver_id: false
 
 target:
   mode: multi_step      # next_step / multi_step / final_state
@@ -39,6 +41,7 @@ normalization:
   channels:
     bathymetry: true
     source: true
+    solver_id: false
     trajectory: true
   eps: 1e-6
 

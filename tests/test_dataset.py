@@ -41,3 +41,28 @@ def test_create_dataloaders_presplit_dirs(tmp_path):
     assert len(loaders["train"].dataset) == 6
     assert len(loaders["val"].dataset) == 4
     assert len(loaders["test"].dataset) == 5
+
+
+def test_create_dataloaders_skips_empty_split_dirs(tmp_path):
+    root = tmp_path / "processed"
+    rng = np.random.default_rng(2)
+
+    train_dir = root / "train"
+    train_dir.mkdir(parents=True, exist_ok=True)
+    x_train = rng.standard_normal((4, 3, 8, 8), dtype=np.float32)
+    y_train = rng.standard_normal((4, 1, 8, 8), dtype=np.float32)
+    save_npz(train_dir / "eval_dataset.npz", x_train, y_train)
+
+    # empty val split folder (no .npz) should be ignored gracefully
+    (root / "val").mkdir(parents=True, exist_ok=True)
+
+    test_dir = root / "test"
+    test_dir.mkdir(parents=True, exist_ok=True)
+    x_test = rng.standard_normal((3, 3, 8, 8), dtype=np.float32)
+    y_test = rng.standard_normal((3, 1, 8, 8), dtype=np.float32)
+    save_npz(test_dir / "eval_dataset.npz", x_test, y_test)
+
+    loaders = create_dataloaders({"data": {"path": str(root), "batch_size": 2}})
+    assert set(loaders) == {"train", "test"}
+    assert len(loaders["train"].dataset) == 4
+    assert len(loaders["test"].dataset) == 3

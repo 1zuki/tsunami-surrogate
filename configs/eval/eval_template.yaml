@@ -29,6 +29,11 @@ dataset:
   channel_last_targets: false
   target_squeeze_last: true
 
+# compatibility with scripts/* entrypoints in this repo
+data:
+  path: data/processed/test
+  batch_size: 8
+
 normalization:
   input: {}
   target: {}
@@ -47,6 +52,12 @@ evaluation:
   output_dir: results/evaluation/default_run
   output_key: prediction
   num_plot_examples: 4
+
+# Compatibility with scripts/eval_*.py entrypoints in this repo.
+eval:
+  dataset_path: data/processed/test
+  batch_size: 8
+  output_dir: results/evaluation/default_run
 
 speed:
   num_batches: 3

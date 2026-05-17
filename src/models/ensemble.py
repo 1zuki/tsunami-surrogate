@@ -11,6 +11,11 @@ class EnsemblePredictor(nn.Module):
     def __init__(self, members: Iterable[nn.Module]):
         super().__init__()
         self.members = nn.ModuleList(list(members))
+        n = len(self.members)
+        if n < 2:
+            raise ValueError(
+                f"EnsemblePredictor requires at least 2 members for meaningful predictive variance, got {n}."
+            )
 
     @torch.no_grad()
     def forward(self, x: torch.Tensor):

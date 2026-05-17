@@ -8,6 +8,7 @@ import argparse
 import torch
 from src.utils.config import load_config
 from src.utils.device import resolve_device
+from src.utils.model_io import validate_model_io_channels
 from src.data.dataset import create_dataloaders
 from src.models import build_model
 from src.training.checkpointing import load_checkpoint
@@ -32,9 +33,13 @@ def main():
     cfg = load_config(args.config)
     device = resolve_device(cfg.get('device', 'auto'))
     loaders = create_dataloaders(cfg)
+    test_loader = loaders.get("test")
+    if test_loader is None:
+        raise KeyError("No test dataloader found. Set eval.dataset_path or data.test_path.")
+    validate_model_io_channels(cfg, loaders, preferred_splits=("test", "val", "train"))
     model = build_model(cfg).to(device).eval()
     load_checkpoint(args.checkpoint, model, map_location=device)
-    batch = next(iter(loaders['test']))
+    batch = next(iter(test_loader))
 
     with torch.no_grad():
         pred = _model_output(model, batch['x'].to(device)).cpu()

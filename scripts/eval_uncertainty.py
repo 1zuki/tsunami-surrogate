@@ -8,6 +8,7 @@ import argparse
 import torch
 from src.utils.config import load_config
 from src.utils.device import resolve_device
+from src.utils.model_io import validate_model_io_channels
 from src.data.dataset import create_dataloaders
 from src.models import build_model
 from src.models.ensemble import EnsemblePredictor
@@ -21,15 +22,51 @@ from src.utils.io import save_json
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--config', required=True)
+    p.add_argument(
+        '--checkpoint',
+        action='append',
+        default=None,
+        help='Optional ensemble checkpoint path. Repeat this flag to pass multiple members.',
+    )
     args = p.parse_args()
     cfg = load_config(args.config)
-    ckpts = cfg.get('uncertainty', {}).get('ensemble_checkpoints', [])
+    eval_cfg = cfg.get("eval", cfg.get("evaluation", {}))
+    ckpts = list(cfg.get('uncertainty', {}).get('ensemble_checkpoints', []))
+    if args.checkpoint:
+        ckpts = [str(p) for p in args.checkpoint]
+    if not ckpts:
+        fallback = eval_cfg.get("checkpoint")
+        if fallback:
+            ckpts = [str(fallback)]
 
     if not ckpts:
-        print('No ensemble_checkpoints configured; uncertainty eval skipped gracefully.')
+        print(
+            "No uncertainty checkpoints configured. "
+            "Set uncertainty.ensemble_checkpoints, pass --checkpoint, or set eval.checkpoint."
+        )
         return
+    min_members = int(cfg.get("uncertainty", {}).get("min_ensemble_members", 2))
+    if len(ckpts) < min_members:
+        raise ValueError(
+            f"Uncertainty evaluation requires at least {min_members} ensemble checkpoints, got {len(ckpts)}. "
+            "Single-member runs produce degenerate ensemble variance."
+        )
 
-    cfg['data'] = {'test_path': cfg['eval']['dataset_path'], 'batch_size': cfg['eval'].get('batch_size', 8)}
+    data_cfg = dict(cfg.get("data", {}))
+    dataset_cfg = cfg.get("dataset", {})
+    if not data_cfg and isinstance(dataset_cfg, dict):
+        dataset_path = dataset_cfg.get("path")
+        if dataset_path:
+            data_cfg["test_path"] = dataset_path
+        if "batch_size" in dataset_cfg:
+            data_cfg["batch_size"] = dataset_cfg["batch_size"]
+    dataset_path = eval_cfg.get("dataset_path")
+    if dataset_path:
+        data_cfg["test_path"] = dataset_path
+    if "batch_size" in eval_cfg:
+        data_cfg["batch_size"] = eval_cfg["batch_size"]
+    cfg["data"] = data_cfg
+
     device = resolve_device(cfg.get('device', 'auto'))
     members = []
 
@@ -44,6 +81,7 @@ def main():
     if test_loader is None:
         print("No test loader found; uncertainty eval skipped gracefully.")
         return
+    validate_model_io_channels(cfg, loaders, preferred_splits=("test", "val", "train"))
     levels = cfg.get('uncertainty', {}).get('interval_levels', [0.5, 0.8, 0.9, 0.95])
     results = []
 
@@ -59,8 +97,11 @@ def main():
         return
 
     mean_results = {k: sum(r[k] for r in results) / len(results) for k in results[0]}
+    output_dir = str(eval_cfg.get("output_dir", "")).strip()
+    if not output_dir or output_dir == "experiments/eval":
+        output_dir = f"{cfg.get('output_dir', 'experiments/default')}/eval"
     print(mean_results)
-    save_json(mean_results, f"{cfg['eval'].get('output_dir', 'experiments/eval_uncertainty')}/uncertainty.json")
+    save_json(mean_results, f"{output_dir}/uncertainty.json")
 
 
 if __name__ == '__main__':

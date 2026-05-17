@@ -41,13 +41,20 @@ class Trainer:
             self.scheduler = None
 
         early_cfg = train_cfg.get("early_stopping", {})
-        self.early = EarlyStopping(early_cfg.get("patience", 10), early_cfg.get("mode", "min"))
+        early_mode = str(early_cfg.get("mode", "min")).strip().lower()
+        if early_mode not in {"min", "max"}:
+            raise ValueError(f"Unsupported early_stopping.mode: {early_mode}. Use 'min' or 'max'.")
+        self.early = EarlyStopping(early_cfg.get("patience", 10), early_mode)
+        checkpoint_mode = str(train_cfg.get("checkpoint_mode", early_mode)).strip().lower()
+        if checkpoint_mode not in {"min", "max"}:
+            raise ValueError(f"Unsupported checkpoint_mode: {checkpoint_mode}. Use 'min' or 'max'.")
+        self.checkpoint_mode = checkpoint_mode
 
     def fit(self):
         train_cfg = self.cfg.get("train", {})
         epochs = int(train_cfg.get("epochs", 5))
         grad_clip = train_cfg.get("grad_clip", None)
-        best_value = float("inf")
+        best_value = float("inf") if self.checkpoint_mode == "min" else -float("inf")
         history = []
 
         for epoch in range(1, epochs + 1):
@@ -60,7 +67,10 @@ class Trainer:
             metric_name = train_cfg.get("checkpoint_metric", "val_rel_l2")
             value = row.get(metric_name, row.get("val_loss", row.get("train_loss")))
 
-            if value is not None and value < best_value:
+            if value is not None and (
+                (self.checkpoint_mode == "min" and value < best_value)
+                or (self.checkpoint_mode == "max" and value > best_value)
+            ):
                 best_value = value
                 save_checkpoint(self.output_dir / "best.pt", self.model, self.optimizer, epoch, row, self.cfg)
 
