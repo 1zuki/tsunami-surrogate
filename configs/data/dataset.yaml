@@ -20,7 +20,7 @@ dataset:
   copy_configs: true
 
 fdes:
-  enabled: ["swe_hydrostatic", "swe_muscl", boussinesq]
+  enabled: ["swe_hydrostatic", "swe_muscl"]
   primary: "swe_hydrostatic"
 
 solver:

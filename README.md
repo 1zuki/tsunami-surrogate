@@ -71,19 +71,21 @@ python scripts/make_dataset.py --config configs/data/dataset.yaml
 Raw rollouts are separated by solver under `data/raw/`:
 - `data/raw/hydrostatic/samples/...`
 - `data/raw/muscl/samples/...`
-- `data/raw/boussinesq/samples/...`
 
 Manifests are separated as:
 - scenario-level: `data/synthetic/scenario_manifest.jsonl`
 - solver-level: `data/synthetic/hydrostatic_manifest.jsonl`, `data/synthetic/muscl_manifest.jsonl`, `data/synthetic/boussinesq_manifest.jsonl`
 
-Runnable FDEs currently include `swe_hydrostatic`, `swe_muscl`, and `boussinesq`.
+Runnable FDEs currently include `swe_hydrostatic`, `swe_muscl`, and `boussinesq`.  
+Default `configs/data/dataset.yaml` enables only `swe_hydrostatic` + `swe_muscl` for safer baseline runs.
 
-Recommended Boussinesq configs:
+Boussinesq should be generated from its dedicated config:
 
 ```bash
 python scripts/make_dataset.py --config configs/data/dataset_boussinesq.yaml
 ```
+
+This writes Boussinesq samples to `data/raw_bouss/boussinesq/samples/...` and scenario manifest to `data/synthetic/scenario_manifest_bouss.jsonl`.
 
 Resume an interrupted run:
 
@@ -105,6 +107,12 @@ Force regeneration in a range even if outputs already exist:
 python scripts/make_dataset.py --config configs/data/dataset.yaml --start-at 142 --allow-override
 ```
 
+Rebuild manifests from already-generated sample folders:
+
+```bash
+python scripts/make_dataset.py --config configs/data/dataset.yaml --rebuild-manifests
+```
+
 ### 6.2 Preprocess
 
 ```bash
@@ -116,6 +124,12 @@ python src/data_gen/preprocess.py --config configs/data/preprocess.yaml
 - `fde.mode: separate_all` writes one processed dataset per solver (`hydrostatic`, `muscl`, `boussinesq`) using the same scenario split
 - `fde.mode: multifidelity` writes a combined dataset to `data/processed/multifidelity/...`
 - For `multifidelity`, keep `input.use_solver_id: true` (or omit it, since it auto-enables by default) so the model can condition on solver identity instead of learning an ambiguous one-to-many mapping.
+
+For Boussinesq-only preprocessing (separate manifests/paths + 50-step target horizon):
+
+```bash
+python src/data_gen/preprocess.py --config configs/data/preprocess_boussinesq.yaml
+```
 
 ### 6.3 Train
 
@@ -189,6 +203,7 @@ tsunami-surrogate/
 │  │  ├─ dataset.yaml              # three-stage generation config + per-FDE raw outputs
 │  │  ├─ dataset_boussinesq.yaml
 │  │  ├─ preprocess.yaml           # raw -> processed split/export config
+│  │  ├─ preprocess_boussinesq.yaml
 │  │  ├─ bathymetry.yaml           # bathymetry synthesis controls
 │  │  ├─ bathymetry_boussinesq.yaml
 │  │  ├─ source.yaml               # tsunami source family controls

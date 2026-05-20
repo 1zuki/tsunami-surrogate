@@ -6,7 +6,7 @@ dataset:
   num_samples: 128
   seed: 42
   num_workers: 8
-  n_steps: 300
+  n_steps: 250
   save_every: 5
   auto_dt: true
   target_cfl: 0.35
