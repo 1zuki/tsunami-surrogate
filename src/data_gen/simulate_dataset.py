@@ -41,11 +41,14 @@ try:
 except ImportError:
     from boussinesq import BoussinesqSolver
 
-KNOWN_FDES = {"swe_hydrostatic", "swe_muscl", "boussinesq"}
-IMPLEMENTED_FDES = {"swe_hydrostatic", "swe_muscl", "boussinesq"}
+FDE_ALIASES = {
+    "swe_muscl": "swe_muscl_hr",  # backward-compatible
+}
+KNOWN_FDES = {"swe_hydrostatic", "swe_muscl_hr", "boussinesq", *FDE_ALIASES.keys()}
+IMPLEMENTED_FDES = {"swe_hydrostatic", "swe_muscl_hr", "boussinesq"}
 FDE_OUTPUT_DIRNAME = {
     "swe_hydrostatic": "hydrostatic",
-    "swe_muscl": "muscl",
+    "swe_muscl_hr": "muscl_hr",
     "boussinesq": "boussinesq",
 }
 
@@ -97,6 +100,10 @@ def _fde_dirname(fde_name: str) -> str:
     if fde_name in FDE_OUTPUT_DIRNAME:
         return FDE_OUTPUT_DIRNAME[fde_name]
     return str(fde_name).replace("swe_", "")
+
+def _canonical_fde_name(name: str) -> str:
+    raw = str(name).strip()
+    return FDE_ALIASES.get(raw, raw)
 
 def _seed_for_sample(run_seed: int, sample_idx: int) -> int:
     # sample_idx is 1-based; keep derivation stable across workers/runs.
@@ -244,7 +251,7 @@ def _run_fde_rollout(
         trajectory_eta = trajectory[:, 0] + bathymetry[None, ...]
         return RolloutResult(trajectory, trajectory_eta, timestamps, dt_hist)
 
-    if fde_name == "swe_muscl":
+    if fde_name == "swe_muscl_hr":
         solver = _make_muscl_solver_from_cfg(solver_cfg)
         solver.set_bathymetry(bathymetry)
         solver.set_initial_condition(h0, hu0=np.zeros_like(h0), hv0=np.zeros_like(h0))
@@ -379,7 +386,8 @@ def _generate_sample_worker(
 
     if not runnable_fdes:
         raise RuntimeError(
-            "No runnable FDE selected. Enable at least one implemented solver (swe_hydrostatic, swe_muscl, boussinesq)."
+            "No runnable FDE selected. Enable at least one implemented solver "
+            "(swe_hydrostatic, swe_muscl_hr, boussinesq)."
         )
 
     scenario_id = f"scenario_{sample_idx:06d}"
@@ -430,6 +438,44 @@ def _generate_sample_worker(
             scenario_id=np.array([scenario_id], dtype="U64"),
         )
 
+        # solver rollout health diag for QA before large-scale label gen
+        state_stack = np.asarray(rollout.trajectory, dtype=np.float32)
+        eta_stack = np.asarray(rollout.trajectory_eta, dtype=np.float32)
+        nan_count = int(np.isnan(state_stack).sum() + np.isnan(eta_stack).sum())
+        inf_count = int(np.isinf(state_stack).sum() + np.isinf(eta_stack).sum())
+
+        if fde_name in {"swe_hydrostatic", "swe_muscl_hr"}:
+            h_hist = np.asarray(state_stack[:, 0], dtype=np.float32)
+            hu_hist = np.asarray(state_stack[:, 1], dtype=np.float32)
+            hv_hist = np.asarray(state_stack[:, 2], dtype=np.float32)
+            h_safe = np.maximum(h_hist, 1e-8)
+            wet = h_hist > 1e-8
+            u_hist = np.zeros_like(h_hist, dtype=np.float32)
+            v_hist = np.zeros_like(h_hist, dtype=np.float32)
+            u_hist[wet] = hu_hist[wet] / h_safe[wet]
+            v_hist[wet] = hv_hist[wet] / h_safe[wet]
+            max_abs_velocity = float(max(np.max(np.abs(u_hist)), np.max(np.abs(v_hist))))
+            min_h = float(np.min(h_hist))
+        else:
+            h_hist = eta_stack + rest_depth[None, ...]
+            min_h = float(np.min(h_hist))
+            max_abs_velocity = float(np.nan)
+
+        dt_positive = rollout.dt_history[rollout.dt_history > 0.0]
+        dt_min = float(np.min(dt_positive)) if dt_positive.size > 0 else 0.0
+        dt_max = float(np.max(dt_positive)) if dt_positive.size > 0 else 0.0
+        max_abs_eta = float(np.max(np.abs(eta_stack)))
+
+        health = {
+            "nan_count": nan_count,
+            "inf_count": inf_count,
+            "min_h": min_h,
+            "max_abs_eta": max_abs_eta,
+            "max_abs_velocity": max_abs_velocity,
+            "dt_min": dt_min,
+            "dt_max": dt_max,
+        }
+
         meta = {
             "sample_index": sample_idx,
             "scenario_id": scenario_id,
@@ -456,6 +502,7 @@ def _generate_sample_worker(
             "fdes_requested": list(dataset.enabled_fdes),
             "fdes_run": runnable_fdes,
             "fdes_skipped_unimplemented": skipped_unimplemented,
+            **health,
         }
         with (sample_dir / "meta.json").open("w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
@@ -474,6 +521,7 @@ def _generate_sample_worker(
                 "trajectory_eta_shape": list(map(int, rollout.trajectory_eta.shape)),
                 "fdes_run": runnable_fdes,
                 "fdes_skipped_unimplemented": skipped_unimplemented,
+                **health,
             }
         )
 
@@ -598,14 +646,14 @@ class TsunamiDatasetBuilder:
         if not isinstance(enabled_fdes_raw, list) or not enabled_fdes_raw:
             raise ValueError("fdes.enabled must be a non-empty list")
 
-        enabled_fdes: list[str] = [str(name).strip() for name in enabled_fdes_raw]
+        enabled_fdes: list[str] = list(dict.fromkeys(_canonical_fde_name(str(name).strip()) for name in enabled_fdes_raw))
         for name in enabled_fdes:
             if name not in KNOWN_FDES:
                 raise ValueError(
                     f"Unknown FDE '{name}'. Supported names: {sorted(KNOWN_FDES)}"
                 )
 
-        primary_fde = str(fdes.get("primary", enabled_fdes[0])).strip()
+        primary_fde = _canonical_fde_name(str(fdes.get("primary", enabled_fdes[0])).strip())
         if primary_fde not in enabled_fdes:
             raise ValueError("fdes.primary must be one of fdes.enabled")
 
@@ -630,7 +678,7 @@ class TsunamiDatasetBuilder:
 
         output_dir = Path(ds.get("output_dir", "data/raw"))
         bathymetry_dir = Path(ds.get("bathymetry_dir", "data/bathymetry"))
-        source_dir = Path(ds.get("source_dir", "data/source"))
+        source_dir = Path(ds.get("source_dir", "data/sources"))
         manifest_path = Path(ds.get("manifest_path", "data/synthetic/scenario_manifest.jsonl"))
         copy_configs = bool(ds.get("copy_configs", True))
 
@@ -822,7 +870,7 @@ class TsunamiDatasetBuilder:
                 except Exception:
                     source_strength = float(np.nan)
 
-                solver_name = str(meta.get("solver_name", fde_name))
+                solver_name = _canonical_fde_name(str(meta.get("solver_name", fde_name)))
                 if solver_name not in self.fde_manifest_paths:
                     solver_name = fde_name
 
@@ -861,6 +909,9 @@ class TsunamiDatasetBuilder:
                     srec["trajectory_shape"] = meta["trajectory_shape"]
                 if "trajectory_eta_shape" in meta:
                     srec["trajectory_eta_shape"] = meta["trajectory_eta_shape"]
+                for key in ("nan_count", "inf_count", "min_h", "max_abs_eta", "max_abs_velocity", "dt_min", "dt_max"):
+                    if key in meta:
+                        srec[key] = meta[key]
 
                 solver_rows.setdefault(solver_name, []).append(srec)
 

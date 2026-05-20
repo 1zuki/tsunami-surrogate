@@ -366,3 +366,85 @@ def test_boussinesq_simulate_rollout_eta_overrides_and_default_bathymetry() -> N
     assert np.isfinite(frames).all()
     assert np.allclose(frames[0, 0], eta0, atol=1e-6)
     assert np.allclose(frames[0, 1], eta_t0, atol=1e-6)
+
+
+def _periodic_radius_squared_grid(nx: int, ny: int) -> np.ndarray:
+    x = (np.arange(nx, dtype=float) + 0.5) / nx
+    y = (np.arange(ny, dtype=float) + 0.5) / ny
+    dx = np.minimum(np.abs(x - 0.5), 1.0 - np.abs(x - 0.5))
+    dy = np.minimum(np.abs(y - 0.5), 1.0 - np.abs(y - 0.5))
+    DX, DY = np.meshgrid(dx, dy, indexing="ij")
+    return DX * DX + DY * DY
+
+
+def _energy_radius(eta: np.ndarray, radius_squared: np.ndarray) -> float:
+    weight = np.asarray(eta, dtype=float) ** 2
+    total = float(np.sum(weight))
+    if total <= 1e-30:
+        return 0.0
+    return float(np.sqrt(np.sum(weight * radius_squared) / total))
+
+
+def test_boussinesq_gaussian_pulse_propagates_without_sponge() -> None:
+    nx, ny = 48, 48
+    dx = 1.0 / nx
+    dy = 1.0 / ny
+    x = np.linspace(0.0, 1.0, nx, endpoint=False)
+    y = np.linspace(0.0, 1.0, ny, endpoint=False)
+    X, Y = np.meshgrid(x, y, indexing="ij")
+
+    sigma = 0.055
+    eta0 = 0.01 * np.exp(-((X - 0.5) ** 2 + (Y - 0.5) ** 2) / (2.0 * sigma * sigma))
+    radius_squared = _periodic_radius_squared_grid(nx, ny)
+    center = (nx // 2, ny // 2)
+
+    for alpha in (0.0, 1.0 / 3.0):
+        solver = BoussinesqSolver(
+            nx=nx,
+            ny=ny,
+            dx=dx,
+            dy=dy,
+            dt=1e-4,
+            g=9.81,
+            cfl=0.35,
+            alpha=alpha,
+            boundary="periodic",
+            mode="linear_constant_depth",
+            depth_scale=1.0,
+            use_sponge=False,
+            filter_strength=0.0,
+            linear_solver_tol=1e-10,
+            linear_solver_max_iter=200,
+        )
+        solver.set_bathymetry(-np.ones((nx, ny), dtype=float))
+        solver.set_initial_condition(eta0, eta_t0=np.zeros_like(eta0))
+
+        l2_history: list[float] = []
+        radius_history: list[float] = []
+        center_amp_history: list[float] = []
+
+        n_steps = 120
+        for step_idx in range(n_steps + 1):
+            state = solver.get_state()
+            assert np.isfinite(state).all()
+
+            eta = state[0]
+            l2_history.append(float(np.sqrt(np.mean(eta * eta))))
+            radius_history.append(_energy_radius(eta, radius_squared))
+            center_amp_history.append(abs(float(eta[center])))
+
+            if step_idx == n_steps:
+                break
+
+            dt_step = solver.suggest_dt(target_cfl=0.35)
+            assert np.isfinite(dt_step)
+            assert dt_step > 0.0
+            solver.step(dt=dt_step, auto_dt=False)
+
+        initial_l2 = l2_history[0]
+        assert initial_l2 > 0.0
+
+        l2_ratio_final = l2_history[-1] / initial_l2
+        assert l2_ratio_final > 0.08
+        assert max(radius_history[8:]) > radius_history[0] * 1.08
+        assert min(center_amp_history[8:]) < center_amp_history[0] * 0.78

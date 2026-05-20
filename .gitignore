@@ -28,8 +28,12 @@ data/processed/*
 data/synthetic/*
 data/bathymetry/*
 data/source/*
+data/sources/*
 data/fno/*
 data/cnn/*
+data/bathymetry_bouss/*
+data/raw_bouss/*
+data/sources_bouss/*
 
 !data/**/.gitkeep
 
@@ -45,6 +49,9 @@ checkpoints/*
 
 experiments/fno/
 experiments/fno_*/
+experiments/cnn/
+experiments/unet/
+experiments/ensemble/
 
 .DS_Store
 .ipynb_checkpoints/

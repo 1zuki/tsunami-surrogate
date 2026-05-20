@@ -14,13 +14,13 @@ dataset:
   sea_level_offset: 0.0
   source_strength_range: [0.5, 2.0]
   bathymetry_dir: "data/bathymetry"
-  source_dir: "data/source"
+  source_dir: "data/sources"
   output_dir: "data/raw"
   manifest_path: "data/synthetic/scenario_manifest.jsonl"
   copy_configs: true
 
 fdes:
-  enabled: ["swe_hydrostatic", "swe_muscl"]
+  enabled: ["swe_hydrostatic", "swe_muscl_hr"]
   primary: "swe_hydrostatic"
 
 solver:

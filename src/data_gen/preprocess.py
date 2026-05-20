@@ -195,7 +195,7 @@ class TsunamiPreprocessor:
         solver_vocab = self.fde_targets if self.fde_targets else sorted(set(self.fde_manifest_paths.keys()))
 
         if not solver_vocab:
-            solver_vocab = ["hydrostatic", "muscl", "boussinesq"]
+            solver_vocab = ["hydrostatic", "muscl_hr", "boussinesq"]
         
         self._solver_id_map: Dict[str, float] = {name: float(i) for i, name in enumerate(solver_vocab)}
 
@@ -492,8 +492,10 @@ class TsunamiPreprocessor:
         mapping = {
             "swe_hydrostatic": "hydrostatic",
             "hydrostatic": "hydrostatic",
-            "swe_muscl": "muscl",
-            "muscl": "muscl",
+            "swe_muscl": "muscl_hr",
+            "swe_muscl_hr": "muscl_hr",
+            "muscl": "muscl_hr",
+            "muscl_hr": "muscl_hr",
             "boussinesq": "boussinesq",
         }
         return mapping.get(n, n)

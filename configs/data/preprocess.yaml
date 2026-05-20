@@ -2,18 +2,18 @@ raw:
   scenario_manifest: data/synthetic/scenario_manifest.jsonl
   fde_manifests:
     hydrostatic: data/synthetic/hydrostatic_manifest.jsonl
-    muscl: data/synthetic/muscl_manifest.jsonl
+    muscl_hr: data/synthetic/muscl_hr_manifest.jsonl
     boussinesq: data/synthetic/boussinesq_manifest.jsonl
   raw_dirs:
     hydrostatic: data/raw/hydrostatic/samples
-    muscl: data/raw/muscl/samples
+    muscl_hr: data/raw/muscl_hr/samples
     boussinesq: data/raw/boussinesq/samples
 
 processed_dir: data/processed
 
 fde:
   mode: separate_all          # single / separate_all / multifidelity
-  targets: [hydrostatic, muscl, boussinesq]
+  targets: [hydrostatic, muscl_hr]
   target_field: eta     # eta / depth / state
 
 split:

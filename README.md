@@ -65,19 +65,20 @@ python scripts/make_dataset.py --config configs/data/dataset.yaml
 
 `make_dataset.py` now runs in three stages:
 - stage 1: generate/cache all bathymetry samples first (default cache: `data/bathymetry`);
-- stage 2: generate/cache all source samples (default cache: `data/source`);
+- stage 2: generate/cache all source samples first (default cache: `data/sources`);
 - stage 3: load cached bathymetry + source pairs and run configured FDE rollouts from `fdes.enabled` in `configs/data/dataset.yaml`.
 
 Raw rollouts are separated by solver under `data/raw/`:
 - `data/raw/hydrostatic/samples/...`
-- `data/raw/muscl/samples/...`
+- `data/raw/muscl_hr/samples/...`
 
 Manifests are separated as:
 - scenario-level: `data/synthetic/scenario_manifest.jsonl`
-- solver-level: `data/synthetic/hydrostatic_manifest.jsonl`, `data/synthetic/muscl_manifest.jsonl`, `data/synthetic/boussinesq_manifest.jsonl`
+- solver-level: `data/synthetic/hydrostatic_manifest.jsonl`, `data/synthetic/muscl_hr_manifest.jsonl`, `data/synthetic/boussinesq_manifest.jsonl`
 
-Runnable FDEs currently include `swe_hydrostatic`, `swe_muscl`, and `boussinesq`.  
-Default `configs/data/dataset.yaml` enables only `swe_hydrostatic` + `swe_muscl` for safer baseline runs.
+Runnable FDEs currently include `swe_hydrostatic`, `swe_muscl_hr`, and `boussinesq`.  
+Default `configs/data/dataset.yaml` enables only `swe_hydrostatic` + `swe_muscl_hr` for safer baseline runs.
+Legacy alias `swe_muscl` is still accepted and automatically mapped to `swe_muscl_hr` for backward compatibility.
 
 Boussinesq should be generated from its dedicated config:
 
@@ -121,7 +122,7 @@ python src/data_gen/preprocess.py --config configs/data/preprocess.yaml
 
 `preprocess.yaml` now supports FDE-aware modes:
 - `fde.mode: single` with `fde.targets: [hydrostatic]` writes to `data/processed/hydrostatic/...`
-- `fde.mode: separate_all` writes one processed dataset per solver (`hydrostatic`, `muscl`, `boussinesq`) using the same scenario split
+- `fde.mode: separate_all` writes one processed dataset per solver (`hydrostatic`, `muscl_hr`, `boussinesq`) using the same scenario split
 - `fde.mode: multifidelity` writes a combined dataset to `data/processed/multifidelity/...`
 - For `multifidelity`, keep `input.use_solver_id: true` (or omit it, since it auto-enables by default) so the model can condition on solver identity instead of learning an ambiguous one-to-many mapping.
 
@@ -137,10 +138,10 @@ python src/data_gen/preprocess.py --config configs/data/preprocess_boussinesq.ya
 python scripts/train.py --config configs/model/fno.yaml
 ```
 
-Train on MUSCL labels:
+Train on MUSCL-HR labels:
 
 ```bash
-python scripts/train.py --config configs/model/fno_muscl.yaml
+python scripts/train.py --config configs/model/fno_muscl_hr.yaml
 ```
 
 Train on Boussinesq labels:
@@ -197,7 +198,7 @@ python scripts/visualize_rollout.py \
 tsunami-surrogate/
 ├─ README.md
 ├─ LICENSE
-├─ requirement.txt
+├─ requirements.txt
 ├─ configs/                        # all experiment/data/model/eval configs
 │  ├─ data/                        # data-generation and preprocessing configs
 │  │  ├─ dataset.yaml              # three-stage generation config + per-FDE raw outputs
@@ -210,7 +211,7 @@ tsunami-surrogate/
 │  │  └─ source_boussinesq.yaml
 │  ├─ model/                       # model-centered train/eval configs
 │  │  ├─ fno.yaml                  # primary FNO config
-│  │  ├─ fno_muscl.yaml            # FNO on MUSCL processed labels
+│  │  ├─ fno_muscl_hr.yaml         # FNO on MUSCL-HR processed labels
 │  │  ├─ fno_boussinesq.yaml       # FNO on Boussinesq processed labels
 │  │  ├─ cnn.yaml                  # CNN baseline config
 │  │  └─ unet.yaml                 # U-Net baseline config
