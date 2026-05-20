@@ -739,6 +739,21 @@ class TsunamiDatasetBuilder:
             return set()
         return set.intersection(*per_fde_sets)
 
+    def _existing_any_sample_indices(self) -> set[int]:
+        patt = re.compile(r"^sample_(\d{6})$")
+        out: set[int] = set()
+        for samples_dir in self.fde_samples_dirs.values():
+            if not samples_dir.exists():
+                continue
+            for p in samples_dir.iterdir():
+                if not p.is_dir():
+                    continue
+                m = patt.match(p.name)
+                if m is None:
+                    continue
+                out.add(int(m.group(1)))
+        return out
+
     def _resume_rollback_start_index(self, existing_indices: set[int]) -> int:
         if not existing_indices:
             return 1
@@ -772,6 +787,108 @@ class TsunamiDatasetBuilder:
                 continue
             out.add(int(m.group(1)))
         return out
+
+    def rebuild_manifests_from_existing_outputs(self) -> None:
+        patt = re.compile(r"^sample_(\d{6})$")
+        scenario_rows: dict[int, Dict[str, Any]] = {}
+        solver_rows: dict[str, list[Dict[str, Any]]] = {name: [] for name in self.fde_manifest_paths.keys()}
+
+        for fde_name, samples_dir in self.fde_samples_dirs.items():
+            if not samples_dir.exists():
+                continue
+
+            for sample_dir in sorted(samples_dir.iterdir()):
+                if not sample_dir.is_dir():
+                    continue
+                m = patt.match(sample_dir.name)
+                if m is None:
+                    continue
+
+                sample_idx = int(m.group(1))
+                meta_path = sample_dir / "meta.json"
+                if not meta_path.exists():
+                    continue
+
+                try:
+                    with meta_path.open("r", encoding="utf-8") as f:
+                        meta = json.load(f)
+                except Exception:
+                    continue
+
+                scenario_id = str(meta.get("scenario_id", f"scenario_{sample_idx:06d}"))
+                source_strength_raw = meta.get("source_strength", np.nan)
+                try:
+                    source_strength = float(source_strength_raw)
+                except Exception:
+                    source_strength = float(np.nan)
+
+                solver_name = str(meta.get("solver_name", fde_name))
+                if solver_name not in self.fde_manifest_paths:
+                    solver_name = fde_name
+
+                if sample_idx not in scenario_rows:
+                    scenario_rows[sample_idx] = {
+                        "sample_index": sample_idx,
+                        "scenario_id": scenario_id,
+                        "bathymetry_type": str(meta.get("bathymetry_type", "unknown")),
+                        "source_type": str(meta.get("source_type", "unknown")),
+                        "source_strength": source_strength,
+                        "bathymetry_cache_path": str(meta.get("bathymetry_cache_path", "")),
+                        "source_cache_path": str(meta.get("source_cache_path", "")),
+                        "fdes_requested": list(meta.get("fdes_requested", self.dataset.enabled_fdes)),
+                        "fdes_run": list(meta.get("fdes_run", [solver_name])),
+                        "fdes_skipped_unimplemented": list(meta.get("fdes_skipped_unimplemented", [])),
+                    }
+                else:
+                    existing_run = set(scenario_rows[sample_idx].get("fdes_run", []))
+                    existing_run.add(solver_name)
+                    scenario_rows[sample_idx]["fdes_run"] = sorted(existing_run)
+
+                srec: Dict[str, Any] = {
+                    "sample_index": sample_idx,
+                    "scenario_id": scenario_id,
+                    "sample_dir": str(sample_dir),
+                    "solver_name": solver_name,
+                    "bathymetry_type": str(meta.get("bathymetry_type", "unknown")),
+                    "source_type": str(meta.get("source_type", "unknown")),
+                    "source_strength": source_strength,
+                    "fdes_run": list(meta.get("fdes_run", [solver_name])),
+                    "fdes_skipped_unimplemented": list(meta.get("fdes_skipped_unimplemented", [])),
+                }
+                if "num_frames" in meta:
+                    srec["num_frames"] = int(meta["num_frames"])
+                if "trajectory_shape" in meta:
+                    srec["trajectory_shape"] = meta["trajectory_shape"]
+                if "trajectory_eta_shape" in meta:
+                    srec["trajectory_eta_shape"] = meta["trajectory_eta_shape"]
+
+                solver_rows.setdefault(solver_name, []).append(srec)
+
+        if not scenario_rows:
+            raise RuntimeError(
+                "Could not rebuild manifests: no valid sample_*/meta.json records found under output sample directories."
+            )
+
+        for path in [self.scenario_manifest_path, *self.fde_manifest_paths.values()]:
+            if path.exists():
+                path.unlink()
+
+        for idx in sorted(scenario_rows.keys()):
+            self._append_manifest(self.scenario_manifest_path, scenario_rows[idx])
+
+        for solver_name, rows in solver_rows.items():
+            manifest_path = self.fde_manifest_paths.get(solver_name)
+            if manifest_path is None:
+                continue
+            rows.sort(key=lambda r: int(r["sample_index"]))
+            for row in rows:
+                self._append_manifest(manifest_path, row)
+
+        print(
+            f"[dataset] rebuilt manifests from existing outputs: "
+            f"scenarios={len(scenario_rows)}, "
+            + ", ".join(f"{name}={len(rows)}" for name, rows in sorted(solver_rows.items()))
+        )
 
     def _phase_generate_bathymetry(self, indices: list[int], allow_override: bool = False) -> None:
         existing = self._existing_bathymetry_indices()
@@ -950,13 +1067,19 @@ class TsunamiDatasetBuilder:
         continue_from_last: bool = False,
         start_at: int | None = None,
         allow_override: bool = False,
+        rebuild_manifests: bool = False,
     ) -> None:
         """generate all raw samples in three phases: bathymetry, source, and FDE rollouts."""
+        if rebuild_manifests:
+            self.rebuild_manifests_from_existing_outputs()
+            return
+
         if start_at is not None and start_at < 1:
             raise ValueError("--start-at must be >= 1")
 
         total = self.dataset.num_samples
         existing_indices = self._existing_sample_indices()
+        any_existing_indices = self._existing_any_sample_indices()
 
         if start_at is not None:
             start_idx = int(start_at)
@@ -965,13 +1088,13 @@ class TsunamiDatasetBuilder:
         else:
             start_idx = 1
 
-        if start_idx == 1 and not continue_from_last and start_at is None:
-            if self.scenario_manifest_path.exists():
-                self.scenario_manifest_path.unlink()
-            for path in self.fde_manifest_paths.values():
-                if path.exists():
-                    path.unlink()
-        else:
+        clean_run = (start_idx == 1 and not continue_from_last and start_at is None)
+        if clean_run and any_existing_indices and not allow_override:
+            raise RuntimeError(
+                "Existing sample outputs found. Use --continue, --allow-override, or --rebuild-manifests "
+                "to avoid deleting/invalidating manifests."
+            )
+        if not clean_run:
             print(f"[dataset] resume mode: start_at={start_idx}")
 
         if start_idx > total:
@@ -993,6 +1116,13 @@ class TsunamiDatasetBuilder:
         if not to_generate:
             print("[dataset] nothing new to generate.")
             return
+
+        if clean_run and (allow_override or not any_existing_indices):
+            if self.scenario_manifest_path.exists():
+                self.scenario_manifest_path.unlink()
+            for path in self.fde_manifest_paths.values():
+                if path.exists():
+                    path.unlink()
 
         print(
             f"[dataset] generation plan: samples={len(to_generate)}, "
@@ -1042,6 +1172,14 @@ def _build_argparser() -> argparse.ArgumentParser:
         action="store_true",
         help="Regenerate samples even if their output directories already exist.",
     )
+    parser.add_argument(
+        "--rebuild-manifests",
+        action="store_true",
+        help=(
+            "Rebuild scenario and per-FDE manifest files by scanning existing sample_*/meta.json "
+            "under solver output directories, then exit."
+        ),
+    )
     return parser
 
 def main() -> None:
@@ -1051,6 +1189,7 @@ def main() -> None:
         continue_from_last=bool(args.continue_from_last),
         start_at=args.start_at,
         allow_override=bool(args.allow_override),
+        rebuild_manifests=bool(args.rebuild_manifests),
     )
 
 if __name__ == "__main__":

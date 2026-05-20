@@ -27,6 +27,7 @@ def main() -> None:
     parser.add_argument("--continue", dest="continue_from_last", action="store_true")
     parser.add_argument("--start-at", type=int, default=None)
     parser.add_argument("--allow-override", action="store_true")
+    parser.add_argument("--rebuild-manifests", action="store_true")
     args = parser.parse_args()
 
     cfg_path = Path(args.config)
@@ -62,6 +63,7 @@ def main() -> None:
             continue_from_last=bool(args.continue_from_last),
             start_at=args.start_at,
             allow_override=bool(args.allow_override),
+            rebuild_manifests=bool(args.rebuild_manifests),
         )
         print(f"Dataset generation complete using {cfg_path}")
     finally:
