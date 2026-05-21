@@ -1,0 +1,19 @@
+forward_data:
+  train_path: data/processed/muscl_hr/train/eval_dataset.npz
+  val_path: data/processed/muscl_hr/val/eval_dataset.npz
+  test_path: data/processed/muscl_hr/test/eval_dataset.npz
+
+output_root: data/processed_inverse/muscl_hr
+
+source_channel_index: 1
+bathymetry_channel_index: 0
+initial_depth_channel_index: 2
+
+observation:
+  mode: final_eta
+  include_bathymetry: true
+  include_initial_depth: false
+  noise_std: 0.0
+  seed: 42
+
+# in progress

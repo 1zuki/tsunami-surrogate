@@ -175,13 +175,69 @@ Notes:
 - For uncertainty evaluation, pass at least 2 checkpoints (or configure `uncertainty.ensemble_checkpoints` with at least 2 members). Single-member ensembles are blocked because they produce degenerate variance.
 - Train/eval entrypoints now validate dataset-vs-model I/O channels early, so if multifidelity adds `solver_id`, a stale `model.in_channels` mismatch fails fast with a clear message.
 
-### 6.5 Quick Smoke Run
+### 6.5 Build OOD Suites
+
+Create filtered OOD suite datasets from processed test archives:
+
+```bash
+python scripts/make_ood_splits.py --config configs/data/ood_splits_hydrostatic.yaml --overwrite
+python scripts/make_ood_splits.py --config configs/data/ood_splits_muscl_hr.yaml --overwrite
+```
+
+Then run suite-based generalization evaluation:
+
+```bash
+python scripts/eval_generalization.py --config configs/eval/ood_suites_hydrostatic.yaml --checkpoint experiments/fno/best.pt
+python scripts/eval_generalization.py --config configs/eval/ood_suites_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt
+```
+
+### 6.6 Real Multi-Resolution Data Configs
+
+Generate native-grid datasets (not resized proxies):
+
+```bash
+python scripts/make_dataset.py --config configs/data/multires/dataset_32.yaml
+python scripts/make_dataset.py --config configs/data/multires/dataset_64.yaml
+python scripts/make_dataset.py --config configs/data/multires/dataset_128.yaml
+```
+
+Preprocess each resolution separately:
+
+```bash
+python src/data_gen/preprocess.py --config configs/data/multires/preprocess_32.yaml
+python src/data_gen/preprocess.py --config configs/data/multires/preprocess_64.yaml
+python src/data_gen/preprocess.py --config configs/data/multires/preprocess_128.yaml
+```
+
+### 6.7 Solver-vs-Solver Physical Comparison
+
+Compare two raw solver outputs on shared scenarios in physical eta units:
+
+```bash
+python scripts/compare_solvers_physical.py \
+  --solver-a-dir data/raw/hydrostatic/samples \
+  --solver-b-dir data/raw/muscl_hr/samples \
+  --output results/solver_compare_hydro_vs_muscl_hr.json
+```
+
+### 6.8 Inverse Dataset
+
+Still in progress
+
+Export a first inverse-dataset (observation -> source field) from forward processed archives:
+
+```bash
+python scripts/make_inverse_dataset.py --config configs/data/inverse_hydrostatic.yaml --overwrite
+python scripts/make_inverse_dataset.py --config configs/data/inverse_muscl_hr.yaml --overwrite
+```
+
+### 6.9 Quick Smoke Run
 
 ```bash
 bash scripts/quickstart.sh
 ```
 
-### 6.6 Visualize One Sample (Truth vs Prediction + Uncertainty)
+### 6.10 Visualize One Sample (Truth vs Prediction + Uncertainty)
 
 ```bash
 python scripts/visualize_rollout.py \
@@ -203,6 +259,11 @@ tsunami-surrogate/
 │  ├─ data/                        # data-generation and preprocessing configs
 │  │  ├─ dataset.yaml              # three-stage generation config + per-FDE raw outputs
 │  │  ├─ dataset_boussinesq.yaml
+│  │  ├─ multires/                 # native 32/64/128 forward-data configs
+│  │  ├─ ood_splits_hydrostatic.yaml
+│  │  ├─ ood_splits_muscl_hr.yaml
+│  │  ├─ inverse_scaffold_hydrostatic.yaml
+│  │  ├─ inverse_scaffold_muscl_hr.yaml
 │  │  ├─ preprocess.yaml           # raw -> processed split/export config
 │  │  ├─ preprocess_boussinesq.yaml
 │  │  ├─ bathymetry.yaml           # bathymetry synthesis controls
@@ -220,7 +281,9 @@ tsunami-surrogate/
 │  │  ├─ physics_loss.yaml         # physics-regularized FNO variant
 │  │  └─ train_32_to_64.yaml       # resolution-transfer training setup
 │  └─ eval/
-│     └─ eval_template.yaml        # template for standalone eval scripts
+│     ├─ eval_template.yaml        # template for standalone eval scripts
+│     ├─ ood_suites_hydrostatic.yaml
+│     └─ ood_suites_muscl_hr.yaml
 ├─ scripts/                        # CLI entrypoints (generate/train/eval/export)
 ├─ src/                            # implementation modules
 │  ├─ data_gen/                    # simulation + preprocess pipeline internals

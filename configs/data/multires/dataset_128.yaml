@@ -1,0 +1,39 @@
+configs:
+  bathymetry: "configs/data/multires/bathymetry_128.yaml"
+  source: "configs/data/multires/source_128.yaml"
+
+dataset:
+  num_samples: 50
+  seed: 42
+  num_workers: 8
+  n_steps: 250
+  save_every: 5
+  auto_dt: true
+  target_cfl: 0.4
+  include_initial_state: true
+  sea_level_offset: 0.0
+  source_strength_range: [0.5, 2.0]
+  bathymetry_dir: "data/bathymetry_res128"
+  source_dir: "data/sources_res128"
+  output_dir: "data/raw_res128"
+  manifest_path: "data/synthetic/res128/scenario_manifest.jsonl"
+  copy_configs: true
+
+fdes:
+  enabled: ["swe_hydrostatic", "swe_muscl_hr"]
+  primary: "swe_hydrostatic"
+
+solver:
+  nx: 128
+  ny: 128
+  dx: 0.0078125
+  dy: 0.0078125
+  dt: 0.001
+  g: 9.81
+  cfl: 0.4
+  dry_tolerance: 1e-6
+  max_velocity: 50.0
+  boundary: "open"
+  use_sponge: true
+  sponge_width: 24
+  sponge_min_factor: 0.9

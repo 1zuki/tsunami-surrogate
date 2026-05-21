@@ -1,0 +1,17 @@
+defaults:
+  - ../model/fno_muscl_hr.yaml
+
+eval:
+  output_dir: experiments/fno_muscl_hr/eval_ood_suites
+  report_physical_metrics: true
+  generalization:
+    suites:
+      - label: source_holdout_multi_gauss
+        path: data/processed_ood/muscl_hr/source_holdout_multi_gauss
+        group_key: source_type
+      - label: bathymetry_holdout_trench
+        path: data/processed_ood/muscl_hr/bathymetry_holdout_trench
+        group_key: bathymetry_type
+      - label: source_strength_extreme_high
+        path: data/processed_ood/muscl_hr/source_strength_extreme_high
+        group_key: source_type

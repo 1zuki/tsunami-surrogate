@@ -1,0 +1,15 @@
+input_dataset: data/processed/hydrostatic/test/eval_dataset.npz
+output_root: data/processed_ood/hydrostatic
+
+suites:
+  - label: source_holdout_multi_gauss
+    filters:
+      source_type_in: ["multi-gauss"]
+
+  - label: bathymetry_holdout_trench
+    filters:
+      bathymetry_type_in: ["trench"]
+
+  - label: source_strength_extreme_high
+    filters:
+      source_strength_min: 1.6

@@ -1,0 +1,55 @@
+nx: 32
+ny: 32
+seed: null
+
+source_type: ["gaussian", "multi-gauss", "okada-like", "dipole", "fault", "rough"]
+
+gaussian:
+  enabled: true
+  amp_range: [0.6, 4.8]
+  sigma_range: [0.01, 0.12]
+  num_range: [1, 4]
+
+multi:
+  enabled: true
+  num_sources: [2, 6]
+
+okada:
+  enabled: true
+  length_range: [0.1, 0.6]
+  width_range: [0.05, 0.30]
+  slip_range: [1.0, 4.8]
+  angle_range: [0.0, 3.14]
+  dip_range: [0.0, 0.6]
+  depth_range: [0.0, 0.30]
+  smoothing_sigma: [0.1, 0.3]
+
+dipole:
+  enabled: true
+  amp_range: [1.0, 5.2]
+  sigma_range: [0.02, 0.12]
+  separation_range: [0.05, 0.24]
+  angle_range: [0.0, 3.14]
+
+fault:
+  enabled: true
+  amp_range: [1.0, 4.8]
+  length_range: [0.2, 0.8]
+  width_range: [0.02, 0.12]
+  angle_range: [0.0, 3.14]
+  smoothing_sigma: [0.01, 0.03]
+
+rough:
+  enabled: true
+  amp_range: [1.0, 4.2]
+  smoothing_sigma: [0.4, 2.0]
+
+noise:
+  enabled: true
+  scale_range: [0.02, 0.12]
+  smoothing_sigma: [1.0, 3.0]
+
+normalization:
+  mode: none
+  clip_output: false
+  height_scale: [-1.0, 1.0]

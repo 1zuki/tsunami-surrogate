@@ -1,0 +1,15 @@
+input_dataset: data/processed/muscl_hr/test/eval_dataset.npz
+output_root: data/processed_ood/muscl_hr
+
+suites:
+  - label: source_holdout_multi_gauss
+    filters:
+      source_type_in: ["multi-gauss"]
+
+  - label: bathymetry_holdout_trench
+    filters:
+      bathymetry_type_in: ["trench"]
+
+  - label: source_strength_extreme_high
+    filters:
+      source_strength_min: 1.6
