@@ -33,7 +33,7 @@ input:
 target:
   mode: multi_step      # next_step / multi_step / final_state
   variable: eta         # eta / depth / state
-  forecast_steps: 100
+  forecast_steps: 50
   stride: 1
 
 normalization:

@@ -5,6 +5,10 @@ eval:
   output_dir: experiments/fno_muscl_hr/eval_resolution
   report_physical_metrics: true
   real_resolution:
+    normalization_policy: require_target_stats_match
+    normalization_mismatch: fail
+    normalization_reference_path: data/processed/muscl_hr/train/eval_dataset.npz
+    normalization_tol: 1e-6
     suites:
       - label: res32_muscl_hr
         path: data/processed_res32/muscl_hr/test

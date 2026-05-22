@@ -101,6 +101,8 @@ def main() -> None:
     input_dataset = Path(str(cfg.get("input_dataset", "")).strip())
     output_root = Path(str(cfg.get("output_root", "")).strip())
     suites = cfg.get("suites", [])
+    min_samples_raw = cfg.get("min_samples", None)
+    min_samples_action = str(cfg.get("min_samples_action", "fail")).strip().lower()
 
     if not input_dataset:
         raise KeyError("config is missing required key: input_dataset")
@@ -108,6 +110,16 @@ def main() -> None:
         raise KeyError("config is missing required key: output_root")
     if not isinstance(suites, list) or not suites:
         raise ValueError("config.suites must be a non-empty list")
+    if min_samples_action not in {"warn", "fail"}:
+        raise ValueError("min_samples_action must be one of: warn, fail")
+    
+    min_samples_default: int | None = None
+    
+    if min_samples_raw is not None:
+        min_samples_default = int(min_samples_raw)
+        if min_samples_default < 0:
+            raise ValueError("min_samples must be >= 0")
+    
     if not input_dataset.exists():
         raise FileNotFoundError(input_dataset)
 
@@ -164,6 +176,23 @@ def main() -> None:
             mask = np.zeros_like(mask)
             mask[idx] = True
 
+        selected_count = int(mask.sum())
+        suite_min_samples_raw = suite_cfg.get("min_samples", min_samples_default)
+        
+        if suite_min_samples_raw is not None:
+            suite_min_samples = int(suite_min_samples_raw)
+            if suite_min_samples < 0:
+                raise ValueError(f"suites[{i}].min_samples must be >= 0")
+        
+            if selected_count < suite_min_samples:
+                msg = (
+                    f"[ood] suite '{label}' selected too few samples: {selected_count} < {suite_min_samples}. "
+                    "Relax filters or increase source dataset size."
+                )
+                if min_samples_action == "fail":
+                    raise ValueError(msg)
+                print(f"[ood][warn] {msg}")
+
         subset = _subset_npz(payload, mask)
         out_dir = output_root / label
         out_npz = out_dir / "eval_dataset.npz"
@@ -180,16 +209,21 @@ def main() -> None:
         summary = {
             "label": label,
             "input_dataset": str(input_dataset),
-            "num_selected": int(mask.sum()),
+            "num_selected": selected_count,
             "num_total": n,
             "filters": filters,
             "max_samples": None if max_samples is None else int(max_samples),
+            "min_samples_required": (
+                None
+                if suite_cfg.get("min_samples", min_samples_default) is None
+                else int(suite_cfg.get("min_samples", min_samples_default))
+            ),
             "selected_source_types": sorted({str(x) for x in meta["source_type"][mask]}),
             "selected_bathymetry_types": sorted({str(x) for x in meta["bathymetry_type"][mask]}),
             "selected_solver_names": sorted({str(x) for x in meta["solver_name"][mask]}),
         }
         save_json(summary, out_manifest)
-        print(f"[ood] {label:<32} selected={int(mask.sum()):5d} -> {out_npz}")
+        print(f"[ood] {label:<32} selected={selected_count:5d} -> {out_npz}")
 
     print(f"[ood] done. suites_root={output_root}")
 

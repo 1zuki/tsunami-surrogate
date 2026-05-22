@@ -3,7 +3,7 @@ configs:
   source: "configs/data/multires/source_32.yaml"
 
 dataset:
-  num_samples: 20
+  num_samples: 100
   seed: 42
   num_workers: 10
   n_steps: 250
@@ -22,6 +22,13 @@ dataset:
 fdes:
   enabled: ["swe_hydrostatic", "swe_muscl_hr"]
   primary: "swe_hydrostatic"
+
+quality:
+  on_violation: warn
+  reject_nonfinite: true
+  min_h_tolerance: -1e-6
+  max_abs_eta_limit: 10.0
+  max_velocity_limit: 50.0
 
 solver:
   nx: 32

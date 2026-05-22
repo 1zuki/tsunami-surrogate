@@ -105,6 +105,7 @@ python scripts/make_dataset.py --config configs/data/dataset.yaml --continue
 ```
 
 `--continue` rolls back to the last completed worker batch boundary before resuming (using `num_workers`) to reduce partial-batch holes after interruptions.
+During resume, per-FDE sample folders that are already complete are reused as-is (not overwritten) unless `--allow-override` is set.
 
 Resume from an explicit sample index (1-based):
 
@@ -123,6 +124,13 @@ Rebuild manifests from already-generated sample folders:
 ```bash
 python scripts/make_dataset.py --config configs/data/dataset.yaml --rebuild-manifests
 ```
+
+Quality guardrails (configured in `quality:` inside dataset YAML):
+- `on_violation: warn|fail`
+- `reject_nonfinite`
+- `min_h_tolerance`
+- `max_abs_eta_limit`
+- `max_velocity_limit`
 
 ### 6.2 Step 2 - Preprocess Forward Data (Required)
 
@@ -209,6 +217,7 @@ python scripts/make_ood_splits.py --config configs/data/ood_splits_muscl_hr.yaml
 Tip:
 - `make_ood_splits.py` prints available `source_type` / `bathymetry_type` counts and `source_strength` range from your current test archive.
 - If a suite selects zero samples, relax or change filters in `configs/data/ood_splits_*.yaml`, rebuild suites, then rerun evaluation.
+- OOD split configs now support `min_samples` + `min_samples_action: warn|fail` to prevent accidentally evaluating tiny suites.
 
 Run suite-based generalization evaluation:
 
@@ -264,6 +273,10 @@ python scripts/eval_full_resolution.py \
   --config configs/eval/resolution_muscl_hr.yaml \
   --checkpoint experiments/fno_muscl_hr/best.pt
 ```
+
+Native-resolution normalization policy:
+- `configs/eval/resolution_*.yaml` now defaults to `real_resolution.normalization_policy: require_target_stats_match`.
+- This fails fast if suite target normalization does not match the configured training/reference dataset stats (`normalization_reference_path`), which avoids misleading cross-resolution claims.
 
 ### 6.8 Optional - Solver-vs-Solver Physical Comparison
 
@@ -347,8 +360,8 @@ tsunami-surrogate/
 │     ├─ ood_suites_muscl_hr.yaml
 │     ├─ resolution_transfer_proxy_hydrostatic.yaml
 │     ├─ resolution_transfer_proxy_muscl_hr.yaml
-│     ├─ real_resolution_hydrostatic.yaml
-│     └─ real_resolution_muscl_hr.yaml
+│     ├─ resolution_hydrostatic.yaml
+│     └─ resolution_muscl_hr.yaml
 ├─ scripts/                        # CLI entrypoints (generate/train/eval/export)
 ├─ src/                            # implementation modules
 │  ├─ data_gen/                    # simulation + preprocess pipeline internals

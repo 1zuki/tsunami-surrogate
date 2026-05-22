@@ -1,5 +1,7 @@
 input_dataset: data/processed/muscl_hr/test/eval_dataset.npz
 output_root: data/processed_ood/muscl_hr
+min_samples: 25 # technically 5 works but 25 is safer for test run, and below 128? watever is useless when writing anyways ig
+min_samples_action: fail
 
 suites:
   - label: source_holdout_multi_gauss

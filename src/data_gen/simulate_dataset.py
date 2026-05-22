@@ -67,6 +67,14 @@ BOUSSINESQ_SOLVER_KEYS = COMMON_SOLVER_KEYS | {
 }
 
 @dataclass
+class QualityPolicy:
+    on_violation: str
+    reject_nonfinite: bool
+    min_h_tolerance: float | None
+    max_abs_eta_limit: float | None
+    max_velocity_limit: float | None
+
+@dataclass
 class DatasetConfig:
     """Convenience wrapper for the top-level dataset config."""
 
@@ -87,6 +95,7 @@ class DatasetConfig:
     copy_configs: bool
     enabled_fdes: tuple[str, ...]
     primary_fde: str
+    quality_policy: QualityPolicy
 
 @dataclass
 class RolloutResult:
@@ -95,6 +104,114 @@ class RolloutResult:
     timestamps: np.ndarray
     dt_history: np.ndarray
 
+def _sample_output_complete(sample_dir: Path) -> bool:
+    required_files = ("sample.npz", "rollout.npz", "trajectory_eta.npy", "meta.json")
+    if not sample_dir.is_dir():
+        return False
+    for name in required_files:
+        if not (sample_dir / name).is_file():
+            return False
+        
+    return True
+
+def _load_existing_solver_record(sample_dir: Path, sample_idx: int, fallback_solver_name: str) -> Dict[str, Any]:
+    meta_path = sample_dir / "meta.json"
+    with meta_path.open("r", encoding="utf-8") as f:
+        meta = json.load(f)
+
+    return {
+        "sample_index": sample_idx,
+        "scenario_id": str(meta.get("scenario_id", f"scenario_{sample_idx:06d}")),
+        "sample_dir": str(sample_dir),
+        "solver_name": str(meta.get("solver_name", fallback_solver_name)),
+        "bathymetry_type": str(meta.get("bathymetry_type", "unknown")),
+        "source_type": str(meta.get("source_type", "unknown")),
+        "source_strength": float(meta.get("source_strength", np.nan)),
+        "num_frames": int(meta.get("num_frames", 0)),
+        "trajectory_shape": meta.get("trajectory_shape", []),
+        "trajectory_eta_shape": meta.get("trajectory_eta_shape", []),
+        "fdes_run": list(meta.get("fdes_run", [fallback_solver_name])),
+        "fdes_skipped_unimplemented": list(meta.get("fdes_skipped_unimplemented", [])),
+        "nan_count": int(meta.get("nan_count", 0)),
+        "inf_count": int(meta.get("inf_count", 0)),
+        "min_h": float(meta.get("min_h", np.nan)),
+        "max_abs_eta": float(meta.get("max_abs_eta", np.nan)),
+        "max_abs_velocity": float(meta.get("max_abs_velocity", np.nan)),
+        "dt_min": float(meta.get("dt_min", 0.0)),
+        "dt_max": float(meta.get("dt_max", 0.0)),
+        "quality_status": str(meta.get("quality_status", "unknown")),
+        "quality_violations": list(meta.get("quality_violations", [])),
+        "reused_existing": True,
+    }
+
+def _compute_rollout_health(
+    fde_name: str,
+    rollout: RolloutResult,
+    rest_depth: np.ndarray,
+) -> Dict[str, Any]:
+    state_stack = np.asarray(rollout.trajectory, dtype=np.float32)
+    eta_stack = np.asarray(rollout.trajectory_eta, dtype=np.float32)
+    nan_count = int(np.isnan(state_stack).sum() + np.isnan(eta_stack).sum())
+    inf_count = int(np.isinf(state_stack).sum() + np.isinf(eta_stack).sum())
+
+    if fde_name in {"swe_hydrostatic", "swe_muscl_hr"}:
+        h_hist = np.asarray(state_stack[:, 0], dtype=np.float32)
+        hu_hist = np.asarray(state_stack[:, 1], dtype=np.float32)
+        hv_hist = np.asarray(state_stack[:, 2], dtype=np.float32)
+        h_safe = np.maximum(h_hist, 1e-8)
+        wet = h_hist > 1e-8
+        u_hist = np.zeros_like(h_hist, dtype=np.float32)
+        v_hist = np.zeros_like(h_hist, dtype=np.float32)
+        u_hist[wet] = hu_hist[wet] / h_safe[wet]
+        v_hist[wet] = hv_hist[wet] / h_safe[wet]
+        max_abs_velocity = float(max(np.max(np.abs(u_hist)), np.max(np.abs(v_hist))))
+        min_h = float(np.min(h_hist))
+    else:
+        h_hist = eta_stack + rest_depth[None, ...]
+        min_h = float(np.min(h_hist))
+        max_abs_velocity = float(np.nan)
+
+    dt_positive = rollout.dt_history[rollout.dt_history > 0.0]
+    dt_min = float(np.min(dt_positive)) if dt_positive.size > 0 else 0.0
+    dt_max = float(np.max(dt_positive)) if dt_positive.size > 0 else 0.0
+    max_abs_eta = float(np.max(np.abs(eta_stack)))
+
+    return {
+        "nan_count": nan_count,
+        "inf_count": inf_count,
+        "min_h": min_h,
+        "max_abs_eta": max_abs_eta,
+        "max_abs_velocity": max_abs_velocity,
+        "dt_min": dt_min,
+        "dt_max": dt_max,
+    }
+
+def _quality_violations_for_health(health: Dict[str, Any], policy: QualityPolicy) -> list[str]:
+    violations: list[str] = []
+    nan_count = int(health.get("nan_count", 0))
+    inf_count = int(health.get("inf_count", 0))
+    min_h = float(health.get("min_h", np.nan))
+    max_abs_eta = float(health.get("max_abs_eta", np.nan))
+    max_abs_velocity = float(health.get("max_abs_velocity", np.nan))
+
+    if policy.reject_nonfinite and (nan_count > 0 or inf_count > 0):
+        violations.append(f"nonfinite(nan_count={nan_count}, inf_count={inf_count})")
+
+    if policy.min_h_tolerance is not None and np.isfinite(min_h) and min_h < float(policy.min_h_tolerance):
+        violations.append(f"min_h({min_h:.6g}) < min_h_tolerance({float(policy.min_h_tolerance):.6g})")
+
+    if policy.max_abs_eta_limit is not None and np.isfinite(max_abs_eta) and max_abs_eta > float(policy.max_abs_eta_limit):
+        violations.append(
+            f"max_abs_eta({max_abs_eta:.6g}) > max_abs_eta_limit({float(policy.max_abs_eta_limit):.6g})"
+        )
+
+    if policy.max_velocity_limit is not None and np.isfinite(max_abs_velocity) and max_abs_velocity > float(policy.max_velocity_limit):
+        violations.append(
+            "max_abs_velocity"
+            f"({max_abs_velocity:.6g}) > max_velocity_limit({float(policy.max_velocity_limit):.6g})"
+        )
+
+    return violations
 
 def _fde_dirname(fde_name: str) -> str:
     if fde_name in FDE_OUTPUT_DIRNAME:
@@ -397,6 +514,23 @@ def _generate_sample_worker(
         if fde_name not in fde_samples_dirs:
             raise KeyError(f"Missing output samples directory for FDE '{fde_name}'")
 
+        sample_dir = Path(fde_samples_dirs[fde_name]) / f"sample_{sample_idx:06d}"
+        if sample_dir.exists() and not allow_override:
+            if _sample_output_complete(sample_dir):
+                try:
+                    solver_records.append(
+                        _load_existing_solver_record(
+                            sample_dir=sample_dir,
+                            sample_idx=sample_idx,
+                            fallback_solver_name=fde_name,
+                        )
+                    )
+                    continue
+                except Exception:
+                    shutil.rmtree(sample_dir)
+            if sample_dir.exists():
+                shutil.rmtree(sample_dir)
+
         rollout = _run_fde_rollout(
             fde_name=fde_name,
             solver_cfg=solver_cfg,
@@ -406,7 +540,19 @@ def _generate_sample_worker(
             h0=h0,
         )
 
-        sample_dir = Path(fde_samples_dirs[fde_name]) / f"sample_{sample_idx:06d}"
+        health = _compute_rollout_health(fde_name=fde_name, rollout=rollout, rest_depth=rest_depth)
+        quality_violations = _quality_violations_for_health(health=health, policy=dataset.quality_policy)
+        quality_status = "ok"
+        if quality_violations:
+            quality_status = dataset.quality_policy.on_violation
+            message = (
+                f"[quality] sample={sample_idx:06d} solver={fde_name} "
+                f"violations={quality_violations}"
+            )
+            if dataset.quality_policy.on_violation == "fail":
+                raise RuntimeError(message)
+            print(f"{message} (continuing)")
+
         if allow_override and sample_dir.exists():
             shutil.rmtree(sample_dir)
         sample_dir.mkdir(parents=True, exist_ok=True)
@@ -438,44 +584,6 @@ def _generate_sample_worker(
             scenario_id=np.array([scenario_id], dtype="U64"),
         )
 
-        # solver rollout health diag for QA before large-scale label gen
-        state_stack = np.asarray(rollout.trajectory, dtype=np.float32)
-        eta_stack = np.asarray(rollout.trajectory_eta, dtype=np.float32)
-        nan_count = int(np.isnan(state_stack).sum() + np.isnan(eta_stack).sum())
-        inf_count = int(np.isinf(state_stack).sum() + np.isinf(eta_stack).sum())
-
-        if fde_name in {"swe_hydrostatic", "swe_muscl_hr"}:
-            h_hist = np.asarray(state_stack[:, 0], dtype=np.float32)
-            hu_hist = np.asarray(state_stack[:, 1], dtype=np.float32)
-            hv_hist = np.asarray(state_stack[:, 2], dtype=np.float32)
-            h_safe = np.maximum(h_hist, 1e-8)
-            wet = h_hist > 1e-8
-            u_hist = np.zeros_like(h_hist, dtype=np.float32)
-            v_hist = np.zeros_like(h_hist, dtype=np.float32)
-            u_hist[wet] = hu_hist[wet] / h_safe[wet]
-            v_hist[wet] = hv_hist[wet] / h_safe[wet]
-            max_abs_velocity = float(max(np.max(np.abs(u_hist)), np.max(np.abs(v_hist))))
-            min_h = float(np.min(h_hist))
-        else:
-            h_hist = eta_stack + rest_depth[None, ...]
-            min_h = float(np.min(h_hist))
-            max_abs_velocity = float(np.nan)
-
-        dt_positive = rollout.dt_history[rollout.dt_history > 0.0]
-        dt_min = float(np.min(dt_positive)) if dt_positive.size > 0 else 0.0
-        dt_max = float(np.max(dt_positive)) if dt_positive.size > 0 else 0.0
-        max_abs_eta = float(np.max(np.abs(eta_stack)))
-
-        health = {
-            "nan_count": nan_count,
-            "inf_count": inf_count,
-            "min_h": min_h,
-            "max_abs_eta": max_abs_eta,
-            "max_abs_velocity": max_abs_velocity,
-            "dt_min": dt_min,
-            "dt_max": dt_max,
-        }
-
         meta = {
             "sample_index": sample_idx,
             "scenario_id": scenario_id,
@@ -502,6 +610,8 @@ def _generate_sample_worker(
             "fdes_requested": list(dataset.enabled_fdes),
             "fdes_run": runnable_fdes,
             "fdes_skipped_unimplemented": skipped_unimplemented,
+            "quality_status": quality_status,
+            "quality_violations": quality_violations,
             **health,
         }
         with (sample_dir / "meta.json").open("w", encoding="utf-8") as f:
@@ -521,10 +631,14 @@ def _generate_sample_worker(
                 "trajectory_eta_shape": list(map(int, rollout.trajectory_eta.shape)),
                 "fdes_run": runnable_fdes,
                 "fdes_skipped_unimplemented": skipped_unimplemented,
+                "quality_status": quality_status,
+                "quality_violations": quality_violations,
+                "reused_existing": False,
                 **health,
             }
         )
 
+    fdes_run_actual = sorted({str(rec.get("solver_name", "")) for rec in solver_records if rec.get("solver_name")})
     scenario_record = {
         "sample_index": sample_idx,
         "scenario_id": scenario_id,
@@ -534,7 +648,7 @@ def _generate_sample_worker(
         "bathymetry_cache_path": str(bathy_path),
         "source_cache_path": str(source_path),
         "fdes_requested": list(dataset.enabled_fdes),
-        "fdes_run": runnable_fdes,
+        "fdes_run": fdes_run_actual if fdes_run_actual else runnable_fdes,
         "fdes_skipped_unimplemented": skipped_unimplemented,
     }
 
@@ -681,6 +795,29 @@ class TsunamiDatasetBuilder:
         source_dir = Path(ds.get("source_dir", "data/sources"))
         manifest_path = Path(ds.get("manifest_path", "data/synthetic/scenario_manifest.jsonl"))
         copy_configs = bool(ds.get("copy_configs", True))
+        quality_cfg = cfg.get("quality", {})
+        if not isinstance(quality_cfg, dict):
+            quality_cfg = {}
+
+        quality_on_violation = str(quality_cfg.get("on_violation", "warn")).strip().lower()
+        if quality_on_violation not in {"warn", "fail"}:
+            raise ValueError("quality.on_violation must be one of: warn, fail")
+
+        def _optional_float(value: Any, key: str) -> float | None:
+            if value is None:
+                return None
+            out = float(value)
+            if not np.isfinite(out):
+                raise ValueError(f"quality.{key} must be finite when set")
+            return out
+
+        quality_policy = QualityPolicy(
+            on_violation=quality_on_violation,
+            reject_nonfinite=bool(quality_cfg.get("reject_nonfinite", True)),
+            min_h_tolerance=_optional_float(quality_cfg.get("min_h_tolerance", None), "min_h_tolerance"),
+            max_abs_eta_limit=_optional_float(quality_cfg.get("max_abs_eta_limit", None), "max_abs_eta_limit"),
+            max_velocity_limit=_optional_float(quality_cfg.get("max_velocity_limit", None), "max_velocity_limit"),
+        )
 
         if num_samples <= 0:
             raise ValueError("dataset.num_samples must be positive")
@@ -711,6 +848,7 @@ class TsunamiDatasetBuilder:
             copy_configs=copy_configs,
             enabled_fdes=tuple(enabled_fdes),
             primary_fde=primary_fde,
+            quality_policy=quality_policy,
         )
 
     @staticmethod
@@ -776,6 +914,8 @@ class TsunamiDatasetBuilder:
                 continue
             for p in samples_dir.iterdir():
                 if not p.is_dir():
+                    continue
+                if not _sample_output_complete(p):
                     continue
                 m = patt.match(p.name)
                 if m is None:
@@ -912,6 +1052,10 @@ class TsunamiDatasetBuilder:
                 for key in ("nan_count", "inf_count", "min_h", "max_abs_eta", "max_abs_velocity", "dt_min", "dt_max"):
                     if key in meta:
                         srec[key] = meta[key]
+                if "quality_status" in meta:
+                    srec["quality_status"] = meta["quality_status"]
+                if "quality_violations" in meta:
+                    srec["quality_violations"] = meta["quality_violations"]
 
                 solver_rows.setdefault(solver_name, []).append(srec)
 
