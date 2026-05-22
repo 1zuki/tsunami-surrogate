@@ -131,6 +131,20 @@ def main() -> None:
 
     output_root.mkdir(parents=True, exist_ok=True)
     print(f"[ood] input={input_dataset} n={n}")
+    source_vals, source_counts = np.unique(meta["source_type"], return_counts=True)
+    bathy_vals, bathy_counts = np.unique(meta["bathymetry_type"], return_counts=True)
+    print(
+        "[ood] available source_type counts: "
+        + ", ".join(f"{v}={int(c)}" for v, c in zip(source_vals.tolist(), source_counts.tolist()))
+    )
+    print(
+        "[ood] available bathymetry_type counts: "
+        + ", ".join(f"{v}={int(c)}" for v, c in zip(bathy_vals.tolist(), bathy_counts.tolist()))
+    )
+    print(
+        f"[ood] source_strength range: min={float(np.nanmin(meta['source_strength'])):.4f} "
+        f"max={float(np.nanmax(meta['source_strength'])):.4f}"
+    )
 
     for i, suite in enumerate(suites):
         suite_cfg = suite if isinstance(suite, dict) else {}

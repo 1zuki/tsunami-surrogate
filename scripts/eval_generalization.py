@@ -17,6 +17,16 @@ from src.evaluation.target_scaling import load_target_denorm, resolve_eval_datas
 from src.utils.io import save_json
 
 
+def _dataset_num_samples(loader: Any) -> int:
+    ds = getattr(loader, "dataset", None)
+    if ds is None:
+        return -1
+    try:
+        return int(len(ds))
+    except Exception:
+        return -1
+
+
 def _build_test_loader(cfg: Dict[str, Any], test_path: str, batch_size: int):
     local_cfg = dict(cfg)
     local_data = dict(local_cfg.get("data", {}))
@@ -28,6 +38,13 @@ def _build_test_loader(cfg: Dict[str, Any], test_path: str, batch_size: int):
 
     if test_loader is None:
         raise KeyError(f"No test dataloader could be built for suite path: {test_path}")
+    n_samples = _dataset_num_samples(test_loader)
+    if n_samples == 0:
+        raise ValueError(
+            f"Suite dataset has zero samples: {test_path}. "
+            "This usually means your OOD filters matched nothing. "
+            "Rebuild OOD suites with relaxed/updated filters in configs/data/ood_splits_*.yaml."
+        )
     validate_model_io_channels(local_cfg, loaders, preferred_splits=("test",))
     
     return test_loader
@@ -81,9 +98,11 @@ def main():
     group_key_default = generalization_cfg.get("group_key", "source_id")
     suites = list(generalization_cfg.get("suites", []))
     report_physical = bool(eval_cfg.get("report_physical_metrics", True))
+    skip_empty_suites = bool(generalization_cfg.get("skip_empty_suites", True))
 
     if suites:
         result: Dict[str, Dict[str, Dict[str, float]]] = {}
+        skipped_labels: list[str] = []
         for i, suite in enumerate(suites):
             suite_cfg = suite if isinstance(suite, dict) else {}
             label = str(suite_cfg.get("label", f"suite_{i}"))
@@ -97,7 +116,14 @@ def main():
                 )
             )
             key = str(suite_cfg.get("group_key", group_key_default))
-            test_loader = _build_test_loader(cfg, str(suite_path), batch_size)
+            try:
+                test_loader = _build_test_loader(cfg, str(suite_path), batch_size)
+            except ValueError as e:
+                if skip_empty_suites and "zero samples" in str(e):
+                    print(f"[eval_generalization] skipping empty suite '{label}': {e}")
+                    skipped_labels.append(label)
+                    continue
+                raise
 
             suite_result = evaluate_by_regime(model, test_loader, device, key=key)
             if report_physical:
@@ -107,6 +133,13 @@ def main():
                     suite_result = _attach_physical_metrics(suite_result, suite_physical)
 
             result[label] = suite_result
+        if not result:
+            skipped_txt = ", ".join(skipped_labels) if skipped_labels else "none"
+            raise ValueError(
+                "All configured OOD suites are empty after filtering, so evaluation cannot proceed. "
+                f"Skipped suites: [{skipped_txt}]. "
+                "Update filters in configs/data/ood_splits_*.yaml and rebuild OOD datasets."
+            )
     else:
         loaders = create_dataloaders(cfg)
         test_loader = loaders.get("test")

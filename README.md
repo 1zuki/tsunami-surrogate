@@ -57,16 +57,26 @@ pip install -r requirements.txt
 
 ## 6) Run Commands
 
-### 6.1 Generate Raw Dataset
+Core workflow order:
+1. `6.1` generate forward raw dataset
+2. `6.2` preprocess into train/val/test archives
+3. `6.3` train model checkpoints
+4. `6.4` evaluate those checkpoints on matching test splits
+
+Everything after `6.4` is optional track work (OOD, resolution transfer, real-resolution benchmark, solver-vs-solver comparison, inverse scaffold).
+
+### 6.1 Step 1 - Generate Forward Raw Dataset (Required)
+
+Main benchmark generation (hydrostatic + MUSCL-HR):
 
 ```bash
 python scripts/make_dataset.py --config configs/data/dataset.yaml
 ```
 
-`make_dataset.py` now runs in three stages:
-- stage 1: generate/cache all bathymetry samples first (default cache: `data/bathymetry`);
-- stage 2: generate/cache all source samples first (default cache: `data/sources`);
-- stage 3: load cached bathymetry + source pairs and run configured FDE rollouts from `fdes.enabled` in `configs/data/dataset.yaml`.
+`make_dataset.py` runs in three stages:
+- stage 1: generate/cache all bathymetry samples first (default cache: `data/bathymetry`)
+- stage 2: generate/cache all source samples first (default cache: `data/sources`)
+- stage 3: load cached bathymetry + source pairs and run configured FDE rollouts from `fdes.enabled`
 
 Raw rollouts are separated by solver under `data/raw/`:
 - `data/raw/hydrostatic/samples/...`
@@ -76,11 +86,11 @@ Manifests are separated as:
 - scenario-level: `data/synthetic/scenario_manifest.jsonl`
 - solver-level: `data/synthetic/hydrostatic_manifest.jsonl`, `data/synthetic/muscl_hr_manifest.jsonl`, `data/synthetic/boussinesq_manifest.jsonl`
 
-Runnable FDEs currently include `swe_hydrostatic`, `swe_muscl_hr`, and `boussinesq`.  
+Runnable FDEs currently include `swe_hydrostatic`, `swe_muscl_hr`, and `boussinesq`.
 Default `configs/data/dataset.yaml` enables only `swe_hydrostatic` + `swe_muscl_hr` for safer baseline runs.
 Legacy alias `swe_muscl` is still accepted and automatically mapped to `swe_muscl_hr` for backward compatibility.
 
-Boussinesq should be generated from its dedicated config:
+Experimental Boussinesq generation uses a dedicated config:
 
 ```bash
 python scripts/make_dataset.py --config configs/data/dataset_boussinesq.yaml
@@ -114,86 +124,121 @@ Rebuild manifests from already-generated sample folders:
 python scripts/make_dataset.py --config configs/data/dataset.yaml --rebuild-manifests
 ```
 
-### 6.2 Preprocess
+### 6.2 Step 2 - Preprocess Forward Data (Required)
+
+Main benchmark preprocessing:
 
 ```bash
 python src/data_gen/preprocess.py --config configs/data/preprocess.yaml
 ```
 
-`preprocess.yaml` now supports FDE-aware modes:
+`preprocess.yaml` supports FDE-aware modes:
 - `fde.mode: single` with `fde.targets: [hydrostatic]` writes to `data/processed/hydrostatic/...`
 - `fde.mode: separate_all` writes one processed dataset per solver (`hydrostatic`, `muscl_hr`, `boussinesq`) using the same scenario split
 - `fde.mode: multifidelity` writes a combined dataset to `data/processed/multifidelity/...`
-- For `multifidelity`, keep `input.use_solver_id: true` (or omit it, since it auto-enables by default) so the model can condition on solver identity instead of learning an ambiguous one-to-many mapping.
+- For `multifidelity`, keep `input.use_solver_id: true` (or omit it, since it auto-enables by default) so the model can condition on solver identity instead of learning an ambiguous one-to-many mapping
 
-For Boussinesq-only preprocessing (separate manifests/paths + 50-step target horizon):
+Boussinesq-only preprocessing (separate manifests/paths + 50-step target horizon):
 
 ```bash
 python src/data_gen/preprocess.py --config configs/data/preprocess_boussinesq.yaml
 ```
 
-### 6.3 Train
+Main outputs used by training/eval:
+- `data/processed/hydrostatic/{train,val,test}/eval_dataset.npz`
+- `data/processed/muscl_hr/{train,val,test}/eval_dataset.npz`
+
+### 6.3 Step 3 - Train Forward Models (Required Before Eval)
+
+Train hydrostatic-label FNO:
 
 ```bash
 python scripts/train.py --config configs/model/fno.yaml
 ```
 
-Train on MUSCL-HR labels:
+Train MUSCL-HR-label FNO:
 
 ```bash
 python scripts/train.py --config configs/model/fno_muscl_hr.yaml
 ```
 
-Train on Boussinesq labels:
+Optional training tracks:
+- Boussinesq model (experimental): `python scripts/train.py --config configs/model/fno_boussinesq.yaml`
+- Ensemble for uncertainty: `python scripts/train_ensemble.py --config configs/model/fno.yaml`
 
-```bash
-python scripts/train.py --config configs/model/fno_boussinesq.yaml
-```
+### 6.4 Step 4 - Baseline Eval on Matching Test Split
 
-Optional ensemble run:
-
-```bash
-python scripts/train_ensemble.py --config configs/model/fno.yaml
-```
-
-### 6.4 Evaluate
+After `6.3`, evaluate each model on its matching processed test set:
 
 ```bash
 python scripts/eval_accuracy.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt
 python scripts/eval_speed.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt
 python scripts/eval_generalization.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt
-python scripts/eval_resolution_transfer.py --config configs/train/train_32_to_64.yaml --checkpoint experiments/fno_32_to_64/best.pt
+python scripts/eval_accuracy.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt
+python scripts/eval_generalization.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt
+```
+
+Uncertainty evaluation needs an ensemble (2+ checkpoints):
+
+```bash
 python scripts/eval_uncertainty.py --config configs/model/fno.yaml \
   --checkpoint experiments/ensemble/member_11/best.pt \
   --checkpoint experiments/ensemble/member_22/best.pt \
   --checkpoint experiments/ensemble/member_33/best.pt
 ```
 
-Notes:
-- `eval_accuracy.py`, `eval_generalization.py`, and `eval_resolution_transfer.py` report normalized metrics by default and add `*_physical` metrics automatically when target denormalization stats are available in the evaluation dataset archive.
-- `eval_generalization.py` supports explicit OOD suites via `eval.generalization.suites` (or top-level `generalization.suites`) in config, so you can evaluate separate unseen-regime datasets instead of a single grouped test split.
-- For uncertainty evaluation, pass at least 2 checkpoints (or configure `uncertainty.ensemble_checkpoints` with at least 2 members). Single-member ensembles are blocked because they produce degenerate variance.
-- Train/eval entrypoints now validate dataset-vs-model I/O channels early, so if multifidelity adds `solver_id`, a stale `model.in_channels` mismatch fails fast with a clear message.
+Eval notes:
+- `eval_accuracy.py`, `eval_generalization.py`, and `eval_resolution_transfer.py` report normalized metrics by default and add `*_physical` metrics automatically when target denormalization stats are available in the evaluation dataset archive
+- `eval_generalization.py` supports explicit OOD suites via `eval.generalization.suites` (or top-level `generalization.suites`) in config
+- Single-member uncertainty is blocked by design (degenerate variance)
+- Train/eval entrypoints validate dataset-vs-model I/O channels early, so stale `model.in_channels` / `model.out_channels` mismatches fail fast
 
-### 6.5 Build OOD Suites
+### 6.5 Optional - OOD Suite Evaluation
 
-Create filtered OOD suite datasets from processed test archives:
+Prerequisites:
+- processed test archives from `6.2`
+- trained checkpoints from `6.3`
+
+Build OOD suite datasets from processed test archives:
 
 ```bash
 python scripts/make_ood_splits.py --config configs/data/ood_splits_hydrostatic.yaml --overwrite
 python scripts/make_ood_splits.py --config configs/data/ood_splits_muscl_hr.yaml --overwrite
 ```
 
-Then run suite-based generalization evaluation:
+Tip:
+- `make_ood_splits.py` prints available `source_type` / `bathymetry_type` counts and `source_strength` range from your current test archive.
+- If a suite selects zero samples, relax or change filters in `configs/data/ood_splits_*.yaml`, rebuild suites, then rerun evaluation.
+
+Run suite-based generalization evaluation:
 
 ```bash
 python scripts/eval_generalization.py --config configs/eval/ood_suites_hydrostatic.yaml --checkpoint experiments/fno/best.pt
 python scripts/eval_generalization.py --config configs/eval/ood_suites_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt
 ```
 
-### 6.6 Real Multi-Resolution Data Configs
+### 6.6 Optional - Resolution Transfer (Proxy, No Extra Training)
 
-Generate native-grid datasets (not resized proxies):
+This track uses one trained checkpoint from `6.3` and evaluates it on resized versions of one test archive.
+It is a proxy study, not native re-simulation at each resolution.
+
+```bash
+python scripts/eval_resolution_transfer.py \
+  --config configs/eval/resolution_transfer_proxy_hydrostatic.yaml \
+  --checkpoint experiments/fno/best.pt
+python scripts/eval_resolution_transfer.py \
+  --config configs/eval/resolution_transfer_proxy_muscl_hr.yaml \
+  --checkpoint experiments/fno_muscl_hr/best.pt
+```
+
+### 6.7 Optional - Real-Resolution Benchmark (Native 32/64/128)
+
+Prerequisites:
+- generate native-grid forward data per resolution
+- preprocess each resolution
+- use a checkpoint from `6.3` for cross-resolution evaluation
+
+Generate native-grid raw datasets:
 
 ```bash
 python scripts/make_dataset.py --config configs/data/multires/dataset_32.yaml
@@ -201,7 +246,7 @@ python scripts/make_dataset.py --config configs/data/multires/dataset_64.yaml
 python scripts/make_dataset.py --config configs/data/multires/dataset_128.yaml
 ```
 
-Preprocess each resolution separately:
+Preprocess each native-grid dataset:
 
 ```bash
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_32.yaml
@@ -209,9 +254,20 @@ python src/data_gen/preprocess.py --config configs/data/multires/preprocess_64.y
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_128.yaml
 ```
 
-### 6.7 Solver-vs-Solver Physical Comparison
+Evaluate one trained checkpoint across all real resolutions in one JSON table:
 
-Compare two raw solver outputs on shared scenarios in physical eta units:
+```bash
+python scripts/eval_full_resolution.py \
+  --config configs/eval/resolution_hydrostatic.yaml \
+  --checkpoint experiments/fno/best.pt
+python scripts/eval_full_resolution.py \
+  --config configs/eval/resolution_muscl_hr.yaml \
+  --checkpoint experiments/fno_muscl_hr/best.pt
+```
+
+### 6.8 Optional - Solver-vs-Solver Physical Comparison
+
+Compare raw hydrostatic vs raw MUSCL-HR labels on shared scenarios in physical eta units:
 
 ```bash
 python scripts/compare_solvers_physical.py \
@@ -220,24 +276,29 @@ python scripts/compare_solvers_physical.py \
   --output results/solver_compare_hydro_vs_muscl_hr.json
 ```
 
-### 6.8 Inverse Dataset
+### 6.9 Optional - Inverse Dataset Scaffold
 
-Still in progress
+Prerequisite:
+- forward processed outputs from `6.2`
 
-Export a first inverse-dataset (observation -> source field) from forward processed archives:
+Export inverse scaffold datasets (observation -> source field):
 
 ```bash
 python scripts/make_inverse_dataset.py --config configs/data/inverse_hydrostatic.yaml --overwrite
 python scripts/make_inverse_dataset.py --config configs/data/inverse_muscl_hr.yaml --overwrite
 ```
 
-### 6.9 Quick Smoke Run
+Current status:
+- scaffold export is implemented
+- inverse-model training/eval scripts are still a separate follow-up track
+
+### 6.10 Quick Smoke Run
 
 ```bash
 bash scripts/quickstart.sh
 ```
 
-### 6.10 Visualize One Sample (Truth vs Prediction + Uncertainty)
+### 6.11 Visualize One Sample (Truth vs Prediction + Uncertainty)
 
 ```bash
 python scripts/visualize_rollout.py \
@@ -283,7 +344,11 @@ tsunami-surrogate/
 │  └─ eval/
 │     ├─ eval_template.yaml        # template for standalone eval scripts
 │     ├─ ood_suites_hydrostatic.yaml
-│     └─ ood_suites_muscl_hr.yaml
+│     ├─ ood_suites_muscl_hr.yaml
+│     ├─ resolution_transfer_proxy_hydrostatic.yaml
+│     ├─ resolution_transfer_proxy_muscl_hr.yaml
+│     ├─ real_resolution_hydrostatic.yaml
+│     └─ real_resolution_muscl_hr.yaml
 ├─ scripts/                        # CLI entrypoints (generate/train/eval/export)
 ├─ src/                            # implementation modules
 │  ├─ data_gen/                    # simulation + preprocess pipeline internals

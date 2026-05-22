@@ -3,17 +3,40 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, Optional
 
 
+def _loader_state(split: str, loader: Any) -> str:
+    if loader is None:
+        return f"{split}:missing"
+    ds = getattr(loader, "dataset", None)
+    if ds is None:
+        return f"{split}:dataset=unknown"
+    try:
+        n = int(len(ds))
+    except Exception:
+        return f"{split}:dataset=len-error"
+    return f"{split}:dataset={n}"
+
+
 def _first_batch(loaders: Dict[str, Any], preferred_splits: Iterable[str]) -> tuple[str, Dict[str, Any]]:
+    diagnostics = []
     for split in preferred_splits:
         loader = loaders.get(split)
+        diagnostics.append(_loader_state(split, loader))
         if loader is None:
             continue
         try:
             batch = next(iter(loader))
         except StopIteration:
+            diagnostics.append(f"{split}:empty-iterator")
+            continue
+        except Exception as e:
+            diagnostics.append(f"{split}:iter-error={type(e).__name__}")
             continue
         return split, batch
-    raise ValueError("Could not read any batch from loaders to validate model I/O shapes.")
+    diag_text = ", ".join(diagnostics) if diagnostics else "no preferred splits were provided"
+    raise ValueError(
+        "Could not read any batch from loaders to validate model I/O shapes. "
+        f"Loader diagnostics: {diag_text}"
+    )
 
 
 def validate_model_io_channels(
