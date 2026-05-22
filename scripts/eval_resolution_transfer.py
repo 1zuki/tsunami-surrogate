@@ -116,8 +116,14 @@ def main():
     output_dir = str(eval_cfg.get("output_dir", "")).strip()
     if not output_dir or output_dir == "experiments/eval":
         output_dir = f"{cfg.get('output_dir', 'experiments/default')}/eval"
-    print(rows)
-    save_json(rows, f"{output_dir}/resolution_transfer.json")
+    summary = {
+        "evaluation_type": "proxy_resolution_transfer",
+        "dataset_path": str(data_path),
+        "eval_resolutions": [int(r) for r in resolutions],
+        "rows": rows,
+    }
+    print(summary)
+    save_json(summary, f"{output_dir}/resolution_transfer_proxy.json")
 
 
 if __name__ == '__main__':

@@ -160,7 +160,7 @@ def main():
     if not output_dir or output_dir == "experiments/eval":
         output_dir = f"{cfg.get('output_dir', 'experiments/default')}/eval"
     print(result)
-    save_json(result, f"{output_dir}/ood_by_source.json")
+    save_json(result, f"{output_dir}/ood_generalization.json")
 
 
 if __name__ == '__main__':

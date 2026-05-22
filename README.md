@@ -226,6 +226,9 @@ python scripts/eval_generalization.py --config configs/eval/ood_suites_hydrostat
 python scripts/eval_generalization.py --config configs/eval/ood_suites_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt
 ```
 
+Output file:
+- `.../eval_ood_suites/ood_generalization.json`
+
 ### 6.6 Optional - Resolution Transfer (Proxy, No Extra Training)
 
 This track uses one trained checkpoint from `6.3` and evaluates it on resized versions of one test archive.
@@ -239,6 +242,9 @@ python scripts/eval_resolution_transfer.py \
   --config configs/eval/resolution_transfer_proxy_muscl_hr.yaml \
   --checkpoint experiments/fno_muscl_hr/best.pt
 ```
+
+Output file:
+- `.../eval_resolution_proxy/resolution_transfer_proxy.json`
 
 ### 6.7 Optional - Real-Resolution Benchmark (Native 32/64/128)
 
@@ -274,6 +280,9 @@ python scripts/eval_full_resolution.py \
   --checkpoint experiments/fno_muscl_hr/best.pt
 ```
 
+Output file:
+- `.../eval_resolution/real_resolution.json` (includes `evaluation_type: native_real_resolution_benchmark`)
+
 Native-resolution normalization policy:
 - `configs/eval/resolution_*.yaml` now defaults to `real_resolution.normalization_policy: require_target_stats_match`.
 - This fails fast if suite target normalization does not match the configured training/reference dataset stats (`normalization_reference_path`), which avoids misleading cross-resolution claims.
@@ -289,7 +298,26 @@ python scripts/compare_solvers_physical.py \
   --output results/solver_compare_hydro_vs_muscl_hr.json
 ```
 
-### 6.9 Optional - Inverse Dataset Scaffold
+### 6.9 Optional - Boussinesq Propagation Diagnostic
+
+Run a dedicated propagation diagnostic (metrics + plots) for one scenario:
+
+```bash
+python scripts/diagnose_boussinesq.py \
+  --config configs/data/dataset_boussinesq.yaml \
+  --sample-index 1 \
+  --output-dir results/boussinesq_diagnostic/sample_000001
+```
+
+Saved artifacts include:
+- `summary.json`
+- `timeseries.npz`
+- `frames_eta.npy`
+- `timeseries.png`
+- `frames_gallery.png`
+- `fields.png`
+
+### 6.10 Optional - Inverse Dataset Scaffold
 
 Prerequisite:
 - forward processed outputs from `6.2`
@@ -305,13 +333,13 @@ Current status:
 - scaffold export is implemented
 - inverse-model training/eval scripts are still a separate follow-up track
 
-### 6.10 Quick Smoke Run
+### 6.11 Quick Smoke Run
 
 ```bash
 bash scripts/quickstart.sh
 ```
 
-### 6.11 Visualize One Sample (Truth vs Prediction + Uncertainty)
+### 6.12 Visualize One Sample (Truth vs Prediction + Uncertainty)
 
 ```bash
 python scripts/visualize_rollout.py \

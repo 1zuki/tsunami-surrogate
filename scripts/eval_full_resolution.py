@@ -198,6 +198,7 @@ def main() -> None:
         output_dir = f"{cfg.get('output_dir', 'experiments/default')}/eval"
 
     summary: Dict[str, Any] = {
+        "evaluation_type": "native_real_resolution_benchmark",
         "rows": result_rows,
         "normalization_policy": normalization_policy,
         "normalization_mismatch": mismatch_action,
