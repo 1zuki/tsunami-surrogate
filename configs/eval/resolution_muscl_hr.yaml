@@ -1,0 +1,14 @@
+defaults:
+  - ../model/fno_muscl_hr.yaml
+
+eval:
+  output_dir: experiments/fno_muscl_hr/eval_resolution
+  report_physical_metrics: true
+  real_resolution:
+    suites:
+      - label: res32_muscl_hr
+        path: data/processed_res32/muscl_hr/test
+      - label: res64_muscl_hr
+        path: data/processed_res64/muscl_hr/test
+      - label: res128_muscl_hr
+        path: data/processed_res128/muscl_hr/test

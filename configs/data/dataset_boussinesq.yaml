@@ -3,7 +3,7 @@ configs:
   source: "configs/data/source_boussinesq.yaml"
 
 dataset:
-  num_samples: 50
+  num_samples: 20
   seed: 42
   num_workers: 10
   n_steps: 250

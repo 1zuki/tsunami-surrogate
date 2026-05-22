@@ -3,9 +3,9 @@ configs:
   source: "configs/data/source.yaml"
 
 dataset:
-  num_samples: 50
+  num_samples: 20
   seed: 42
-  num_workers: 8
+  num_workers: 10
   n_steps: 250
   save_every: 5
   auto_dt: true

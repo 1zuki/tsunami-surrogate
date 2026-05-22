@@ -1,0 +1,14 @@
+defaults:
+  - ../model/fno.yaml
+
+eval:
+  output_dir: experiments/fno/eval_resolution
+  report_physical_metrics: true
+  real_resolution:
+    suites:
+      - label: res32_hydrostatic
+        path: data/processed_res32/hydrostatic/test
+      - label: res64_hydrostatic
+        path: data/processed_res64/hydrostatic/test
+      - label: res128_hydrostatic
+        path: data/processed_res128/hydrostatic/test

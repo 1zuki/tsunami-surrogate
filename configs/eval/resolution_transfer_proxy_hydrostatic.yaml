@@ -1,0 +1,10 @@
+defaults:
+  - ../model/fno.yaml
+
+eval:
+  dataset_path: data/processed/hydrostatic/test
+  output_dir: experiments/fno/eval_resolution_proxy
+  report_physical_metrics: true
+
+resolution_transfer:
+  eval_resolutions: [32, 64, 128]

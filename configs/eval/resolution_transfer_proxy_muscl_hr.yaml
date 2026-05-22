@@ -1,0 +1,10 @@
+defaults:
+  - ../model/fno_muscl_hr.yaml
+
+eval:
+  dataset_path: data/processed/muscl_hr/test
+  output_dir: experiments/fno_muscl_hr/eval_resolution_proxy
+  report_physical_metrics: true
+
+resolution_transfer:
+  eval_resolutions: [32, 64, 128]
