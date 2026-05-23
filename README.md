@@ -174,6 +174,10 @@ Optional training tracks:
 - Boussinesq model (experimental): `python scripts/train.py --config configs/model/fno_boussinesq.yaml`
 - Ensemble for uncertainty: `python scripts/train_ensemble.py --config configs/model/fno.yaml`
 
+Native-resolution training tracks (P2 extension):
+- Hydrostatic: `configs/model/fno_res{32,64,128}_hydrostatic.yaml`
+- MUSCL-HR: `configs/model/fno_res{32,64,128}_muscl_hr.yaml`
+
 ### 6.4 Step 4 - Baseline Eval on Matching Test Split
 
 After `6.3`, evaluate each model on its matching processed test set:
@@ -298,6 +302,21 @@ python scripts/compare_solvers_physical.py \
   --output results/solver_compare_hydro_vs_muscl_hr.json
 ```
 
+The comparison now includes:
+- pointwise physical metrics (`rmse`, `mae`, `max_abs`, `rel_l2`)
+- spectral differences (`spectral_rmse`, `spectral_l1`, `spectral_js_divergence`)
+- arrival-time differences in timestep units and seconds (when timestamps are available)
+
+Arrival threshold is configurable:
+
+```bash
+python scripts/compare_solvers_physical.py \
+  --solver-a-dir data/raw/hydrostatic/samples \
+  --solver-b-dir data/raw/muscl_hr/samples \
+  --arrival-threshold-fraction 0.05 \
+  --output results/solver_compare_hydro_vs_muscl_hr.json
+```
+
 ### 6.9 Optional - Boussinesq Propagation Diagnostic
 
 Run a dedicated propagation diagnostic (metrics + plots) for one scenario:
@@ -350,6 +369,31 @@ python scripts/visualize_rollout.py \
   --sample-index 0
 ```
 
+### 6.13 Optional - OOD Uncertainty Suites
+
+Evaluate ensemble uncertainty metrics on OOD suite datasets:
+
+```bash
+python scripts/eval_uncertainty.py \
+  --config configs/eval/uncertainty_ood_hydrostatic.yaml \
+  --checkpoint experiments/ensemble/member_11/best.pt \
+  --checkpoint experiments/ensemble/member_22/best.pt \
+  --checkpoint experiments/ensemble/member_33/best.pt
+```
+
+For MUSCL-HR suites:
+
+```bash
+python scripts/eval_uncertainty.py \
+  --config configs/eval/uncertainty_ood_muscl_hr.yaml \
+  --checkpoint experiments/ensemble/member_11/best.pt \
+  --checkpoint experiments/ensemble/member_22/best.pt \
+  --checkpoint experiments/ensemble/member_33/best.pt
+```
+
+Output file:
+- `.../eval_uncertainty_ood/uncertainty_ood.json`
+
 ## 7) Current Repository Structure
 
 ```text
@@ -376,6 +420,12 @@ tsunami-surrogate/
 │  │  ├─ fno.yaml                  # primary FNO config
 │  │  ├─ fno_muscl_hr.yaml         # FNO on MUSCL-HR processed labels
 │  │  ├─ fno_boussinesq.yaml       # FNO on Boussinesq processed labels
+│  │  ├─ fno_res32_hydrostatic.yaml
+│  │  ├─ fno_res64_hydrostatic.yaml
+│  │  ├─ fno_res128_hydrostatic.yaml
+│  │  ├─ fno_res32_muscl_hr.yaml
+│  │  ├─ fno_res64_muscl_hr.yaml
+│  │  ├─ fno_res128_muscl_hr.yaml
 │  │  ├─ cnn.yaml                  # CNN baseline config
 │  │  └─ unet.yaml                 # U-Net baseline config
 │  ├─ train/                       # shared/base + training variants
@@ -386,6 +436,8 @@ tsunami-surrogate/
 │     ├─ eval_template.yaml        # template for standalone eval scripts
 │     ├─ ood_suites_hydrostatic.yaml
 │     ├─ ood_suites_muscl_hr.yaml
+│     ├─ uncertainty_ood_hydrostatic.yaml
+│     ├─ uncertainty_ood_muscl_hr.yaml
 │     ├─ resolution_transfer_proxy_hydrostatic.yaml
 │     ├─ resolution_transfer_proxy_muscl_hr.yaml
 │     ├─ resolution_hydrostatic.yaml

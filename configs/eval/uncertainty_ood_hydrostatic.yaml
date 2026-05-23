@@ -1,0 +1,19 @@
+defaults:
+  - ../model/fno.yaml
+
+eval:
+  output_dir: experiments/fno/eval_uncertainty_ood
+
+uncertainty:
+  # pass repeated --checkpoint flags at runtime, or set paths here
+  ensemble_checkpoints: []
+  min_ensemble_members: 2
+  interval_levels: [0.5, 0.8, 0.9, 0.95]
+  skip_empty_suites: true
+  suites:
+    - label: source_holdout_multi_gauss
+      path: data/processed_ood/hydrostatic/source_holdout_multi_gauss
+    - label: bathymetry_holdout_trench
+      path: data/processed_ood/hydrostatic/bathymetry_holdout_trench
+    - label: source_strength_extreme_high
+      path: data/processed_ood/hydrostatic/source_strength_extreme_high

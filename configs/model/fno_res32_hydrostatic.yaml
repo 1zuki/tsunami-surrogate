@@ -1,0 +1,16 @@
+defaults:
+  - fno.yaml
+
+output_dir: experiments/fno_res32_hydrostatic
+
+data:
+  train_path: data/processed_res32/hydrostatic/train/eval_dataset.npz
+  val_path: data/processed_res32/hydrostatic/val/eval_dataset.npz
+  test_path: data/processed_res32/hydrostatic/test/eval_dataset.npz
+  batch_size: 16
+  num_workers: 0
+
+eval:
+  dataset_path: data/processed_res32/hydrostatic/test
+  batch_size: 16
+  output_dir: experiments/fno_res32_hydrostatic/eval

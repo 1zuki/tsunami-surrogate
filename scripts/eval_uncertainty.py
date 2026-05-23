@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import argparse
+from typing import Any, Dict
 import torch
 from src.utils.config import load_config
 from src.utils.device import resolve_device
@@ -16,6 +17,55 @@ from src.training.checkpointing import load_checkpoint
 from src.evaluation.calibration import interval_calibration
 from src.evaluation.uncertainty import error_uncertainty_correlation
 from src.utils.io import save_json
+
+
+def _evaluate_uncertainty_loader(
+    ensemble: EnsemblePredictor,
+    loader: Any,
+    device: torch.device,
+    levels: list[float],
+) -> Dict[str, float]:
+    results = []
+    for batch in loader:
+        x, y = batch["x"].to(device), batch["y"].to(device)
+        out = ensemble(x)
+        row = interval_calibration(out["mean"], out["variance"], y, levels)
+        row["error_uncertainty_corr"] = error_uncertainty_correlation(out["mean"], out["variance"], y)
+        results.append(row)
+
+    if not results:
+        raise ValueError("test loader had zero batches")
+
+    return {k: sum(r[k] for r in results) / len(results) for k in results[0]}
+
+
+def _dataset_num_samples(loader: Any) -> int:
+    ds = getattr(loader, "dataset", None)
+    if ds is None:
+        return -1
+    try:
+        return int(len(ds))
+    except Exception:
+        return -1
+
+
+def _build_suite_loader(cfg: Dict[str, Any], test_path: str, batch_size: int):
+    local_cfg = dict(cfg)
+    local_data = dict(local_cfg.get("data", {}))
+    local_data["test_path"] = test_path
+    local_data["batch_size"] = batch_size
+    local_cfg["data"] = local_data
+    loaders = create_dataloaders(local_cfg)
+    test_loader = loaders.get("test")
+
+    if test_loader is None:
+        raise KeyError(f"No test dataloader could be built for suite path: {test_path}")
+    n = _dataset_num_samples(test_loader)
+    if n == 0:
+        raise ValueError(f"Suite dataset has zero samples: {test_path}")
+    validate_model_io_channels(local_cfg, loaders, preferred_splits=("test",))
+
+    return test_loader
 
 
 @torch.no_grad()
@@ -76,32 +126,70 @@ def main():
         members.append(model)
 
     ensemble = EnsemblePredictor(members).to(device).eval()
-    loaders = create_dataloaders(cfg)
-    test_loader = loaders.get("test")
-    if test_loader is None:
-        print("No test loader found; uncertainty eval skipped gracefully.")
-        return
-    validate_model_io_channels(cfg, loaders, preferred_splits=("test", "val", "train"))
-    levels = cfg.get('uncertainty', {}).get('interval_levels', [0.5, 0.8, 0.9, 0.95])
-    results = []
+    uncertainty_cfg = cfg.get("uncertainty", {})
+    levels = uncertainty_cfg.get("interval_levels", [0.5, 0.8, 0.9, 0.95])
+    suite_cfg = uncertainty_cfg.get("suites", eval_cfg.get("uncertainty", {}).get("suites", []))
+    skip_empty_suites = bool(uncertainty_cfg.get("skip_empty_suites", True))
 
-    for batch in test_loader:
-        x, y = batch['x'].to(device), batch['y'].to(device)
-        out = ensemble(x)
-        row = interval_calibration(out['mean'], out['variance'], y, levels)
-        row['error_uncertainty_corr'] = error_uncertainty_correlation(out['mean'], out['variance'], y)
-        results.append(row)
+    if suite_cfg:
+        suite_rows: Dict[str, Dict[str, float]] = {}
+        skipped_labels: list[str] = []
+        for i, suite in enumerate(list(suite_cfg)):
+            suite_dict = suite if isinstance(suite, dict) else {}
+            label = str(suite_dict.get("label", f"suite_{i}"))
+            suite_path = str(suite_dict.get("path", "")).strip()
+            if not suite_path:
+                raise KeyError(f"uncertainty.suites[{i}] is missing required key: path")
+            batch_size = int(
+                suite_dict.get(
+                    "batch_size",
+                    eval_cfg.get("batch_size", cfg.get("data", {}).get("batch_size", 8)),
+                )
+            )
+            try:
+                loader = _build_suite_loader(cfg, suite_path, batch_size)
+            except ValueError as e:
+                if skip_empty_suites and "zero samples" in str(e):
+                    print(f"[eval_uncertainty] skipping empty suite '{label}': {e}")
+                    skipped_labels.append(label)
+                    continue
+                raise
 
-    if not results:
-        print("Test loader had zero batches; uncertainty eval skipped gracefully.")
-        return
+            row = _evaluate_uncertainty_loader(ensemble=ensemble, loader=loader, device=device, levels=levels)
+            row["num_samples"] = float(_dataset_num_samples(loader))
+            suite_rows[label] = row
 
-    mean_results = {k: sum(r[k] for r in results) / len(results) for k in results[0]}
+        if not suite_rows:
+            skipped_txt = ", ".join(skipped_labels) if skipped_labels else "none"
+            raise ValueError(
+                "All configured uncertainty suites are empty after filtering, so evaluation cannot proceed. "
+                f"Skipped suites: [{skipped_txt}]"
+            )
+        mean_results: Dict[str, Any] = {
+            "evaluation_type": "ood_uncertainty_suites",
+            "suites": suite_rows,
+        }
+        output_name = "uncertainty_ood.json"
+    else:
+        loaders = create_dataloaders(cfg)
+        test_loader = loaders.get("test")
+        if test_loader is None:
+            print("No test loader found; uncertainty eval skipped gracefully.")
+            return
+        validate_model_io_channels(cfg, loaders, preferred_splits=("test", "val", "train"))
+        mean_results = _evaluate_uncertainty_loader(ensemble=ensemble, loader=test_loader, device=device, levels=levels)
+        mean_results = {
+            "evaluation_type": "in_distribution_uncertainty",
+            "num_samples": float(_dataset_num_samples(test_loader)),
+            **mean_results,
+        }
+        output_name = "uncertainty.json"
+
     output_dir = str(eval_cfg.get("output_dir", "")).strip()
     if not output_dir or output_dir == "experiments/eval":
         output_dir = f"{cfg.get('output_dir', 'experiments/default')}/eval"
     print(mean_results)
-    save_json(mean_results, f"{output_dir}/uncertainty.json")
+    save_json(mean_results, f"{output_dir}/{output_name}")
 
 
 if __name__ == '__main__':
