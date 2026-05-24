@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import re
 import sys
@@ -57,6 +58,36 @@ def _load_optional_1d(sample_dir: Path, key: str) -> Optional[np.ndarray]:
             if arr.size == 0:
                 continue
             return arr
+
+    return None
+
+
+def _load_meta(sample_dir: Path) -> Dict[str, Any]:
+    for name in ("meta.json", "metadata.json"):
+        path = sample_dir / name
+        if path.exists():
+            with path.open("r", encoding="utf-8") as f:
+                obj = json.load(f)
+            if isinstance(obj, dict):
+                return obj
+    return {}
+
+
+def _quality_status(meta: Dict[str, Any]) -> Optional[str]:
+    raw = meta.get("quality_status", None)
+    if raw is not None:
+        text = str(raw).strip().lower()
+        if text:
+            return text
+
+    nan_count = meta.get("nan_count", None)
+    inf_count = meta.get("inf_count", None)
+
+    if nan_count is not None and inf_count is not None:
+        try:
+            return "ok" if int(nan_count) == 0 and int(inf_count) == 0 else "bad"
+        except Exception:
+            return None
 
     return None
 
@@ -126,8 +157,6 @@ def _first_arrival_index(abs_eta: np.ndarray, threshold_abs: float) -> np.ndarra
     first[~has_cross] = -1
 
     return first
-
-# tbh, idk what is happening
 
 def _arrival_metrics(
     eta_a: np.ndarray,
@@ -199,6 +228,24 @@ def main() -> None:
         default=0.05,
         help="Arrival is first time |eta| exceeds this fraction of shared sample peak.",
     )
+    p.add_argument(
+        "--require-quality-ok",
+        action="store_true",
+        help=(
+            "Compare only samples where both solvers have meta quality_status='ok'. "
+            "If status is missing, behavior follows --missing-quality-action."
+        ),
+    )
+    p.add_argument(
+        "--missing-quality-action",
+        type=str,
+        default="include",
+        choices=("include", "skip", "fail"),
+        help=(
+            "How to handle samples with missing quality_status when --require-quality-ok is set: "
+            "include=allow, skip=drop, fail=raise."
+        ),
+    )
     p.add_argument("--output", type=str, default="results/solver_physical_comparison.json")
     args = p.parse_args()
     if args.arrival_threshold_fraction < 0.0:
@@ -225,8 +272,34 @@ def main() -> None:
 
     skipped_shape = 0
     skipped_nonfinite = 0
+    skipped_quality = 0
 
     for sid in shared_ids:
+        meta_a = _load_meta(map_a[sid])
+        meta_b = _load_meta(map_b[sid])
+        status_a = _quality_status(meta_a)
+        status_b = _quality_status(meta_b)
+
+        if args.require_quality_ok:
+            known_bad = (
+                (status_a is not None and status_a != "ok")
+                or (status_b is not None and status_b != "ok")
+            )
+            if known_bad:
+                skipped_quality += 1
+                continue
+            
+            missing = (status_a is None) or (status_b is None)
+            if missing:
+                if args.missing_quality_action == "fail":
+                    raise ValueError(
+                        f"Sample {sid:06d} missing quality_status: "
+                        f"solver_a={status_a!r}, solver_b={status_b!r}"
+                    )
+                if args.missing_quality_action == "skip":
+                    skipped_quality += 1
+                    continue
+
         eta_a = _load_eta(map_a[sid], args.field)
         eta_b = _load_eta(map_b[sid], args.field)
 
@@ -251,7 +324,13 @@ def main() -> None:
             skipped_nonfinite += 1
             continue
 
-        row = {"sample_index": int(sid), "num_frames_compared": int(t), **_metrics(eta_a, eta_b)}
+        row = {
+            "sample_index": int(sid),
+            "num_frames_compared": int(t),
+            "quality_status_a": status_a,
+            "quality_status_b": status_b,
+            **_metrics(eta_a, eta_b),
+        }
         row.update(_spectral_metrics(eta_a, eta_b))
         row.update(
             _arrival_metrics(
@@ -309,9 +388,14 @@ def main() -> None:
         "field": args.field,
         "num_shared_samples": int(len(shared_ids)),
         "num_compared_samples": int(len(rows)),
+        "quality_filter": {
+            "require_quality_ok": bool(args.require_quality_ok),
+            "missing_quality_action": str(args.missing_quality_action),
+        },
         "arrival_threshold_fraction": float(args.arrival_threshold_fraction),
         "num_skipped_shape_mismatch": int(skipped_shape),
         "num_skipped_nonfinite": int(skipped_nonfinite),
+        "num_skipped_quality_filter": int(skipped_quality),
         "aggregate_metrics": agg,
         "per_timestep_mean": {
             "rmse": np.mean(rmse_stack, axis=0).tolist(),

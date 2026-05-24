@@ -130,6 +130,13 @@ def main() -> None:
         raise ValueError("real_resolution.normalization_policy must be one of: require_target_stats_match, ignore")
     if mismatch_action not in {"warn", "fail"}:
         raise ValueError("real_resolution.normalization_mismatch must be one of: warn, fail")
+    if normalization_policy == "ignore" and report_physical:
+        print(
+            "[eval_full_resolution][warn] "
+            "real_resolution.normalization_policy=ignore can make physical denormalized metrics misleading. "
+            "Disabling report_physical_metrics for this run."
+        )
+        report_physical = False
 
     device = resolve_device(cfg.get("device", "auto"))
     model = build_model(cfg).to(device)

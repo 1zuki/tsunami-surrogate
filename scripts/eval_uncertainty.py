@@ -25,18 +25,22 @@ def _evaluate_uncertainty_loader(
     device: torch.device,
     levels: list[float],
 ) -> Dict[str, float]:
-    results = []
+    weighted_sums: Dict[str, float] = {}
+    total_samples = 0
     for batch in loader:
         x, y = batch["x"].to(device), batch["y"].to(device)
         out = ensemble(x)
         row = interval_calibration(out["mean"], out["variance"], y, levels)
         row["error_uncertainty_corr"] = error_uncertainty_correlation(out["mean"], out["variance"], y)
-        results.append(row)
+        n = int(x.shape[0])
+        total_samples += n
+        for k, v in row.items():
+            weighted_sums[k] = weighted_sums.get(k, 0.0) + float(v) * n
 
-    if not results:
+    if total_samples <= 0:
         raise ValueError("test loader had zero batches")
 
-    return {k: sum(r[k] for r in results) / len(results) for k in results[0]}
+    return {k: v / float(total_samples) for k, v in weighted_sums.items()}
 
 
 def _dataset_num_samples(loader: Any) -> int:

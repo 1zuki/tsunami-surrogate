@@ -2,7 +2,8 @@ nx: 64
 ny: 64
 seed: null
 
-source_type: ["gaussian", "multi-gauss", "dipole"]
+#source_type: ["gaussian", "multi-gauss", "dipole"]
+source_type: ["dipole"]
 
 gaussian:
   enabled: true

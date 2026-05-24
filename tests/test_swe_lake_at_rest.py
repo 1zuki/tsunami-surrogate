@@ -155,6 +155,7 @@ def _run_muscl_dynamic_case(
         (64, 64, 35, 0.45, "multi_gaussian", "periodic"),
     ],
 )
+@pytest.mark.slow
 def test_muscl_hr_dynamic_pulse_finite_state(
     nx: int,
     ny: int,
@@ -190,6 +191,7 @@ RUN_LONG_MUSCL_TESTS = os.environ.get("TSUNAMI_LONG_TESTS", "0") == "1"
         (128, 128, 100, 0.45, "multi_gaussian", "periodic"),
     ],
 )
+@pytest.mark.slow
 def test_muscl_hr_dynamic_pulse_finite_state_long(
     nx: int,
     ny: int,

@@ -40,7 +40,7 @@ solver:
   cfl: 0.35
   boundary: "open"
   use_sponge: true
-  sponge_width: 0
+  sponge_width: 20
   sponge_min_factor: 1.0
   alpha: 0.3333333333333333
   min_depth: 1e-4

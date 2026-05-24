@@ -16,6 +16,16 @@ from src.evaluation.accuracy import evaluate_accuracy
 from src.evaluation.target_scaling import load_target_denorm, resolve_eval_dataset_path
 
 
+def _dataset_num_samples(loader) -> int:
+    ds = getattr(loader, "dataset", None)
+    if ds is None:
+        return -1
+    try:
+        return int(len(ds))
+    except Exception:
+        return -1
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--config", required=True)
@@ -55,8 +65,11 @@ def main():
     model = build_model(cfg).to(device)
     load_checkpoint(args.checkpoint, model, map_location=device)
     metrics = evaluate_accuracy(model, test_loader, device)
+    metrics["num_samples"] = float(_dataset_num_samples(test_loader))
 
     resolved_dataset_path = resolve_eval_dataset_path(cfg, split="test")
+    if resolved_dataset_path is not None:
+        metrics["dataset_path"] = str(resolved_dataset_path)
     report_physical = bool(eval_cfg.get("report_physical_metrics", True))
     target_denorm = None
 

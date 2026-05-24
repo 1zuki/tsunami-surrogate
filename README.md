@@ -204,6 +204,7 @@ Eval notes:
 - `eval_generalization.py` supports explicit OOD suites via `eval.generalization.suites` (or top-level `generalization.suites`) in config
 - Single-member uncertainty is blocked by design (degenerate variance)
 - Train/eval entrypoints validate dataset-vs-model I/O channels early, so stale `model.in_channels` / `model.out_channels` mismatches fail fast
+- Eval JSON outputs now include sample-count metadata (`num_samples` or `dataset_num_samples`) so paper tables can report support size explicitly
 
 ### 6.5 Optional - OOD Suite Evaluation
 
@@ -317,6 +318,17 @@ python scripts/compare_solvers_physical.py \
   --output results/solver_compare_hydro_vs_muscl_hr.json
 ```
 
+Quality-filtered comparison (recommended when your raw samples include `quality_status` in `meta.json`):
+
+```bash
+python scripts/compare_solvers_physical.py \
+  --solver-a-dir data/raw/hydrostatic/samples \
+  --solver-b-dir data/raw/muscl_hr/samples \
+  --require-quality-ok \
+  --missing-quality-action skip \
+  --output results/solver_compare_hydro_vs_muscl_hr_quality_ok.json
+```
+
 ### 6.9 Optional - Boussinesq Propagation Diagnostic
 
 Run a dedicated propagation diagnostic (metrics + plots) for one scenario:
@@ -335,6 +347,9 @@ Saved artifacts include:
 - `timeseries.png`
 - `frames_gallery.png`
 - `fields.png`
+
+Reference-use gate:
+- treat Boussinesq labels as exploratory until `diagnose_boussinesq.py` outputs physically consistent propagation on your chosen scenarios.
 
 ### 6.10 Optional - Inverse Dataset Scaffold
 
@@ -477,3 +492,4 @@ This README follows the same framing as the paper abstract/introduction:
 ## 9) Notes
 
 - Development note: Portions of the codebase were developed with AI-assisted programming support. All code should be treated as author-reviewed research software, with tests and validation required before use in reported experiments.
+- Test split tip: quick CI/local smoke can use `pytest -q -m "not slow"`; full solver dynamics validation can use `pytest -q -m slow`.

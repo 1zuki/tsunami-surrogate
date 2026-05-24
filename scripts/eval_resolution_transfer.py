@@ -108,6 +108,7 @@ def main():
             n += x.size(0)
 
         rows[str(res)] = {k: v / max(1, n) for k, v in sums.items()}
+        rows[str(res)]["num_samples"] = int(n)
         if target_denorm is not None:
             rows[str(res)].update({f"{k}_physical": v / max(1, n) for k, v in sums_physical.items()})
             rows[str(res)]["target_offset"] = float(target_denorm[0])
@@ -119,6 +120,7 @@ def main():
     summary = {
         "evaluation_type": "proxy_resolution_transfer",
         "dataset_path": str(data_path),
+        "dataset_num_samples": int(len(ds)),
         "eval_resolutions": [int(r) for r in resolutions],
         "rows": rows,
     }
