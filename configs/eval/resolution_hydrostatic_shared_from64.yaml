@@ -1,0 +1,18 @@
+defaults:
+  - ../model/fno.yaml
+
+eval:
+  output_dir: experiments/fno/eval_resolution_shared_from64
+  report_physical_metrics: true
+  real_resolution:
+    normalization_policy: require_target_stats_match
+    normalization_mismatch: fail
+    normalization_reference_path: data/processed_res64_shared_from64/hydrostatic/train/eval_dataset.npz
+    normalization_tol: 1e-6
+    suites:
+      - label: res32_hydrostatic_shared_from64
+        path: data/processed_res32_shared_from64/hydrostatic/test
+      - label: res64_hydrostatic_shared_from64
+        path: data/processed_res64_shared_from64/hydrostatic/test
+      - label: res128_hydrostatic_shared_from64
+        path: data/processed_res128_shared_from64/hydrostatic/test

@@ -16,6 +16,7 @@ from src.models.ensemble import EnsemblePredictor
 from src.training.checkpointing import load_checkpoint
 from src.evaluation.calibration import interval_calibration
 from src.evaluation.uncertainty import error_uncertainty_correlation
+from src.evaluation.target_scaling import load_target_denorm, resolve_eval_dataset_path
 from src.utils.io import save_json
 
 
@@ -24,6 +25,7 @@ def _evaluate_uncertainty_loader(
     loader: Any,
     device: torch.device,
     levels: list[float],
+    target_denorm: tuple[float, float] | None = None,
 ) -> Dict[str, float]:
     weighted_sums: Dict[str, float] = {}
     total_samples = 0
@@ -32,6 +34,17 @@ def _evaluate_uncertainty_loader(
         out = ensemble(x)
         row = interval_calibration(out["mean"], out["variance"], y, levels)
         row["error_uncertainty_corr"] = error_uncertainty_correlation(out["mean"], out["variance"], y)
+
+        if target_denorm is not None:
+            offset, scale = float(target_denorm[0]), float(target_denorm[1])
+            mean_p = out["mean"] * scale + offset
+            y_p = y * scale + offset
+            var_p = out["variance"] * (scale * scale)
+            row_physical = interval_calibration(mean_p, var_p, y_p, levels)
+            row_physical["error_uncertainty_corr"] = error_uncertainty_correlation(mean_p, var_p, y_p)
+            for key, value in row_physical.items():
+                row[f"{key}_physical"] = float(value)
+
         n = int(x.shape[0])
         total_samples += n
         for k, v in row.items():
@@ -132,6 +145,7 @@ def main():
     ensemble = EnsemblePredictor(members).to(device).eval()
     uncertainty_cfg = cfg.get("uncertainty", {})
     levels = uncertainty_cfg.get("interval_levels", [0.5, 0.8, 0.9, 0.95])
+    report_physical = bool(uncertainty_cfg.get("report_physical_metrics", True))
     suite_cfg = uncertainty_cfg.get("suites", eval_cfg.get("uncertainty", {}).get("suites", []))
     skip_empty_suites = bool(uncertainty_cfg.get("skip_empty_suites", True))
 
@@ -159,8 +173,18 @@ def main():
                     continue
                 raise
 
-            row = _evaluate_uncertainty_loader(ensemble=ensemble, loader=loader, device=device, levels=levels)
+            denorm = load_target_denorm(str(suite_path)) if report_physical else None
+            row = _evaluate_uncertainty_loader(
+                ensemble=ensemble,
+                loader=loader,
+                device=device,
+                levels=levels,
+                target_denorm=denorm,
+            )
             row["num_samples"] = float(_dataset_num_samples(loader))
+            if denorm is not None:
+                row["target_offset"] = float(denorm[0])
+                row["target_scale"] = float(denorm[1])
             suite_rows[label] = row
 
         if not suite_rows:
@@ -181,12 +205,26 @@ def main():
             print("No test loader found; uncertainty eval skipped gracefully.")
             return
         validate_model_io_channels(cfg, loaders, preferred_splits=("test", "val", "train"))
-        mean_results = _evaluate_uncertainty_loader(ensemble=ensemble, loader=test_loader, device=device, levels=levels)
+        denorm = None
+        if report_physical:
+            resolved_dataset_path = resolve_eval_dataset_path(cfg, split="test")
+            if resolved_dataset_path is not None:
+                denorm = load_target_denorm(resolved_dataset_path)
+        mean_results = _evaluate_uncertainty_loader(
+            ensemble=ensemble,
+            loader=test_loader,
+            device=device,
+            levels=levels,
+            target_denorm=denorm,
+        )
         mean_results = {
             "evaluation_type": "in_distribution_uncertainty",
             "num_samples": float(_dataset_num_samples(test_loader)),
             **mean_results,
         }
+        if denorm is not None:
+            mean_results["target_offset"] = float(denorm[0])
+            mean_results["target_scale"] = float(denorm[1])
         output_name = "uncertainty.json"
 
     output_dir = str(eval_cfg.get("output_dir", "")).strip()

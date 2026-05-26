@@ -2,6 +2,7 @@ from .fno2d import FNO2D
 from .uncertainty import ProbabilisticFNO2D
 from .cnn import CNNBaseline
 from .unet import UNetSmall
+from .convlstm import ConvLSTMBaseline
 
 
 def build_model(cfg):
@@ -41,6 +42,16 @@ def build_model(cfg):
             in_channels=model_cfg.get('in_channels', 3),
             out_channels=model_cfg.get('out_channels', 1),
             width=model_cfg.get('width', 32),
+        )
+    if name == 'convlstm':
+        return ConvLSTMBaseline(
+            in_channels=model_cfg.get('in_channels', 3),
+            out_channels=model_cfg.get('out_channels', 1),
+            hidden_channels=model_cfg.get('hidden_channels', model_cfg.get('width', 48)),
+            num_layers=model_cfg.get('num_layers', 2),
+            kernel_size=model_cfg.get('kernel_size', 3),
+            context_channels=model_cfg.get('context_channels', None),
+            use_feedback=model_cfg.get('use_feedback', True),
         )
 
     raise ValueError(f'Unknown model name: {name}')
