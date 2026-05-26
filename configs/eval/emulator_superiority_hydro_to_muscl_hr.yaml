@@ -1,0 +1,17 @@
+model_config: configs/model/fno.yaml
+checkpoint: experiments/fno/best.pt
+
+evaluation:
+  dataset_path: data/processed/muscl_hr/test/eval_dataset.npz
+  batch_size: 8
+  report_physical_metrics: true
+
+# should come from:
+# python scripts/compare_solvers_physical.py --solver-a-dir data/raw/hydrostatic/samples --solver-b-dir data/raw/muscl_hr/samples ...
+solver_compare_path: results/solver_compare_hydro_vs_muscl_hr.json
+
+ratio:
+  numerator_metric: rmse_physical
+  denominator_metric: rmse
+
+output_path: results/emulator_superiority_hydro_to_muscl_hr.json

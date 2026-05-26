@@ -158,13 +158,13 @@ def _first_arrival_index(abs_eta: np.ndarray, threshold_abs: float) -> np.ndarra
 
     return first
 
-def _arrival_metrics(
+def _arrival_details(
     eta_a: np.ndarray,
     eta_b: np.ndarray,
     arrival_threshold_fraction: float,
     timestamps_a: Optional[np.ndarray],
     timestamps_b: Optional[np.ndarray],
-) -> Dict[str, float]:
+) -> Dict[str, Any]:
     abs_a = np.abs(np.asarray(eta_a, dtype=np.float64))
     abs_b = np.abs(np.asarray(eta_b, dtype=np.float64))
     shared_peak = float(max(np.max(abs_a), np.max(abs_b), 0.0))
@@ -177,7 +177,7 @@ def _arrival_metrics(
     n_total = int(valid.size)
     coverage = float(n_valid / max(n_total, 1))
 
-    out: Dict[str, float] = {
+    metrics: Dict[str, float] = {
         "arrival_threshold_fraction": float(arrival_threshold_fraction),
         "arrival_threshold_abs": float(thr),
         "arrival_valid_fraction": coverage,
@@ -185,19 +185,25 @@ def _arrival_metrics(
     }
 
     if n_valid == 0:
-        out.update(
+        metrics.update(
             {
                 "arrival_mean_abs_diff_steps": float("nan"),
                 "arrival_p90_abs_diff_steps": float("nan"),
                 "arrival_max_abs_diff_steps": float("nan"),
             }
         )
-        return out
+        return {
+            "metrics": metrics,
+            "first_a": first_a,
+            "first_b": first_b,
+            "valid": valid,
+            "step_diff_full": np.full(first_a.shape, np.nan, dtype=np.float64),
+        }
 
     step_diff = np.abs(first_a[valid] - first_b[valid]).astype(np.float64)
-    out["arrival_mean_abs_diff_steps"] = float(np.mean(step_diff))
-    out["arrival_p90_abs_diff_steps"] = float(np.percentile(step_diff, 90))
-    out["arrival_max_abs_diff_steps"] = float(np.max(step_diff))
+    metrics["arrival_mean_abs_diff_steps"] = float(np.mean(step_diff))
+    metrics["arrival_p90_abs_diff_steps"] = float(np.percentile(step_diff, 90))
+    metrics["arrival_max_abs_diff_steps"] = float(np.max(step_diff))
 
     if timestamps_a is not None and timestamps_b is not None:
         if timestamps_a.ndim == 1 and timestamps_b.ndim == 1:
@@ -209,11 +215,19 @@ def _arrival_metrics(
                 ia = np.clip(ia, 0, ta.size - 1)
                 ib = np.clip(ib, 0, tb.size - 1)
                 sec_diff = np.abs(ta[ia] - tb[ib]).astype(np.float64)
-                out["arrival_mean_abs_diff_seconds"] = float(np.mean(sec_diff))
-                out["arrival_p90_abs_diff_seconds"] = float(np.percentile(sec_diff, 90))
-                out["arrival_max_abs_diff_seconds"] = float(np.max(sec_diff))
+                metrics["arrival_mean_abs_diff_seconds"] = float(np.mean(sec_diff))
+                metrics["arrival_p90_abs_diff_seconds"] = float(np.percentile(sec_diff, 90))
+                metrics["arrival_max_abs_diff_seconds"] = float(np.max(sec_diff))
 
-    return out
+    step_diff_full = np.full(first_a.shape, np.nan, dtype=np.float64)
+    step_diff_full[valid] = np.abs(first_a[valid] - first_b[valid]).astype(np.float64)
+    return {
+        "metrics": metrics,
+        "first_a": first_a,
+        "first_b": first_b,
+        "valid": valid,
+        "step_diff_full": step_diff_full,
+    }
 
 
 def main() -> None:
@@ -246,6 +260,17 @@ def main() -> None:
             "include=allow, skip=drop, fail=raise."
         ),
     )
+    p.add_argument(
+        "--save-arrival-maps",
+        action="store_true",
+        help="Save aggregated arrival-time maps (npz) alongside scalar comparison metrics.",
+    )
+    p.add_argument(
+        "--arrival-maps-output",
+        type=str,
+        default=None,
+        help="Optional explicit output path for arrival maps npz. Defaults to <output_stem>_arrival_maps.npz.",
+    )
     p.add_argument("--output", type=str, default="results/solver_physical_comparison.json")
     args = p.parse_args()
     if args.arrival_threshold_fraction < 0.0:
@@ -269,6 +294,7 @@ def main() -> None:
     rows: List[Dict[str, Any]] = []
     per_t_rmse: List[np.ndarray] = []
     per_t_mae: List[np.ndarray] = []
+    arrival_maps: Dict[str, np.ndarray] | None = None
 
     skipped_shape = 0
     skipped_nonfinite = 0
@@ -332,16 +358,44 @@ def main() -> None:
             **_metrics(eta_a, eta_b),
         }
         row.update(_spectral_metrics(eta_a, eta_b))
-        row.update(
-            _arrival_metrics(
-                eta_a,
-                eta_b,
-                arrival_threshold_fraction=float(args.arrival_threshold_fraction),
-                timestamps_a=ts_a,
-                timestamps_b=ts_b,
-            )
+        arrival = _arrival_details(
+            eta_a,
+            eta_b,
+            arrival_threshold_fraction=float(args.arrival_threshold_fraction),
+            timestamps_a=ts_a,
+            timestamps_b=ts_b,
         )
+        row.update(arrival["metrics"])
         rows.append(row)
+
+        if args.save_arrival_maps:
+            first_a = np.asarray(arrival["first_a"], dtype=np.float64)
+            first_b = np.asarray(arrival["first_b"], dtype=np.float64)
+            valid = np.asarray(arrival["valid"], dtype=bool)
+            step_diff_full = np.asarray(arrival["step_diff_full"], dtype=np.float64)
+
+            if arrival_maps is None:
+                h, w = first_a.shape
+                arrival_maps = {
+                    "count_samples": np.zeros((h, w), dtype=np.float64),
+                    "count_valid_pair": np.zeros((h, w), dtype=np.float64),
+                    "count_valid_a": np.zeros((h, w), dtype=np.float64),
+                    "count_valid_b": np.zeros((h, w), dtype=np.float64),
+                    "sum_first_a": np.zeros((h, w), dtype=np.float64),
+                    "sum_first_b": np.zeros((h, w), dtype=np.float64),
+                    "sum_abs_diff_steps": np.zeros((h, w), dtype=np.float64),
+                }
+
+            assert arrival_maps is not None
+            arrival_maps["count_samples"] += 1.0
+            valid_a = first_a >= 0
+            valid_b = first_b >= 0
+            arrival_maps["count_valid_pair"] += valid.astype(np.float64)
+            arrival_maps["count_valid_a"] += valid_a.astype(np.float64)
+            arrival_maps["count_valid_b"] += valid_b.astype(np.float64)
+            arrival_maps["sum_first_a"] += np.where(valid_a, first_a, 0.0)
+            arrival_maps["sum_first_b"] += np.where(valid_b, first_b, 0.0)
+            arrival_maps["sum_abs_diff_steps"] += np.where(valid, step_diff_full, 0.0)
 
         diff = eta_a - eta_b
         per_t_rmse.append(np.sqrt(np.mean(diff * diff, axis=(1, 2))))
@@ -403,6 +457,44 @@ def main() -> None:
         },
         "per_sample": rows,
     }
+
+    if args.save_arrival_maps and arrival_maps is not None:
+        cnt_samples = np.maximum(arrival_maps["count_samples"], 1.0)
+        cnt_valid_pair = np.maximum(arrival_maps["count_valid_pair"], 1.0)
+        cnt_valid_a = np.maximum(arrival_maps["count_valid_a"], 1.0)
+        cnt_valid_b = np.maximum(arrival_maps["count_valid_b"], 1.0)
+
+        coverage_map = arrival_maps["count_valid_pair"] / cnt_samples
+        mean_first_a = np.where(
+            arrival_maps["count_valid_a"] > 0.0,
+            arrival_maps["sum_first_a"] / cnt_valid_a,
+            -1.0,
+        )
+        mean_first_b = np.where(
+            arrival_maps["count_valid_b"] > 0.0,
+            arrival_maps["sum_first_b"] / cnt_valid_b,
+            -1.0,
+        )
+        mean_abs_diff_steps = np.where(
+            arrival_maps["count_valid_pair"] > 0.0,
+            arrival_maps["sum_abs_diff_steps"] / cnt_valid_pair,
+            np.nan,
+        )
+
+        arrival_maps_path = Path(args.arrival_maps_output) if args.arrival_maps_output else Path(args.output).with_name(
+            Path(args.output).stem + "_arrival_maps.npz"
+        )
+        arrival_maps_path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            arrival_maps_path,
+            coverage_map=coverage_map.astype(np.float32),
+            mean_arrival_step_a=mean_first_a.astype(np.float32),
+            mean_arrival_step_b=mean_first_b.astype(np.float32),
+            mean_abs_diff_steps=mean_abs_diff_steps.astype(np.float32),
+            valid_pair_count=arrival_maps["count_valid_pair"].astype(np.float32),
+            sample_count=arrival_maps["count_samples"].astype(np.float32),
+        )
+        out["arrival_maps_path"] = str(arrival_maps_path)
 
     save_json(out, args.output)
     print(
