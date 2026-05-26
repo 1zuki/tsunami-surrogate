@@ -292,6 +292,21 @@ Native-resolution normalization policy:
 - `configs/eval/resolution_*.yaml` now defaults to `real_resolution.normalization_policy: require_target_stats_match`.
 - This fails fast if suite target normalization does not match the configured training/reference dataset stats (`normalization_reference_path`), which avoids misleading cross-resolution claims.
 
+True cross-resolution transfer option (shared normalization from res64 reference):
+
+```bash
+python src/data_gen/preprocess.py --config configs/data/multires/preprocess_32_shared_from64.yaml
+python src/data_gen/preprocess.py --config configs/data/multires/preprocess_64_shared_from64.yaml
+python src/data_gen/preprocess.py --config configs/data/multires/preprocess_128_shared_from64.yaml
+
+python scripts/eval_full_resolution.py \
+  --config configs/eval/resolution_hydrostatic_shared_from64.yaml \
+  --checkpoint experiments/fno/best.pt
+python scripts/eval_full_resolution.py \
+  --config configs/eval/resolution_muscl_hr_shared_from64.yaml \
+  --checkpoint experiments/fno_muscl_hr/best.pt
+```
+
 ### 6.8 Optional - Solver-vs-Solver Physical Comparison
 
 Compare raw hydrostatic vs raw MUSCL-HR labels on shared scenarios in physical eta units:
@@ -315,6 +330,17 @@ python scripts/compare_solvers_physical.py \
   --solver-a-dir data/raw/hydrostatic/samples \
   --solver-b-dir data/raw/muscl_hr/samples \
   --arrival-threshold-fraction 0.05 \
+  --output results/solver_compare_hydro_vs_muscl_hr.json
+```
+
+Arrival-map export (aggregated spatial maps):
+
+```bash
+python scripts/compare_solvers_physical.py \
+  --solver-a-dir data/raw/hydrostatic/samples \
+  --solver-b-dir data/raw/muscl_hr/samples \
+  --save-arrival-maps \
+  --arrival-maps-output results/solver_compare_hydro_vs_muscl_hr_arrival_maps.npz \
   --output results/solver_compare_hydro_vs_muscl_hr.json
 ```
 
@@ -367,6 +393,19 @@ Current status:
 - scaffold export is implemented
 - inverse-model training/eval scripts are still a separate follow-up track
 
+Sparse-gauge inverse scaffold:
+
+```bash
+python scripts/make_inverse_dataset.py --config configs/data/inverse_hydrostatic_sparse_gauges.yaml --overwrite
+python scripts/make_inverse_dataset.py --config configs/data/inverse_muscl_hr_sparse_gauges.yaml --overwrite
+```
+
+Sparse exports include:
+- `gauge_coords` (`[G,2]`)
+- `gauge_mask` (`[N,H,W]`)
+- `gauge_observations` (`[N,G,T]`)
+- `gauge_summary` (`[N,H,W]`, sparse on gauge locations)
+
 ### 6.11 Quick Smoke Run
 
 ```bash
@@ -409,6 +448,33 @@ python scripts/eval_uncertainty.py \
 Output file:
 - `.../eval_uncertainty_ood/uncertainty_ood.json`
 
+Note:
+- uncertainty outputs now include physical-unit calibration/correlation metrics with `_physical` suffix when target denormalization stats are available.
+
+### 6.14 Optional - Arrival-Time Maps (Model vs Target Solver)
+
+```bash
+python scripts/eval_arrival_maps.py \
+  --config configs/model/fno.yaml \
+  --checkpoint experiments/fno/best.pt
+```
+
+Outputs:
+- `.../eval/arrival_map_model_vs_target.json`
+- `.../eval/arrival_map_model_vs_target.npz`
+
+### 6.15 Optional - Emulator Superiority Ratio
+
+Compute:
+`error(FNO trained on A, solver B) / error(solver A, solver B)`
+
+```bash
+python scripts/eval_emulator_superiority.py \
+  --config configs/eval/emulator_superiority_hydro_to_muscl_hr.yaml
+python scripts/eval_emulator_superiority.py \
+  --config configs/eval/emulator_superiority_muscl_hr_to_hydro.yaml
+```
+
 ## 7) Current Repository Structure
 
 ```text
@@ -425,12 +491,15 @@ tsunami-surrogate/
 │  │  ├─ ood_splits_muscl_hr.yaml
 │  │  ├─ inverse_scaffold_hydrostatic.yaml
 │  │  ├─ inverse_scaffold_muscl_hr.yaml
+│  │  ├─ inverse_hydrostatic_sparse_gauges.yaml
+│  │  ├─ inverse_muscl_hr_sparse_gauges.yaml
 │  │  ├─ preprocess.yaml           # raw -> processed split/export config
 │  │  ├─ preprocess_boussinesq.yaml
 │  │  ├─ bathymetry.yaml           # bathymetry synthesis controls
 │  │  ├─ bathymetry_boussinesq.yaml
 │  │  ├─ source.yaml               # tsunami source family controls
-│  │  └─ source_boussinesq.yaml
+│  │  ├─ source_boussinesq.yaml
+│  │  └─ multires/preprocess_*_shared_from64.yaml
 │  ├─ model/                       # model-centered train/eval configs
 │  │  ├─ fno.yaml                  # primary FNO config
 │  │  ├─ fno_muscl_hr.yaml         # FNO on MUSCL-HR processed labels
@@ -456,7 +525,11 @@ tsunami-surrogate/
 │     ├─ resolution_transfer_proxy_hydrostatic.yaml
 │     ├─ resolution_transfer_proxy_muscl_hr.yaml
 │     ├─ resolution_hydrostatic.yaml
-│     └─ resolution_muscl_hr.yaml
+│     ├─ resolution_muscl_hr.yaml
+│     ├─ resolution_hydrostatic_shared_from64.yaml
+│     ├─ resolution_muscl_hr_shared_from64.yaml
+│     ├─ emulator_superiority_hydro_to_muscl_hr.yaml
+│     └─ emulator_superiority_muscl_hr_to_hydro.yaml
 ├─ scripts/                        # CLI entrypoints (generate/train/eval/export)
 ├─ src/                            # implementation modules
 │  ├─ data_gen/                    # simulation + preprocess pipeline internals
