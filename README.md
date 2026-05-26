@@ -30,7 +30,7 @@ Planned paper extension:
 ## 3) What Is Implemented vs Planned
 
 - Implemented core: synthetic data generation, preprocessing, forward surrogate training, and benchmark evaluation.
-- Implemented models: FNO (primary) with CNN/U-Net and ensemble paths for comparison.
+- Implemented models: FNO (primary) with CNN/U-Net/ConvLSTM and ensemble paths for comparison.
 - Implemented evaluations: accuracy, speed, generalization, resolution transfer, and uncertainty.
 - Planned extension: dedicated inverse-problem experiments and paper section.
 
@@ -172,6 +172,8 @@ python scripts/train.py --config configs/model/fno_muscl_hr.yaml
 
 Optional training tracks:
 - Boussinesq model (experimental): `python scripts/train.py --config configs/model/fno_boussinesq.yaml`
+- ConvLSTM baseline: `python scripts/train.py --config configs/model/convlstm.yaml`
+- ConvLSTM (MUSCL-HR labels): `python scripts/train.py --config configs/model/convlstm_muscl_hr.yaml`
 - Ensemble for uncertainty: `python scripts/train_ensemble.py --config configs/model/fno.yaml`
 
 Native-resolution training tracks (P2 extension):
@@ -511,7 +513,9 @@ tsunami-surrogate/
 │  │  ├─ fno_res64_muscl_hr.yaml
 │  │  ├─ fno_res128_muscl_hr.yaml
 │  │  ├─ cnn.yaml                  # CNN baseline config
-│  │  └─ unet.yaml                 # U-Net baseline config
+│  │  ├─ unet.yaml                 # U-Net baseline config
+│  │  ├─ convlstm.yaml             # ConvLSTM baseline config
+│  │  └─ convlstm_muscl_hr.yaml    # ConvLSTM on MUSCL-HR labels
 │  ├─ train/                       # shared/base + training variants
 │  │  ├─ base.yaml                 # common seed/device/data/train defaults
 │  │  ├─ physics_loss.yaml         # physics-regularized FNO variant
@@ -535,7 +539,7 @@ tsunami-surrogate/
 │  ├─ data_gen/                    # simulation + preprocess pipeline internals
 │  ├─ data/                        # dataset loaders and multires dataset wrappers
 │  ├─ solver/                      # shallow-water and related numerical solvers
-│  ├─ models/                      # FNO/CNN/U-Net/ensemble/uncertainty models
+│  ├─ models/                      # FNO/CNN/U-Net/ConvLSTM/ensemble/uncertainty models
 │  ├─ training/                    # trainer, losses, metrics, callbacks, checkpoints
 │  ├─ evaluation/                  # accuracy/speed/generalization/UQ evaluation utils
 │  └─ utils/                       # config/io/logger/device/seed/visualization helpers
@@ -557,7 +561,7 @@ tsunami-surrogate/
 This README follows the same framing as the paper abstract/introduction:
 
 - controlled synthetic benchmark setting;
-- FNO-centered surrogate evaluation against convolutional baselines;
+- FNO-centered surrogate evaluation against CNN/U-Net/ConvLSTM baselines;
 - emphasis on speed-accuracy-robustness trade-offs;
 - explicit non-operational scope (research benchmark, not production warning stack);
 - explicit plan to include inverse-problem analysis as an additional paper section.

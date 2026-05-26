@@ -18,6 +18,8 @@ structure.md
 
 references-notes
 
+*references_notes.md
+
 # test script
 test.py
 TEST.py
@@ -46,6 +48,9 @@ data/sources_res128/*
 data/processed_res32/*
 data/processed_res64/*
 data/processed_res128/*
+data/processed_res32_shared_from64/*
+data/processed_res64_shared_from64/*
+data/processed_res128_shared_from64/*
 data/processed_ood/*
 data/processed_inverse/*
 
@@ -53,6 +58,7 @@ data/processed_inverse/*
 
 results/*
 !results/.gitkeep
+experiments/solver_compare/*
 
 figures/*
 !figures/.gitkeep
