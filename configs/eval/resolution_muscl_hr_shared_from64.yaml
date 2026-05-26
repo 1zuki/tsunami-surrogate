@@ -1,0 +1,18 @@
+defaults:
+  - ../model/fno_muscl_hr.yaml
+
+eval:
+  output_dir: experiments/fno_muscl_hr/eval_resolution_shared_from64
+  report_physical_metrics: true
+  real_resolution:
+    normalization_policy: require_target_stats_match
+    normalization_mismatch: fail
+    normalization_reference_path: data/processed_res64_shared_from64/muscl_hr/train/eval_dataset.npz
+    normalization_tol: 1e-6
+    suites:
+      - label: res32_muscl_hr_shared_from64
+        path: data/processed_res32_shared_from64/muscl_hr/test
+      - label: res64_muscl_hr_shared_from64
+        path: data/processed_res64_shared_from64/muscl_hr/test
+      - label: res128_muscl_hr_shared_from64
+        path: data/processed_res128_shared_from64/muscl_hr/test

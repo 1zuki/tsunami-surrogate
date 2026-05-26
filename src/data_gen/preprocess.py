@@ -1,12 +1,14 @@
 from __future__ import annotations
+
 import json
 import pathlib
 import random
 import numpy as np
 import yaml
 import argparse
+
 from dataclasses import dataclass
-from typing import Any, Dict, List, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 @dataclass
 class PreprocessConfig:
@@ -32,6 +34,7 @@ class PreprocessConfig:
 
     norm_method: str # standardize / minmax
     norm_channels: Dict[str, bool]
+    norm_reference_stats_path: Optional[pathlib.Path]
     eps: float
 
     save_format: str # npy
@@ -105,6 +108,10 @@ class TsunamiPreprocessor:
             "solver_id": bool(norm_cfg.get("channels", {}).get("solver_id", False)),
             "trajectory": bool(norm_cfg.get("channels", {}).get("trajectory", True)),
         }
+        norm_reference_stats_path_raw = norm_cfg.get("reference_stats_path", None)
+        norm_reference_stats_path: Optional[pathlib.Path] = None
+        if norm_reference_stats_path_raw:
+            norm_reference_stats_path = pathlib.Path(str(norm_reference_stats_path_raw))
         eps = float(norm_cfg.get("eps", 1e-6))
  
         saving_cfg = cfg.get("saving", {})
@@ -137,6 +144,12 @@ class TsunamiPreprocessor:
 
         self.fde_mode = fde_mode
         self.fde_targets = [self._canonical_fde_name(str(v)) for v in list(fde_cfg.get("targets", []))]
+        self.fde_norm_reference_paths: Dict[str, pathlib.Path] = {}
+        raw_norm_map = norm_cfg.get("reference_stats_by_fde", {})
+        if isinstance(raw_norm_map, dict):
+            for key, value in raw_norm_map.items():
+                if value:
+                    self.fde_norm_reference_paths[self._canonical_fde_name(str(key))] = pathlib.Path(str(value))
 
         if not self.fde_targets and self.fde_manifest_paths:
             self.fde_targets = [next(iter(self.fde_manifest_paths.keys()))]
@@ -169,6 +182,7 @@ class TsunamiPreprocessor:
             stride=stride,
             norm_method=norm_method,
             norm_channels=norm_channels,
+            norm_reference_stats_path=norm_reference_stats_path,
             eps=eps,
             save_format=save_format,
             compress=compress,
@@ -192,6 +206,7 @@ class TsunamiPreprocessor:
         self._target_std: float = 1.0
         self._target_min: float = 0.0
         self._target_max: float = 1.0
+        self._active_norm_reference_path: Optional[pathlib.Path] = None
         solver_vocab = self.fde_targets if self.fde_targets else sorted(set(self.fde_manifest_paths.keys()))
 
         if not solver_vocab:
@@ -446,6 +461,59 @@ class TsunamiPreprocessor:
             else:
                 raise ValueError(f"Unsupported normalization method: {self.cfg.norm_method}")
 
+    def _load_normalizer_from_stats_file(
+        self,
+        stats_path: pathlib.Path,
+        sample_inputs: Optional[Dict[str, np.ndarray]] = None,
+    ) -> None:
+        if not stats_path.is_file():
+            raise FileNotFoundError(f"Normalization reference stats not found: {stats_path}")
+
+        with stats_path.open("r", encoding="utf-8") as f:
+            payload = json.load(f)
+
+        inputs = payload.get("inputs", {})
+        if not isinstance(inputs, dict):
+            raise ValueError(f"Invalid normalization stats in {stats_path}: expected object at 'inputs'")
+
+        self._mean = {}
+        self._stds = {}
+        for name, spec in inputs.items():
+            if not isinstance(spec, dict):
+                continue
+            if "offset" not in spec or "scale" not in spec:
+                continue
+
+            self._mean[str(name)] = float(spec["offset"])
+            self._stds[str(name)] = float(spec["scale"])
+
+        targets = payload.get("targets", {})
+        if isinstance(targets, dict):
+            self._target_mean = float(targets.get("offset", 0.0))
+            self._target_std = float(targets.get("scale", 1.0))
+            self._target_min = float(targets.get("min", 0.0))
+            self._target_max = float(targets.get("max", 1.0))
+        else:
+            self._target_mean = 0.0
+            self._target_std = 1.0
+            self._target_min = 0.0
+            self._target_max = 1.0
+
+        if sample_inputs is not None:
+            required = [k for k in sample_inputs.keys() if self.cfg.norm_channels.get(k, False)]
+            missing = [k for k in required if k not in self._mean]
+            if missing:
+                raise KeyError(
+                    f"Normalization stats {stats_path} missing required input channels: {missing}. "
+                    f"Available={sorted(self._mean.keys())}"
+                )
+
+        if self.cfg.norm_channels.get("trajectory", False) and abs(self._target_std) <= 0.0:
+            raise ValueError(
+                f"Normalization stats {stats_path} has invalid target scale={self._target_std}. "
+                "Expected non-zero target scale."
+            )
+
     def normalize_sample(self, X: Dict[str, np.ndarray], Y: np.ndarray) -> Tuple[Dict[str, np.ndarray], np.ndarray]:
         """ apply normalization using training statistics """
         X_norm : Dict[str, np.ndarray] = {}
@@ -608,12 +676,19 @@ class TsunamiPreprocessor:
         val_records: List[Dict[str, Any]],
         test_records: List[Dict[str, Any]],
         output_dir: pathlib.Path,
+        norm_reference_stats_path: Optional[pathlib.Path] = None,
     ) -> None:
         X_train_raw, Y_train_raw, meta_train, ids_train = self._process_records(train_records)
         X_val_raw, Y_val_raw, meta_val, ids_val = self._process_records(val_records)
         X_test_raw, Y_test_raw, meta_test, ids_test = self._process_records(test_records)
 
-        self.fit_normalizer(list(zip(X_train_raw, Y_train_raw)))
+        self._active_norm_reference_path = None
+        if norm_reference_stats_path is not None:
+            self._active_norm_reference_path = norm_reference_stats_path
+            example_inputs = X_train_raw[0] if X_train_raw else None
+            self._load_normalizer_from_stats_file(norm_reference_stats_path, sample_inputs=example_inputs)
+        else:
+            self.fit_normalizer(list(zip(X_train_raw, Y_train_raw)))
 
         def _normalize(X_raw: List[Dict[str, np.ndarray]], Y_raw: List[np.ndarray]) -> Tuple[List[Dict[str, np.ndarray]], List[np.ndarray]]:
             X_norm: List[Dict[str, np.ndarray]] = []
@@ -636,6 +711,7 @@ class TsunamiPreprocessor:
         self.save_split("val", X_val, Y_val, meta_val, ids_val)
         self.save_split("test", X_test, Y_test, meta_test, ids_test)
         self.cfg.processed_dir = original_processed_dir
+        self._active_norm_reference_path = None
 
     def _resolved_eval_input_order(self, sample_inputs: Dict[str, np.ndarray]) -> List[str]:
         preferred = [name for name in self.cfg.eval_input_order if name in sample_inputs]
@@ -759,6 +835,7 @@ class TsunamiPreprocessor:
         stats = {
             "method": self.cfg.norm_method,
             "eps": float(self.cfg.eps),
+            "reference_stats_path": str(self._active_norm_reference_path) if self._active_norm_reference_path else None,
             "inputs": {
                 name: {
                     "offset": float(self._mean[name]),
@@ -802,8 +879,15 @@ class TsunamiPreprocessor:
                 val_records = self._records_for_scenarios(records, val_ids)
                 test_records = self._records_for_scenarios(records, test_ids)
                 out_dir = self.cfg.processed_dir / fde_name
+                norm_ref = self.fde_norm_reference_paths.get(fde_name, self.cfg.norm_reference_stats_path)
                 print(f"[preprocess] mode=single fde={fde_name} out={out_dir}")
-                self._normalize_and_save(train_records, val_records, test_records, out_dir)
+                self._normalize_and_save(
+                    train_records,
+                    val_records,
+                    test_records,
+                    out_dir,
+                    norm_reference_stats_path=norm_ref,
+                )
                 return
 
             if mode == "separate_all":
@@ -813,8 +897,15 @@ class TsunamiPreprocessor:
                     val_records = self._records_for_scenarios(records, val_ids)
                     test_records = self._records_for_scenarios(records, test_ids)
                     out_dir = self.cfg.processed_dir / fde_name
+                    norm_ref = self.fde_norm_reference_paths.get(fde_name, self.cfg.norm_reference_stats_path)
                     print(f"[preprocess] mode=separate_all fde={fde_name} out={out_dir}")
-                    self._normalize_and_save(train_records, val_records, test_records, out_dir)
+                    self._normalize_and_save(
+                        train_records,
+                        val_records,
+                        test_records,
+                        out_dir,
+                        norm_reference_stats_path=norm_ref,
+                    )
                 return
 
             # multifidelity
@@ -829,7 +920,13 @@ class TsunamiPreprocessor:
 
             out_dir = self.cfg.processed_dir / "multifidelity"
             print(f"[preprocess] mode=multifidelity targets={targets} out={out_dir}")
-            self._normalize_and_save(train_records, val_records, test_records, out_dir)
+            self._normalize_and_save(
+                train_records,
+                val_records,
+                test_records,
+                out_dir,
+                norm_reference_stats_path=self.cfg.norm_reference_stats_path,
+            )
             return
 
         # Legacy mode (single manifest path + one processed root).
@@ -838,7 +935,13 @@ class TsunamiPreprocessor:
         print("Splitting dataset")
         train_records, val_records, test_records = self.split_dataset(manifest)
         print("Building dataset")
-        self._normalize_and_save(train_records, val_records, test_records, self.cfg.processed_dir)
+        self._normalize_and_save(
+            train_records,
+            val_records,
+            test_records,
+            self.cfg.processed_dir,
+            norm_reference_stats_path=self.cfg.norm_reference_stats_path,
+        )
 
 def _build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Pre-process raw tsunami surrogate data.")
