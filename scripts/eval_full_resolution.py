@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import sys
 from typing import Any, Dict, List
@@ -12,7 +11,12 @@ sys.path.insert(0, str(ROOT))
 
 from src.data.dataset import create_dataloaders
 from src.evaluation.accuracy import evaluate_accuracy
-from src.evaluation.target_scaling import load_target_denorm, resolve_dataset_npz
+from src.evaluation.target_scaling import (
+    load_target_denorm,
+    resolve_dataset_npz,
+    signatures_match,
+    target_signature,
+)
 from src.models import build_model
 from src.training.checkpointing import load_checkpoint
 from src.utils.config import load_config
@@ -52,56 +56,21 @@ def _dataset_size_from_loader(loader) -> int:
         return -1
 
 
-def _target_signature(dataset_path: str | Path) -> Dict[str, Any]:
-    npz_path = resolve_dataset_npz(dataset_path)
-    denorm = load_target_denorm(npz_path)
-    manifest_path = npz_path.with_name("eval_manifest.json")
-    normalized_targets = None
-    
-    if manifest_path.exists():
-        try:
-            with manifest_path.open("r", encoding="utf-8") as f:
-                manifest = json.load(f)
-            if isinstance(manifest.get("normalized_targets"), bool):
-                normalized_targets = bool(manifest["normalized_targets"])
-        except Exception:
-            normalized_targets = None
+def _checkpoint_train_path(ckpt: Dict[str, Any]) -> str | None:
+    raw_cfg = ckpt.get("config", {})
+    if not isinstance(raw_cfg, dict):
+        return None
+    data_cfg = raw_cfg.get("data", raw_cfg.get("dataset", {}))
+    if not isinstance(data_cfg, dict):
+        return None
 
-    if denorm is not None:
-        offset, scale = denorm
-        return {
-            "dataset_path": str(npz_path),
-            "normalized_targets": True if normalized_targets is None else bool(normalized_targets),
-            "target_offset": float(offset),
-            "target_scale": float(scale),
-        }
-
-    return {
-        "dataset_path": str(npz_path),
-        "normalized_targets": False if normalized_targets is None else bool(normalized_targets),
-        "target_offset": None,
-        "target_scale": None,
-    }
-
-
-def _signatures_match(reference: Dict[str, Any], candidate: Dict[str, Any], tol: float) -> bool:
-    ref_norm = bool(reference.get("normalized_targets", False))
-    cand_norm = bool(candidate.get("normalized_targets", False))
-    if ref_norm != cand_norm:
-        return False
-
-    ref_off = reference.get("target_offset")
-    ref_scale = reference.get("target_scale")
-    cand_off = candidate.get("target_offset")
-    cand_scale = candidate.get("target_scale")
-
-    if ref_off is None or ref_scale is None or cand_off is None or cand_scale is None:
-        return True
-
-    return bool(
-        abs(float(ref_off) - float(cand_off)) <= tol
-        and abs(float(ref_scale) - float(cand_scale)) <= tol
-    )
+    train_path = data_cfg.get("train_path")
+    if train_path:
+        return str(train_path)
+    fallback_path = data_cfg.get("path")
+    if fallback_path:
+        return str(fallback_path)
+    return None
 
 
 def main() -> None:
@@ -119,6 +88,7 @@ def main() -> None:
     report_physical = bool(eval_cfg.get("report_physical_metrics", True))
     normalization_policy = str(rr_cfg.get("normalization_policy", "require_target_stats_match")).strip().lower()
     mismatch_action = str(rr_cfg.get("normalization_mismatch", "fail")).strip().lower()
+    checkpoint_mismatch_action = str(rr_cfg.get("checkpoint_reference_mismatch", "fail")).strip().lower()
     normalization_tol = float(rr_cfg.get("normalization_tol", 1e-6))
 
     if not suites:
@@ -130,6 +100,8 @@ def main() -> None:
         raise ValueError("real_resolution.normalization_policy must be one of: require_target_stats_match, ignore")
     if mismatch_action not in {"warn", "fail"}:
         raise ValueError("real_resolution.normalization_mismatch must be one of: warn, fail")
+    if checkpoint_mismatch_action not in {"warn", "fail"}:
+        raise ValueError("real_resolution.checkpoint_reference_mismatch must be one of: warn, fail")
     if normalization_policy == "ignore" and report_physical:
         print(
             "[eval_full_resolution][warn] "
@@ -140,10 +112,12 @@ def main() -> None:
 
     device = resolve_device(cfg.get("device", "auto"))
     model = build_model(cfg).to(device)
-    load_checkpoint(args.checkpoint, model, map_location=device)
+    checkpoint_payload = load_checkpoint(args.checkpoint, model, map_location=device)
 
     result_rows: List[Dict[str, Any]] = []
     reference_signature: Dict[str, Any] | None = None
+    checkpoint_train_signature: Dict[str, Any] | None = None
+    checkpoint_train_path: str | None = None
     if normalization_policy == "require_target_stats_match":
         ref_path = rr_cfg.get("normalization_reference_path", cfg.get("data", {}).get("train_path"))
         if not ref_path:
@@ -151,8 +125,52 @@ def main() -> None:
                 "Normalization policy requires a reference dataset path. "
                 "Set real_resolution.normalization_reference_path or data.train_path."
             )
-        reference_signature = _target_signature(str(ref_path))
+        reference_signature = target_signature(str(ref_path))
+        if (
+            bool(reference_signature.get("normalized_targets", False))
+            and (
+                reference_signature.get("target_offset") is None
+                or reference_signature.get("target_scale") is None
+            )
+        ):
+            raise ValueError(
+                "Normalization reference declares normalized targets but has no target_mean/target_std stats: "
+                f"{reference_signature.get('dataset_path')}"
+            )
         print(f"[eval_full_resolution] normalization reference: {reference_signature}")
+
+        checkpoint_train_path = str(rr_cfg.get("checkpoint_train_path", "")).strip() or _checkpoint_train_path(checkpoint_payload)
+        if not checkpoint_train_path:
+            msg = (
+                "Could not resolve checkpoint training dataset path from checkpoint config. "
+                "Set real_resolution.checkpoint_train_path explicitly to validate native-resolution claims."
+            )
+            if checkpoint_mismatch_action == "fail":
+                raise ValueError(msg)
+            print(f"[eval_full_resolution][warn] {msg}")
+        else:
+            try:
+                checkpoint_train_signature = target_signature(checkpoint_train_path)
+            except FileNotFoundError as e:
+                msg = (
+                    f"Checkpoint training dataset not found: {checkpoint_train_path}. "
+                    "Provide real_resolution.checkpoint_train_path or regenerate the training split."
+                )
+                if checkpoint_mismatch_action == "fail":
+                    raise FileNotFoundError(msg) from e
+                print(f"[eval_full_resolution][warn] {msg}")
+                checkpoint_train_signature = None
+
+            if checkpoint_train_signature is not None and reference_signature is not None:
+                if not signatures_match(reference_signature, checkpoint_train_signature, tol=normalization_tol):
+                    msg = (
+                        "Checkpoint training normalization signature does not match the evaluation reference. "
+                        f"checkpoint={checkpoint_train_signature}, reference={reference_signature}, tol={normalization_tol}. "
+                        "Use a checkpoint trained on the same normalization reference for paper-safe native-resolution claims."
+                    )
+                    if checkpoint_mismatch_action == "fail":
+                        raise ValueError(msg)
+                    print(f"[eval_full_resolution][warn] {msg}")
 
     for i, suite in enumerate(suites):
         suite_cfg = suite if isinstance(suite, dict) else {}
@@ -167,9 +185,20 @@ def main() -> None:
         )
 
         loader = _suite_test_loader(cfg, dataset_path=dataset_path, batch_size=batch_size)
-        suite_signature = _target_signature(dataset_path)
+        suite_signature = target_signature(dataset_path)
+        if (
+            bool(suite_signature.get("normalized_targets", False))
+            and (suite_signature.get("target_offset") is None or suite_signature.get("target_scale") is None)
+        ):
+            msg = (
+                f"Suite '{label}' declares normalized targets but has missing target stats: "
+                f"{suite_signature.get('dataset_path')}"
+            )
+            if mismatch_action == "fail":
+                raise ValueError(msg)
+            print(f"[eval_full_resolution][warn] {msg}")
         if normalization_policy == "require_target_stats_match" and reference_signature is not None:
-            if not _signatures_match(reference_signature, suite_signature, tol=normalization_tol):
+            if not signatures_match(reference_signature, suite_signature, tol=normalization_tol):
                 msg = (
                     f"Normalization signature mismatch for suite '{label}'. "
                     f"reference={reference_signature}, suite={suite_signature}, tol={normalization_tol}"
@@ -209,8 +238,11 @@ def main() -> None:
         "rows": result_rows,
         "normalization_policy": normalization_policy,
         "normalization_mismatch": mismatch_action,
+        "checkpoint_reference_mismatch": checkpoint_mismatch_action,
         "normalization_tol": normalization_tol,
         "normalization_reference": reference_signature,
+        "checkpoint_train_path": checkpoint_train_path,
+        "checkpoint_train_signature": checkpoint_train_signature,
     }
     print(summary)
     save_json(summary, f"{output_dir}/real_resolution.json")

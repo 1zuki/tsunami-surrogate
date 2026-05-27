@@ -7,7 +7,9 @@ eval:
   real_resolution:
     normalization_policy: require_target_stats_match
     normalization_mismatch: fail
+    checkpoint_reference_mismatch: fail
     normalization_reference_path: data/processed/hydrostatic/train/eval_dataset.npz
+    checkpoint_train_path: data/processed/hydrostatic/train/eval_dataset.npz
     normalization_tol: 1e-6
     suites:
       - label: res32_hydrostatic
