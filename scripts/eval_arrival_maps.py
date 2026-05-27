@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.data.dataset import create_dataloaders
+from src.evaluation.target_scaling import load_target_denorm, resolve_eval_dataset_path
 from src.models import build_model
 from src.training.checkpointing import load_checkpoint
 from src.utils.config import load_config
@@ -111,6 +112,7 @@ def main() -> None:
     if "batch_size" in eval_cfg:
         data_cfg["batch_size"] = eval_cfg["batch_size"]
     cfg["data"] = data_cfg
+    report_physical = bool(eval_cfg.get("report_physical_metrics", True))
 
     device = resolve_device(cfg.get("device", "auto"))
     loaders = create_dataloaders(cfg)
@@ -121,6 +123,11 @@ def main() -> None:
 
     model = build_model(cfg).to(device).eval()
     load_checkpoint(args.checkpoint, model, map_location=device)
+    target_denorm = None
+    if report_physical:
+        resolved_path = resolve_eval_dataset_path(cfg, split="test")
+        if resolved_path is not None:
+            target_denorm = load_target_denorm(resolved_path)
 
     acc = None
     sample_mean_diffs: list[float] = []
@@ -131,6 +138,10 @@ def main() -> None:
         x = batch["x"].to(device)
         y = batch["y"].to(device)
         pred = _model_output(model, x)
+        if target_denorm is not None:
+            offset, scale = float(target_denorm[0]), float(target_denorm[1])
+            pred = pred * scale + offset
+            y = y * scale + offset
 
         pred_np = pred.detach().cpu().numpy()
         y_np = y.detach().cpu().numpy()
@@ -189,6 +200,9 @@ def main() -> None:
     summary: Dict[str, Any] = {
         "evaluation_type": "arrival_map_model_vs_target",
         "arrival_threshold_fraction": float(args.arrival_threshold_fraction),
+        "target_units": "physical" if target_denorm is not None else "normalized",
+        "target_offset": float(target_denorm[0]) if target_denorm is not None else None,
+        "target_scale": float(target_denorm[1]) if target_denorm is not None else None,
         "num_samples_seen": int(total_samples),
         "arrival_map_shape": [int(coverage_map.shape[0]), int(coverage_map.shape[1])],
         "arrival_valid_fraction_mean": float(np.mean(coverage_map)),

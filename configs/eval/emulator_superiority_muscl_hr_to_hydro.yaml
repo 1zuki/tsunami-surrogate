@@ -11,7 +11,13 @@ evaluation:
 solver_compare_path: results/solver_compare_muscl_hr_vs_hydro.json
 
 ratio:
-  numerator_metric: rmse_physical
+  numerator_metric: rmse_physical_separate_denorm
   denominator_metric: rmse
+
+normalization:
+  on_signature_mismatch: fail
+  # prediction_denorm_path defaults to checkpoint train_path.
+  # target_denorm_path defaults to evaluation.dataset_path.
+  tol: 1e-6
 
 output_path: results/emulator_superiority_muscl_hr_to_hydro.json

@@ -23,7 +23,7 @@ The current forward-surrogate benchmark focuses on:
 3. Robustness: how performance changes under distribution shift (unseen bathymetry/source families) and cross-resolution transfer.
 4. Uncertainty quality: whether predictive confidence tracks actual error.
 
-Planned paper extension:
+Separate follow-up track (not part of the current forward-surrogate paper):
 
 5. Inverse problem: recover source characteristics from observed wave signals/fields.
 
@@ -32,7 +32,7 @@ Planned paper extension:
 - Implemented core: synthetic data generation, preprocessing, forward surrogate training, and benchmark evaluation.
 - Implemented models: FNO (primary) with CNN/U-Net/ConvLSTM and ensemble paths for comparison.
 - Implemented evaluations: accuracy, speed, generalization, resolution transfer, and uncertainty.
-- Planned extension: dedicated inverse-problem experiments and paper section.
+- Separate follow-up work: dedicated inverse-problem experiments and a separate paper track.
 
 ## 4) Canonical Workflow
 
@@ -43,7 +43,7 @@ The default full-module pipeline in this repo is:
 3. Train surrogate models.
 4. Evaluate solver-fidelity, speed, robustness, and uncertainty.
 5. Export plots/tables and map outputs into paper sections.
-6. Add inverse-problem workflow and reporting as a separate extension track.
+6. Keep inverse-problem workflow as a separate follow-up track (outside current forward-paper claims).
 
 ## 5) Setup
 
@@ -131,6 +131,7 @@ Quality guardrails (configured in `quality:` inside dataset YAML):
 - `min_h_tolerance`
 - `max_abs_eta_limit`
 - `max_velocity_limit`
+- Recommendation: keep `on_violation: fail` (now default in provided dataset configs) so unstable samples do not silently enter raw manifests.
 
 ### 6.2 Step 2 - Preprocess Forward Data (Required)
 
@@ -179,6 +180,9 @@ Optional training tracks:
 Native-resolution training tracks (P2 extension):
 - Hydrostatic: `configs/model/fno_res{32,64,128}_hydrostatic.yaml`
 - MUSCL-HR: `configs/model/fno_res{32,64,128}_muscl_hr.yaml`
+- Shared-from64 normalization checkpoints:
+  - `configs/model/fno_res64_shared_from64_hydrostatic.yaml`
+  - `configs/model/fno_res64_shared_from64_muscl_hr.yaml`
 
 ### 6.4 Step 4 - Baseline Eval on Matching Test Split
 
@@ -301,13 +305,20 @@ python src/data_gen/preprocess.py --config configs/data/multires/preprocess_32_s
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_64_shared_from64.yaml
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_128_shared_from64.yaml
 
+python scripts/train.py --config configs/model/fno_res64_shared_from64_hydrostatic.yaml
+python scripts/train.py --config configs/model/fno_res64_shared_from64_muscl_hr.yaml
+
 python scripts/eval_full_resolution.py \
   --config configs/eval/resolution_hydrostatic_shared_from64.yaml \
-  --checkpoint experiments/fno/best.pt
+  --checkpoint experiments/fno_res64_shared_from64_hydrostatic/best.pt
 python scripts/eval_full_resolution.py \
   --config configs/eval/resolution_muscl_hr_shared_from64.yaml \
-  --checkpoint experiments/fno_muscl_hr/best.pt
+  --checkpoint experiments/fno_res64_shared_from64_muscl_hr/best.pt
 ```
+
+Important:
+- `eval_full_resolution.py` now validates that checkpoint training normalization stats match the configured reference stats.  
+- For native/shared-from64 claims, do not reuse generic `6.3` checkpoints; use dedicated shared-from64 checkpoints.
 
 ### 6.8 Optional - Solver-vs-Solver Physical Comparison
 
@@ -379,7 +390,7 @@ Saved artifacts include:
 Reference-use gate:
 - treat Boussinesq labels as exploratory until `diagnose_boussinesq.py` outputs physically consistent propagation on your chosen scenarios.
 
-### 6.10 Optional - Inverse Dataset Scaffold
+### 6.10 Optional - Inverse Dataset Scaffold (Separate Follow-Up Track)
 
 Prerequisite:
 - forward processed outputs from `6.2`
@@ -393,7 +404,7 @@ python scripts/make_inverse_dataset.py --config configs/data/inverse_muscl_hr.ya
 
 Current status:
 - scaffold export is implemented
-- inverse-model training/eval scripts are still a separate follow-up track
+- inverse-model training/eval remains outside the current forward-surrogate paper scope
 
 Sparse-gauge inverse scaffold:
 
@@ -424,6 +435,11 @@ python scripts/visualize_rollout.py \
   --raw-dir data/raw/hydrostatic/samples \
   --sample-index 0
 ```
+
+Optional visualization controls:
+- `--wave-3d-mode eta|overlay` for eta-only 3D surfaces or bathymetry overlays
+- `--wave-scale <float>` to control vertical exaggeration in 3D plots (auto if omitted)
+- target/prediction frames are denormalized automatically when target stats exist in the processed archive
 
 ### 6.13 Optional - OOD Uncertainty Suites
 
@@ -477,6 +493,10 @@ python scripts/eval_emulator_superiority.py \
   --config configs/eval/emulator_superiority_muscl_hr_to_hydro.yaml
 ```
 
+Safety notes:
+- default numerator metric is now `rmse_physical_separate_denorm`, which denormalizes predictions using checkpoint-train stats and targets using eval-target stats.
+- if normalization signatures mismatch, unsafe numerator metrics are blocked (`fail` by default) to avoid misleading emulator-superiority ratios.
+
 ## 7) Current Repository Structure
 
 ```text
@@ -491,8 +511,8 @@ tsunami-surrogate/
 │  │  ├─ multires/                 # native 32/64/128 forward-data configs
 │  │  ├─ ood_splits_hydrostatic.yaml
 │  │  ├─ ood_splits_muscl_hr.yaml
-│  │  ├─ inverse_scaffold_hydrostatic.yaml
-│  │  ├─ inverse_scaffold_muscl_hr.yaml
+│  │  ├─ inverse_hydrostatic.yaml
+│  │  ├─ inverse_muscl_hr.yaml
 │  │  ├─ inverse_hydrostatic_sparse_gauges.yaml
 │  │  ├─ inverse_muscl_hr_sparse_gauges.yaml
 │  │  ├─ preprocess.yaml           # raw -> processed split/export config
@@ -512,6 +532,8 @@ tsunami-surrogate/
 │  │  ├─ fno_res32_muscl_hr.yaml
 │  │  ├─ fno_res64_muscl_hr.yaml
 │  │  ├─ fno_res128_muscl_hr.yaml
+│  │  ├─ fno_res64_shared_from64_hydrostatic.yaml
+│  │  ├─ fno_res64_shared_from64_muscl_hr.yaml
 │  │  ├─ cnn.yaml                  # CNN baseline config
 │  │  ├─ unet.yaml                 # U-Net baseline config
 │  │  ├─ convlstm.yaml             # ConvLSTM baseline config
@@ -564,7 +586,7 @@ This README follows the same framing as the paper abstract/introduction:
 - FNO-centered surrogate evaluation against CNN/U-Net/ConvLSTM baselines;
 - emphasis on speed-accuracy-robustness trade-offs;
 - explicit non-operational scope (research benchmark, not production warning stack);
-- explicit plan to include inverse-problem analysis as an additional paper section.
+- inverse-problem work kept as separate follow-up paper scope, not part of forward-surrogate claims here.
 
 ## 9) Notes
 

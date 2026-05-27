@@ -24,7 +24,7 @@ fdes:
   primary: "boussinesq"
 
 quality:
-  on_violation: warn
+  on_violation: fail
   reject_nonfinite: true
   min_h_tolerance: -1e-6
   max_abs_eta_limit: 10.0
