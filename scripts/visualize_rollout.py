@@ -28,6 +28,18 @@ def main():
     p.add_argument("--repeat", action="store_true", help="Loop animation")
     p.add_argument("--elev", type=float, default=35.0, help="3D camera elevation")
     p.add_argument("--azim", type=float, default=-60.0, help="3D camera azimuth")
+    p.add_argument(
+        "--wave-scale",
+        type=float,
+        default=None,
+        help="Vertical multiplier for wave eta in 3D plots (default: auto)",
+    )
+    p.add_argument(
+        "--wave-3d-mode",
+        choices=["eta", "overlay"],
+        default="eta",
+        help="3D rendering mode: eta-only surface or bathymetry overlay (default: eta)",
+    )
     p.add_argument("--max-frames", type=int, default=None, help="Cap number of animated timesteps")
     p.add_argument("--save", default=None, help="Optional output file (.gif/.mp4). If omitted, opens interactive window.")
     args = p.parse_args()
@@ -45,6 +57,8 @@ def main():
         repeat=args.repeat,
         elev=args.elev,
         azim=args.azim,
+        wave_scale=args.wave_scale,
+        wave_3d_mode=args.wave_3d_mode,
         max_frames=args.max_frames,
         save_path=args.save,
     )

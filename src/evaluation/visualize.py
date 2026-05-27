@@ -2,14 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional
+import warnings
 
+import json
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib.animation import FuncAnimation
 
 from src.evaluation.calibration import interval_calibration
+from src.evaluation.target_scaling import load_target_denorm
 from src.evaluation.uncertainty import error_uncertainty_correlation
 from src.models import build_model
 from src.training.checkpointing import load_checkpoint
@@ -136,6 +139,16 @@ def _load_processed_eval_dataset(processed_path: str | Path) -> Dict[str, np.nda
             out["sample_id"] = np.asarray(data["sample_id"])
         else:
             out["sample_id"] = np.asarray([f"sample_{i:06d}" for i in range(out["inputs"].shape[0])], dtype=object)
+    manifest_path = npz_path.with_name("eval_manifest.json")
+    if manifest_path.exists():
+        try:
+            with manifest_path.open("r", encoding="utf-8") as f:
+                manifest = json.load(f)
+            input_order = manifest.get("input_order")
+            if isinstance(input_order, list) and all(isinstance(x, str) for x in input_order):
+                out["input_order"] = np.asarray(input_order, dtype=object)
+        except Exception:
+            pass
     return out
 
 
@@ -206,6 +219,9 @@ class VisualRollout:
     timestamps: Optional[np.ndarray]
     metrics: Dict[str, Any]
     uncertainty_metrics: Dict[str, float]
+    target_denorm: Optional[tuple[float, float]]
+    used_raw_bathymetry: bool
+    notes: tuple[str, ...]
 
 
 def prepare_visual_rollout(
@@ -244,11 +260,38 @@ def prepare_visual_rollout(
     if var_np is not None:
         var_np = var_np[:t]
 
+    target_denorm = load_target_denorm(processed_path)
+    if target_denorm is not None:
+        offset, scale = target_denorm
+        pred_np = pred_np * float(scale) + float(offset)
+        y_np = y_np * float(scale) + float(offset)
+        if var_np is not None:
+            var_np = var_np * float(scale) ** 2
+
     bathy_raw, ts_raw = _load_raw_sample_bathymetry_and_timestamps(Path(raw_dir), sid)
+    notes: list[str] = []
     if bathy_raw is None:
-        bathymetry = np.asarray(x_np[0], dtype=np.float32)
+        input_order_values = processed.get("input_order")
+        bathy_idx = 0
+        if input_order_values is not None:
+            order = [str(v) for v in np.asarray(input_order_values).reshape(-1).tolist()]
+            if "bathymetry" in order:
+                bathy_idx = int(order.index("bathymetry"))
+            else:
+                notes.append(
+                    "Processed input_order has no 'bathymetry' entry; falling back to channel 0 for bathymetry visualization."
+                )
+        bathymetry = np.asarray(x_np[bathy_idx], dtype=np.float32)
+        note = (
+            f"Raw bathymetry was not found for this sample, so processed input channel {bathy_idx} is used instead. "
+            "This can be normalized/scaled and may not be physical depth units."
+        )
+        warnings.warn(note, RuntimeWarning)
+        notes.append(note)
+        used_raw_bathymetry = False
     else:
         bathymetry = bathy_raw
+        used_raw_bathymetry = True
 
     timestamps = None
     if ts_raw is not None:
@@ -281,6 +324,9 @@ def prepare_visual_rollout(
         timestamps=timestamps,
         metrics=metrics,
         uncertainty_metrics=uncertainty_metrics,
+        target_denorm=target_denorm,
+        used_raw_bathymetry=used_raw_bathymetry,
+        notes=tuple(notes),
     )
 
 
@@ -292,12 +338,20 @@ class RolloutFigure:
         repeat: bool = False,
         elev: float = 35.0,
         azim: float = -60.0,
+        wave_scale: Optional[float] = None,
+        wave_3d_mode: str = "eta",
     ) -> None:
         self.rollout = rollout
         self.interval_ms = int(interval_ms)
         self.repeat = bool(repeat)
         self.elev = float(elev)
         self.azim = float(azim)
+        
+        mode = str(wave_3d_mode).strip().lower()
+        if mode not in {"eta", "overlay"}:
+            raise ValueError("wave_3d_mode must be one of: eta, overlay")
+        
+        self.wave_3d_mode = mode
 
         self.t = int(self.rollout.target.shape[0])
         self.vmin = float(min(self.rollout.target.min(), self.rollout.prediction.min()))
@@ -312,6 +366,22 @@ class RolloutFigure:
             self.unc_max = float(self.rollout.uncertainty_std.max())
             if self.unc_max <= 0:
                 self.unc_max = 1e-6
+
+        eta_peak = float(
+            max(
+                np.max(np.abs(self.rollout.target)),
+                np.max(np.abs(self.rollout.prediction)),
+            )
+        )
+        bathy_range = float(np.max(self.rollout.bathymetry) - np.min(self.rollout.bathymetry))
+        if wave_scale is None:
+            if eta_peak > 0 and bathy_range > 0:
+                # auto-scale eta for 3D readability while preserving sign
+                self.wave_scale = 0.2 * bathy_range / eta_peak
+            else:
+                self.wave_scale = 1.0
+        else:
+            self.wave_scale = float(wave_scale)
 
         self.fig = plt.figure(figsize=(21, 10))
         gs = self.fig.add_gridspec(2, 4, width_ratios=[1.0, 1.0, 1.0, 1.05], wspace=0.24, hspace=0.24)
@@ -342,14 +412,46 @@ class RolloutFigure:
         y = np.arange(h, dtype=np.float32)
         return np.meshgrid(x, y)
 
-    def _plot_surface_overlay(self, ax, wave: np.ndarray, title: str) -> None:
+    def _plot_wave_surface(self, ax, wave: np.ndarray, title: str) -> None:
         ax.cla()
-        ax.plot_surface(self._mesh_x, self._mesh_y, self.rollout.bathymetry, cmap="terrain", linewidth=0, antialiased=False, alpha=0.95)
-        ax.plot_surface(self._mesh_x, self._mesh_y, wave, cmap="RdBu_r", linewidth=0, antialiased=False, alpha=0.70)
+        if self.wave_3d_mode == "overlay":
+            base = self.rollout.bathymetry
+            surface = base + self.wave_scale * wave
+            ax.plot_surface(
+                self._mesh_x,
+                self._mesh_y,
+                base,
+                cmap="terrain",
+                linewidth=0,
+                antialiased=False,
+                alpha=0.90,
+            )
+            ax.plot_surface(
+                self._mesh_x,
+                self._mesh_y,
+                surface,
+                cmap="RdBu_r",
+                linewidth=0,
+                antialiased=False,
+                alpha=0.70,
+            )
+            zlabel = "elevation"
+        else:
+            eta_surface = self.wave_scale * wave
+            ax.plot_surface(
+                self._mesh_x,
+                self._mesh_y,
+                eta_surface,
+                cmap="RdBu_r",
+                linewidth=0,
+                antialiased=False,
+                alpha=0.95,
+            )
+            zlabel = "eta"
         ax.set_title(title)
         ax.set_xlabel("x")
         ax.set_ylabel("y")
-        ax.set_zlabel("elevation")
+        ax.set_zlabel(zlabel)
         ax.view_init(elev=self.elev, azim=self.azim)
 
     def _init_static_panels(self) -> None:
@@ -370,9 +472,12 @@ class RolloutFigure:
 
     def _update_text_panel(self, frame_idx: int) -> None:
         m = self.rollout.metrics
+        units = "physical" if self.rollout.target_denorm is not None else "normalized"
         lines = [
             f"sample_id: {self.rollout.sample_id}",
             f"frame: {frame_idx + 1}/{self.t}",
+            f"target units: {units}",
+            f"3D mode: {self.wave_3d_mode} (wave_scale={self.wave_scale:.4g})",
         ]
         if self.rollout.timestamps is not None and frame_idx < len(self.rollout.timestamps):
             lines.append(f"time: {self.rollout.timestamps[frame_idx]:.5f}")
@@ -403,6 +508,9 @@ class RolloutFigure:
             ]
         else:
             lines += ["", "Uncertainty", "not available (deterministic output)"]
+        if self.rollout.notes:
+            lines += ["", "Notes"]
+            lines += [f"- {msg}" for msg in self.rollout.notes]
         self.metrics_text.set_text("\n".join(lines))
 
     def update(self, frame_idx: int):
@@ -448,8 +556,14 @@ class RolloutFigure:
             self.im_unc.set_data(unc_frame)
             self.ax_unc_2d.set_title(title)
 
-        self._plot_surface_overlay(self.ax_true_3d, true_frame, "True Wave on Bathymetry (3D)")
-        self._plot_surface_overlay(self.ax_pred_3d, pred_frame, "Predicted Wave on Bathymetry (3D)")
+        if self.wave_3d_mode == "overlay":
+            true_title = "True Wave on Bathymetry (3D)"
+            pred_title = "Predicted Wave on Bathymetry (3D)"
+        else:
+            true_title = "True Wave Eta Surface (3D)"
+            pred_title = "Predicted Wave Eta Surface (3D)"
+        self._plot_wave_surface(self.ax_true_3d, true_frame, true_title)
+        self._plot_wave_surface(self.ax_pred_3d, pred_frame, pred_title)
         self._update_text_panel(frame_idx)
 
         time_label = ""
@@ -485,6 +599,8 @@ def run_visualization(
     repeat: bool = False,
     elev: float = 35.0,
     azim: float = -60.0,
+    wave_scale: Optional[float] = None,
+    wave_3d_mode: str = "eta",
     max_frames: Optional[int] = None,
     save_path: Optional[str | Path] = None,
 ) -> None:
@@ -498,7 +614,15 @@ def run_visualization(
         mc_samples=mc_samples,
         device=device,
     )
-    viz = RolloutFigure(rollout, interval_ms=interval_ms, repeat=repeat, elev=elev, azim=azim)
+    viz = RolloutFigure(
+        rollout,
+        interval_ms=interval_ms,
+        repeat=repeat,
+        elev=elev,
+        azim=azim,
+        wave_scale=wave_scale,
+        wave_3d_mode=wave_3d_mode,
+    )
     ani = viz.animate(max_frames=max_frames)
 
     if save_path:

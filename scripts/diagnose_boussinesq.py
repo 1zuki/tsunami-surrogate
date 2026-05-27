@@ -418,6 +418,11 @@ def main() -> None:
         "last_cg_iterations": float(metrics_np["cg_iterations"][-1]),
         "last_cg_initial_residual": float(metrics_np["cg_initial_residual"][-1]),
         "last_cg_final_residual": float(metrics_np["cg_final_residual"][-1]),
+        "last_cg_converged": bool(metrics_np["cg_converged"][-1] >= 0.5),
+        "cg_converged_fraction": float(np.mean(metrics_np["cg_converged"] >= 0.5)),
+        "mean_cg_iterations": float(np.mean(metrics_np["cg_iterations"])),
+        "p90_cg_iterations": float(np.percentile(metrics_np["cg_iterations"], 90)),
+        "max_cg_iterations": float(np.max(metrics_np["cg_iterations"])),
         "all_finite": bool(np.isfinite(frames_arr).all()),
     }
 
