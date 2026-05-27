@@ -70,6 +70,7 @@ checkpoints/*
 experiments/fno/
 experiments/fno_*/
 experiments/cnn/
+experiments/convlstm/
 experiments/unet/
 experiments/ensemble/
 

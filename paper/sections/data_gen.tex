@@ -120,7 +120,11 @@ This stage is important because the bathymetry and source generators by themselv
 
 \subsubsection{Coupling to the water simulators}
 
-TODO: finish the \texttt{src/solver/*} and write
+The current dataset builder supports multiple forward solvers under one shared scenario definition. In practice, each scenario is defined by one bathymetry field and one source field, and those two fields are generated once, cached, then reused by every enabled solver. This design avoids solver-specific sampling bias when comparing labels from different numerical methods, because each solver sees the same initial condition for a given scenario index.
+
+For nondispersive references, we use two shallow-water finite-volume variants: a hydrostatic-reconstruction baseline (\texttt{swe\_hydrostatic}) and a second-order MUSCL-HR variant (\texttt{swe\_muscl\_hr}). An exploratory weakly dispersive branch (\texttt{boussinesq}) is also implemented for diagnostics and comparison experiments. In the default benchmark configuration, hydrostatic and MUSCL-HR are enabled for the core paper track, while Boussinesq remains an optional branch.
+
+To preserve traceability, raw outputs are written into solver-specific folders (for example, \texttt{data/raw/hydrostatic/samples} and \texttt{data/raw/muscl\_hr/samples}) while sharing a common scenario manifest. Separate per-solver manifests are also stored so preprocessing can build either single-solver, per-solver, or multi-fidelity processed datasets from the same underlying scenario split.
 
 \subsubsection{Grid consistency and initial-condition construction}
 
