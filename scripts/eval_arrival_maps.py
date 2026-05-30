@@ -96,6 +96,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Evaluate model-vs-target arrival-time maps on a processed test split.")
     p.add_argument("--config", required=True)
     p.add_argument("--checkpoint", required=True)
+    p.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None)
     p.add_argument("--arrival-threshold-fraction", type=float, default=0.05)
     p.add_argument("--output", type=str, default=None, help="Optional summary json path.")
     p.add_argument("--maps-output", type=str, default=None, help="Optional arrival maps npz path.")
@@ -105,6 +106,8 @@ def main() -> None:
         raise ValueError("--arrival-threshold-fraction must be >= 0")
 
     cfg = load_config(args.config)
+    if args.device is not None:
+        cfg["device"] = args.device
     eval_cfg = cfg.get("eval", cfg.get("evaluation", {}))
     data_cfg = dict(cfg.get("data", {}))
     if eval_cfg.get("dataset_path"):

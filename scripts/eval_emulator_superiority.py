@@ -229,6 +229,7 @@ def _evaluate_metrics(
 def main() -> None:
     p = argparse.ArgumentParser(description="Compute emulator-superiority ratio against solver-vs-solver error.")
     p.add_argument("--config", required=True, help="YAML config for ratio evaluation")
+    p.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None)
     args = p.parse_args()
 
     cfg = load_config(args.config)
@@ -274,6 +275,8 @@ def main() -> None:
     signature_tol = float(norm_cfg.get("tol", 1e-6))
 
     model_cfg = load_config(model_cfg_path)
+    if args.device is not None:
+        model_cfg["device"] = args.device
     data_cfg = dict(model_cfg.get("data", {}))
     data_cfg["test_path"] = dataset_path
     data_cfg["batch_size"] = batch_size

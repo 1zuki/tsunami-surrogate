@@ -53,9 +53,12 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--config", required=True)
     p.add_argument("--checkpoint", required=True)
+    p.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None)
 
     args = p.parse_args()
     cfg = load_config(args.config)
+    if args.device is not None:
+        cfg["device"] = args.device
     device = resolve_device(cfg.get('device', 'auto'))
     resolutions = cfg.get('resolution_transfer', {}).get('eval_resolutions', [32, 64])
     eval_cfg = cfg.get("eval", {})

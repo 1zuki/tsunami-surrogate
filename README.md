@@ -190,7 +190,8 @@ After `6.3`, evaluate each model on its matching processed test set:
 
 ```bash
 python scripts/eval_accuracy.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt
-python scripts/eval_speed.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt
+python scripts/eval_speed.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt --device cpu --precision fp32 --allow-tf32 false
+python scripts/eval_speed.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt --device cuda --precision fp32 --allow-tf32 true
 python scripts/eval_generalization.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt
 python scripts/eval_accuracy.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt
 python scripts/eval_generalization.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt
@@ -211,6 +212,16 @@ Eval notes:
 - Single-member uncertainty is blocked by design (degenerate variance)
 - Train/eval entrypoints validate dataset-vs-model I/O channels early, so stale `model.in_channels` / `model.out_channels` mismatches fail fast
 - Eval JSON outputs now include sample-count metadata (`num_samples` or `dataset_num_samples`) so paper tables can report support size explicitly
+- `--device` now overrides config in eval entrypoints (`eval_accuracy`, `eval_generalization`, `eval_uncertainty`, `eval_arrival_maps`, `eval_emulator_superiority`)
+
+Runtime fairness benchmark helper flow (CPU NumPy solver denominator + CPU/GPU surrogate inference):
+
+```bash
+python scripts/eval_solver_speed.py --config configs/data/dataset.yaml --solver swe_hydrostatic --device cpu --precision float64 --repeats 3 --max-samples 8 --output results/speed/hydrostatic_cpu.json
+python scripts/eval_speed.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt --device cpu --precision fp32 --allow-tf32 false --output results/speed/fno_hydrostatic_cpu.json
+python scripts/eval_speed.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt --device cuda --precision fp32 --allow-tf32 true --output results/speed/fno_hydrostatic_cuda.json
+python scripts/make_speed_table.py --solver results/speed/hydrostatic_cpu.json --model results/speed/fno_hydrostatic_cpu.json --model results/speed/fno_hydrostatic_cuda.json --output results/speed/speed_table.csv
+```
 
 ### 6.5 Optional - OOD Suite Evaluation
 

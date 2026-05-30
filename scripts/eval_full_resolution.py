@@ -79,9 +79,12 @@ def main() -> None:
     )
     p.add_argument("--config", required=True)
     p.add_argument("--checkpoint", required=True)
+    p.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None)
     args = p.parse_args()
 
     cfg = load_config(args.config)
+    if args.device is not None:
+        cfg["device"] = args.device
     eval_cfg = cfg.get("eval", cfg.get("evaluation", {}))
     rr_cfg = eval_cfg.get("real_resolution", cfg.get("real_resolution", {}))
     suites = list(rr_cfg.get("suites", []))

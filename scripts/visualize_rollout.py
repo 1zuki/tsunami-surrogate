@@ -23,7 +23,7 @@ def main():
     p.add_argument("--sample-id", default=None, help="Exact sample id (e.g. sample_000123). Overrides --sample-index.")
     p.add_argument("--sample-index", type=int, default=0, help="0-based sample index when --sample-id is not set.")
     p.add_argument("--mc-samples", type=int, default=0, help="MC forward passes for epistemic uncertainty proxy.")
-    p.add_argument("--device", default="auto", help="torch device (auto/cpu/cuda)")
+    p.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto", help="torch device (auto/cpu/cuda)")
     p.add_argument("--interval", type=int, default=120, help="Animation interval in milliseconds")
     p.add_argument("--repeat", action="store_true", help="Loop animation")
     p.add_argument("--elev", type=float, default=35.0, help="3D camera elevation")

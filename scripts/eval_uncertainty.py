@@ -89,6 +89,7 @@ def _build_suite_loader(cfg: Dict[str, Any], test_path: str, batch_size: int):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--config', required=True)
+    p.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None)
     p.add_argument(
         '--checkpoint',
         action='append',
@@ -97,6 +98,8 @@ def main():
     )
     args = p.parse_args()
     cfg = load_config(args.config)
+    if args.device is not None:
+        cfg["device"] = args.device
     eval_cfg = cfg.get("eval", cfg.get("evaluation", {}))
     ckpts = list(cfg.get('uncertainty', {}).get('ensemble_checkpoints', []))
     if args.checkpoint:
