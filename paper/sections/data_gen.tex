@@ -8,6 +8,8 @@ The dataset is built around shared synthetic scenarios rather than solver-specif
 
 The default forward benchmark uses a uniform $64\times64$ Cartesian grid on normalized coordinates, with matched bathymetry, source, and solver resolution. The main configuration generates $8192$ scenarios with seed $42$. Each trajectory is advanced for $250$ solver steps, every fifth state is saved, and the initial state is included, giving $51$ stored frames per rollout. Automatic time stepping is enabled with a target CFL value of $0.45$ for the shallow-water references. The default solver set contains a hydrostatic-reconstruction shallow-water solver and a second-order MUSCL-HR shallow-water solver. A Boussinesq branch is generated through a separate diagnostic configuration with smaller source amplitudes and a stricter target CFL value, and is treated as exploratory unless a particular experiment explicitly uses it.
 
+% TODO: Replace planned scenario counts with final generated counts before submission.
+
 The benchmark is intentionally synthetic. Its purpose is to create a controlled supervised-learning problem for testing fast forward emulation of solver-generated tsunami-like wavefields, not to reproduce a specific coastline or to provide operational hazard assessment. This design makes it possible to evaluate solver fidelity, inference speed, distribution-shift behavior, cross-resolution transfer, and uncertainty quality under repeatable conditions.
 
 \subsection{Procedural bathymetry}

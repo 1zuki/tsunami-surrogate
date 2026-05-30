@@ -60,6 +60,8 @@ eval:
   output_dir: results/evaluation/default_run
 
 speed:
+  precision: fp32
+  allow_tf32: true
   num_batches: 3
   model_warmup: 10
   model_repeats: 50
