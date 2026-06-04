@@ -243,6 +243,48 @@ def _split_indices(n: int, split_cfg: Dict[str, Any], seed: int) -> Tuple[np.nda
     return train_idx, val_idx, test_idx
 
 
+def _parse_optional_sample_count(value: Any, name: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() in {"", "none", "null"}:
+        return None
+
+    count = int(value)
+    if count <= 0:
+        raise ValueError(f"{name} must be a positive integer or null, got {value!r}.")
+    return count
+
+
+def _sample_limit_for_split(data_cfg: Dict[str, Any], split_name: str) -> int | None:
+    aliases = {
+        "train": ("train_samples", "n_train_samples", "max_train_samples", "n_samples"),
+        "val": ("val_samples", "n_val_samples", "max_val_samples"),
+        "test": ("test_samples", "n_test_samples", "max_test_samples"),
+    }
+
+    for key in aliases.get(split_name, (f"{split_name}_samples",)):
+        if key in data_cfg:
+            return _parse_optional_sample_count(data_cfg.get(key), f"data.{key}")
+    return None
+
+
+def _limit_dataset(dataset: Dataset, n_samples: int | None, seed: int) -> Dataset:
+    if n_samples is None or n_samples >= len(dataset):
+        return dataset
+
+    rng = np.random.default_rng(seed)
+    indices = rng.permutation(len(dataset))[:n_samples].tolist()
+    return Subset(dataset, indices)
+
+
+def _prepare_split_dataset(data_cfg: Dict[str, Any], split_name: str, dataset: Dataset, seed: int) -> Dataset:
+    return _limit_dataset(
+        dataset,
+        _sample_limit_for_split(data_cfg, split_name),
+        seed,
+    )
+
+
 def _make_loader(
     dataset: Dataset,
     batch_size: int,
@@ -296,12 +338,13 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
                 continue
             if not _has_npz_dataset(split_path):
                 continue
-            split_dataset = TsunamiDataset(split_path)
+            split_seed = seed + {"train": 0, "val": 1, "test": 2}[split_name]
+            split_dataset = _prepare_split_dataset(data_cfg, split_name, TsunamiDataset(split_path), split_seed)
             loaders[split_name] = _make_loader(
                 split_dataset,
                 batch_size=batch_size,
                 shuffle=(split_name == "train"),
-                seed=seed + {"train": 0, "val": 1, "test": 2}[split_name],
+                seed=split_seed,
                 num_workers=num_workers,
             )
         if not loaders:
@@ -327,12 +370,13 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
                     continue
                 if not _has_npz_dataset(split_path):
                     continue
-                split_dataset = TsunamiDataset(split_path)
+                split_seed = seed + {"train": 0, "val": 1, "test": 2}[split_name]
+                split_dataset = _prepare_split_dataset(data_cfg, split_name, TsunamiDataset(split_path), split_seed)
                 loaders[split_name] = _make_loader(
                     split_dataset,
                     batch_size=batch_size,
                     shuffle=(split_name == "train"),
-                    seed=seed + {"train": 0, "val": 1, "test": 2}[split_name],
+                    seed=split_seed,
                     num_workers=num_workers,
                 )
             if loaders:
@@ -345,7 +389,7 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
 
     if train_idx.size > 0:
         loaders["train"] = _make_loader(
-            Subset(dataset, train_idx.tolist()),
+            _prepare_split_dataset(data_cfg, "train", Subset(dataset, train_idx.tolist()), seed),
             batch_size=batch_size,
             shuffle=True,
             seed=seed,
@@ -353,7 +397,7 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
         )
     if val_idx.size > 0:
         loaders["val"] = _make_loader(
-            Subset(dataset, val_idx.tolist()),
+            _prepare_split_dataset(data_cfg, "val", Subset(dataset, val_idx.tolist()), seed + 1),
             batch_size=batch_size,
             shuffle=False,
             seed=seed + 1,
@@ -361,7 +405,7 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
         )
     if test_idx.size > 0:
         loaders["test"] = _make_loader(
-            Subset(dataset, test_idx.tolist()),
+            _prepare_split_dataset(data_cfg, "test", Subset(dataset, test_idx.tolist()), seed + 2),
             batch_size=batch_size,
             shuffle=False,
             seed=seed + 2,

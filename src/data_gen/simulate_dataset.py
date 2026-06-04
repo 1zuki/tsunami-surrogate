@@ -1329,7 +1329,7 @@ class TsunamiDatasetBuilder:
         records = self._phase_generate_rollouts(to_generate, allow_override=allow_override)
 
         records.sort(key=lambda r: int(r["sample_index"]))
-        if allow_override:
+        if allow_override or not clean_run:
             sample_indices = set(int(r["sample_index"]) for r in records)
             self._purge_manifest_indices(self.scenario_manifest_path, sample_indices)
             for manifest_path in self.fde_manifest_paths.values():

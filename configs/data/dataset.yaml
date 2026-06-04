@@ -12,7 +12,11 @@ dataset:
   target_cfl: 0.45
   include_initial_state: true
   sea_level_offset: 0.0
-  source_strength_range: [0.5, 2.0]
+  # Multiplier applied after source.yaml generates the source field.
+  # Keep this moderate for the paper pipeline: source.yaml now caps source_field
+  # near [-1, 1], so this range gives visible waves without routinely creating
+  # dry/explosive shallow-water states.
+  source_strength_range: [0.45, 1.0]
   bathymetry_dir: "data/bathymetry"
   source_dir: "data/sources"
   output_dir: "data/raw"
@@ -20,15 +24,17 @@ dataset:
   copy_configs: true
 
 fdes:
-  enabled: ["swe_hydrostatic", "swe_muscl_hr"]
+  # Run all paper-facing forward solvers on the same bathymetry/source scenarios.
+  # This keeps hydrostatic, MUSCL-HR, and Boussinesq targets comparable by sample ID.
+  enabled: ["swe_hydrostatic", "swe_muscl_hr", "boussinesq"]
   primary: "swe_hydrostatic"
 
 quality:
   on_violation: fail
   reject_nonfinite: true
   min_h_tolerance: -1e-6
-  max_abs_eta_limit: 10.0
-  max_velocity_limit: 50.0
+  max_abs_eta_limit: 5.0
+  max_velocity_limit: 30.0
 
 solver:
   nx: 64
@@ -40,8 +46,18 @@ solver:
   rho: 1000
   cfl: 0.45
   dry_tolerance: 1e-6
-  max_velocity: 50.0
+  max_velocity: 30.0
   boundary: "open"
   use_sponge: true
   sponge_width: 20
   sponge_min_factor: 0.9
+  # Boussinesq-only knobs are ignored by the SWE solvers but needed when
+  # boussinesq is enabled above.
+  alpha: 0.3333333333333333
+  min_depth: 1e-4
+  depth_scale: 0.02
+  mode: "linear_variable_depth"
+  filter_strength: 0.01
+  linear_solver_tol: 1e-8
+  linear_solver_max_iter: 120
+  check_finite: true

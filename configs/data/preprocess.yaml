@@ -13,7 +13,7 @@ processed_dir: data/processed
 
 fde:
   mode: separate_all          # single / separate_all / multifidelity
-  targets: [hydrostatic, muscl_hr]
+  targets: [hydrostatic, muscl_hr, boussinesq]
   target_field: eta     # eta / depth / state
 
 split:

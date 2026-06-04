@@ -9,6 +9,7 @@ from src.utils.config import load_config
 from src.utils.seed import seed_everything
 from src.utils.device import resolve_device
 from src.utils.experiment import init_run
+from src.utils.io import save_json
 from src.utils.model_io import validate_model_io_channels
 from src.data.dataset import create_dataloaders
 from src.models import build_model
@@ -28,6 +29,22 @@ def main():
     validate_model_io_channels(cfg, loaders, preferred_splits=("train", "val", "test"))
     split_sizes = {name: len(loader.dataset) for name, loader in loaders.items()}
     print(f"[train] split sizes: {split_sizes}")
+    save_json({
+        "split_sizes": split_sizes,
+        "data_limits": {
+            key: cfg.get("data", {}).get(key)
+            for key in (
+                "n_samples",
+                "train_samples",
+                "val_samples",
+                "test_samples",
+                "n_train_samples",
+                "n_val_samples",
+                "n_test_samples",
+            )
+            if key in cfg.get("data", {})
+        },
+    }, out / "split_sizes.json")
     train_n = split_sizes.get("train", 0)
     if train_n < 100:
         print(

@@ -7,6 +7,9 @@ data:
   train_path: data/processed/hydrostatic/train/eval_dataset.npz
   val_path: data/processed/hydrostatic/val/eval_dataset.npz
   test_path: data/processed/hydrostatic/test/eval_dataset.npz
+  n_samples: null        # optional train-subset size for sample-scaling experiments
+  val_samples: null      # optional validation subset size
+  test_samples: null     # optional test subset size
   batch_size: 8
   num_workers: 0
 

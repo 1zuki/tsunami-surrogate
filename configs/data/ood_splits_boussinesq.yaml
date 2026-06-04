@@ -1,6 +1,6 @@
-input_dataset: data/processed/hydrostatic/test/eval_dataset.npz
-output_root: data/processed_ood/hydrostatic
-min_samples: 25 # technically 5 works but 25 is safer for test run, and below 128? watever is useless when writing anyways ig
+input_dataset: data/processed/boussinesq/test/eval_dataset.npz
+output_root: data/processed_ood/boussinesq
+min_samples: 25
 min_samples_action: fail
 
 suites:
