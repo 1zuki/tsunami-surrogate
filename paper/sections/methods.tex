@@ -1,17 +1,187 @@
 \section{Problem formulation and evaluation protocol}
 \label{sec:methods}
 
+% TODO: define section purpose:
+This section defines the supervised forward-emulation problem and the evaluation protocol used throughout the benchmark. The data-generation details are described in Section ~\ref{sec:data-generation}; the model architectures and optimization choices are described separately in Sections ~\ref{sec:models} and ~\ref{sec:training}. Here, the emphasis is on the mathematical object being learned, the numerical references that define the labels, and the metrics used to decide whether a surrogate is accurate, fast, robust, and scientifically interpretable.
+
 \subsection{Forward emulation task}
+\label{subsec:forward-task}
 % TODO: Define input tensor, output trajectory tensor, forecast horizon, and notation for eta.
+Let $\Omega=[0, 1]^2$ denote the normalized two-dimensional computational domain and let $[H, W]$ be the grid resolution. Each scenario contains a bathymetry field $b\in\mathbb{R}^{H \times W}$, an initial-surface displacement $q \in\mathbb{R}^{H \times W}$, and an initial water-depth field $h_0 \in\mathbb{R}^{H \times W}$. The bathymetry convention is
+\[
+b(x, y) < 0 \quad \text {for submerged cells},
+\]
+so the still-water depth used by the data generator is
+\[
+h_{\mathrm{rest}}(x, y) = \max(-b(x, y) + \eta_{\mathrm{sea}}, 0),
+\]
+where $\eta_\mathrm{sea}$ is the configured sea-level offset. The sampled source-strength multiplier $a$ converts the raw source field into the initial free-surface displacement
+\[
+\eta_0(x, y) = a q(x, y),
+\]
+and the shallow-water initial depth is clipped to remain non-negative,
+\[
+h_0(x, y) = \max(h_{\mathrm{rest}}(x, y) + \eta_0(x, y), 0).
+\]
+The stored initial free surface is therefore $h_0 + b$, which equals $\eta_0$ away from clipping.
+
+
+The default supervised input tensor stacks the active spatial channels
+\[
+X = [b, q, h_0] \in\mathbb{R}^{C \times H \times W},    % channels x height x width obviously
+\]
+with C = 3 for the main single-solver experiments. % boussinesq being C = 2: [h, eta]
+The preprocessing code also supports optional initial-surface and solver-identity channels, but these are not part of the default single-reference FNO configuration. For a numerical reference solver $s$, the target is a future free-surface trajectory % the enabled solver type in the yaml
+\[
+Y_s = [\eta_s(t_1), \eta_s(t_2), \ldots, \eta_s(t_T)] \in\mathbb{R}^{T \times H \times W}
+\]
+The initially stored frame is not used as a prediction targets. With the default rollout settings, 251 solver states are advanced with every fifth state saved and the initial state included, producing 51 stored frames. Preprocessing then discards the initial frames and keep $T = 50$ future frames.
+
+
+A surrogate model $f_\theta$ is trained to approximate the solver-conditioned operator
+\[
+f_\theta : X \mapsto \widehat{Y}_s \approx{Y_s}
+\]
+
+The labels are produced by two shallow-water references: a hydrostatic-reconstruction finite-volume solver and a MUSCL-HR finite volume solver. A boussinesq-type weakly dispersive branch is also available on the shared scenario dataset, but it is treated as an exploratory reference unless its diagnostics and same-scenario comparisons are explicitly reported.
+% TODO: DOWNLOAD THE DATASET DOWN AND VERIFY BOUSSINESQ THEN EDIT THE UPPER PART!!!!!!!!!!!!!
+
+\subsection{Numberical reference formulation}
+\label{subsec:numberical-reference-formulation}
+
+The shallow-water references evolve the conservative state
+\[
+U = [h, hu, hv]^\top,
+\]
+where $h$ is the water depth and $(hu, hv)$ are the depth integrated momentum. The free surface is reconstructed as
+\[
+\eta = h + b.
+\]
+Ignoring the boundary terms, the two-dimensional shallow-water equations with bathymetry source terms can be written as
+\[
+\partial_t U + \partial_x F(U) + \partial_y G(U) = S(U, b),
+\]
+with fluxes % line 385 onwards in src/data_gen/hydrostatic_swe.py
+\[
+F(U) = 
+\begin{bmatrix}
+    hv \\
+    \dfrac{(hu) ^ 2}{h} + \dfrac{1}{2}gh ^ 2 \\
+    \dfrac{hu\, hv}{h}    
+\end{bmatrix},
+\qquad
+G(U) =
+\begin{bmatrix}
+    hv \\
+    \dfrac{hu\, hv}{h} \\
+    \dfrac{(hv) ^ 2}{h} + \dfrac{1}{2}gh ^ 2
+\end{bmatrix},
+\]
+and the source term
+\[
+S(U, b) = 2
+\begin{bmatrix}
+    0 \\
+    -gh\, \partial_x b \\
+    -gh\, \partial_y b
+\end{bmatrix}.
+\]
+in the implementation, divisions by $h$ use dry-cell protection momentum clipping to avoid numerical
+overflow near nearly dry cells.
+
+Both shallow-water references uses finite-volume updates of the form
+\[ % line 257 and 550
+U_{i, j} ^ {n + 1} = U_{i, j} ^ n
+- \frac{\Delta t}{\Delta x} \left(\mathcal{F}_{i + 1/2, j} - \mathcal{F}_{i - 1/2, j}\right)
+- \frac{\delta t}{\Delta y} \left(\mathcal{G}_{i, j + 1/2} - \mathcal{G}_{i, j - 1/2}\right)
++ \Delta t\, S_{i, j},
+\]
+where $\mathcal{F}$ and $\mathcal{G}$ ae numerical interface fluxes. The base interface flux is a Rusanov flux,
+\[ % line 202
+\mathcal{F}(U_L, U_R) = \frac{1}{2} \left(F(U_L) + F(U_R)\right) - \frac{1}{2} \alpha_x\left(U_R - U_L\right),
+\]
+with
+\[
+\alpha_x = \max(|u_L + \sqrt{g h_L}, |u_R| + \sqrt{g h_R}),
+\]
+and an equivalent $y$-direction speed using $v$. This choice is diffusive compared with shaper Riemann solvers, but it is robust and suitable for controlled dataset generation \citep{toro2009riemann,toro2026rusanov}.
+
+% OVERALL SOLVERS DONE, NEXT MORE DETAILS ON THE SOLVER SPECIFIC DETAILS
+The hydrostatic-reconstruction solver modifies the left and right water depths at each face before computing the Rusanov flux. For an interface with bed elevations $b_L$ and $b_R$, it sets
+\[
+z ^ \star = \max(b_L, b_R), \qquad
+h_L ^ \star = \max(0, h_L + b_L - z ^ \star), \qquad
+h_R ^ \star = \max(0, h_R + b_R - z ^ \star).
+\]
+The reconstructed states preserve nonnegative water dept and help balance the flux-gradient and bed-slope terms for stationary water over uneven bathymetry \citep{audusse2004hydrostatic}. The MUSCL-HR solver uses the same hydrostatic face idea but reconstructs $h$, $\eta$, $u$ and $v$ with minmod-limited slopes before face update, followed by a two-state Heun update. This gives a less diffusive second-order comparison reference while retaining the lake-at-rest safeguards needed for tsunami-like bathymetry \citep{clain2016secondorder, hou2015muscl}.
+% BOUSSINESQ SECTION
+The Boussinesq branch evolves an elevation-only weakly dispersive model. In the implemented variable-depth mode, the acceleration $a = \eta_{tt}$ is obtained from elliptic-like relation
+\[
+\left(I - \alpha\, \nabla \cdot(H ^ 2 \nabla)\right)a = g\, \nabla \cdot(H \nabla \eta),
+\]
+where
+\[
+H(x, y) = \max((-b(x, y) + \eta_{\mathrm{sea}})\, s_H, H_{\min}) 
+\]
+is the scaled still-water depth used by the Boussinesq solver. The linear system is solved by a matrix-free conjugate-gradient iteration and advanced with a velocity-verlet step. Because this is branch uses different dynamics, depth scaling, and stability controls from the shallow-water solvers, the paper reports it cautiously as an exploratory branch, same-solver target rather than as an absolute high-fidelity truth.
 
 \subsection{Reference-solver validation}
 % TODO: Summarize lake-at-rest tests, dynamic finite-state tests, quality_status checks, and final accepted sample counts.
 
+To validate the usability of the reference solvers used for dataset generation, we ran a series of test:
+
+\paragraph{Lake at rest.} A well balanced shallow-water solver should preserve a stationary free surface over non-uniform bathymetry. Therefore, we initialized a fully submerged, spatially varying bathymetry with zero-surface elevation, $\eta_0(x, y) = 0$, and zero momentum, $hu(x, y) = hv(x, y) = 0$. Since $\eta_t = h_t(x, y) + b_t(x, y)$, this corresponds to an initial water depth $h_0(x,y)=\eta_0(x,y) - b(x,y)$. Both the hydrostatic and MUSCL-HR solvers were advanced for multiple adaptive-CFL time steps with sponge damping disabled. We considered the lake-at-rest condition preserved when the maximum free-surface drift remained below $10^{-8}$ and the maximum absolute momentum remained below $10^{-7}$.
+
+note for later / draft:
+- lake at rest: the s`111olver should remains at eta = h + b = 0, and v = 0, no drifts -> over time. also say that this is important over long n steps for accuracy
+- dynamic finite state test to avoid inf causing artifacts 
+- quality status reports non nan, non inf, -> into metadata, this is also curcial for the resume of the dataset generation/rollout
+
 \subsection{Evaluation metrics}
 % TODO: Define MAE, RMSE, relative L2, max error, grouped OOD metrics, and solver-vs-solver physical metrics.
+For field accuracy, we report mean absolute error (MAE), root mean absolute error, relate $L2$ error, and maximum absolute error over the predicted trajectory. Unless otherwise stated, physicals unit metrics are computed after reversing target normalization. For OOD evaluation, metrics are computed per sample before unified by source type, bathymetry type, source-strength range or referenced solver.
+
+For runtime, we record time per sample and throughtput. Numerical reference solvers are timed by \texttt{CPU NumPy} rollout implementations, excluding bathymetry and source generation. Neural surrogate is timed on /texttt{CPU} and \texttt{GPU} when available, with explicit device, batch size, precision label and TF32 back end state recorded. Speed up is computed as
+\[
+\mathrm{speedup} =
+\frac{\text{reference solver rollout time per sample}}
+{\text{surrogate inference time per sample}}.
+\]
+These speed ups are implementation-level comparison under reported hardware, not universal comparisons against optimized production-grade tsunami solvers.
+
+For uncertainty
+% multiple ensemble model?
+
+NOTE: REMEMBER TO MOVE THE BELOW THE REPORTED METRICS DOWN INTO APPENDIX,
+
+Data view:
+
+RMSE root-mean-squared-error
+nRMSE normalized RMSE (ensuring scale independence)
+max error maximum error (local worst case; also proxy for stability of time-stepping)
+
+Physical view
+
+cRMSE RMSE of conserved value (deviation from conserved physical quantity)
+bRMSE RMSE on boundary (whether boundary condition can be learned)
+fRMSE low RMSE in Fourier space, low frequency regime (wavelength dependence)
+fRMSE mid RMSE in Fourier space, medium frequency regime
+fRMSE high RMSE in Fourier space, high frequency regime
+
+took from \citep{takamoto2022pdebench}
 
 \subsection{Runtime benchmarking}
 % TODO: Explain CPU NumPy solver timing, CPU/GPU model timing, precision/TF32 setting, CUDA synchronization, and speedup denominator.
+draft:
+since we running the solver rollout using numpy -> cpu bound, but the infer on gpu -> have some bias, thats why added explicit device flag n enable tf32 -> table:
+
+model | device | precision | tf32? | speed up | sample/s
+
+future plan: using free credits from gg cloud n generate dataset there -> download n run benchmark, train locally
 
 \subsection{Cross-solver and emulator-superiority analysis}
 % TODO: Define solver-vs-solver gap and the ratio used for emulator-superiority-style diagnostics; note separate denormalization/input-stat checks.
+
+-> from neural emulator superiority - when ml for pdes paper
+mostly nust ensure fairness n avoid bias over solver specific
+handle dry-wet condition really well, while boussinesq just sucks (currently boussinesq is running on diff scenario, will have to test future so can add into the main paper
