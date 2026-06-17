@@ -9,6 +9,25 @@ model:
   out_channels: 50
   width: 32
 
+train:
+  epochs: 256
+  lr: 0.0005
+  min_lr: 0.00005
+  scheduler: cosine
+  weight_decay: 1.0e-6
+  grad_clip: 1.0
+
+  loss: horizon_weighted_mse
+  horizon_min_weight: 0.8
+  horizon_max_weight: 2.0
+  horizon_power: 1.7
+
+  checkpoint_metric: val_rel_l2
+
+  early_stopping:
+    patience: 20
+    mode: min
+
 eval:
   dataset_path: data/processed/hydrostatic/test
   batch_size: 8

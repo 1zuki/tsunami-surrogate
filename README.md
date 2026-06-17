@@ -65,6 +65,118 @@ Core workflow order:
 
 Everything after `6.4` is optional track work (OOD, resolution transfer, real-resolution benchmark, solver-vs-solver comparison, inverse scaffold).
 
+### 6.0 Full Paper Pipeline (Manual Local Run)
+
+This section is the complete local run that produces every metric, table, and figure source used in the paper. The individual commands in `6.1`-`6.15` are easy to run out of order or to miss a dependency (the runtime speedup table, in particular, needs both a model-speed JSON and a solver-speed JSON before it can be aggregated), so run them in the order below.
+
+`scripts/run_full_pipeline.py` also exists as a one-call wrapper, but it was written for batch/server runs; for a local run it is not needed, and the explicit sequence below is the equivalent.
+
+The commands assume hydrostatic + MUSCL-HR processed datasets from `6.1`-`6.2` already exist. They use `cuda` for model training and inference; if you have no local GPU, replace `--device cuda` with `--device cpu`. The reference-solver timing always runs on CPU by design, and you should keep the CPU model-speed run either way, because the speedup table compares CPU solver time against both CPU and GPU model inference.
+
+Boussinesq is intentionally not in this sequence: it lives on a separate scenario regime, so it stays out of the main same-scenario tables and is run separately for the appendix (see `6.9`).
+
+```bash
+# --- Train (6.3) ---
+python scripts/train.py --config configs/model/fno.yaml
+python scripts/train.py --config configs/model/fno_muscl_hr.yaml
+
+# --- Same-solver accuracy (6.4) ---
+python scripts/eval_accuracy.py --config configs/model/fno.yaml          --checkpoint experiments/fno/best.pt
+python scripts/eval_accuracy.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt
+
+# --- Model inference speed: numerator of the speedup ratio (6.4) ---
+# Records device, batch size, precision, and TF32 state into each JSON.
+python scripts/eval_speed.py --config configs/model/fno.yaml          --checkpoint experiments/fno/best.pt          --device cpu  --precision fp32 --allow-tf32 false --output results/speed/model_speed_fno_cpu.json
+python scripts/eval_speed.py --config configs/model/fno.yaml          --checkpoint experiments/fno/best.pt          --device cuda --precision fp32 --allow-tf32 true  --output results/speed/model_speed_fno_cuda.json
+python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt --device cpu  --precision fp32 --allow-tf32 false --output results/speed/model_speed_muscl_hr_cpu.json
+python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt --device cuda --precision fp32 --allow-tf32 true  --output results/speed/model_speed_muscl_hr_cuda.json
+
+# --- Reference-solver speed: denominator of the speedup ratio (6.4) ---
+# Re-runs the NumPy CPU solver rollout on cached scenarios (no dataset regeneration).
+python scripts/eval_solver_speed.py --config configs/data/dataset.yaml --solver swe_hydrostatic --device cpu --precision float64 --repeats 3 --max-samples 8 --output results/speed/solver_speed_swe_hydrostatic.json
+python scripts/eval_solver_speed.py --config configs/data/dataset.yaml --solver swe_muscl_hr    --device cpu --precision float64 --repeats 3 --max-samples 8 --output results/speed/solver_speed_swe_muscl_hr.json
+
+# --- Aggregate speed table: speedup = solver rollout time / model inference time (6.4) ---
+python scripts/make_speed_table.py \
+  --solver results/speed/solver_speed_swe_hydrostatic.json \
+  --solver results/speed/solver_speed_swe_muscl_hr.json \
+  --model  results/speed/model_speed_fno_cpu.json \
+  --model  results/speed/model_speed_fno_cuda.json \
+  --model  results/speed/model_speed_muscl_hr_cpu.json \
+  --model  results/speed/model_speed_muscl_hr_cuda.json \
+  --output results/speed/speed_table.csv \
+  --output-json results/speed/speed_table.json
+
+# --- OOD generalization (6.5) ---
+python scripts/make_ood_splits.py --config configs/data/ood_splits_hydrostatic.yaml --overwrite
+python scripts/make_ood_splits.py --config configs/data/ood_splits_muscl_hr.yaml --overwrite
+python scripts/eval_generalization.py --config configs/eval/ood_suites_hydrostatic.yaml --checkpoint experiments/fno/best.pt
+python scripts/eval_generalization.py --config configs/eval/ood_suites_muscl_hr.yaml   --checkpoint experiments/fno_muscl_hr/best.pt
+
+# --- Cross-resolution proxy: resize the 64 test set, no extra data (6.6) ---
+python scripts/eval_resolution_transfer.py --config configs/eval/resolution_transfer_proxy_hydrostatic.yaml --checkpoint experiments/fno/best.pt
+python scripts/eval_resolution_transfer.py --config configs/eval/resolution_transfer_proxy_muscl_hr.yaml   --checkpoint experiments/fno_muscl_hr/best.pt
+
+# --- Native cross-resolution: real 32/64/128 grids (6.7) ---
+# You generated native 32 and 128 pools, so this is the stronger result, not just the proxy.
+# Preprocess each native grid first (raw -> processed), then evaluate one checkpoint across all of them.
+python src/data_gen/preprocess.py --config configs/data/multires/preprocess_32.yaml
+python src/data_gen/preprocess.py --config configs/data/multires/preprocess_64.yaml
+python src/data_gen/preprocess.py --config configs/data/multires/preprocess_128.yaml
+python scripts/eval_full_resolution.py --config configs/eval/resolution_hydrostatic.yaml --checkpoint experiments/fno/best.pt
+python scripts/eval_full_resolution.py --config configs/eval/resolution_muscl_hr.yaml   --checkpoint experiments/fno_muscl_hr/best.pt
+
+# --- Solver-vs-solver physical gap (6.8) ---
+python scripts/compare_solvers_physical.py \
+  --solver-a-dir data/raw/hydrostatic/samples \
+  --solver-b-dir data/raw/muscl_hr/samples \
+  --require-quality-ok --save-arrival-maps \
+  --arrival-maps-output results/solver_compare_hydro_vs_muscl_hr_arrival_maps.npz \
+  --output results/solver_compare_hydro_vs_muscl_hr.json
+
+# --- Emulator-superiority ratio (6.15) ---
+# Requires the solver-vs-solver JSON above as its denominator.
+python scripts/eval_emulator_superiority.py --config configs/eval/emulator_superiority_hydro_to_muscl_hr.yaml
+python scripts/eval_emulator_superiority.py --config configs/eval/emulator_superiority_muscl_hr_to_hydro.yaml
+
+# --- Arrival-time maps, model vs target solver (6.14) ---
+python scripts/eval_arrival_maps.py --config configs/model/fno.yaml          --checkpoint experiments/fno/best.pt
+python scripts/eval_arrival_maps.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt
+```
+
+Uncertainty (ensemble) and the learning-curve sweep are separate because they need extra training runs:
+
+```bash
+# Deep ensemble for uncertainty (train 3 members, then evaluate) - see 6.4 / 6.13
+python scripts/train_ensemble.py --config configs/model/fno.yaml
+python scripts/eval_uncertainty.py --config configs/model/fno.yaml \
+  --checkpoint experiments/ensemble/member_11/best.pt \
+  --checkpoint experiments/ensemble/member_22/best.pt \
+  --checkpoint experiments/ensemble/member_33/best.pt
+
+# Learning curve / sample-scaling (one of the strongest figures) - see plan.md
+python scripts/run_sample_scaling.py --config configs/model/fno.yaml          --samples 100,500,1000,2500,5000,10000 --output-root experiments/sample_scaling/fno          --device cuda
+python scripts/run_sample_scaling.py --config configs/model/fno_muscl_hr.yaml --samples 100,500,1000,2500,5000,10000 --output-root experiments/sample_scaling/fno_muscl_hr --device cuda
+
+# Qualitative truth/prediction/error maps for the paper figure (Fig 3) - see 6.12
+python scripts/export_figures.py --config configs/model/fno.yaml          --checkpoint experiments/fno/best.pt          --out paper/figs/fno_hydrostatic
+python scripts/export_figures.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt --out paper/figs/fno_muscl_hr
+```
+
+#### 6.0.3 Where each paper table/figure comes from
+
+| Paper artifact | Produced by | Output |
+| --- | --- | --- |
+| Table 2 — same-solver accuracy | `eval_accuracy.py` | `experiments/<model>/eval/metrics.json` |
+| Table 3 / Fig 4 — runtime + speedup | `eval_speed.py` + `eval_solver_speed.py` -> `make_speed_table.py` | `results/speed/speed_table.{csv,json}` |
+| Table 4 / Fig 5 — OOD generalization | `eval_generalization.py` | `experiments/<model>/eval_ood_suites/ood_generalization.json` |
+| Fig 6 — cross-resolution | `eval_resolution_transfer.py` | `.../eval_resolution_proxy/resolution_transfer_proxy.json` |
+| Table 5 / Fig 7 — solver gap | `compare_solvers_physical.py` | `results/solver_compare_*.json` |
+| emulator-superiority ratio | `eval_emulator_superiority.py` | `results/emulator_superiority_*.json` |
+| Fig 2 — learning curves | `run_sample_scaling.py` | `experiments/sample_scaling/*/sample_scaling_results.csv` |
+| Table 7 — uncertainty | `eval_uncertainty.py` | `.../eval_uncertainty/uncertainty.json` |
+| Fig 3 — qualitative maps | `export_figures.py` | `paper/figs/...` |
+
 ### 6.1 Step 1 - Generate Forward Raw Dataset (Required)
 
 Main benchmark generation (hydrostatic + MUSCL-HR):

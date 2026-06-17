@@ -14,4 +14,6 @@
 % TODO: If used, explain why Boussinesq is exploratory and what its diagnostics suggest.
 
 \subsection{Practical implications}
-% TODO: State what this benchmark can and cannot say about real tsunami surrogate modeling.
+The benchmark is a controlled study of surrogate behavior, and we are careful not to overstate what it implies for real systems. It is not an operational tsunami forecasting tool and does not provide site-specific hazard assessment. What it can speak to is narrower: how neural surrogates of solver-generated shallow-water wavefields behave under solver mismatch, distribution shift, resolution change, and a first transfer onto real bathymetry, and how their predictive uncertainty responds in those settings.
+
+With that scope in mind, while the benchmark is not intended for operational forecasting, fast surrogate models of this kind may eventually contribute to scenario exploration, educational tools, rapid sensitivity analysis, or decision-support workflows, but only when combined with validated physical models and real-world data. We therefore frame any downstream relevance as a direction for future research toward such systems rather than a capability the present benchmark already provides; the synthetic-to-real bathymetry transfer reported above is a first, deliberately modest step in that direction and not evidence of operational readiness.

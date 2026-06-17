@@ -11,49 +11,46 @@ Let $\Omega=[0, 1]^2$ denote the normalized two-dimensional computational domain
 \[
 b(x, y) < 0 \quad \text {for submerged cells},
 \]
-so the still-water depth used by the data generator is
+so the still-water depth used by the data generator isd
 \[
-h_{\mathrm{rest}}(x, y) = \max(-b(x, y) + \eta_{\mathrm{sea}}, 0),
+h_{\mathrm{rest}}(x, y) = \max(-b(x, y) + \eta_{\mathrm{sea}},\, 0),
 \]
-where $\eta_\mathrm{sea}$ is the configured sea-level offset. The sampled source-strength multiplier $a$ converts the raw source field into the initial free-surface displacement
+where $\eta_{\mathrm{sea}}$ is the configured sea-level offset. The sampled source-strength multiplier $a$ converts the raw source field into the initial free-surface displacement
 \[
-\eta_0(x, y) = a q(x, y),
+\eta_0(x, y) = a\, q(x, y),
 \]
 and the shallow-water initial depth is clipped to remain non-negative,
 \[
-h_0(x, y) = \max(h_{\mathrm{rest}}(x, y) + \eta_0(x, y), 0).
+h_0(x, y) = \max(h_{\mathrm{rest}}(x, y) + \eta_0(x, y),\, 0).
 \]
-The stored initial free surface is therefore $h_0 + b$, which equals $\eta_0$ away from clipping.
-
+The stored initial free surface is therefore $h_0 + b$, which equals $\eta_0$ away from the clipping region.
 
 The default supervised input tensor stacks the active spatial channels
 \[
-X = [b, q, h_0] \in\mathbb{R}^{C \times H \times W},    % channels x height x width obviously
+X = [\,b,\, q,\, h_0\,] \in\mathbb{R}^{C \times H \times W},    % channels x height x width obviously
 \]
-with C = 3 for the main single-solver experiments. % boussinesq being C = 2: [h, eta]
-The preprocessing code also supports optional initial-surface and solver-identity channels, but these are not part of the default single-reference FNO configuration. For a numerical reference solver $s$, the target is a future free-surface trajectory % the enabled solver type in the yaml
+with C = 3 for the main single-solver experiments. The preprocessing code also supports optional initial-surface and solver-identity channels, but these are not part of the default single-reference FNO configuration. For a numerical reference solver $s$, the target is a future free-surface trajectory
 \[
-Y_s = [\eta_s(t_1), \eta_s(t_2), \ldots, \eta_s(t_T)] \in\mathbb{R}^{T \times H \times W}
+Y_s = [\,\eta_s(t_1),\, \eta_s(t_2),\, \ldots,\, \eta_s(t_T)\,] \in\mathbb{R}^{T \times H \times W}.
 \]
-The initially stored frame is not used as a prediction targets. With the default rollout settings, 251 solver states are advanced with every fifth state saved and the initial state included, producing 51 stored frames. Preprocessing then discards the initial frames and keep $T = 50$ future frames.
-
+The initially stored frame is not used as a prediction target. With the default rollout settings the solver is advanced for $250$ steps; including the initial state and saving every fifth frame this gives $51$ stored frames per rollout. Preprocessing then discards the initial frame and keeps $T=50$ future frames as the multi-step forecast target.
 
 A surrogate model $f_\theta$ is trained to approximate the solver-conditioned operator
 \[
 f_\theta : X \mapsto \widehat{Y}_s \approx{Y_s}
 \]
 
-The labels are produced by two shallow-water references: a hydrostatic-reconstruction finite-volume solver and a MUSCL-HR finite volume solver. A boussinesq-type weakly dispersive branch is also available on the shared scenario dataset, but it is treated as an exploratory reference unless its diagnostics and same-scenario comparisons are explicitly reported.
+The labels are produced by two shallow-water references, a hydrostatic-reconstruction finite-volume solver and a MUSCL-HR finite-volume solver. A Boussinesq-type weakly dispersive branch is also available on the shared scenario design, but we treat it as an exploratory reference unless its diagnostics and same-scenario comparisons are explicitly reported. The Boussinesq branch evolves the free surface directly, so its target $\eta$ is read from the surface state rather than reconstructed from depth; the supervised input, however, uses the same $C=3$ channel stack in the current pipeline.
 % TODO: DOWNLOAD THE DATASET DOWN AND VERIFY BOUSSINESQ THEN EDIT THE UPPER PART!!!!!!!!!!!!!
 
-\subsection{Numberical reference formulation}
-\label{subsec:numberical-reference-formulation}
+\subsection{Numerical reference formulation}
+\label{subsec:numerical-reference-formulation}
 
 The shallow-water references evolve the conservative state
 \[
-U = [h, hu, hv]^\top,
+U = [\,h,\, hu,\, hv\,]^\top,
 \]
-where $h$ is the water depth and $(hu, hv)$ are the depth integrated momentum. The free surface is reconstructed as
+where $h$ is the water depth and $(hu, hv)$ are the depth-integrated momenta. The free surface is reconstructed as
 \[
 \eta = h + b.
 \]
@@ -65,123 +62,149 @@ with fluxes % line 385 onwards in src/data_gen/hydrostatic_swe.py
 \[
 F(U) = 
 \begin{bmatrix}
-    hv \\
-    \dfrac{(hu) ^ 2}{h} + \dfrac{1}{2}gh ^ 2 \\
+    hu \\[2pt]
+    \dfrac{(hu) ^ 2}{h} + \dfrac{1}{2}gh ^ 2 \\[6pt]
     \dfrac{hu\, hv}{h}    
 \end{bmatrix},
 \qquad
 G(U) =
 \begin{bmatrix}
-    hv \\
-    \dfrac{hu\, hv}{h} \\
+    hv \\[2pt]
+    \dfrac{hu\, hv}{h} \\[6pt]
     \dfrac{(hv) ^ 2}{h} + \dfrac{1}{2}gh ^ 2
 \end{bmatrix},
 \]
-and the source term
+and the bathymetry source term
 \[
-S(U, b) = 2
+S(U, b) =
 \begin{bmatrix}
     0 \\
     -gh\, \partial_x b \\
     -gh\, \partial_y b
 \end{bmatrix}.
 \]
-in the implementation, divisions by $h$ use dry-cell protection momentum clipping to avoid numerical
-overflow near nearly dry cells.
+In the implementation the divisions by $h$ use dry-cell protection and momentum clipping, to avoid numerical overflow near the nearly dry cells.
 
-Both shallow-water references uses finite-volume updates of the form
+Both shallow-water references use finite-volume updates of the form
 \[ % line 257 and 550
-U_{i, j} ^ {n + 1} = U_{i, j} ^ n
-- \frac{\Delta t}{\Delta x} \left(\mathcal{F}_{i + 1/2, j} - \mathcal{F}_{i - 1/2, j}\right)
-- \frac{\delta t}{\Delta y} \left(\mathcal{G}_{i, j + 1/2} - \mathcal{G}_{i, j - 1/2}\right)
+U_{i, j} ^ {\,n + 1} = U_{i, j} ^ {\,n}
+- \frac{\Delta t}{\Delta x} \left(\mathcal{F}_{i + 1/2,\, j} - \mathcal{F}_{i - 1/2,\, j}\right)
+- \frac{\Delta t}{\Delta y} \left(\mathcal{G}_{i,\, j + 1/2} - \mathcal{G}_{i,\, j - 1/2}\right)
 + \Delta t\, S_{i, j},
 \]
-where $\mathcal{F}$ and $\mathcal{G}$ ae numerical interface fluxes. The base interface flux is a Rusanov flux,
-\[ % line 202
-\mathcal{F}(U_L, U_R) = \frac{1}{2} \left(F(U_L) + F(U_R)\right) - \frac{1}{2} \alpha_x\left(U_R - U_L\right),
-\]
-with
+where $\mathcal{F}$ and $\mathcal{G}$ are the numerical interface fluxes. The base interface flux is a Rusanov flux,
 \[
-\alpha_x = \max(|u_L + \sqrt{g h_L}, |u_R| + \sqrt{g h_R}),
+\mathcal{F}(U_L, U_R) = \frac{1}{2}\left(F(U_L) + F(U_R)\right) - \frac{1}{2}\,\alpha_x\left(U_R - U_L\right),
+\]
+with local wave-speed estimate
+\[
+\alpha_x = \max\!\left(|u_L| + \sqrt{g h_L},\; |u_R| + \sqrt{g h_R}\right),
 \]
 and an equivalent $y$-direction speed using $v$. This choice is diffusive compared with shaper Riemann solvers, but it is robust and suitable for controlled dataset generation \citep{toro2009riemann,toro2026rusanov}.
 
-% OVERALL SOLVERS DONE, NEXT MORE DETAILS ON THE SOLVER SPECIFIC DETAILS
+Because the scheme is explicit, the time step is not free: an explicit finite-volume update is only stable when the information does not travel more than one cell per step, which is the Courant--Friedrichs--Lewy (CFL) condition. We therefore do not fix $\Delta t$ in advance but choose it adaptively at every step from the current state, using the same characteristic speed $|U| + \sqrt{gh}$ that appears in the Rusanov flux,
+\[
+\Delta t = \mathrm{CFL} \cdot \left[\,\max \! \left(\frac{\max(|u| + \sqrt{gh})}{\Delta x},\; \frac{\max(|v| +  \sqrt{gh})}{\Delta y} \right) \right] ^ {-1},
+\]
+where the maximum are taken over the whole grid and the target CFL number is $\mathrm{CFL} = 0.45$ in the default configuration. Adapting $\Delta t$ this way keeps the rollout stable when a large initial displacement temporarily increase the wave speed, while still taking the largest safe step elsewhere; this matters for a benchmark, because an over-large fixed step would let unstable samples enter the training labels.
+
 The hydrostatic-reconstruction solver modifies the left and right water depths at each face before computing the Rusanov flux. For an interface with bed elevations $b_L$ and $b_R$, it sets
 \[
 z ^ \star = \max(b_L, b_R), \qquad
-h_L ^ \star = \max(0, h_L + b_L - z ^ \star), \qquad
-h_R ^ \star = \max(0, h_R + b_R - z ^ \star).
+h_L ^ \star = \max(0,\, h_L + b_L - z ^ \star), \qquad
+h_R ^ \star = \max(0,\, h_R + b_R - z ^ \star).
 \]
-The reconstructed states preserve nonnegative water dept and help balance the flux-gradient and bed-slope terms for stationary water over uneven bathymetry \citep{audusse2004hydrostatic}. The MUSCL-HR solver uses the same hydrostatic face idea but reconstructs $h$, $\eta$, $u$ and $v$ with minmod-limited slopes before face update, followed by a two-state Heun update. This gives a less diffusive second-order comparison reference while retaining the lake-at-rest safeguards needed for tsunami-like bathymetry \citep{clain2016secondorder, hou2015muscl}.
+These reconstructed states preserve nonnegative water depth and help to balance the flux-gradient and bed-slope terms for stationary water over uneven bathymetry \citep{audusse2004hydrostatic}. In this well-balanced formulation the bathymetry source $S$ is absorbed into the reconstructed face fluxes rather than added as a separate term, so the $\Delta t\, S_(i, j)$ contribution above is schematic for the hydrostatic solver; the MUSCL-HR solver instead applies an explicit, centred discretization of the same source after its slope-limited reconstruction. The MUSCL-HR solver uses the same hydrostatic face idea but reconstructs $h$, $\eta$, $u$ and $v$ with minmod-limited slopes before face update, followed by a two-state Heun update. This gives a less diffusive second-order comparison reference while retaining the lake-at-rest safeguards needed for tsunami-like bathymetry \citep{clain2016secondorder, hou2015muscl}.
+
 % BOUSSINESQ SECTION
-The Boussinesq branch evolves an elevation-only weakly dispersive model. In the implemented variable-depth mode, the acceleration $a = \eta_{tt}$ is obtained from elliptic-like relation
+The Boussinesq branch evolves an elevation-only weakly dispersive model. In the implemented variable-depth mode the acceleration $a_\eta = \eta_{tt}$ is obtained from an elliptic-like relation
 \[
-\left(I - \alpha\, \nabla \cdot(H ^ 2 \nabla)\right)a = g\, \nabla \cdot(H \nabla \eta),
+\left(I - \alpha\, \nabla \cdot(H ^ 2 \nabla)\right) a_\eta = g\, \nabla \cdot(H \nabla \eta),
 \]
 where
 \[
-H(x, y) = \max((-b(x, y) + \eta_{\mathrm{sea}})\, s_H, H_{\min}) 
+H(x, y) = \max\!\left((-b(x, y) + \eta_{\mathrm{sea}})\, s_H,\; H_{\min}\right)
 \]
-is the scaled still-water depth used by the Boussinesq solver. The linear system is solved by a matrix-free conjugate-gradient iteration and advanced with a velocity-verlet step. Because this is branch uses different dynamics, depth scaling, and stability controls from the shallow-water solvers, the paper reports it cautiously as an exploratory branch, same-solver target rather than as an absolute high-fidelity truth.
+is the scaled still-water depth used by the Boussinesq solver. The linear system is solved by a matrix-free conjugate-gradient iteration and advanced with a velocity-Verlet step. Because this branch uses different dynamics, depth scaling, and stability controls from the shallow-water solvers, we report it cautiously, as an exploratory same-solver target rather than as an absolute high-fidelity truth.
 
 \subsection{Reference-solver validation}
+\label{subsec:reference-validation}
 % TODO: Summarize lake-at-rest tests, dynamic finite-state tests, quality_status checks, and final accepted sample counts.
 
-To validate the usability of the reference solvers used for dataset generation, we ran a series of test:
+To validate the usability of the reference solvers used for dataset generation, we run a small series of numerical tests before generation.
 
-\paragraph{Lake at rest.} A well balanced shallow-water solver should preserve a stationary free surface over non-uniform bathymetry. Therefore, we initialized a fully submerged, spatially varying bathymetry with zero-surface elevation, $\eta_0(x, y) = 0$, and zero momentum, $hu(x, y) = hv(x, y) = 0$. Since $\eta_t = h_t(x, y) + b_t(x, y)$, this corresponds to an initial water depth $h_0(x,y)=\eta_0(x,y) - b(x,y)$. Both the hydrostatic and MUSCL-HR solvers were advanced for multiple adaptive-CFL time steps with sponge damping disabled. We considered the lake-at-rest condition preserved when the maximum free-surface drift remained below $10^{-8}$ and the maximum absolute momentum remained below $10^{-7}$.
+\paragraph{Lake at rest.} A well-balanced shallow-water solver should preserve a stationary free surface over non-uniform bathymetry. We therefore initialize a fully submerged, spatially varying bathymetry with zero surface elevation, $\eta_0(x,y) = 0$, and zero momentum, $hu(x,y) = hv(x,y) = 0$. Since $\eta = h + b$, this corresponds to an initial water depth $h_0(x,y) = -b(x,y)$. Both the hydrostatic and the MUSCL-HR solver are advanced for many adaptive-CFL time steps with the sponge damping disabled. We consider the lake-at-rest condition preserved when the maximum free-surface drift stays below $10^{-8}$ and the maximum absolute momentum stays below $10^{-7}$. This property matters over long rollouts, because a solver that slowly drifts from rest would inject a spurious signal into every training label.
 
-note for later / draft:
-- lake at rest: the s`111olver should remains at eta = h + b = 0, and v = 0, no drifts -> over time. also say that this is important over long n steps for accuracy
-- dynamic finite state test to avoid inf causing artifacts 
-- quality status reports non nan, non inf, -> into metadata, this is also curcial for the resume of the dataset generation/rollout
+\paragraph{Dynamic finite-state behavior.} Lake at rest only check the trivial equilibrium, so we additionally run dynamic rollouts from non-trivial initial displacements and confirm that the state remains finite and bounded over full horizon. This guards against late time blow-up or oscillations that look stable or a few steps and then produce $\pm\infty$ artifacts near the dry cells.
+
+\paragraph{Quality status.} During generation each rollout is screened by the quality policy, which records whether the trajectories contains non-finite values, depth below tolerance, or excessive surface amplitude and velocity. The outcome is written into the per-sample metadata as a quality status. This status is also what lets generation resume safely after an interruption, since completed and accepted samples can be reused instead of being recomputed.
+
+% TODO: insert the final accepted sample counts and persolver quality_status summary once we download the dataset
 
 \subsection{Evaluation metrics}
+\label{subsec:eval-metrics}
 % TODO: Define MAE, RMSE, relative L2, max error, grouped OOD metrics, and solver-vs-solver physical metrics.
-For field accuracy, we report mean absolute error (MAE), root mean absolute error, relate $L2$ error, and maximum absolute error over the predicted trajectory. Unless otherwise stated, physicals unit metrics are computed after reversing target normalization. For OOD evaluation, metrics are computed per sample before unified by source type, bathymetry type, source-strength range or referenced solver.
 
-For runtime, we record time per sample and throughtput. Numerical reference solvers are timed by \texttt{CPU NumPy} rollout implementations, excluding bathymetry and source generation. Neural surrogate is timed on /texttt{CPU} and \texttt{GPU} when available, with explicit device, batch size, precision label and TF32 back end state recorded. Speed up is computed as
+For field accuracy, we report the mean absolute error (MAE), root-mean-squared error, the relative $L2$ error, and maximum absolute error over the predicted trajectory. Writing  $y$ for the reference frames and $\widehat{y}$ for the prediction, and letting $k$ index all elements of the $T \times H \times W$ trajectory tensor with $N$ entries in total,
 \[
-\mathrm{speedup} =
-\frac{\text{reference solver rollout time per sample}}
-{\text{surrogate inference time per sample}}.
+\mathrm{MAE} = \frac{1}{N}\sum_{k} \lvert \widehat{y}_k - y_k \rvert,
+\qquad
+\mathrm{RMSE} = \sqrt{\frac{1}{N}\sum_{k} (\widehat{y}_k - y_k)^2},
 \]
-These speed ups are implementation-level comparison under reported hardware, not universal comparisons against optimized production-grade tsunami solvers.
+\[
+\mathrm{rel}\,L_2 = \frac{\lVert \widehat{y} - y \rVert_2}{\lVert y \rVert_2},
+\qquad
+\mathrm{max\text{-}err} = \max_{k} \lvert \widehat{y}_k - y_k \rvert .
+\]
 
-For uncertainty
-% multiple ensemble model?
+Unless otherwise stated the physical-unit metrics are computed after reversing the target normalization, so that the errors are reported in the same units as $\eta$. The maximum absolute error is also a useful proxy for local worst-case behavior and for time-stepping stability.
 
-NOTE: REMEMBER TO MOVE THE BELOW THE REPORTED METRICS DOWN INTO APPENDIX,
+For distribution-shift evaluation the metrics are computed for sample first and then grouped by metadata, using the source type, the bathymetry type, the source-strength range, or the reference solver. Computing per-sample errors before grouping avoids letting a few large scenarios dominate a suite average. In addition to the field metrics above, we report a set of frequency-band and conserved-quantity diagnostics in the appendix, following the metric design of FDEBench \citep{takamoto2022pdebench}; these are useful for seperating low and high-wavenumber error, which is relevant when the surrogate is a spectral operator.
 
-Data view:
+\subsection{Generalization and resolution-transfer protocol}
+\label{subsec:generalization-protocol}
 
-RMSE root-mean-squared-error
-nRMSE normalized RMSE (ensuring scale independence)
-max error maximum error (local worst case; also proxy for stability of time-stepping)
+The metadata-filtered suites whose composition is described in Section~\ref{sec:data-generation} are evaluated under a fixed protocol. For each suite we score the trained checkpoint on the held-out samples using the same per-sample-then-grouped metrics as above, so that a in-distribution number and an out-of-distribution number are always produced by the identical pipeline and differ only in the scenarios that are included. We distinguish two cases that are easy to conflate. A \emph{difficult-subgroup} test keeps a family in the training distribution but reports the error on a metadata-selected subset of the test pool, while a \emph{held-out-family} test removes that family from the training split entirely before preprocessing and only then evaluates it. We label each suite by which of the two it is, because only the second is evidence of generalization to an unseen family.
 
-Physical view
-
-cRMSE RMSE of conserved value (deviation from conserved physical quantity)
-bRMSE RMSE on boundary (whether boundary condition can be learned)
-fRMSE low RMSE in Fourier space, low frequency regime (wavelength dependence)
-fRMSE mid RMSE in Fourier space, medium frequency regime
-fRMSE high RMSE in Fourier space, high frequency regime
-
-took from \citep{takamoto2022pdebench}
+For resolution transfer we keep two settings separate. The \emph{proxy} setting resizes the $64\times64$ test fields to a target grid and evaluates the same checkpoint on the resized inputs; it is a cheap diagnostic and does not involve any new simulation. The \emph{native} setting instead evaluate the checkpoint on data that were independently generated and simulated at $32\times32$ and $128\times128$, which is the stronger test because the wavefield at each resolution is physically resolved rather than interpolated. Cross-resolution comparison is only meaningful when the target normalization is controlled, so we adopt a strict policy: a native-resolution suite is accepted only when its target normalization statistics match the reference statistics of the training distribution, and a transfer claim that mixes incompatible statistics is rejected rather than silently reported. This prevents a change of feature scaling from being mistaken for genuine resolution generalization.
 
 \subsection{Runtime benchmarking}
-% TODO: Explain CPU NumPy solver timing, CPU/GPU model timing, precision/TF32 setting, CUDA synchronization, and speedup denominator.
-draft:
-since we running the solver rollout using numpy -> cpu bound, but the infer on gpu -> have some bias, thats why added explicit device flag n enable tf32 -> table:
+\label{subsec:runtime}
+The numerical reference solvers are timed using their CPU NumPy roll out implementations, excluding the bathymetry and source generation, so the denominator reflects only the forward integration. The neural surrogate is timed on CPU and, when available, the GPU. For every measurements we record the device, the batch size, the numerical precision label, and the TF32 back-end state, and on GPU we synchronize the device before and after timing so that asynchronous kernel launches are not counted as zero. Each configuration uses a short warmup and is then repeated several times, and we report the per-sample time and throughput in samples per second. The speedup is computed as
+\[
+\mathrm{speedup} =
+\frac{\text{reference-solver rollout time per sample}}
+    {\text{surrogate inference time per sample}}.
+\]
 
-model | device | precision | tf32? | speed up | sample/s
-
-future plan: using free credits from gg cloud n generate dataset there -> download n run benchmark, train locally
+We stress that these speedups are implementation-level comparisons under the reported hardware, and not universal comparisons against optimized production-grade tsunami solvers. The CPU NumPy references are reproducible and easy to audit, but they are not tuned for speed, so the numbers should be read as a relative indication and not as an absolute performance claim.
 
 \subsection{Cross-solver and emulator-superiority analysis}
+\label{subsec:cross-solver}
 % TODO: Define solver-vs-solver gap and the ratio used for emulator-superiority-style diagnostics; note separate denormalization/input-stat checks.
 
--> from neural emulator superiority - when ml for pdes paper
-mostly nust ensure fairness n avoid bias over solver specific
-handle dry-wet condition really well, while boussinesq just sucks (currently boussinesq is running on diff scenario, will have to test future so can add into the main paper
+% -> from neural emulator superiority - when ml for pdes paper
+% mostly nust ensure fairness n avoid bias over solver specific
+% handle dry-wet condition really well, while boussinesq just sucks (currently boussinesq is running on diff scenario, will have to test future so can add into the main paper
+
+Because the training solver is not itself the ground truth, we separate two different quantities. The first is the raw solver-vs-solver gap, that is the physical difference between two numerical references evaluated on the same shared scenarios. The second is the surrogate error of a model trained on one of reference and compared against another. Keeping these apart is important, since a surrogate can only look poor only because the two reference solvers themself disargree.
+
+Following the neural emulator-superiority idea \citep{koehler2026emulator}, we also report a ratio that compares a surrogate trained on reference $A$ against a second reference $B$.
+\[
+\rho =
+\frac{\operatorname{Err}\!\left(f_\theta ^ {A},\; \mathrm{ref}\,B \right)}
+     {\operatorname{Err}\!\left(\mathrm{ref}\, A,\; \mathrm{ref}\,B \right)},
+\]
+where the error is a physical unit metric evaluated on the same scenarios with separate denormalization for the prediction and target. A value $\rho < 1$ would mean that the emulator trained on $A$ is infact closer to $B$ than its own training solver $a$ is. We not only report this ratio when the prediction and target denormalization, and the input normalization statistics, are compatible, because otherwise the comparison is not physically meaningful. The hydrostatic and MUSCL-HR references share the exact same scenarios, so their cross-solver comparison is valid. The Boussinesq brach is at present generated on a separate scenario regime for stability reasons, so we do not yet include it in the main cross-solver table; integrating it on shared scenarios is left for a controlled follow-up once its diagnostics are confirmed.
+
+\subsection{Uncertainty quantification}
+\label{subsec:uncertainty}
+Point accuracy alone does not tell a user when a surrogate is likely to be wrong, which matters for any hazard-oriented application. We therefore estimate predictive uncertainty with a deep ensemble of $M$ independently trained models that differ only in their random seed \citep{lakshminarayanan2017deepensembles}. For an input $X$ the members produce predictions $\{\widehat{Y} ^ {(m)}\}_{m = 1} ^ {M}$, and we form the ensemble mean and the per element predictive variance
+\[
+\bar{Y} = \frac{1}{M}\sum_{m = 1} ^ {M}\widehat{Y} ^ {(m)},
+\qquad
+\sigma ^ 2 = \frac{1}{M}\sum_{m = 1} ^ {M}\left(\widehat{Y} ^ {(m)} - \bar{Y}\right) ^ 2
+\]
+where $\bar{Y}$ is used as a prediction and $\sigma$ as the uncertainty. A single member gives a degenerate zero variance, so we require $M \ge 2$ and use $M = 5$ in the reported experiment.
+
+We assess the quality of this uncertainty in two ways. First, we measure whether the uncertainty track the actual error through the Pearson correlation between the per-element predictive standard deviation $\sigma$ and the absolute error $\lvert \bar{Y} - Y \rvert$; a useful uncertainty should be larger where the error is larger. Second, we check calibration by treating each prediction as Gaussian with mean $\bar{Y}$ and standard deviation $\sigma$ and measuring the empirical coverage of central prediction intervals at several nominal levels, together with the Gaussian negative log-likelihood. A well-calibrated model should have an empirical coverage close to the nominal level, for example about $90\%$ of targets inside the nominal $90\%$ interval. We additionally report these uncertainty metrics on the distribution-shift suites of Section~\ref{subsec:eval-metrics}, since a trustworthy uncertainty should grow under distribution shift rather than stay falsely confident. We interpret these as reliability diagnostics and do not claim formally calibrated risk.

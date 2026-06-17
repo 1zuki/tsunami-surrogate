@@ -21,7 +21,7 @@ model:
   use_feedback: true
 
 train:
-  epochs: 180
+  epochs: 256
   lr: 0.0005
   min_lr: 0.00005
   scheduler: cosine
