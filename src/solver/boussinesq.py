@@ -128,6 +128,7 @@ class BoussinesqSolver:
         self.eta_t = np.zeros((self.nx, self.ny), dtype=float)
         self.b = np.zeros((self.nx, self.ny), dtype=float)
         self.H = np.ones((self.nx, self.ny), dtype=float)
+        self._mass_diag_inv = np.ones((self.nx, self.ny), dtype=float)
 
         if use_sponge is None:
             self.use_sponge = "periodic" not in (self.boundary_x, self.boundary_y)
@@ -140,6 +141,10 @@ class BoussinesqSolver:
         self.last_cg_initial_residual = 0.0
         self.last_cg_final_residual = 0.0
         self.last_cg_converged = True
+        self.last_step_cg_converged = True
+        self.last_step_cg_failed_count = 0
+        self.last_step_cg_max_iterations = 0
+        self.last_step_cg_max_residual_ratio = 0.0
         if self.use_sponge:
             self._init_sponge_layer(width=self.sponge_width, min_factor=self.sponge_min_factor)
 
@@ -179,6 +184,7 @@ class BoussinesqSolver:
             self.H = np.full_like(H, max(H0, self.min_depth))
         else:
             self.H = H
+        self._update_mass_preconditioner()
 
     def set_initial_condition(
         self,
@@ -268,6 +274,23 @@ class BoussinesqSolver:
         dispersive = self._flux_divergence(a, self.H * self.H)
         return a - self.alpha * dispersive
 
+    def _update_mass_preconditioner(self) -> None:
+        """Build a diagonal Jacobi preconditioner for the dispersive mass solve."""
+        if self.alpha == 0.0:
+            self._mass_diag_inv = np.ones_like(self.H)
+            return
+
+        H2 = self.H * self.H
+        C = self._pad_scalar(H2)
+        coeff_x = 0.5 * (C[1:, 1:-1] + C[:-1, 1:-1])
+        coeff_y = 0.5 * (C[1:-1, 1:] + C[1:-1, :-1])
+        diag = np.ones_like(self.H)
+        diag += self.alpha * (
+            (coeff_x[1:, :] + coeff_x[:-1, :]) / (self.dx * self.dx)
+            + (coeff_y[:, 1:] + coeff_y[:, :-1]) / (self.dy * self.dy)
+        )
+        self._mass_diag_inv = 1.0 / np.maximum(diag, 1e-30)
+
     def solve_acceleration(self, eta: Optional[np.ndarray] = None) -> np.ndarray:
         """Solve M(a) = rhs(eta) using a small matrix-free conjugate-gradient loop."""
         b = self.rhs(eta)
@@ -281,8 +304,10 @@ class BoussinesqSolver:
 
         x = np.zeros_like(b)
         r = b - self.apply_mass_operator(x)
-        p = r.copy()
+        z = self._mass_diag_inv * r
+        p = z.copy()
         rs_old = float(np.sum(r * r))
+        rz_old = float(np.sum(r * z))
         rs0 = rs_old
         residual0 = float(np.sqrt(rs0))
         threshold = (self.linear_solver_tol * residual0) ** 2
@@ -298,13 +323,13 @@ class BoussinesqSolver:
         for iteration in range(1, self.linear_solver_max_iter + 1):
             Ap = self.apply_mass_operator(p)
             denom = float(np.sum(p * Ap))
-            if abs(denom) <= eps:
+            if abs(denom) <= eps or abs(rz_old) <= eps:
                 self.last_cg_iterations = iteration - 1
                 self.last_cg_final_residual = float(np.sqrt(rs_old))
                 self.last_cg_converged = False
                 break
 
-            alpha_cg = rs_old / denom
+            alpha_cg = rz_old / denom
             x = x + alpha_cg * p
             r = r - alpha_cg * Ap
 
@@ -315,9 +340,12 @@ class BoussinesqSolver:
                 self.last_cg_converged = True
                 break
 
-            beta = rs_new / max(rs_old, eps)
-            p = r + beta * p
+            z = self._mass_diag_inv * r
+            rz_new = float(np.sum(r * z))
+            beta = rz_new / max(rz_old, eps)
+            p = z + beta * p
             rs_old = rs_new
+            rz_old = rz_new
         else:
             self.last_cg_converged = False
 
@@ -392,9 +420,20 @@ class BoussinesqSolver:
             raise ValueError("dt must be positive")
 
         a0 = self.solve_acceleration(self.eta)
+        cg0_converged = bool(self.last_cg_converged)
+        cg0_iterations = int(self.last_cg_iterations)
+        cg0_ratio = self.last_cg_final_residual / max(self.last_cg_initial_residual, 1e-30)
         eta_next = self.eta + dt * self.eta_t + 0.5 * dt * dt * a0
         a1 = self.solve_acceleration(eta_next)
+        cg1_converged = bool(self.last_cg_converged)
+        cg1_iterations = int(self.last_cg_iterations)
+        cg1_ratio = self.last_cg_final_residual / max(self.last_cg_initial_residual, 1e-30)
         eta_t_next = self.eta_t + 0.5 * dt * (a0 + a1)
+
+        self.last_step_cg_converged = cg0_converged and cg1_converged
+        self.last_step_cg_failed_count = int(not cg0_converged) + int(not cg1_converged)
+        self.last_step_cg_max_iterations = max(cg0_iterations, cg1_iterations)
+        self.last_step_cg_max_residual_ratio = float(max(cg0_ratio, cg1_ratio))
 
         self.eta = eta_next
         self.eta_t = eta_t_next

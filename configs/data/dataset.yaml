@@ -3,7 +3,7 @@ configs:
   source: "configs/data/source.yaml"
 
 dataset:
-  num_samples: 100
+  num_samples: 10000
   seed: 42
   num_workers: 10
   n_steps: 250
@@ -16,7 +16,7 @@ dataset:
   # Keep this moderate for the paper pipeline: source.yaml now caps source_field
   # near [-1, 1], so this range gives visible waves without routinely creating
   # dry/explosive shallow-water states.
-  source_strength_range: [0.45, 1.0]
+  source_strength_range: [0.45, 0.85]
   bathymetry_dir: "data/bathymetry"
   source_dir: "data/sources"
   output_dir: "data/raw"
@@ -35,6 +35,9 @@ quality:
   min_h_tolerance: -1e-6
   max_abs_eta_limit: 5.0
   max_velocity_limit: 30.0
+  # Boussinesq-only health checks. These are ignored for SWE where not applicable.
+  max_eta_over_depth: 1.0
+  require_cg_converged: true
 
 solver:
   nx: 64
@@ -55,9 +58,11 @@ solver:
   # boussinesq is enabled above.
   alpha: 0.3333333333333333
   min_depth: 1e-4
-  depth_scale: 0.02
+  # Use physical bathymetry depth in the shared all-solver dataset. Smaller
+  # diagnostic depth scales belong in dataset_boussinesq.yaml, not here.
+  depth_scale: 1.0
   mode: "linear_variable_depth"
   filter_strength: 0.01
-  linear_solver_tol: 1e-8
-  linear_solver_max_iter: 120
+  linear_solver_tol: 1e-6
+  linear_solver_max_iter: 500
   check_finite: true

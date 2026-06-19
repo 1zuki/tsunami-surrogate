@@ -29,6 +29,8 @@ quality:
   min_h_tolerance: -1e-6
   max_abs_eta_limit: 10.0
   max_velocity_limit: 50.0
+  max_eta_over_depth: 1.0
+  require_cg_converged: true
 
 solver:
   nx: 64
@@ -41,12 +43,12 @@ solver:
   boundary: "open"
   use_sponge: true
   sponge_width: 20
-  sponge_min_factor: 1.0
+  sponge_min_factor: 0.9
   alpha: 0.3333333333333333
   min_depth: 1e-4
   depth_scale: 0.02
   mode: "linear_variable_depth"
   filter_strength: 0.01
-  linear_solver_tol: 1e-8
-  linear_solver_max_iter: 120
+  linear_solver_tol: 1e-6
+  linear_solver_max_iter: 500
   check_finite: true

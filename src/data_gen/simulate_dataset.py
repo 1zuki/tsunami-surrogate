@@ -73,6 +73,8 @@ class QualityPolicy:
     min_h_tolerance: float | None
     max_abs_eta_limit: float | None
     max_velocity_limit: float | None
+    max_eta_over_depth: float | None
+    require_cg_converged: bool
 
 @dataclass
 class DatasetConfig:
@@ -103,6 +105,7 @@ class RolloutResult:
     trajectory_eta: np.ndarray
     timestamps: np.ndarray
     dt_history: np.ndarray
+    diagnostics: Dict[str, np.ndarray] | None = None
 
 def _sample_output_complete(sample_dir: Path) -> bool:
     required_files = ("sample.npz", "rollout.npz", "trajectory_eta.npy", "meta.json")
@@ -137,6 +140,11 @@ def _load_existing_solver_record(sample_dir: Path, sample_idx: int, fallback_sol
         "min_h": float(meta.get("min_h", np.nan)),
         "max_abs_eta": float(meta.get("max_abs_eta", np.nan)),
         "max_abs_velocity": float(meta.get("max_abs_velocity", np.nan)),
+        "max_abs_eta_over_depth": float(meta.get("max_abs_eta_over_depth", np.nan)),
+        "cg_failed_count": meta.get("cg_failed_count", None),
+        "cg_converged_fraction": float(meta.get("cg_converged_fraction", np.nan)),
+        "max_cg_iterations": meta.get("max_cg_iterations", None),
+        "max_cg_residual_ratio": float(meta.get("max_cg_residual_ratio", np.nan)),
         "dt_min": float(meta.get("dt_min", 0.0)),
         "dt_max": float(meta.get("dt_max", 0.0)),
         "quality_status": str(meta.get("quality_status", "unknown")),
@@ -148,11 +156,13 @@ def _compute_rollout_health(
     fde_name: str,
     rollout: RolloutResult,
     rest_depth: np.ndarray,
+    effective_depth: np.ndarray | None = None,
 ) -> Dict[str, Any]:
     state_stack = np.asarray(rollout.trajectory, dtype=np.float32)
     eta_stack = np.asarray(rollout.trajectory_eta, dtype=np.float32)
     nan_count = int(np.isnan(state_stack).sum() + np.isnan(eta_stack).sum())
     inf_count = int(np.isinf(state_stack).sum() + np.isinf(eta_stack).sum())
+    max_abs_eta_over_depth = float("nan")
 
     if fde_name in {"swe_hydrostatic", "swe_muscl_hr"}:
         h_hist = np.asarray(state_stack[:, 0], dtype=np.float32)
@@ -167,21 +177,42 @@ def _compute_rollout_health(
         max_abs_velocity = float(max(np.max(np.abs(u_hist)), np.max(np.abs(v_hist))))
         min_h = float(np.min(h_hist))
     else:
-        h_hist = eta_stack + rest_depth[None, ...]
+        depth_ref = rest_depth if effective_depth is None else effective_depth
+        depth_ref = np.asarray(depth_ref, dtype=np.float32)
+        h_hist = eta_stack + depth_ref[None, ...]
         min_h = float(np.min(h_hist))
         max_abs_velocity = float(np.nan)
+        eta_over_depth = np.abs(eta_stack) / np.maximum(depth_ref[None, ...], 1e-8)
+        max_abs_eta_over_depth = float(np.nanmax(eta_over_depth))
 
     dt_positive = rollout.dt_history[rollout.dt_history > 0.0]
     dt_min = float(np.min(dt_positive)) if dt_positive.size > 0 else 0.0
     dt_max = float(np.max(dt_positive)) if dt_positive.size > 0 else 0.0
     max_abs_eta = float(np.max(np.abs(eta_stack)))
 
+    diagnostics = rollout.diagnostics or {}
+    cg_failed = np.asarray(diagnostics.get("cg_failed_count", []), dtype=np.int32)
+    cg_iterations = np.asarray(diagnostics.get("cg_max_iterations", []), dtype=np.int32)
+    cg_residual_ratio = np.asarray(diagnostics.get("cg_max_residual_ratio", []), dtype=np.float32)
+    has_cg_diagnostics = bool(cg_failed.size > 0)
+    cg_failed_count = int(np.sum(cg_failed)) if has_cg_diagnostics else None
+    cg_converged_fraction = float(np.mean(cg_failed == 0)) if has_cg_diagnostics else float("nan")
+    max_cg_iterations = int(np.max(cg_iterations)) if cg_iterations.size > 0 else None
+    max_cg_residual_ratio = float(np.nanmax(cg_residual_ratio)) if cg_residual_ratio.size > 0 else float("nan")
+
     return {
+        "fde_name": fde_name,
         "nan_count": nan_count,
         "inf_count": inf_count,
         "min_h": min_h,
         "max_abs_eta": max_abs_eta,
         "max_abs_velocity": max_abs_velocity,
+        "max_abs_eta_over_depth": max_abs_eta_over_depth,
+        "has_cg_diagnostics": has_cg_diagnostics,
+        "cg_failed_count": cg_failed_count,
+        "cg_converged_fraction": cg_converged_fraction,
+        "max_cg_iterations": max_cg_iterations,
+        "max_cg_residual_ratio": max_cg_residual_ratio,
         "dt_min": dt_min,
         "dt_max": dt_max,
     }
@@ -193,6 +224,7 @@ def _quality_violations_for_health(health: Dict[str, Any], policy: QualityPolicy
     min_h = float(health.get("min_h", np.nan))
     max_abs_eta = float(health.get("max_abs_eta", np.nan))
     max_abs_velocity = float(health.get("max_abs_velocity", np.nan))
+    max_abs_eta_over_depth = float(health.get("max_abs_eta_over_depth", np.nan))
 
     if policy.reject_nonfinite and (nan_count > 0 or inf_count > 0):
         violations.append(f"nonfinite(nan_count={nan_count}, inf_count={inf_count})")
@@ -210,6 +242,24 @@ def _quality_violations_for_health(health: Dict[str, Any], policy: QualityPolicy
             "max_abs_velocity"
             f"({max_abs_velocity:.6g}) > max_velocity_limit({float(policy.max_velocity_limit):.6g})"
         )
+
+    if (
+        policy.max_eta_over_depth is not None
+        and np.isfinite(max_abs_eta_over_depth)
+        and max_abs_eta_over_depth > float(policy.max_eta_over_depth)
+    ):
+        violations.append(
+            "max_abs_eta_over_depth"
+            f"({max_abs_eta_over_depth:.6g}) > max_eta_over_depth({float(policy.max_eta_over_depth):.6g})"
+        )
+
+    if policy.require_cg_converged and str(health.get("fde_name", "")).strip().lower() == "boussinesq":
+        if not bool(health.get("has_cg_diagnostics", False)):
+            violations.append("cg_convergence_diagnostics_missing")
+        else:
+            cg_failed_count = int(health.get("cg_failed_count", 0) or 0)
+            if cg_failed_count > 0:
+                violations.append(f"cg_failed_count({cg_failed_count}) > 0")
 
     return violations
 
@@ -306,10 +356,13 @@ def _simulate_one_local(
     auto_dt: bool,
     target_cfl: float,
     include_initial_state: bool,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict[str, np.ndarray]]:
     frames: list[np.ndarray] = []
     timestamps: list[float] = []
     dt_hist: list[float] = []
+    cg_failed_count: list[int] = []
+    cg_max_iterations: list[int] = []
+    cg_max_residual_ratio: list[float] = []
     current_time = 0.0
 
     if include_initial_state:
@@ -325,6 +378,10 @@ def _simulate_one_local(
             dt = solver.dt
 
         solver.step(dt=dt, auto_dt=False)
+        if hasattr(solver, "last_step_cg_converged"):
+            cg_failed_count.append(int(getattr(solver, "last_step_cg_failed_count", 0)))
+            cg_max_iterations.append(int(getattr(solver, "last_step_cg_max_iterations", 0)))
+            cg_max_residual_ratio.append(float(getattr(solver, "last_step_cg_max_residual_ratio", 0.0)))
         current_time += float(dt)
 
         if (step_idx + 1) % save_every == 0:
@@ -337,10 +394,17 @@ def _simulate_one_local(
         timestamps.append(current_time)
         dt_hist.append(0.0)
 
+    diagnostics: Dict[str, np.ndarray] = {}
+    if cg_failed_count:
+        diagnostics["cg_failed_count"] = np.asarray(cg_failed_count, dtype=np.int32)
+        diagnostics["cg_max_iterations"] = np.asarray(cg_max_iterations, dtype=np.int32)
+        diagnostics["cg_max_residual_ratio"] = np.asarray(cg_max_residual_ratio, dtype=np.float32)
+
     return (
         np.stack(frames, axis=0),
         np.asarray(timestamps, dtype=np.float32),
         np.asarray(dt_hist, dtype=np.float32),
+        diagnostics,
     )
 
 def _run_fde_rollout(
@@ -357,7 +421,7 @@ def _run_fde_rollout(
         solver.set_bathymetry(bathymetry)
         solver.set_initial_condition(h0, hu0=np.zeros_like(h0), hv0=np.zeros_like(h0))
 
-        trajectory, timestamps, dt_hist = _simulate_one_local(
+        trajectory, timestamps, dt_hist, diagnostics = _simulate_one_local(
             solver=solver,
             n_steps=dataset.n_steps,
             save_every=dataset.save_every,
@@ -366,14 +430,14 @@ def _run_fde_rollout(
             include_initial_state=dataset.include_initial_state,
         )
         trajectory_eta = trajectory[:, 0] + bathymetry[None, ...]
-        return RolloutResult(trajectory, trajectory_eta, timestamps, dt_hist)
+        return RolloutResult(trajectory, trajectory_eta, timestamps, dt_hist, diagnostics)
 
     if fde_name == "swe_muscl_hr":
         solver = _make_muscl_solver_from_cfg(solver_cfg)
         solver.set_bathymetry(bathymetry)
         solver.set_initial_condition(h0, hu0=np.zeros_like(h0), hv0=np.zeros_like(h0))
 
-        trajectory, timestamps, dt_hist = _simulate_one_local(
+        trajectory, timestamps, dt_hist, diagnostics = _simulate_one_local(
             solver=solver,
             n_steps=dataset.n_steps,
             save_every=dataset.save_every,
@@ -382,14 +446,14 @@ def _run_fde_rollout(
             include_initial_state=dataset.include_initial_state,
         )
         trajectory_eta = trajectory[:, 0] + bathymetry[None, ...]
-        return RolloutResult(trajectory, trajectory_eta, timestamps, dt_hist)
+        return RolloutResult(trajectory, trajectory_eta, timestamps, dt_hist, diagnostics)
 
     if fde_name == "boussinesq":
         solver = _make_boussinesq_solver_from_cfg(solver_cfg)
         solver.set_bathymetry(bathymetry)
         solver.set_initial_condition(eta0, eta_t0=np.zeros_like(eta0))
 
-        trajectory, timestamps, dt_hist = _simulate_one_local(
+        trajectory, timestamps, dt_hist, diagnostics = _simulate_one_local(
             solver=solver,
             n_steps=dataset.n_steps,
             save_every=dataset.save_every,
@@ -398,7 +462,7 @@ def _run_fde_rollout(
             include_initial_state=dataset.include_initial_state,
         )
         trajectory_eta = trajectory[:, 0]
-        return RolloutResult(trajectory, trajectory_eta, timestamps, dt_hist)
+        return RolloutResult(trajectory, trajectory_eta, timestamps, dt_hist, diagnostics)
 
     raise NotImplementedError(f"FDE '{fde_name}' is not implemented yet")
 
@@ -540,7 +604,22 @@ def _generate_sample_worker(
             h0=h0,
         )
 
-        health = _compute_rollout_health(fde_name=fde_name, rollout=rollout, rest_depth=rest_depth)
+        effective_depth = None
+        if fde_name == "boussinesq":
+            solver_sea_level = float(solver_cfg.get("sea_level_offset", 0.0))
+            solver_depth_scale = float(solver_cfg.get("depth_scale", 1.0))
+            solver_min_depth = float(solver_cfg.get("min_depth", 1e-3))
+            effective_depth = np.maximum(
+                (-bathymetry + solver_sea_level) * solver_depth_scale,
+                solver_min_depth,
+            )
+
+        health = _compute_rollout_health(
+            fde_name=fde_name,
+            rollout=rollout,
+            rest_depth=rest_depth,
+            effective_depth=effective_depth,
+        )
         quality_violations = _quality_violations_for_health(health=health, policy=dataset.quality_policy)
         quality_status = "ok"
         if quality_violations:
@@ -557,14 +636,16 @@ def _generate_sample_worker(
             shutil.rmtree(sample_dir)
         sample_dir.mkdir(parents=True, exist_ok=True)
 
-        np.savez_compressed(
-            sample_dir / "rollout.npz",
-            trajectory=rollout.trajectory.astype(np.float32),
-            trajectory_eta=rollout.trajectory_eta.astype(np.float32),
-            timestamps=rollout.timestamps.astype(np.float32),
-            dt_history=rollout.dt_history.astype(np.float32),
-            fde_name=np.array([fde_name], dtype="U64"),
-        )
+        rollout_payload = {
+            "trajectory": rollout.trajectory.astype(np.float32),
+            "trajectory_eta": rollout.trajectory_eta.astype(np.float32),
+            "timestamps": rollout.timestamps.astype(np.float32),
+            "dt_history": rollout.dt_history.astype(np.float32),
+            "fde_name": np.array([fde_name], dtype="U64"),
+        }
+        if rollout.diagnostics:
+            rollout_payload.update({key: value for key, value in rollout.diagnostics.items()})
+        np.savez_compressed(sample_dir / "rollout.npz", **rollout_payload)
         np.save(sample_dir / "trajectory_eta.npy", rollout.trajectory_eta.astype(np.float32))
 
         # keep sample.npz backward compatible for downstream preprocess/training
@@ -817,7 +898,12 @@ class TsunamiDatasetBuilder:
             min_h_tolerance=_optional_float(quality_cfg.get("min_h_tolerance", None), "min_h_tolerance"),
             max_abs_eta_limit=_optional_float(quality_cfg.get("max_abs_eta_limit", None), "max_abs_eta_limit"),
             max_velocity_limit=_optional_float(quality_cfg.get("max_velocity_limit", None), "max_velocity_limit"),
+            max_eta_over_depth=_optional_float(quality_cfg.get("max_eta_over_depth", None), "max_eta_over_depth"),
+            require_cg_converged=bool(quality_cfg.get("require_cg_converged", True)),
         )
+
+        if quality_policy.max_eta_over_depth is not None and quality_policy.max_eta_over_depth <= 0:
+            raise ValueError("quality.max_eta_over_depth must be positive when set")
 
         if num_samples <= 0:
             raise ValueError("dataset.num_samples must be positive")
