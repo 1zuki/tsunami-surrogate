@@ -6,9 +6,10 @@
 
 The dataset is built around shared synthetic scenarios rather than solver-specific samples. Each scenario contains a procedurally generated bathymetry field, a synthetic initial-displacement source field, and metadata recording the sampled bathymetry family, source family, random strength factor, and file locations. Numerical reference trajectories are then produced by advancing the same scenario with one or more forward solvers. This separation between scenario generation and reference generation is important for multi-fidelity evaluation: when two solver labels differ, the difference is attributable to the numerical reference and not to a different random seabed or initial disturbance.
 
-The default forward benchmark uses a uniform $64\times64$ Cartesian grid on normalized coordinates, with matched bathymetry, source, and solver resolution. The main training pool contains $10{,}000$ scenarios generated with seed $42$; the separate validation and test pools are described in Section~\ref{subsec:preprocessing-targets}. Each trajectory is advanced for $250$ solver steps, every fifth state is saved, and the initial state is included, giving $51$ stored frames per rollout. Automatic time stepping is enabled with a target CFL value of $0.45$ for the shallow-water references. The default solver set contains a hydrostatic-reconstruction shallow-water solver and a second-order MUSCL-HR shallow-water solver. A Boussinesq branch is generated through a separate diagnostic configuration with smaller source amplitudes and a stricter target CFL value, and is treated as exploratory unless a particular experiment explicitly uses it.
+The default forward benchmark uses a uniform $64\times64$ Cartesian grid on normalized coordinates, with matched bathymetry, source, and solver resolution. The main raw pool contains $10{,}000$ scenarios generated with seed $42$, and the processed splits are described in Section~\ref{subsec:preprocessing-targets}. Each trajectory is advanced for $250$ solver steps, every fifth state is saved, and the initial state is included, giving $51$ stored frames per rollout. Automatic time stepping is enabled with a target CFL value of $0.45$ for the shallow-water references. The default solver set now contains three references on the same scenario IDs: a hydrostatic-reconstruction shallow-water solver, a second-order MUSCL-HR shallow-water solver, and an elevation-only Boussinesq solver. Hydrostatic reconstruction remains the primary reference, while MUSCL-HR and Boussinesq provide two different comparision baselines for solver-fidelity analysis.
 
 % TODO: Replace planned scenario counts with final generated counts before submission.
+% TODO: Figure: show representative accepted bathymetry/source pairs from the generated dataset, with terrain/source family labels and shared colorbars so readers can see what the synthetic scenarios actually look like.
 
 The benchmark is intentionally synthetic. Its purpose is to create a controlled supervised-learning problem for testing fast forward emulation of solver-generated tsunami-like wavefields, not to reproduce a specific coastline or to provide operational hazard assessment. This design makes it possible to evaluate solver fidelity, inference speed, distribution-shift behavior, cross-resolution transfer, and uncertainty quality under repeatable conditions.
 
@@ -65,7 +66,7 @@ Gaussian and multi-Gaussian sources provide localized smooth uplift patterns. Di
 
 In the default forward benchmark, per-sample source normalization is disabled. Thus each family preserves its sampled amplitude semantics instead of being forced into a common height interval. A separate independent strength factor
 \[
-s\sim\mathcal{U}(0.45,1.0)
+s\sim\mathcal{U}(0.45, 0.85) % we lowered this so boussinesq can run on the same scenario ig
 \]
 is then applied during scenario construction to form the initial perturbation
 \[
@@ -77,8 +78,8 @@ h_0(x,y)=\max\{h_{\mathrm{rest}}(x,y)+\eta_0(x,y),0\},
 \]
 and the horizontal momenta are initialized to zero. Therefore, each rollout starts from a displaced but initially motionless free surface over a synthetic seabed.
 
-The separate Boussinesq diagnostic configuration uses smoother bathymetries, lower source amplitudes, and a smaller source-strength range. This is done to keep the weakly dispersive branch numerically stable enough for diagnostics, rather than to define the main training distribution.
-
+There is also a separate Boussinesq debugging configuration with smoother bathymetries, lower source amplitudes, and a smaller source-strength range. That file is useful for checking propagation plots, but it is not the main paper from the same bathymetry and source caches as the shallow-water solvers, so sample IDs stay aligned across targets.
+s
 \subsection{Reference rollouts and solver organization}
 \label{subsec:reference-rollouts}
 
@@ -88,14 +89,14 @@ For each shared scenario, enabled solvers write outputs into solver-specific sam
 \[
 \eta(x,y,t)=h(x,y,t)+b(x,y).
 \]
-For the Boussinesq branch, the first state channel is treated directly as the free-surface field. Scenario-level manifests record the shared scenario definition, while per-solver manifests record the corresponding numerical labels. This layout allows single-solver training, per-solver comparisons, and multi-fidelity preprocessing without resampling the underlying bathymetry-source pairs.
+For the Boussinesq solver, the first state channel is treated directly as the free-surface field. Scenario-level manifests record the shared scenario definition, while per-solver manifests record the corresponding numerical labels. This layout allows single-solver training, per-solver comparisons, and multi-fidelity preprocessing without resampling the underlying bathymetry-source pairs.
 
 Quality checks are applied during generation before a sample is accepted. The default policy rejects non-finite states, depth violations below the configured tolerance, excessive free-surface amplitude, and excessive velocity. These checks are intended to prevent unstable or physically unusable rollouts from silently entering the supervised-learning labels.
 
 \subsection{Preprocessing and learning targets}
 \label{subsec:preprocessing-targets}
 
-Preprocessing converts the raw rollout archives into model-ready arrays. The preprocessing code supports a default fixed-seed $70\%/15\%/15\%$ scenario split of a single pool, but for the experiments in this paper we deliberately choose a stronger design and generate the training, validation, and test pools as independent runs. The training pool uses $10{,}000$ scenarios, the validation pool $1{,}000$, and the test pool $2{,}500$. The training and validation pools are generated from the same seed but from disjoint sample-index ranges, so their per-sample seeds never coincide, while the test pool uses a different seed entirely. This guarantees that no scenario is shared between the pools by construction, rather than relying on a random partition. The same scenario design is reused across solver targets, so the hydrostatic and MUSCL-HR datasets can be compared without changing the underlying bathymetry-source pairs.
+Preprocessing converts the raw rollout archives into model-ready arrays. The preprocessing code supports a default fixed-seed $70\%/15\%/15\%$ scenario split of a single pool, but for the experiments in this paper we deliberately choose a stronger design and generate the training, validation, and test pools as independent runs. The training pool uses $10{,}000$ scenarios, the validation pool $1{,}000$, and the test pool $2{,}500$. The training and validation pools are generated from the same seed but from disjoint sample-index ranges, so their per-sample seeds never coincide, while the test pool uses a different seed entirely. This guarantees that no scenario is shared between the pools by construction, rather than relying on a random partition. The same scenario design is reused across solver targets, so the hydrostatic, MUSCL-HR and Boussinesq datasets can be compared without changing the underlying bathymetry-source pairs.
 
 The default input channels are bathymetry, source field, and initial water depth. The initial free surface can also be exported as an ablation channel, and a scalar solver-identity channel is available for explicit multi-fidelity experiments. The default target variable is the free-surface elevation $\eta$. With the default rollout settings, preprocessing discards the stored initial frame from the prediction target and keeps the next $50$ saved frames as a multi-step forecast target.
 

@@ -5,17 +5,18 @@ All surrogates share the same interface fixed in Section~\ref{subsec:forward-tas
 
 \subsection{Fourier Neural Operator}
 \label{subsec:fno}
+% TODO: Describe FNO input/output shape, spectral layers, width/modes/depth, and why it is the main model.
+The Fourier Neural Operator (FNO) is our primary model because it learns a mapping between discretized functions rather than a fixed pixel-to-pixel function, and its spectral layer give it a global receptive field at every depth \citep{li2021fno}. This suits tsunami-like propagation, where a disturbance influence distant parts od the domain within the forecast horizon and a purely local model would need many layers to reach the same range.
 
-The Fourier Neural Operator (FNO) is our primary model because it learns a mapping between discretized functions rather than a fixed pixel-to-pixel function, and its spectral layers give it a global receptive field at every depth \citep{li2021fno}. This suits tsunami-like propagation, where a disturbance influence distant parts of the domain within the forecast horizon and a purely local model would need many layers to reach the same range.
-
-The overall architecture is shown in Figure~\ref{fig:fno-arch}. The input is first lifted to a width-$d$ feature map by a $1\times1$ convolution. Following common practice we also concatenate two normalized coordinate channels before lifting, so the operator has access to absolute position. The lifted features are then processed by a stack of $L$ Fourier blocks. Each block combines a spectral convolution with an ordinary $1\times1$ convolution and a GELU nonlinearity,
+The overall architecture is show in Figure~\ref{fig:fno-arch} The input is first lifted to a width-$d$ feature map by a $1 \times 1$ convolution. Following common practice, we also concatenate two normalized coordinate channels before lifting, so the operator has access to absolute position. The lifted features are then processed by a stack of $L$ Fourier blocks. Each block combines a spectral convolution with an ordinary $1 \times 1$ convolution and a GELU nonlinearity,
 \[
-z \mapsto \mathrm{GELU}\!\left(\mathcal{K}(z) + W z\right),
+z \mapsto \mathrm{GELU} \!\left(\mathcal{K}(z) + W z \right),
 \]
-where $W$ is the pointwise (local) path and $\mathcal{K}$ is the spectral (global) path. The spectral path transforms the features with a two-dimensional real FFT, keeps only the lowest $m_1\times m_2$ Fourier modes, multiplies them by a learnable complex weight tensor, and maps back with an inverse FFT. Truncating to the low modes is both a regularizer and the reason the layer is resolution-flexible: because the retained mode count is fixed while the FFT grid is rebuilt from the current input size, the same trained weights can be applied at a different grid resolution, which is what we exploit in the cross-resolution experiments. After the Fourier blocks a two-layer pointwise head with a GELU in between projects the width-$d$ features to the $T$ output frames. To reduce wrap-around artifacts from the periodic FFT on a non-periodic domain, the features are slightly zero-padded before the blocks and cropped back afterward.
+where $W$ is the pointwise (local) path and $\mathcal{K}$ is the spectral (global) path. The spectral path transforms the features with a two-dimensional real Fast-Fourier-Transform (FFT), keeps only the lowest $m_1 \times m_2$ Fourier modes, multiplies them by a learnable complex weight tensor, and maps back with an inverse FFT. Truncating to the low modes is both a regularizer and the reason the layer is resolution-flexible: because the trained mode counts is fixed, whole the FFT grid is rebuilt from the current input size, so the same trained weights can be applied at a different grid resolution, which is what we exploit in the cross-resolution experiments. After the Fourier blocks, a two-layer pointwise head with GELU in between the projects the width-$d$ features to the $T$ output frames. To reduce warp-around artifacts from a periodic FFT on a non-periodic domain, the features are slightly zero-padded before the blocks and cropped back afterwards.
 
-In the main configuration we use $L=6$ Fourier blocks, width $d=48$, and $m_1=m_2=14$ retained modes in each spatial direction, with a padding of $6$ cells. The same architecture is trained separately on the hydrostatic and the MUSCL-HR labels; only the output channel count would change if the forecast horizon were changed.
+In the main configuration we use $L=6$ Fourier blocks, width $d=48$, and $m_1=m_2=14$ retained modes in each spatial direction, with a padding of $6$ cells. The same architecture is trained separately on the hydrostatic, MUSCL-HR, and Boussinesq labels; only the output channel count would change if the forecast horizon were changed.
 
+% TODO: PUT OUR DARN FNI ARCHUTECTURE HERE
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[
@@ -30,7 +31,7 @@ In the main configuration we use $L=6$ Fourier blocks, width $d=48$, and $m_1=m_
     >={Stealth[length=2mm]},
     arr/.style={->, thick},
 ]
-% ---- top row: full pipeline ----
+
 \node[io] (in) {$X$\\\scriptsize $3{\times}H{\times}W$};
 \node[lift, right=7mm of in] (lift) {Lift\\\scriptsize $1{\times}1$ conv\\\scriptsize $\to d{=}48$};
 \node[block, right=7mm of lift] (b1) {Fourier\\block $1$};
@@ -48,15 +49,13 @@ In the main configuration we use $L=6$ Fourier blocks, width $d=48$, and $m_1=m_
 \draw[arr] (bL) -- (proj);
 \draw[arr] (proj) -- (out);
 
-% small note on grid channels
-\node[align=center, below=2mm of lift, text width=24mm, font=\scriptsize] {+\,2 grid coord.\\channels};
+\node[align=center, below=2mm of lift, text width=24mm, font=\scriptsize] {+\,2 grid coord\\channels.};
 
-% ---- detail box: one Fourier block ----
 \node[draw, dashed, rounded corners, fit={(b1) (bL)}, inner sep=4pt] (fitblk) {};
 \coordinate (dl) at ($(fitblk.south)+(0,-3mm)$);
 
 \node[sm] (vin) at ($(dl)+(-4.7,-1.6)$) {$z$};
-% spectral (global) path
+
 \node[op, right=6mm of vin] (fft) {$\mathcal{F}$};
 \node[sm, right=5mm of fft] (modes) {keep\\\scriptsize $14{\times}14$\\\scriptsize modes};
 \node[op, right=5mm of modes] (rmul) {$R$};
@@ -77,8 +76,8 @@ In the main configuration we use $L=6$ Fourier blocks, width $d=48$, and $m_1=m_
 \draw[arr] (vin) |- (W);
 \draw[arr] (W) -| (sum);
 
-% connector from fitted block to detail
 \draw[densely dotted] (fitblk.south) -- ($(fft)!0.5!(rmul)+(0,0.95)$);
+
 
 \node[align=left, font=\scriptsize, right=2mm of vout, text width=20mm]
   {$\sigma=\mathrm{GELU}$\\spectral $+$ local};
@@ -88,20 +87,20 @@ In the main configuration we use $L=6$ Fourier blocks, width $d=48$, and $m_1=m_
 \end{figure}
 
 \subsection{Convolutional baselines}
-\label{subsec:conv-baselines}
+\label{subsec:conv-baseline}
+% TODO: Briefly describe CNN and U-Net baselines and their role as local/encoder-decoder comparisons.
+To check whether the spectral, global structure of the FNO actually helps, we include two purely convolutional baseline that have a local receptive field.
 
-To check whether the spectral, global structure of the FNO actually helps, we include two purely convolutional baselines that have a local receptive field.
+The \textbf{CNN} is a small fully convolutional neural network: $3 \times 3$ convolutions followed by a GELU activation, then a $1 \times 1$ output convolution that produces $T$ output frames at a width-$d = 48$. It does not have down-sampling and no global mixing, so its receptive field grews only with depth. So this represents the simplest reasonable local predictors and is useful as a lower comparison anchor.
 
-The \textbf{CNN} baseline is a small fully convolutional network: three $3\times3$ convolutions with GELU activations followed by a $1\times1$ convolution that produces the $T$ output frames, at a width of $48$. It has no downsampling and no global mixing, so its receptive field grow only with depth. It represents the simplest reasonable local predictor and is a useful lower anchor.
-
-The \textbf{U-Net} baseline adds a single encoder--decoder level with a skip connection \citep{ronneberger2015unet}. An input double-convolution block is followed by an average-pooling downsampling and a second double-convolution block at twice the width; the coarse features are then bilinearly upsampled, concatenated with the high-resolution skip features, and decoded by a final double-convolution and a $1\times1$ output convolution, with a base width of $32$. The pooling give it a larger effective receptive field than the plain CNN at a modest cost, which is why it is a stronger convolutional comparison.
+The \textbf{U-Net} add s a single encoder--decoder with a skip connection \citep{ronneberger2015unet}. An input double convolution block and followed by an average-pooling with down-sampling and a second double convolution at double the width; the coarse feature are then bi-linearly up-sampled and then concatenated with a high-resolution skip feature and then decoded by a final double convolution and $1 \times 1$ output convolution; at a base width of $32$. The pooling give it a larger effective receptive field compared to the plain \textbf{CNN} at the modest cost, which is why it is a stronger convolution comparison.
 
 \subsection{ConvLSTM baseline}
 \label{subsec:convlstm}
-
-The ConvLSTM baseline is a recurrent spatiotemporal model, originally introduced for precipitation nowcasting \citep{shi2015convlstm}, and it is the only baseline that produces the trajectory one frame at a time instead of all at once. A small convolutional context network first encodes the static input into a spatial context, which initializes the hidden and cell states of a stack of two convolutional LSTM cells with $48$ hidden channels and $3\times3$ gates. At each of the $T$ decoding steps the cells update their states and a $1\times1$ readout emits the next frame; the predicted frame is then projected back and fed in as feedback for the following step, so the rollout is autoregressive. This recurrent inductive bias is a natural fit for a temporal forecast, but because errors are fed back, it can also accumulate drift over a long horizon, which make it an informative contrast with the single-pass models. ConvLSTM is trained and evaluated under the same protocol as the other models, so it appears as a full baseline in the comparison rather than an auxiliary one.
+% TODO: Describe ConvLSTM as a recurrent spatiotemporal baseline; include it only after final training/eval results exist.
+The \textbf{ConvLSTM} baseline is a recurrent spatiotemporal model originally introduced for precipitation now casting \citep{shi2015convlstm}, and it is the only baseline that produces the trajectory one frame at a time instead of all at once. A small convolutional context, which initialize the hidden cells states of a stack of two ConvLSTM cells with $48$ hidden channels and $3 \times 3$ gates. At each of the $T$ decoding steps, the predicted frames is then projected back and fed in as a natural fit for the following steps, so the roll out is auto regressive. This recurrent inductive bias is a natural fit for a temporal forecast, but because the errors are fedback, it cam also accumulate drift over a long horizon, which make it an informative contrast with the single-pass models. ConvLSTM is trained and then evaluated under the same protocol as the other models, so it appears as q full baseline in the comparison rather than an auxiliary one.
 
 \subsection{Ensemble uncertainty}
 \label{subsec:model-ensemble}
-
-For uncertainty we do not change the base architecture; we instead train a deep ensemble of independently seeded FNO models and aggregate their predictions, as defined in Section~\ref{subsec:uncertainty}. The ensemble mean is used as the point prediction and the per-element spread across members as the uncertainty, which keeps the uncertainty mechanism simple and architecture-agnostic. Because a single member give a degenerate zero variance, the ensemble path require at least two members, and we use three in the reported experiments.
+% TODO: Explain deep ensemble setup, number of members, and how predictive mean/uncertainty are computed.
+For uncertainty, we do not change the base architecture; we instead train a deep ensemble of independently seeded FNO models and aggregate their predictions, as defined in Section~\ref{subsec:uncertainty}. The ensemble mean is used as the point prediction and the per-element spread across members as the uncertainty, which keeps the uncertainty mechanism simple and architecture-agnostic. Because a single member give a degenerate zero variance, the ensemble path require at least two members, and we use five in the reported experiments.

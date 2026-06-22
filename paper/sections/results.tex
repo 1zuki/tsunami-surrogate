@@ -5,7 +5,9 @@
 % TODO: Report final manifest counts, quality_status summary, and basic solver validation outcomes.
 
 \subsection{Same-solver surrogate accuracy}
-% TODO: Table: FNO/CNN/U-Net/ConvLSTM on hydrostatic and MUSCL-HR targets.
+% TODO: Table: FNO on hydrostatic, MUSCL-HR, and Boussinesq; CNN/U-Net/ConvLSTM on the shallow-water targets unless the extra baseline runs are completed.
+% TODO: Figure: qualitative rollout example for the Hydrostatic target: bathymetry, source, reference eta, FNO eta, and error at early/mid/late saved timesteps. If space allows, add MUSCL-HR and Boussinesq comparison rows using the same scenario ID.
+% TODO: Optional visual figure: 3D surface-view snapshot of eta over bathymetry at one selected timestep, mainly for intuition. Keep the quantitative comparison in the 2D panels/tables so the 3D plot does not overclaim accuracy.
 
 \subsection{Runtime and speedup}
 % TODO: Table: CPU solver rollout time, CPU/GPU model inference time, precision, batch size, and speedup.
@@ -21,10 +23,10 @@
 % TODO: Train on 10k synthetic 64x64; test on real bathymetry patches with synthetic sources and a hydrostatic reference. Report MAE / rel-L2 on synthetic-test vs real-bathymetry side by side, the degradation factor, qualitative wavefield comparison, and whether ensemble uncertainty rises on the real patches.
 
 \subsection{Solver-fidelity and cross-solver diagnostics}
-% TODO: Report Hydrostatic vs MUSCL-HR raw physical gap and emulator-superiority-style ratios only after stats checks pass.
+% TODO: Report all shared-scenario raw solver gaps; keep Hydrostatic as the primary reference and present MUSCL-HR plus Boussinesq as the two comparison baselines.
 
 \subsection{Uncertainty}
 % TODO: Report ensemble calibration/error-uncertainty correlation and OOD uncertainty behavior.
 
-\subsection{Exploratory Boussinesq branch}
-% TODO: If included, show Boussinesq diagnostics and same-solver result only; avoid direct Hydrostatic-vs-Boussinesq claims unless same scenarios/scaling are used.
+\subsection{Boussinesq comparison reference}
+% TODO: Show Boussinesq same-solver result and pairwise raw gaps as the weakly dispersive comparision baseline.
