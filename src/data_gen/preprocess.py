@@ -40,6 +40,9 @@ class PreprocessConfig:
     save_format: str # npy
     compress: bool
     include_meta: bool
+    sharded: bool
+    shard_size: int
+    write_legacy_eval_archive: bool
 
     export_eval_arrays: bool
     eval_input_order: List[str]
@@ -118,6 +121,11 @@ class TsunamiPreprocessor:
         save_format = str(saving_cfg.get("format", "npy"))
         compress = bool(saving_cfg.get("compress", True))
         include_meta = bool(saving_cfg.get("include_meta", True))
+        sharded = bool(saving_cfg.get("sharded", False))
+        shard_size = int(saving_cfg.get("shard_size", 128))
+        if shard_size <= 0:
+            raise ValueError("saving.shard_size must be a positive integer")
+        write_legacy_eval_archive = bool(saving_cfg.get("write_legacy_eval_archive", False))
 
         eval_cfg = cfg.get("eval_export", {})
         export_eval_arrays = bool(eval_cfg.get("enabled", True))
@@ -187,6 +195,9 @@ class TsunamiPreprocessor:
             save_format=save_format,
             compress=compress,
             include_meta=include_meta,
+            sharded=sharded,
+            shard_size=shard_size,
+            write_legacy_eval_archive=write_legacy_eval_archive,
             export_eval_arrays=export_eval_arrays,
             eval_input_order=eval_input_order,
             eval_inputs_name=eval_inputs_name,
@@ -461,6 +472,114 @@ class TsunamiPreprocessor:
             else:
                 raise ValueError(f"Unsupported normalization method: {self.cfg.norm_method}")
 
+    def fit_normalizer_from_records(self, train_records: List[Dict[str, Any]]) -> None:
+        """Compute normalization stats without retaining all training samples."""
+        sums: Dict[str, float] = {}
+        sq_sums: Dict[str, float] = {}
+        mins: Dict[str, float] = {}
+        maxs: Dict[str, float] = {}
+        counts: Dict[str, float] = {}
+
+        target_sum = 0.0
+        target_sq_sum = 0.0
+        target_count = 0.0
+        target_min = np.inf
+        target_max = -np.inf
+
+        for rec in train_records:
+            X, Y, _, _ = self._record_to_example(rec)
+            for name, arr in X.items():
+                if not self.cfg.norm_channels.get(name, False):
+                    continue
+
+                flat = np.asarray(arr, dtype=np.float32).ravel()
+                sums[name] = sums.get(name, 0.0) + float(flat.sum())
+                sq_sums[name] = sq_sums.get(name, 0.0) + float((flat ** 2).sum())
+                mins[name] = min(mins.get(name, np.inf), float(flat.min()))
+                maxs[name] = max(maxs.get(name, -np.inf), float(flat.max()))
+                counts[name] = counts.get(name, 0.0) + float(flat.size)
+
+            if self.cfg.norm_channels.get("trajectory", False):
+                y_flat = np.asarray(Y, dtype=np.float32).ravel()
+                target_sum += float(y_flat.sum())
+                target_sq_sum += float((y_flat ** 2).sum())
+                target_count += float(y_flat.size)
+                target_min = min(target_min, float(y_flat.min()))
+                target_max = max(target_max, float(y_flat.max()))
+
+        for name in sums:
+            if counts[name] <= 0:
+                continue
+
+            if self.cfg.norm_method == "standardize":
+                mean = sums[name] / counts[name]
+                var = sq_sums[name] / counts[name] - mean ** 2
+                std = np.sqrt(max(var, self.cfg.eps))
+                self._mean[name] = float(mean)
+                self._stds[name] = float(std)
+            elif self.cfg.norm_method == "minmax":
+                self._mean[name] = float(mins[name])
+                self._stds[name] = float(maxs[name] - mins[name] + self.cfg.eps)
+            else:
+                raise ValueError(f"Unsupported normalization method: {self.cfg.norm_method}")
+
+        if self.cfg.norm_channels.get("trajectory", False):
+            if target_count <= 0:
+                raise ValueError("trajectory normalization is enabled but no target samples were found.")
+
+            if self.cfg.norm_method == "standardize":
+                mean = target_sum / target_count
+                var = target_sq_sum / target_count - mean ** 2
+                std = np.sqrt(max(var, self.cfg.eps))
+                self._target_mean = float(mean)
+                self._target_std = float(std)
+                self._target_min = float(target_min)
+                self._target_max = float(target_max)
+            elif self.cfg.norm_method == "minmax":
+                self._target_mean = float(target_min)
+                self._target_std = float(target_max - target_min + self.cfg.eps)
+                self._target_min = float(target_min)
+                self._target_max = float(target_max)
+            else:
+                raise ValueError(f"Unsupported normalization method: {self.cfg.norm_method}")
+
+    def _first_sample_inputs(self, record_groups: List[List[Dict[str, Any]]]) -> Optional[Dict[str, np.ndarray]]:
+        for records in record_groups:
+            if not records:
+                continue
+            X, _, _, _ = self._record_to_example(records[0])
+            return X
+        return None
+
+    def _normalization_enabled(self) -> bool:
+        return any(bool(v) for v in self.cfg.norm_channels.values())
+
+    def _resolve_normalization_reference_for_run(
+        self,
+        output_dir: pathlib.Path,
+        train_records: List[Dict[str, Any]],
+        norm_reference_stats_path: Optional[pathlib.Path],
+    ) -> Optional[pathlib.Path]:
+        if norm_reference_stats_path is not None:
+            return norm_reference_stats_path
+
+        if train_records:
+            return None
+
+        candidate = output_dir / "normalization_stats.json"
+        if candidate.is_file():
+            print(f"[preprocess] no train split records; reusing normalization stats: {candidate}")
+            return candidate
+
+        if self._normalization_enabled():
+            raise ValueError(
+                "No training records are available to fit normalization statistics. "
+                "Run the training split first, or set normalization.reference_stats_path "
+                "to an existing normalization_stats.json file."
+            )
+
+        return None
+
     def _load_normalizer_from_stats_file(
         self,
         stats_path: pathlib.Path,
@@ -635,6 +754,31 @@ class TsunamiPreprocessor:
 
         return train, val, test
 
+    def _record_to_example(
+        self,
+        rec: Dict[str, Any],
+    ) -> Tuple[Dict[str, np.ndarray], np.ndarray, Dict[str, Any], str]:
+        raw = self.load_sample(rec["sample_dir"])
+        X, Y = self.build_example(raw)
+
+        if "sample_index" in rec:
+            sample_id = f"sample_{int(rec['sample_index']):06d}"
+        else:
+            sample_id = pathlib.Path(rec["sample_dir"]).name
+
+        merged_meta: Dict[str, Any] = {}
+        merged_meta.update(rec if isinstance(rec, dict) else {})
+        raw_meta = raw.get("meta", {})
+        if isinstance(raw_meta, dict):
+            merged_meta.update(raw_meta)
+
+        merged_meta.setdefault("source_type", "unknown")
+        merged_meta.setdefault("bathymetry_type", "unknown")
+        merged_meta.setdefault("source_strength", np.nan)
+        merged_meta.setdefault("scenario_id", merged_meta.get("scenario_id", sample_id))
+        merged_meta.setdefault("solver_name", merged_meta.get("solver_name", "unknown"))
+        return X, Y, merged_meta, sample_id
+
     def _process_records(
         self,
         records: List[Dict[str, Any]],
@@ -645,27 +789,10 @@ class TsunamiPreprocessor:
         sample_ids: List[str] = []
 
         for rec in records:
-            raw = self.load_sample(rec["sample_dir"])
-            X, Y = self.build_example(raw)
+            X, Y, merged_meta, sample_id = self._record_to_example(rec)
             Xs.append(X)
             Ys.append(Y)
-            if "sample_index" in rec:
-                sample_id = f"sample_{int(rec['sample_index']):06d}"
-            else:
-                sample_id = pathlib.Path(rec["sample_dir"]).name
             sample_ids.append(sample_id)
-
-            merged_meta: Dict[str, Any] = {}
-            merged_meta.update(rec if isinstance(rec, dict) else {})
-            raw_meta = raw.get("meta", {})
-            if isinstance(raw_meta, dict):
-                merged_meta.update(raw_meta)
-
-            merged_meta.setdefault("source_type", "unknown")
-            merged_meta.setdefault("bathymetry_type", "unknown")
-            merged_meta.setdefault("source_strength", np.nan)
-            merged_meta.setdefault("scenario_id", merged_meta.get("scenario_id", sample_id))
-            merged_meta.setdefault("solver_name", merged_meta.get("solver_name", "unknown"))
             metas.append(merged_meta)
 
         return Xs, Ys, metas, sample_ids
@@ -678,16 +805,49 @@ class TsunamiPreprocessor:
         output_dir: pathlib.Path,
         norm_reference_stats_path: Optional[pathlib.Path] = None,
     ) -> None:
+        effective_norm_ref = self._resolve_normalization_reference_for_run(
+            output_dir=output_dir,
+            train_records=train_records,
+            norm_reference_stats_path=norm_reference_stats_path,
+        )
+
+        if self.cfg.sharded:
+            self._active_norm_reference_path = None
+            if effective_norm_ref is not None:
+                self._active_norm_reference_path = effective_norm_ref
+                example_inputs = self._first_sample_inputs([train_records, val_records, test_records])
+                self._load_normalizer_from_stats_file(effective_norm_ref, sample_inputs=example_inputs)
+            elif train_records:
+                self.fit_normalizer_from_records(train_records)
+
+            original_processed_dir = self.cfg.processed_dir
+            self.cfg.processed_dir = output_dir
+            self.cfg.processed_dir.mkdir(parents=True, exist_ok=True)
+            self._save_normalization_stats()
+            write_empty_splits = bool(train_records)
+            for split_name, records in (
+                ("train", train_records),
+                ("val", val_records),
+                ("test", test_records),
+            ):
+                if records or write_empty_splits:
+                    self.save_split_sharded(split_name, records)
+            self.cfg.processed_dir = original_processed_dir
+            self._active_norm_reference_path = None
+            return
+
         X_train_raw, Y_train_raw, meta_train, ids_train = self._process_records(train_records)
         X_val_raw, Y_val_raw, meta_val, ids_val = self._process_records(val_records)
         X_test_raw, Y_test_raw, meta_test, ids_test = self._process_records(test_records)
 
         self._active_norm_reference_path = None
-        if norm_reference_stats_path is not None:
-            self._active_norm_reference_path = norm_reference_stats_path
+        if effective_norm_ref is not None:
+            self._active_norm_reference_path = effective_norm_ref
             example_inputs = X_train_raw[0] if X_train_raw else None
-            self._load_normalizer_from_stats_file(norm_reference_stats_path, sample_inputs=example_inputs)
-        else:
+            if example_inputs is None:
+                example_inputs = self._first_sample_inputs([val_records, test_records])
+            self._load_normalizer_from_stats_file(effective_norm_ref, sample_inputs=example_inputs)
+        elif train_records:
             self.fit_normalizer(list(zip(X_train_raw, Y_train_raw)))
 
         def _normalize(X_raw: List[Dict[str, np.ndarray]], Y_raw: List[np.ndarray]) -> Tuple[List[Dict[str, np.ndarray]], List[np.ndarray]]:
@@ -707,9 +867,14 @@ class TsunamiPreprocessor:
         self.cfg.processed_dir = output_dir
         self.cfg.processed_dir.mkdir(parents=True, exist_ok=True)
         self._save_normalization_stats()
-        self.save_split("train", X_train, Y_train, meta_train, ids_train)
-        self.save_split("val", X_val, Y_val, meta_val, ids_val)
-        self.save_split("test", X_test, Y_test, meta_test, ids_test)
+        write_empty_splits = bool(train_records)
+        for split_name, X_split, Y_split, meta_split, ids_split in (
+            ("train", X_train, Y_train, meta_train, ids_train),
+            ("val", X_val, Y_val, meta_val, ids_val),
+            ("test", X_test, Y_test, meta_test, ids_test),
+        ):
+            if X_split or write_empty_splits:
+                self.save_split(split_name, X_split, Y_split, meta_split, ids_split)
         self.cfg.processed_dir = original_processed_dir
         self._active_norm_reference_path = None
 
@@ -718,11 +883,243 @@ class TsunamiPreprocessor:
         extras = [name for name in sample_inputs.keys() if name not in preferred]
         return preferred + extras
 
+    def _split_metadata_arrays(
+        self,
+        meta_list: List[Dict[str, Any]],
+        sample_ids: List[str],
+    ) -> Dict[str, np.ndarray]:
+        source_types = np.asarray(
+            [self._meta_string(meta, "source_type", "unknown") for meta in meta_list],
+            dtype=np.str_,
+        )
+        bathymetry_types = np.asarray(
+            [self._meta_string(meta, "bathymetry_type", "unknown") for meta in meta_list],
+            dtype=np.str_,
+        )
+        source_strengths = np.asarray(
+            [self._meta_float(meta, "source_strength", np.nan) for meta in meta_list],
+            dtype=np.float32,
+        )
+        scenario_ids = np.asarray(
+            [
+                self._meta_string(meta, "scenario_id", default=sample_ids[i])
+                for i, meta in enumerate(meta_list)
+            ],
+            dtype=np.str_,
+        )
+        solver_names = np.asarray(
+            [
+                self._meta_string(
+                    meta,
+                    "solver_name",
+                    default=self._meta_string(meta, "primary_fde", "unknown"),
+                )
+                for meta in meta_list
+            ],
+            dtype=np.str_,
+        )
+        return {
+            "source_id": source_types,
+            "source_type": source_types,
+            "bathymetry_type": bathymetry_types,
+            "source_strength": source_strengths,
+            "scenario_id": scenario_ids,
+            "solver_name": solver_names,
+        }
+
+    def _save_npz_payload(self, path: pathlib.Path, payload: Dict[str, Any]) -> None:
+        if self.cfg.compress:
+            np.savez_compressed(path, **payload)
+        else:
+            np.savez(path, **payload)
+
+    def _clear_generated_split_outputs(self, out_dir: pathlib.Path) -> None:
+        known_files = {
+            self.cfg.eval_inputs_name,
+            self.cfg.eval_targets_name,
+            self.cfg.eval_ids_name,
+            self.cfg.eval_archive_name,
+            self.cfg.eval_manifest_name,
+            "Y.npy",
+            "meta.jsonl",
+            "shards_manifest.json",
+        }
+        for name in known_files:
+            path = out_dir / name
+            if path.is_file():
+                path.unlink()
+
+        for path in out_dir.glob("X_*.npz"):
+            if path.is_file():
+                path.unlink()
+
+        shard_dir = out_dir / "shards"
+        if shard_dir.is_dir():
+            for path in shard_dir.glob("shard_*.npz"):
+                if path.is_file():
+                    path.unlink()
+
+    def _write_shard(
+        self,
+        out_dir: pathlib.Path,
+        shard_dir: pathlib.Path,
+        shard_idx: int,
+        X: List[Dict[str, np.ndarray]],
+        Y: List[np.ndarray],
+        meta_list: List[Dict[str, Any]],
+        sample_ids: List[str],
+        input_order: List[str],
+    ) -> Dict[str, Any]:
+        eval_inputs = np.stack(
+            [np.stack([sample[channel] for channel in input_order], axis=0) for sample in X],
+            axis=0,
+        ).astype(np.float32)
+        eval_targets = np.stack(Y, axis=0).astype(np.float32)
+        eval_ids = np.asarray(sample_ids, dtype=np.str_)
+        metadata = self._split_metadata_arrays(meta_list, sample_ids)
+
+        shard_path = shard_dir / f"shard_{shard_idx:05d}.npz"
+        payload: Dict[str, Any] = {
+            "inputs": eval_inputs,
+            "targets": eval_targets,
+            "sample_id": eval_ids,
+            "target_variable": np.asarray([self.cfg.target_variable], dtype=np.str_),
+            "target_mean": np.asarray([self._target_mean], dtype=np.float32),
+            "target_std": np.asarray([self._target_std], dtype=np.float32),
+            "target_min": np.asarray([self._target_min], dtype=np.float32),
+            "target_max": np.asarray([self._target_max], dtype=np.float32),
+            "input_order": np.asarray(input_order, dtype=np.str_),
+        }
+        payload.update(metadata)
+        self._save_npz_payload(shard_path, payload)
+
+        return {
+            "file": str(shard_path.relative_to(out_dir)),
+            "num_samples": int(eval_inputs.shape[0]),
+            "inputs_shape": list(map(int, eval_inputs.shape)),
+            "targets_shape": list(map(int, eval_targets.shape)),
+        }
+
+    def save_split_sharded(self, split_name: str, records: List[Dict[str, Any]]) -> None:
+        """Save one split as bounded-size training/evaluation shards."""
+        out_dir = self.cfg.processed_dir / split_name
+        shard_dir = out_dir / "shards"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        shard_dir.mkdir(parents=True, exist_ok=True)
+        self._clear_generated_split_outputs(out_dir)
+
+        if self.cfg.write_legacy_eval_archive:
+            print(
+                "[preprocess] saving.write_legacy_eval_archive is ignored in sharded mode; "
+                "writing only bounded shard archives."
+            )
+
+        shards: List[Dict[str, Any]] = []
+        input_order: List[str] = []
+        total_samples = 0
+        first_inputs_shape: Optional[List[int]] = None
+        first_targets_shape: Optional[List[int]] = None
+
+        X_chunk: List[Dict[str, np.ndarray]] = []
+        Y_chunk: List[np.ndarray] = []
+        meta_chunk: List[Dict[str, Any]] = []
+        id_chunk: List[str] = []
+
+        meta_file = None
+        if self.cfg.include_meta:
+            meta_file = (out_dir / "meta.jsonl").open("w", encoding="utf-8")
+
+        def flush_chunk() -> None:
+            nonlocal total_samples, first_inputs_shape, first_targets_shape
+            if not X_chunk:
+                return
+
+            shard_info = self._write_shard(
+                out_dir=out_dir,
+                shard_dir=shard_dir,
+                shard_idx=len(shards),
+                X=X_chunk,
+                Y=Y_chunk,
+                meta_list=meta_chunk,
+                sample_ids=id_chunk,
+                input_order=input_order,
+            )
+            shards.append(shard_info)
+            total_samples += int(shard_info["num_samples"])
+            if first_inputs_shape is None:
+                first_inputs_shape = list(shard_info["inputs_shape"])
+                first_targets_shape = list(shard_info["targets_shape"])
+            X_chunk.clear()
+            Y_chunk.clear()
+            meta_chunk.clear()
+            id_chunk.clear()
+
+        try:
+            for rec in records:
+                X_raw, Y_raw, meta, sample_id = self._record_to_example(rec)
+                X_norm, Y_norm = self.normalize_sample(X_raw, Y_raw)
+
+                if not input_order:
+                    input_order = self._resolved_eval_input_order(X_norm)
+
+                X_chunk.append(X_norm)
+                Y_chunk.append(Y_norm)
+                meta_chunk.append(meta)
+                id_chunk.append(sample_id)
+
+                if meta_file is not None:
+                    meta_file.write(json.dumps(meta) + "\n")
+
+                if len(X_chunk) >= self.cfg.shard_size:
+                    flush_chunk()
+
+            flush_chunk()
+        finally:
+            if meta_file is not None:
+                meta_file.close()
+
+        shard_manifest = {
+            "version": 1,
+            "split": split_name,
+            "sharded": True,
+            "num_samples": int(total_samples),
+            "num_shards": int(len(shards)),
+            "shard_size": int(self.cfg.shard_size),
+            "shards": shards,
+            "input_order": input_order,
+            "target_mode": self.cfg.target_mode,
+            "target_variable": self.cfg.target_variable,
+            "normalized_targets": bool(self.cfg.norm_channels.get("trajectory", False)),
+            "target_mean": float(self._target_mean),
+            "target_std": float(self._target_std),
+            "target_min": float(self._target_min),
+            "target_max": float(self._target_max),
+        }
+        with (out_dir / "shards_manifest.json").open("w", encoding="utf-8") as f:
+            json.dump(shard_manifest, f, indent=2)
+
+        eval_manifest = {
+            "split": split_name,
+            "sharded": True,
+            "shards_manifest": "shards_manifest.json",
+            "input_order": input_order,
+            "target_mode": self.cfg.target_mode,
+            "target_variable": self.cfg.target_variable,
+            "normalized_targets": bool(self.cfg.norm_channels.get("trajectory", False)),
+            "num_samples": int(total_samples),
+            "num_shards": int(len(shards)),
+            "inputs_shape": first_inputs_shape,
+            "targets_shape": first_targets_shape,
+        }
+        with (out_dir / self.cfg.eval_manifest_name).open("w", encoding="utf-8") as f:
+            json.dump(eval_manifest, f, indent=2)
+
     def save_split(self, split_name: str, X: List[Dict[str, np.ndarray]], Y: List[np.ndarray],
                    meta_list: List[Dict[str, Any]], sample_ids: List[str]) -> None:
         """ save processed arrays and metadata """
         out_dir = self.cfg.processed_dir / split_name
         out_dir.mkdir(parents=True, exist_ok=True)
+        self._clear_generated_split_outputs(out_dir)
 
         if len(X) == 0 or len(Y) == 0:
             if self.cfg.include_meta:

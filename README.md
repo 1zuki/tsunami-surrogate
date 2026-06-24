@@ -278,6 +278,14 @@ Main benchmark preprocessing:
 python src/data_gen/preprocess.py --config configs/data/preprocess.yaml
 ```
 
+Large paper-facing preprocess configs use bounded shards by default:
+- `saving.sharded: true`
+- `saving.shard_size: 128`
+- `saving.write_legacy_eval_archive: false`
+
+This keeps preprocessing and training RAM-bounded. Existing model config paths ending in `.../eval_dataset.npz` still work: when the monolithic archive is absent and the split is sharded, the loader falls back to that file's parent directory and reads `shards_manifest.json`. Paths may also point directly at the split folder, e.g. `data/processed/hydrostatic/train`.
+For sharded training splits, the loader uses a shard-aware batch sampler: it shuffles shard order and sample order within each shard, but keeps each mini-batch inside one shard to avoid repeatedly reloading compressed shard files.
+
 `preprocess.yaml` supports FDE-aware modes:
 - `fde.mode: single` with `fde.targets: [hydrostatic]` writes to `data/processed/hydrostatic/...`
 - `fde.mode: separate_all` writes one processed dataset per solver (`hydrostatic`, `muscl_hr`, `boussinesq`) using the same scenario split
@@ -293,9 +301,12 @@ python src/data_gen/preprocess.py --config configs/data/preprocess_boussinesq.ya
 Use this only with `configs/data/dataset_boussinesq.yaml` outputs. For the main same-scenario dataset, `configs/data/preprocess.yaml` already exports Boussinesq together with hydrostatic and MUSCL-HR.
 
 Main outputs used by training/eval:
-- `data/processed/hydrostatic/{train,val,test}/eval_dataset.npz`
-- `data/processed/muscl_hr/{train,val,test}/eval_dataset.npz`
-- `data/processed/boussinesq/{train,val,test}/eval_dataset.npz`
+- `data/processed/hydrostatic/{train,val,test}/shards_manifest.json`
+- `data/processed/muscl_hr/{train,val,test}/shards_manifest.json`
+- `data/processed/boussinesq/{train,val,test}/shards_manifest.json`
+- per-split shards under `.../{train,val,test}/shards/shard_*.npz`
+
+Small/debug configs can still use the legacy single-archive format by setting `saving.sharded: false`, which writes `eval_dataset.npz` as before.
 
 ### 6.3 Step 3 - Train Forward Models (Required Before Eval)
 

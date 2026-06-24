@@ -10,10 +10,27 @@ import torch
 
 def resolve_dataset_npz(path: str | Path) -> Path:
     dataset_path = Path(path)
+    if dataset_path.name == "eval_dataset.npz":
+        parent_manifest = dataset_path.parent / "shards_manifest.json"
+        if parent_manifest.exists():
+            dataset_path = dataset_path.parent
+
     if not dataset_path.exists():
         raise FileNotFoundError(dataset_path)
 
     if dataset_path.is_dir():
+        shard_manifest = dataset_path / "shards_manifest.json"
+        if shard_manifest.exists():
+            with shard_manifest.open("r", encoding="utf-8") as f:
+                manifest = json.load(f)
+            shards = list(manifest.get("shards", []))
+            if not shards:
+                raise FileNotFoundError(f"No shards found in directory: {dataset_path}")
+            first_file = shards[0].get("file")
+            if not first_file:
+                raise FileNotFoundError(f"First shard in {shard_manifest} has no file path")
+            return dataset_path / str(first_file)
+
         candidate = dataset_path / "eval_dataset.npz"
         if candidate.exists():
             return candidate
@@ -28,8 +45,12 @@ def resolve_dataset_npz(path: str | Path) -> Path:
 
 
 def _read_normalized_targets_flag(npz_path: Path) -> Optional[bool]:
-    manifest_path = npz_path.with_name("eval_manifest.json")
-    if not manifest_path.exists():
+    manifest_candidates = [
+        npz_path.with_name("eval_manifest.json"),
+        npz_path.parent.parent / "eval_manifest.json",
+    ]
+    manifest_path = next((p for p in manifest_candidates if p.exists()), None)
+    if manifest_path is None:
         return None
 
     try:

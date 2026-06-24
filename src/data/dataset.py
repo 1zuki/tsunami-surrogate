@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import bisect
+import json
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader, Dataset, Sampler, Subset
 
 from src.utils.seed import make_torch_generator, make_worker_init_fn
 
@@ -201,6 +204,138 @@ class TsunamiDataset(Dataset):
         }
 
 
+class ShardedTsunamiDataset(Dataset):
+    def __init__(self, path: str | Path, cache_size: int = 2):
+        self.root = Path(path)
+        self.manifest_path = self.root / "shards_manifest.json"
+        if not self.manifest_path.is_file():
+            raise FileNotFoundError(self.manifest_path)
+
+        with self.manifest_path.open("r", encoding="utf-8") as f:
+            manifest = json.load(f)
+
+        self.shards: List[Dict[str, Any]] = list(manifest.get("shards", []))
+        self.counts = [int(shard.get("num_samples", 0)) for shard in self.shards]
+        self.cumulative: List[int] = []
+        total = 0
+        for count in self.counts:
+            total += count
+            self.cumulative.append(total)
+
+        self.num_samples = int(manifest.get("num_samples", total))
+        if self.num_samples != total:
+            self.num_samples = total
+
+        self.cache_size = max(1, int(cache_size))
+        self._cache: OrderedDict[int, LoadedArrays] = OrderedDict()
+
+    def __len__(self) -> int:
+        return self.num_samples
+
+    def shard_index_for_sample(self, idx: int) -> int:
+        idx = int(idx)
+        if idx < 0:
+            idx += self.num_samples
+        if idx < 0 or idx >= self.num_samples:
+            raise IndexError(idx)
+        return bisect.bisect_right(self.cumulative, idx)
+
+    def _load_shard(self, shard_idx: int) -> LoadedArrays:
+        cached = self._cache.get(shard_idx)
+        if cached is not None:
+            self._cache.move_to_end(shard_idx)
+            return cached
+
+        shard_file = self.shards[shard_idx].get("file")
+        if not shard_file:
+            raise KeyError(f"Shard {shard_idx} in {self.manifest_path} is missing a file path.")
+
+        arrays = _load_arrays(self.root / str(shard_file))
+        self._cache[shard_idx] = arrays
+        self._cache.move_to_end(shard_idx)
+        while len(self._cache) > self.cache_size:
+            self._cache.popitem(last=False)
+        return arrays
+
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        if torch.is_tensor(idx):
+            idx = int(idx.item())
+        idx = int(idx)
+        if idx < 0:
+            idx += self.num_samples
+        if idx < 0 or idx >= self.num_samples:
+            raise IndexError(idx)
+
+        shard_idx = self.shard_index_for_sample(idx)
+        shard_start = 0 if shard_idx == 0 else self.cumulative[shard_idx - 1]
+        local_idx = idx - shard_start
+        arrays = self._load_shard(shard_idx)
+
+        return {
+            "x": torch.from_numpy(arrays.x[local_idx]),
+            "y": torch.from_numpy(arrays.y[local_idx]),
+            "sample_id": str(arrays.sample_id[local_idx]),
+            "source_id": str(arrays.source_id[local_idx]),
+            "source_type": str(arrays.source_type[local_idx]),
+            "bathymetry_type": str(arrays.bathymetry_type[local_idx]),
+            "source_strength": float(arrays.source_strength[local_idx]),
+            "scenario_id": str(arrays.scenario_id[local_idx]),
+            "solver_name": str(arrays.solver_name[local_idx]),
+        }
+
+
+class ShardedBatchSampler(Sampler[List[int]]):
+    def __init__(
+        self,
+        dataset: Dataset,
+        batch_size: int,
+        seed: int,
+        drop_last: bool = False,
+    ) -> None:
+        if batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {batch_size}")
+
+        source = _sharded_dataset_with_parent_indices(dataset)
+        if source is None:
+            raise TypeError("ShardedBatchSampler requires a ShardedTsunamiDataset or a Subset wrapping one.")
+
+        sharded_dataset, parent_indices = source
+        self.batch_size = int(batch_size)
+        self.seed = int(seed)
+        self.drop_last = bool(drop_last)
+        self._epoch = 0
+
+        groups: List[List[int]] = [[] for _ in sharded_dataset.shards]
+        for local_idx, parent_idx in enumerate(parent_indices):
+            shard_idx = sharded_dataset.shard_index_for_sample(int(parent_idx))
+            groups[shard_idx].append(local_idx)
+
+        self.groups = [group for group in groups if group]
+        if self.drop_last:
+            self._num_batches = sum(len(group) // self.batch_size for group in self.groups)
+        else:
+            self._num_batches = sum((len(group) + self.batch_size - 1) // self.batch_size for group in self.groups)
+
+    def __iter__(self):
+        rng = np.random.default_rng(self.seed + self._epoch)
+        self._epoch += 1
+
+        group_order = rng.permutation(len(self.groups)).tolist()
+        for group_idx in group_order:
+            group = self.groups[group_idx]
+            sample_order = rng.permutation(len(group)).tolist()
+            shuffled = [group[i] for i in sample_order]
+
+            for start in range(0, len(shuffled), self.batch_size):
+                batch = shuffled[start : start + self.batch_size]
+                if len(batch) < self.batch_size and self.drop_last:
+                    continue
+                yield batch
+
+    def __len__(self) -> int:
+        return int(self._num_batches)
+
+
 def _split_indices(n: int, split_cfg: Dict[str, Any], seed: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     split_type = str(split_cfg.get("type", "iid")).lower()
 
@@ -285,6 +420,16 @@ def _prepare_split_dataset(data_cfg: Dict[str, Any], split_name: str, dataset: D
     )
 
 
+def _sharded_dataset_with_parent_indices(dataset: Dataset) -> Tuple[ShardedTsunamiDataset, List[int]] | None:
+    if isinstance(dataset, ShardedTsunamiDataset):
+        return dataset, list(range(len(dataset)))
+
+    if isinstance(dataset, Subset) and isinstance(dataset.dataset, ShardedTsunamiDataset):
+        return dataset.dataset, [int(idx) for idx in dataset.indices]
+
+    return None
+
+
 def _make_loader(
     dataset: Dataset,
     batch_size: int,
@@ -292,6 +437,19 @@ def _make_loader(
     seed: int,
     num_workers: int = 0,
 ) -> DataLoader:
+    if shuffle and _sharded_dataset_with_parent_indices(dataset) is not None:
+        batch_sampler = ShardedBatchSampler(dataset, batch_size=batch_size, seed=seed)
+        print(
+            "[data] using shard-aware batch sampler "
+            f"samples={len(dataset)} batches={len(batch_sampler)} batch_size={batch_size}"
+        )
+        return DataLoader(
+            dataset,
+            batch_sampler=batch_sampler,
+            num_workers=num_workers,
+            worker_init_fn=make_worker_init_fn(seed),
+        )
+
     return DataLoader(
         dataset,
         batch_size=batch_size,
@@ -302,16 +460,49 @@ def _make_loader(
     )
 
 
-def _has_npz_dataset(path: str | Path) -> bool:
+def _has_sharded_dataset(path: str | Path) -> bool:
     p = Path(path)
+    manifest_path = p / "shards_manifest.json"
+    if not manifest_path.is_file():
+        return False
+
+    try:
+        with manifest_path.open("r", encoding="utf-8") as f:
+            manifest = json.load(f)
+    except Exception:
+        return False
+
+    return int(manifest.get("num_samples", 0)) > 0
+
+
+def _resolve_dataset_path(path: str | Path) -> Path:
+    p = Path(path)
+    if p.name == "eval_dataset.npz" and _has_sharded_dataset(p.parent):
+        return p.parent
+    if p.exists():
+        return p
+    return p
+
+
+def _has_npz_dataset(path: str | Path) -> bool:
+    p = _resolve_dataset_path(path)
     if not p.exists():
         return False
     if p.is_file():
         return p.suffix == ".npz"
+    if _has_sharded_dataset(p):
+        return True
     if (p / "eval_dataset.npz").exists():
         return True
     
     return any(p.glob("*.npz"))
+
+
+def _make_dataset(path: str | Path) -> Dataset:
+    p = _resolve_dataset_path(path)
+    if p.is_dir() and _has_sharded_dataset(p):
+        return ShardedTsunamiDataset(p)
+    return TsunamiDataset(p)
 
 
 def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
@@ -339,7 +530,7 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
             if not _has_npz_dataset(split_path):
                 continue
             split_seed = seed + {"train": 0, "val": 1, "test": 2}[split_name]
-            split_dataset = _prepare_split_dataset(data_cfg, split_name, TsunamiDataset(split_path), split_seed)
+            split_dataset = _prepare_split_dataset(data_cfg, split_name, _make_dataset(split_path), split_seed)
             loaders[split_name] = _make_loader(
                 split_dataset,
                 batch_size=batch_size,
@@ -371,7 +562,7 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
                 if not _has_npz_dataset(split_path):
                     continue
                 split_seed = seed + {"train": 0, "val": 1, "test": 2}[split_name]
-                split_dataset = _prepare_split_dataset(data_cfg, split_name, TsunamiDataset(split_path), split_seed)
+                split_dataset = _prepare_split_dataset(data_cfg, split_name, _make_dataset(split_path), split_seed)
                 loaders[split_name] = _make_loader(
                     split_dataset,
                     batch_size=batch_size,
@@ -383,7 +574,7 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
                 return loaders
 
     # Backward-compatible mode: one dataset path + random split.
-    dataset = TsunamiDataset(path)
+    dataset = _make_dataset(path)
     split_cfg = data_cfg.get("split", {"type": "iid"})
     train_idx, val_idx, test_idx = _split_indices(len(dataset), split_cfg, seed)
 

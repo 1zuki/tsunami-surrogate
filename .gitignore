@@ -25,34 +25,7 @@ test.py
 TEST.py
 tsunami-vis-test.py
 
-data/raw/*
-data/processed/*
-data/synthetic/*
-data/bathymetry/*
-data/source/*
-data/sources/*
-data/fno/*
-data/cnn/*
-data/bathymetry_bouss/*
-data/raw_bouss/*
-data/sources_bouss/*
-data/raw_res32/*
-data/raw_res64/*
-data/raw_res128/*
-data/bathymetry_res32/*
-data/bathymetry_res64/*
-data/bathymetry_res128/*
-data/sources_res32/*
-data/sources_res64/*
-data/sources_res128/*
-data/processed_res32/*
-data/processed_res64/*
-data/processed_res128/*
-data/processed_res32_shared_from64/*
-data/processed_res64_shared_from64/*
-data/processed_res128_shared_from64/*
-data/processed_ood/*
-data/processed_inverse/*
+data/*
 
 !data/**/.gitkeep
 
