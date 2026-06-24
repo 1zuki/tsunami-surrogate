@@ -1,11 +1,11 @@
 raw:
-  scenario_manifest: data/synthetic/res64/scenario_manifest.jsonl
+  scenario_manifest: /mnt/Windows/Users/Izu/tsunami-surrogate/data/res64/synthetic/scenario_manifest.jsonl
   fde_manifests:
-    hydrostatic: data/synthetic/res64/hydrostatic_manifest.jsonl
-    muscl_hr: data/synthetic/res64/muscl_hr_manifest.jsonl
+    hydrostatic: /mnt/Windows/Users/Izu/tsunami-surrogate/data/res64/synthetic/hydrostatic_manifest.jsonl
+    muscl_hr: /mnt/Windows/Users/Izu/tsunami-surrogate/data/res64/synthetic/muscl_hr_manifest.jsonl
   raw_dirs:
-    hydrostatic: data/raw_res64/hydrostatic/samples
-    muscl_hr: data/raw_res64/muscl_hr/samples
+    hydrostatic: /mnt/Windows/Users/Izu/tsunami-surrogate/data/res64/raw/hydrostatic/samples
+    muscl_hr: /mnt/Windows/Users/Izu/tsunami-surrogate/data/res64/raw/muscl_hr/samples
 
 processed_dir: data/processed_res64
 
@@ -46,6 +46,9 @@ saving:
   format: npy
   compress: true
   include_meta: true
+  sharded: true
+  shard_size: 128
+  write_legacy_eval_archive: false
 
 eval_export:
   enabled: true

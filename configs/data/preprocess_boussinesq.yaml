@@ -1,9 +1,9 @@
 raw:
-  scenario_manifest: data/synthetic/scenario_manifest_bouss.jsonl
+  scenario_manifest: /mnt/Windows/Users/Izu/tsunami-surrogate/data/bouss_debug/synthetic/scenario_manifest.jsonl
   fde_manifests:
-    boussinesq: data/synthetic/boussinesq_manifest.jsonl
+    boussinesq: /mnt/Windows/Users/Izu/tsunami-surrogate/data/bouss_debug/synthetic/boussinesq_manifest.jsonl
   raw_dirs:
-    boussinesq: data/raw_bouss/boussinesq/samples
+    boussinesq: /mnt/Windows/Users/Izu/tsunami-surrogate/data/bouss_debug/raw/boussinesq/samples
 
 processed_dir: data/processed
 
@@ -44,6 +44,9 @@ saving:
   format: npy
   compress: true
   include_meta: true
+  sharded: true
+  shard_size: 128
+  write_legacy_eval_archive: false
 
 eval_export:
   enabled: true

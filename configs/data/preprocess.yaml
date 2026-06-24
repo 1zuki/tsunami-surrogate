@@ -1,25 +1,25 @@
 raw:
-  scenario_manifest: data/synthetic/scenario_manifest.jsonl
+  scenario_manifest: /mnt/Windows/Users/Izu/tsunami-surrogate/data/train/synthetic/scenario_manifest.jsonl
   fde_manifests:
-    hydrostatic: data/synthetic/hydrostatic_manifest.jsonl
-    muscl_hr: data/synthetic/muscl_hr_manifest.jsonl
-    boussinesq: data/synthetic/boussinesq_manifest.jsonl
+    hydrostatic: /mnt/Windows/Users/Izu/tsunami-surrogate/data/train/synthetic/hydrostatic_manifest.jsonl
+    muscl_hr: /mnt/Windows/Users/Izu/tsunami-surrogate/data/train/synthetic/muscl_hr_manifest.jsonl
+    boussinesq: /mnt/Windows/Users/Izu/tsunami-surrogate/data/train/synthetic/boussinesq_manifest.jsonl
   raw_dirs:
-    hydrostatic: data/raw/hydrostatic/samples
-    muscl_hr: data/raw/muscl_hr/samples
-    boussinesq: data/raw/boussinesq/samples
+    hydrostatic: /mnt/Windows/Users/Izu/tsunami-surrogate/data/train/raw/hydrostatic/samples
+    muscl_hr: /mnt/Windows/Users/Izu/tsunami-surrogate/data/train/raw/muscl_hr/samples
+    boussinesq: /mnt/Windows/Users/Izu/tsunami-surrogate/data/train/raw/boussinesq/samples
 
-processed_dir: data/processed
+processed_dir: data/processed/eval
 
 fde:
   mode: separate_all          # single / separate_all / multifidelity
-  targets: [hydrostatic, muscl_hr, boussinesq]
+  targets: ["hydrostatic", "muscl_hr", "boussinesq"]
   target_field: eta     # eta / depth / state
 
 split:
-  train: 0.7
-  val: 0.15
-  test: 0.15
+  train: 1
+  val: 0
+  test: 0
   seed: 42
 
 input:
@@ -49,12 +49,15 @@ saving:
   format: npy
   compress: true
   include_meta: true
+  sharded: true
+  shard_size: 128
+  write_legacy_train_archive: false
 
-eval_export:
+train_export:
   enabled: true
   input_order: [bathymetry, source, initial_depth, initial_surface]
   inputs_name: inputs.npy
   targets_name: targets.npy
   ids_name: sample_id.npy
-  archive_name: eval_dataset.npz
-  manifest_name: eval_manifest.json
+  archive_name: train_dataset.npz
+  manifest_name: train_manifest.json

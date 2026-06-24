@@ -3,8 +3,8 @@ configs:
   source: "configs/data/multires/source_128.yaml"
 
 dataset:
-  num_samples: 100
-  seed: 42
+  num_samples: 1000
+  seed: 763
   num_workers: 10
   n_steps: 250
   save_every: 5
@@ -12,11 +12,11 @@ dataset:
   target_cfl: 0.4
   include_initial_state: true
   sea_level_offset: 0.0
-  source_strength_range: [0.5, 2.0]
-  bathymetry_dir: "data/bathymetry_res128"
-  source_dir: "data/sources_res128"
-  output_dir: "data/raw_res128"
-  manifest_path: "data/synthetic/res128/scenario_manifest.jsonl"
+  source_strength_range: [0.45, 0.85]
+  bathymetry_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/res128/bathymetry"
+  source_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/res128/sources"
+  output_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/res128/raw"
+  manifest_path: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/res128/synthetic/scenario_manifest.jsonl"
   copy_configs: true
 
 fdes:
