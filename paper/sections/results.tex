@@ -11,7 +11,7 @@
 
 \subsection{Runtime and speedup}
 % TODO: Table: CPU solver rollout time, CPU/GPU model inference time, precision, batch size, and speedup.
-% DATASET NOTE (for write-up): train 10k (seed 42, idx 1..10000); val 1k (seed 42, --start-at 100001 -> disjoint index range, no overlap with train); test 2.5k (different seed). plus native 1k @32x32 and 1k @128x128 for cross-resolution. generation wall-clock ~2.5d for the 10k train pool.
+% DATASET NOTE: train 10k (seed 42); val 1k (separate fixed seed); test 2.5k (separate fixed seed). plus native 1k @32x32 and 1k @128x128 for cross-resolution. generation wall-clock ~2.5d for the 10k train pool.
 
 \subsection{Distribution-shift generalization}
 % TODO: Report source-family, bathymetry-family, and source-strength OOD suites; include sample counts.

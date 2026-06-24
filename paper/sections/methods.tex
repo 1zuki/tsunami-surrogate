@@ -115,16 +115,23 @@ h_R ^ \star = \max(0,\, h_R + b_R - z ^ \star).
 \]
 These reconstructed states preserve nonnegative water depth and help to balance the flux-gradient and bed-slope terms for stationary water over uneven bathymetry \citep{audusse2004hydrostatic}. In this well-balanced formulation the bathymetry source $S$ is absorbed into the reconstructed face fluxes rather than added as a separate term, so the $\Delta t\, S_(i, j)$ contribution above is schematic for the hydrostatic solver; the MUSCL-HR solver instead applies an explicit, centred discretization of the same source after its slope-limited reconstruction. The MUSCL-HR solver uses the same hydrostatic face idea but reconstructs $h$, $\eta$, $u$ and $v$ with minmod-limited slopes before face update, followed by a two-state Heun update. This gives a less diffusive second-order comparison reference while retaining the lake-at-rest safeguards needed for tsunami-like bathymetry \citep{clain2016secondorder, hou2015muscl}.
 
-% BOUSSINESQ SECTION
-The Boussinesq solver evolves an elevation-only weakly dispersive model. In the implemented variable-depth mode the acceleration $a_\eta = \eta_{tt}$ is obtained from an elliptic-like relation
+The third numerical reference is a Boussinesq-type comparison solver. We include it because the shallow-water equations above are non-dispersive: all long waves travel according to the local depth-dependent speed, but the model does not represent the weak frequency dispersion that can matter for shorter components of a tsunami-like disturbance. The implementation is not a full nonlinear coastal Boussinesq model. It is an elevation-only, linear, weakly dispersive approximation used as an additional reference beside Hydrostatic and MUSCL-HR.
+
+In the variable-depth mode used here, the unknown is the free-surface elevation $\eta$ and its time derivative $\eta_t$. If the dispersive correction is removed, the model reduces to the familiar linear long-wave surface equation
 \[
-\left(I - \alpha\, \nabla \cdot(H ^ 2 \nabla)\right) a_\eta = g\, \nabla \cdot(H \nabla \eta),
+\eta_{tt} = g\, \nabla \cdot(H \nabla \eta),
+\]
+where $H$ is the still-water depth. The implemented Boussinesq form modifies this by solving for the acceleration $a_\eta = \eta_{tt}$ through a Helmholtz-type linear system,
+\[
+\left(I - \alpha_B\, \nabla \cdot(H ^ 2 \nabla)\right) a_\eta = g\, \nabla \cdot(H \nabla \eta),
 \]
 where
 \[
 H(x, y) = \max\!\left((-b(x, y) + \eta_{\mathrm{sea}})\, s_H,\; H_{\min}\right)
 \]
-is the scaled still-water depth used by the Boussinesq solver. The linear system is solved by a matrix-free conjugate-gradient iteration and advanced with a velocity-Verlet step. This gives the benchmark a weakly dispersive comparison reference beside the two shallow-water references, while still keeping Hydrostatic as the main solver and not pretending any numerical reference is real-ocean truth.
+is the effective depth used inside this solver. The factor $s_H$ is the depth-scale parameter in the code; it exists so diagnostic runs can make the Boussinesq problem numerically gentler, but in the paper-facing shared dataset we use $s_H=1$. The lower bound $H_{\min}$ prevents zero or near-zero depth from making the operator singular or badly conditioned. In the main configuration $H_{\min}=10^{-4}$, $\alpha_B=1/3$, and the same normalized bathymetry convention as the shallow-water solvers is used.
+
+The coefficient $\alpha_B$ controls the strength of the weakly dispersive correction. When $\alpha_B=0$, the left hand side becomes just $a_\eta$, so the update is the nondispersive linear long-wave equation written above. A positive $\alpha_B$ makes the acceleration depend on a spatial solve involving $H^2\nabla a_\eta$, which is the part that gives this reference its weakly dispersive character. We set $\alpha_B=1/3$, matching the solver default, and treat it as a fixed model choice rather than a fitted physical parameter. The linear system is applied matrix-free and solved with conjugate gradients, so the code never forms a dense matrix; the rollout is then advanced with a velocity-Verlet step, which updates $\eta$ and $\eta_t$ using accelerations at the start and end of the step. This gives the benchmark a weakly dispersive comparison reference beside the two shallow-water references, while still keeping Hydrostatic as the main solver and not pretending any numerical reference is real-ocean truth.
 
 \subsection{Reference-solver validation}
 \label{subsec:reference-validation}

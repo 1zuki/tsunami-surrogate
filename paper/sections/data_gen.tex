@@ -79,7 +79,7 @@ h_0(x,y)=\max\{h_{\mathrm{rest}}(x,y)+\eta_0(x,y),0\},
 and the horizontal momenta are initialized to zero. Therefore, each rollout starts from a displaced but initially motionless free surface over a synthetic seabed.
 
 There is also a separate Boussinesq debugging configuration with smoother bathymetries, lower source amplitudes, and a smaller source-strength range. That file is useful for checking propagation plots, but it is not the main paper from the same bathymetry and source caches as the shallow-water solvers, so sample IDs stay aligned across targets.
-s
+
 \subsection{Reference rollouts and solver organization}
 \label{subsec:reference-rollouts}
 
@@ -96,7 +96,7 @@ Quality checks are applied during generation before a sample is accepted. The de
 \subsection{Preprocessing and learning targets}
 \label{subsec:preprocessing-targets}
 
-Preprocessing converts the raw rollout archives into model-ready arrays. The preprocessing code supports a default fixed-seed $70\%/15\%/15\%$ scenario split of a single pool, but for the experiments in this paper we deliberately choose a stronger design and generate the training, validation, and test pools as independent runs. The training pool uses $10{,}000$ scenarios, the validation pool $1{,}000$, and the test pool $2{,}500$. The training and validation pools are generated from the same seed but from disjoint sample-index ranges, so their per-sample seeds never coincide, while the test pool uses a different seed entirely. This guarantees that no scenario is shared between the pools by construction, rather than relying on a random partition. The same scenario design is reused across solver targets, so the hydrostatic, MUSCL-HR and Boussinesq datasets can be compared without changing the underlying bathymetry-source pairs.
+Preprocessing converts the raw rollout archives into model-ready arrays. The preprocessing code supports a default fixed-seed $70\%/15\%/15\%$ scenario split of a single pool, but for the experiments in this paper we deliberately choose a stronger design and generate the training, validation, and test pools as independent runs. The training pool uses $10{,}000$ scenarios, the validation pool $1{,}000$, and the test pool $2{,}500$. The validation and test pools are generated with separate fixed dataset seeds, so their per-sample random seeds differ even when the sample indices start again from one. This guarantees that no scenario is shared between the pools by construction, rather than relying on a random partition. The same scenario design is reused across solver targets, so the hydrostatic, MUSCL-HR and Boussinesq datasets can be compared without changing the underlying bathymetry-source pairs.
 
 The default input channels are bathymetry, source field, and initial water depth. The initial free surface can also be exported as an ablation channel, and a scalar solver-identity channel is available for explicit multi-fidelity experiments. The default target variable is the free-surface elevation $\eta$. With the default rollout settings, preprocessing discards the stored initial frame from the prediction target and keeps the next $50$ saved frames as a multi-step forecast target.
 
