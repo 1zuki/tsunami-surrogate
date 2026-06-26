@@ -17,11 +17,12 @@ from src.evaluation.accuracy import evaluate_accuracy
 from src.evaluation.target_scaling import load_target_denorm, resolve_dataset_npz, signatures_match, target_signature
 from src.models import build_model
 from src.training.checkpointing import load_checkpoint
-from src.training.metrics import compute_metrics
+from src.training.metrics import MetricAccumulator
 from src.utils.config import load_config
 from src.utils.device import resolve_device
 from src.utils.io import save_json
 from src.utils.model_io import validate_model_io_channels
+from src.utils.seed import seed_everything
 
 
 def _dataset_num_samples(loader: Any) -> int:
@@ -201,8 +202,7 @@ def _evaluate_metrics(
     target_denorm: tuple[float, float] | None = None,
 ) -> Dict[str, float]:
     model.eval()
-    sums = {"mae": 0.0, "rmse": 0.0, "rel_l2": 0.0, "max_error": 0.0}
-    n = 0
+    metrics_acc = MetricAccumulator()
 
     for batch in loader:
         x = batch["x"].to(device)
@@ -217,13 +217,9 @@ def _evaluate_metrics(
         if target_denorm is not None:
             y_eval = y_eval * float(target_denorm[1]) + float(target_denorm[0])
 
-        row = compute_metrics(pred_eval, y_eval)
-        bs = x.size(0)
-        for key, value in row.items():
-            sums[key] += float(value) * bs
-        n += bs
+        metrics_acc.update(pred_eval, y_eval)
 
-    return {key: value / max(1, n) for key, value in sums.items()}
+    return metrics_acc.compute()
 
 
 def main() -> None:
@@ -277,6 +273,7 @@ def main() -> None:
     model_cfg = load_config(model_cfg_path)
     if args.device is not None:
         model_cfg["device"] = args.device
+    seed_everything(int(model_cfg.get("seed", cfg.get("seed", 42))))
     data_cfg = dict(model_cfg.get("data", {}))
     data_cfg["test_path"] = dataset_path
     data_cfg["batch_size"] = batch_size

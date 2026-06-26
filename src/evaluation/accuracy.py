@@ -4,7 +4,7 @@ from typing import Dict, Optional, Tuple
 
 import torch
 
-from src.training.metrics import compute_metrics
+from src.training.metrics import MetricAccumulator
 from src.evaluation.target_scaling import apply_target_denorm
 
 
@@ -27,8 +27,7 @@ def evaluate_accuracy(
     target_denorm: Optional[Tuple[float, float]] = None,
 ) -> Dict[str, float]:
     model.eval()
-    sums = {"mae": 0.0, "rmse": 0.0, "rel_l2": 0.0, "max_error": 0.0}
-    n = 0
+    metrics_acc = MetricAccumulator()
 
     for batch in loader:
         x = batch["x"].to(device)
@@ -37,12 +36,6 @@ def evaluate_accuracy(
         pred = _model_output(model, x)
         pred_eval = apply_target_denorm(pred, target_denorm)
         y_eval = apply_target_denorm(y, target_denorm)
-        metrics = compute_metrics(pred_eval, y_eval)
-        bs = x.size(0)
+        metrics_acc.update(pred_eval, y_eval)
 
-        for key, value in metrics.items():
-            sums[key] += float(value) * bs
-
-        n += bs
-
-    return {key: value / max(1, n) for key, value in sums.items()}
+    return metrics_acc.compute()

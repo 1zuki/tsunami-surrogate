@@ -11,9 +11,10 @@ from src.utils.device import resolve_device
 from src.data.multires_dataset import MultiResolutionDataset
 from src.models import build_model
 from src.training.checkpointing import load_checkpoint
-from src.training.metrics import compute_metrics
+from src.training.metrics import MetricAccumulator
 from src.evaluation.target_scaling import load_target_denorm
 from src.utils.io import save_json
+from src.utils.seed import seed_everything
 import torch
 
 
@@ -59,6 +60,7 @@ def main():
     cfg = load_config(args.config)
     if args.device is not None:
         cfg["device"] = args.device
+    seed_everything(int(cfg.get("seed", 42)))
     device = resolve_device(cfg.get('device', 'auto'))
     resolutions = cfg.get('resolution_transfer', {}).get('eval_resolutions', [32, 64])
     eval_cfg = cfg.get("eval", {})
@@ -87,33 +89,28 @@ def main():
     rows = {}
 
     for res in resolutions:
-        sums, n = {'mae':0.0,'rmse':0.0,'rel_l2':0.0,'max_error':0.0}, 0
-        sums_physical = {'mae':0.0,'rmse':0.0,'rel_l2':0.0,'max_error':0.0}
+        metrics_acc = MetricAccumulator()
+        metrics_physical_acc = MetricAccumulator()
+        n = 0
 
         for batch in loader:
             x = batch[f'x_{res}'].to(device)
             y = batch[f'y_{res}'].to(device)
             pred = _model_output(model, x)
-            metrics = compute_metrics(pred, y)
-
-            for k, v in metrics.items():
-                sums[k] += v * x.size(0)
+            metrics_acc.update(pred, y)
 
             if target_denorm is not None:
                 offset, scale = target_denorm
                 pred_physical = pred * float(scale) + float(offset)
                 y_physical = y * float(scale) + float(offset)
-                metrics_physical = compute_metrics(pred_physical, y_physical)
-            
-                for k, v in metrics_physical.items():
-                    sums_physical[k] += v * x.size(0)
+                metrics_physical_acc.update(pred_physical, y_physical)
 
             n += x.size(0)
 
-        rows[str(res)] = {k: v / max(1, n) for k, v in sums.items()}
+        rows[str(res)] = metrics_acc.compute()
         rows[str(res)]["num_samples"] = int(n)
         if target_denorm is not None:
-            rows[str(res)].update({f"{k}_physical": v / max(1, n) for k, v in sums_physical.items()})
+            rows[str(res)].update({f"{k}_physical": v for k, v in metrics_physical_acc.compute().items()})
             rows[str(res)]["target_offset"] = float(target_denorm[0])
             rows[str(res)]["target_scale"] = float(target_denorm[1])
 

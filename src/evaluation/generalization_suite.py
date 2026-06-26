@@ -40,6 +40,8 @@ def evaluate_by_regime(
         y_eval = apply_target_denorm(y, target_denorm)
         labels = batch.get(key, ["unknown"] * x.size(0))
 
+        # Regime summaries intentionally report group-wise sample means, not
+        # dataset-global aggregate rel-L2/max-error definitions.
         for i in range(x.size(0)):
             metrics_i = compute_metrics(pred_eval[i : i + 1], y_eval[i : i + 1])
             label = str(labels[i])

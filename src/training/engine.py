@@ -7,7 +7,7 @@ try:
 except Exception:
     def tqdm(iterable, **kwargs):  # type: ignore
         return iterable
-from .metrics import compute_metrics
+from .metrics import MetricAccumulator
 
 
 def _model_output(model, x):
@@ -53,7 +53,7 @@ def train_one_epoch(model, loader, optimizer, loss_fn, device, grad_clip: float 
 def evaluate_epoch(model, loader, loss_fn, device) -> Dict[str, float]:
     model.eval()
     total_loss = 0.0
-    metric_sums = {'mae': 0.0, 'rmse': 0.0, 'rel_l2': 0.0, 'max_error': 0.0}
+    metrics_acc = MetricAccumulator()
     n = 0
     
     for batch in tqdm(loader, desc='eval', leave=False):
@@ -63,18 +63,14 @@ def evaluate_epoch(model, loader, loss_fn, device) -> Dict[str, float]:
             raise ValueError(
                 f"Prediction/target shape mismatch: pred={tuple(pred.shape)} target={tuple(y.shape)}. "
                 "Check preprocess target horizon/channel settings vs model out_channels."
-            )
+        )
         loss = loss_fn(pred, y, batch)
-        metrics = compute_metrics(pred, y)
         bs = x.size(0)
         total_loss += float(loss.detach().cpu()) * bs
-    
-        for k, v in metrics.items():
-            metric_sums[k] += v * bs
-    
+        metrics_acc.update(pred, y)
         n += bs
-    
-    out = {k: v / max(1, n) for k, v in metric_sums.items()}
+
+    out = metrics_acc.compute()
     out['loss'] = total_loss / max(1, n)
     
     return out
