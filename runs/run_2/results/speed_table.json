@@ -1,0 +1,12 @@
+{
+  "evaluation_type": "speed_table",
+  "notes": "speedup_vs_solver_rollout = solver rollout_time_per_sample_s / model time_per_sample_mean_s",
+  "rows": [],
+  "missing_inputs": [
+    "/home/izu/Projects/tsunami-surrogate/results/speed_fno.json",
+    "/home/izu/Projects/tsunami-surrogate/results/speed_cnn.json",
+    "/home/izu/Projects/tsunami-surrogate/results/speed_unet.json",
+    "/home/izu/Projects/tsunami-surrogate/results/speed_fno_muscl_hr.json",
+    "/home/izu/Projects/tsunami-surrogate/results/speed_fno_boussinesq.json"
+  ]
+}

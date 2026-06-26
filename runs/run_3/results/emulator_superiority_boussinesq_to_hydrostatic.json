@@ -1,0 +1,65 @@
+{
+  "evaluation_type": "emulator_superiority_ratio",
+  "model_config": "configs/model/fno_boussinesq.yaml",
+  "checkpoint": "experiments/fno_boussinesq/best.pt",
+  "model_metrics": {
+    "mae": 0.43453602069091796,
+    "rmse": 1.2258387360046399,
+    "rel_l2": 1.2315121922059789,
+    "max_error": 59.30714416503906,
+    "num_samples": 2500.0,
+    "dataset_path": "data/processed/hydrostatic/test/eval_dataset.npz",
+    "mae_physical": 0.004225311536312103,
+    "rmse_physical": 0.011919726524396157,
+    "rel_l2_physical": 1.2220717327356274,
+    "max_error_physical": 0.576686680316925,
+    "target_offset": 0.0012094725389033556,
+    "target_scale": 0.009723731316626072,
+    "mae_physical_separate_denorm": 0.00665981872844696,
+    "rmse_physical_separate_denorm": 0.021742932360682633,
+    "rel_l2_physical_separate_denorm": 2.2291973704588885,
+    "max_error_physical_separate_denorm": 0.8179755806922913,
+    "prediction_offset": 0.002938094548881054,
+    "prediction_scale": 0.022135447710752487
+  },
+  "solver_compare_path": "results/solver_compare_boussinesq_vs_hydrostatic.json",
+  "solver_denominator_metric": "rmse",
+  "solver_denominator_mean": 0.016320490023489537,
+  "emulator_numerator_metric": "rmse_physical_separate_denorm",
+  "emulator_numerator_value": 0.021742932360682633,
+  "ratio": 1.332247520104406,
+  "normalization": {
+    "dataset_signature": {
+      "dataset_path": "data/processed/hydrostatic/test/shards/shard_00000.npz",
+      "normalized_targets": true,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072
+    },
+    "prediction_signature": {
+      "dataset_path": "data/processed/boussinesq/train/shards/shard_00000.npz",
+      "normalized_targets": true,
+      "target_offset": 0.002938094548881054,
+      "target_scale": 0.022135447710752487
+    },
+    "signature_mismatch": true,
+    "prediction_denorm_path": "data/processed/boussinesq/train/eval_dataset.npz",
+    "target_denorm_path": "data/processed/hydrostatic/test/eval_dataset.npz",
+    "checkpoint_train_path": "data/processed/boussinesq/train/eval_dataset.npz",
+    "tolerance": 1e-06,
+    "on_signature_mismatch": "warn",
+    "check_input_stats": true,
+    "on_input_stats_mismatch": "warn",
+    "prediction_input_signature": null,
+    "eval_input_signature": null,
+    "input_check": {
+      "checked": false,
+      "compatible": false,
+      "reason": "missing_input_signature",
+      "shared_channels": [],
+      "mismatch_channels": [],
+      "unscaled_shared_channels": [],
+      "mixed_scaled_channels": []
+    }
+  },
+  "interpretation": "ratio < 1 means emulator error is lower than solver-A vs solver-B disagreement."
+}

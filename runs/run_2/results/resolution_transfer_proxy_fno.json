@@ -1,0 +1,51 @@
+{
+  "evaluation_type": "proxy_resolution_transfer",
+  "dataset_path": "data/processed/hydrostatic/test",
+  "dataset_num_samples": 2500,
+  "eval_resolutions": [
+    32,
+    64,
+    128
+  ],
+  "rows": {
+    "32": {
+      "mae": 0.2030968775024414,
+      "rmse": 0.4154572572539568,
+      "rel_l2": 0.42002853043800964,
+      "max_error": 24.656391143798828,
+      "num_samples": 2500,
+      "mae_physical": 0.0019748594496250154,
+      "rmse_physical": 0.004039794764418163,
+      "rel_l2_physical": 0.4167681876444781,
+      "max_error_physical": 0.2397521436214447,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072
+    },
+    "64": {
+      "mae": 0.0895436879272461,
+      "rmse": 0.23393089870114736,
+      "rel_l2": 0.23501358398492883,
+      "max_error": 22.92156219482422,
+      "num_samples": 2500,
+      "mae_physical": 0.0008706987705230713,
+      "rmse_physical": 0.002274681211156415,
+      "rel_l2_physical": 0.23321202902804633,
+      "max_error_physical": 0.22288310527801514,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072
+    },
+    "128": {
+      "mae": 0.20507172546386718,
+      "rmse": 0.4255390756955789,
+      "rel_l2": 0.4295406499831182,
+      "max_error": 25.986539840698242,
+      "num_samples": 2500,
+      "mae_physical": 0.0019940623664855958,
+      "rmse_physical": 0.004137827610019323,
+      "rel_l2_physical": 0.42621688069758434,
+      "max_error_physical": 0.25268614292144775,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072
+    }
+  }
+}

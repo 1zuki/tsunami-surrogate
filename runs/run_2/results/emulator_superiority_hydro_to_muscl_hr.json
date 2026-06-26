@@ -1,0 +1,65 @@
+{
+  "evaluation_type": "emulator_superiority_ratio",
+  "model_config": "configs/model/fno.yaml",
+  "checkpoint": "experiments/fno/best.pt",
+  "model_metrics": {
+    "mae": 0.1291609799346924,
+    "rmse": 0.3160416675571818,
+    "rel_l2": 0.318212757765061,
+    "max_error": 22.151002883911133,
+    "num_samples": 2500.0,
+    "dataset_path": "data/processed/muscl_hr/test/eval_dataset.npz",
+    "mae_physical": 0.001387224858522415,
+    "rmse_physical": 0.003394375454355827,
+    "rel_l2_physical": 0.31628253800032874,
+    "max_error_physical": 0.23790794610977173,
+    "target_offset": 0.0011845336994156241,
+    "target_scale": 0.010740278288722038,
+    "mae_physical_separate_denorm": 0.0013663964569568634,
+    "rmse_physical_separate_denorm": 0.0034325237916013047,
+    "rel_l2_physical_separate_denorm": 0.31983713974864414,
+    "max_error_physical_separate_denorm": 0.24111610651016235,
+    "prediction_offset": 0.0012094725389033556,
+    "prediction_scale": 0.009723731316626072
+  },
+  "solver_compare_path": "results/solver_compare_hydro_vs_muscl_hr.json",
+  "solver_denominator_metric": "rmse",
+  "solver_denominator_mean": 0.0017305985359725377,
+  "emulator_numerator_metric": "rmse_physical_separate_denorm",
+  "emulator_numerator_value": 0.0034325237916013047,
+  "ratio": 1.9834315817633248,
+  "normalization": {
+    "dataset_signature": {
+      "dataset_path": "data/processed/muscl_hr/test/shards/shard_00000.npz",
+      "normalized_targets": true,
+      "target_offset": 0.0011845336994156241,
+      "target_scale": 0.010740278288722038
+    },
+    "prediction_signature": {
+      "dataset_path": "data/processed/hydrostatic/train/shards/shard_00000.npz",
+      "normalized_targets": true,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072
+    },
+    "signature_mismatch": true,
+    "prediction_denorm_path": "data/processed/hydrostatic/train/eval_dataset.npz",
+    "target_denorm_path": "data/processed/muscl_hr/test/eval_dataset.npz",
+    "checkpoint_train_path": "data/processed/hydrostatic/train/eval_dataset.npz",
+    "tolerance": 1e-06,
+    "on_signature_mismatch": "warn",
+    "check_input_stats": true,
+    "on_input_stats_mismatch": "warn",
+    "prediction_input_signature": null,
+    "eval_input_signature": null,
+    "input_check": {
+      "checked": false,
+      "compatible": false,
+      "reason": "missing_input_signature",
+      "shared_channels": [],
+      "mismatch_channels": [],
+      "unscaled_shared_channels": [],
+      "mixed_scaled_channels": []
+    }
+  },
+  "interpretation": "ratio < 1 means emulator error is lower than solver-A vs solver-B disagreement."
+}

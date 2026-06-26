@@ -1,0 +1,14 @@
+{
+  "mae": 0.11087493551635742,
+  "rmse": 0.26142335775865844,
+  "rel_l2": 0.2632192427826079,
+  "max_error": 22.125835418701172,
+  "num_samples": 2500.0,
+  "dataset_path": "data/processed/muscl_hr/test",
+  "mae_physical": 0.0011908276623487472,
+  "rmse_physical": 0.002807759632809359,
+  "rel_l2_physical": 0.26162260338894416,
+  "max_error_physical": 0.23763763904571533,
+  "target_offset": 0.0011845336994156241,
+  "target_scale": 0.010740278288722038
+}

@@ -1,0 +1,395 @@
+{
+  "evaluation_type": "dataset_summary",
+  "processed_root": "/home/izu/Projects/tsunami-surrogate/data/processed",
+  "datasets": {
+    "boussinesq": {
+      "test": {
+        "path": "/home/izu/Projects/tsunami-surrogate/data/processed/boussinesq/test",
+        "num_samples": 2500,
+        "num_shards": 20,
+        "shard_size": 128,
+        "inputs_shape": [
+          128,
+          3,
+          64,
+          64
+        ],
+        "targets_shape": [
+          128,
+          50,
+          64,
+          64
+        ],
+        "meta_rows": 2500,
+        "source_type_counts": {
+          "dipole": 408,
+          "fault": 402,
+          "gaussian": 426,
+          "multi-gauss": 414,
+          "okada-like": 447,
+          "rough": 403
+        },
+        "bathymetry_type_counts": {
+          "canyon": 480,
+          "continental": 515,
+          "island": 516,
+          "seamounts": 508,
+          "trench": 481
+        },
+        "solver_name_counts": {
+          "boussinesq": 2500
+        },
+        "quality_status_counts": {
+          "ok": 2500
+        },
+        "source_strength_min": 0.4500366449356079,
+        "source_strength_max": 0.8499025106430054
+      },
+      "train": {
+        "path": "/home/izu/Projects/tsunami-surrogate/data/processed/boussinesq/train",
+        "num_samples": 10000,
+        "num_shards": 79,
+        "shard_size": 128,
+        "inputs_shape": [
+          128,
+          3,
+          64,
+          64
+        ],
+        "targets_shape": [
+          128,
+          50,
+          64,
+          64
+        ],
+        "meta_rows": 10000,
+        "source_type_counts": {
+          "dipole": 1654,
+          "fault": 1678,
+          "gaussian": 1668,
+          "multi-gauss": 1665,
+          "okada-like": 1660,
+          "rough": 1675
+        },
+        "bathymetry_type_counts": {
+          "canyon": 2046,
+          "continental": 1934,
+          "island": 2041,
+          "seamounts": 1961,
+          "trench": 2018
+        },
+        "solver_name_counts": {
+          "boussinesq": 10000
+        },
+        "quality_status_counts": {
+          "ok": 10000
+        },
+        "source_strength_min": 0.4501706063747406,
+        "source_strength_max": 0.8499463796615601
+      },
+      "val": {
+        "path": "/home/izu/Projects/tsunami-surrogate/data/processed/boussinesq/val",
+        "num_samples": 1000,
+        "num_shards": 8,
+        "shard_size": 128,
+        "inputs_shape": [
+          128,
+          3,
+          64,
+          64
+        ],
+        "targets_shape": [
+          128,
+          50,
+          64,
+          64
+        ],
+        "meta_rows": 1000,
+        "source_type_counts": {
+          "dipole": 174,
+          "fault": 170,
+          "gaussian": 170,
+          "multi-gauss": 184,
+          "okada-like": 149,
+          "rough": 153
+        },
+        "bathymetry_type_counts": {
+          "canyon": 225,
+          "continental": 202,
+          "island": 179,
+          "seamounts": 174,
+          "trench": 220
+        },
+        "solver_name_counts": {
+          "boussinesq": 1000
+        },
+        "quality_status_counts": {
+          "ok": 1000
+        },
+        "source_strength_min": 0.4502161741256714,
+        "source_strength_max": 0.8498041033744812
+      }
+    },
+    "hydrostatic": {
+      "test": {
+        "path": "/home/izu/Projects/tsunami-surrogate/data/processed/hydrostatic/test",
+        "num_samples": 2500,
+        "num_shards": 20,
+        "shard_size": 128,
+        "inputs_shape": [
+          128,
+          3,
+          64,
+          64
+        ],
+        "targets_shape": [
+          128,
+          50,
+          64,
+          64
+        ],
+        "meta_rows": 2500,
+        "source_type_counts": {
+          "dipole": 408,
+          "fault": 402,
+          "gaussian": 426,
+          "multi-gauss": 414,
+          "okada-like": 447,
+          "rough": 403
+        },
+        "bathymetry_type_counts": {
+          "canyon": 480,
+          "continental": 515,
+          "island": 516,
+          "seamounts": 508,
+          "trench": 481
+        },
+        "solver_name_counts": {
+          "swe_hydrostatic": 2500
+        },
+        "quality_status_counts": {
+          "ok": 2500
+        },
+        "source_strength_min": 0.4500366449356079,
+        "source_strength_max": 0.8499025106430054
+      },
+      "train": {
+        "path": "/home/izu/Projects/tsunami-surrogate/data/processed/hydrostatic/train",
+        "num_samples": 10000,
+        "num_shards": 79,
+        "shard_size": 128,
+        "inputs_shape": [
+          128,
+          3,
+          64,
+          64
+        ],
+        "targets_shape": [
+          128,
+          50,
+          64,
+          64
+        ],
+        "meta_rows": 10000,
+        "source_type_counts": {
+          "dipole": 1654,
+          "fault": 1678,
+          "gaussian": 1668,
+          "multi-gauss": 1665,
+          "okada-like": 1660,
+          "rough": 1675
+        },
+        "bathymetry_type_counts": {
+          "canyon": 2046,
+          "continental": 1934,
+          "island": 2041,
+          "seamounts": 1961,
+          "trench": 2018
+        },
+        "solver_name_counts": {
+          "swe_hydrostatic": 10000
+        },
+        "quality_status_counts": {
+          "ok": 10000
+        },
+        "source_strength_min": 0.4501706063747406,
+        "source_strength_max": 0.8499463796615601
+      },
+      "val": {
+        "path": "/home/izu/Projects/tsunami-surrogate/data/processed/hydrostatic/val",
+        "num_samples": 1000,
+        "num_shards": 8,
+        "shard_size": 128,
+        "inputs_shape": [
+          128,
+          3,
+          64,
+          64
+        ],
+        "targets_shape": [
+          128,
+          50,
+          64,
+          64
+        ],
+        "meta_rows": 1000,
+        "source_type_counts": {
+          "dipole": 174,
+          "fault": 170,
+          "gaussian": 170,
+          "multi-gauss": 184,
+          "okada-like": 149,
+          "rough": 153
+        },
+        "bathymetry_type_counts": {
+          "canyon": 225,
+          "continental": 202,
+          "island": 179,
+          "seamounts": 174,
+          "trench": 220
+        },
+        "solver_name_counts": {
+          "swe_hydrostatic": 1000
+        },
+        "quality_status_counts": {
+          "ok": 1000
+        },
+        "source_strength_min": 0.4502161741256714,
+        "source_strength_max": 0.8498041033744812
+      }
+    },
+    "muscl_hr": {
+      "test": {
+        "path": "/home/izu/Projects/tsunami-surrogate/data/processed/muscl_hr/test",
+        "num_samples": 2500,
+        "num_shards": 20,
+        "shard_size": 128,
+        "inputs_shape": [
+          128,
+          3,
+          64,
+          64
+        ],
+        "targets_shape": [
+          128,
+          50,
+          64,
+          64
+        ],
+        "meta_rows": 2500,
+        "source_type_counts": {
+          "dipole": 408,
+          "fault": 402,
+          "gaussian": 426,
+          "multi-gauss": 414,
+          "okada-like": 447,
+          "rough": 403
+        },
+        "bathymetry_type_counts": {
+          "canyon": 480,
+          "continental": 515,
+          "island": 516,
+          "seamounts": 508,
+          "trench": 481
+        },
+        "solver_name_counts": {
+          "swe_muscl_hr": 2500
+        },
+        "quality_status_counts": {
+          "ok": 2500
+        },
+        "source_strength_min": 0.4500366449356079,
+        "source_strength_max": 0.8499025106430054
+      },
+      "train": {
+        "path": "/home/izu/Projects/tsunami-surrogate/data/processed/muscl_hr/train",
+        "num_samples": 10000,
+        "num_shards": 79,
+        "shard_size": 128,
+        "inputs_shape": [
+          128,
+          3,
+          64,
+          64
+        ],
+        "targets_shape": [
+          128,
+          50,
+          64,
+          64
+        ],
+        "meta_rows": 10000,
+        "source_type_counts": {
+          "dipole": 1654,
+          "fault": 1678,
+          "gaussian": 1668,
+          "multi-gauss": 1665,
+          "okada-like": 1660,
+          "rough": 1675
+        },
+        "bathymetry_type_counts": {
+          "canyon": 2046,
+          "continental": 1934,
+          "island": 2041,
+          "seamounts": 1961,
+          "trench": 2018
+        },
+        "solver_name_counts": {
+          "swe_muscl_hr": 10000
+        },
+        "quality_status_counts": {
+          "ok": 10000
+        },
+        "source_strength_min": 0.4501706063747406,
+        "source_strength_max": 0.8499463796615601
+      },
+      "val": {
+        "path": "/home/izu/Projects/tsunami-surrogate/data/processed/muscl_hr/val",
+        "num_samples": 1000,
+        "num_shards": 8,
+        "shard_size": 128,
+        "inputs_shape": [
+          128,
+          3,
+          64,
+          64
+        ],
+        "targets_shape": [
+          128,
+          50,
+          64,
+          64
+        ],
+        "meta_rows": 1000,
+        "source_type_counts": {
+          "dipole": 174,
+          "fault": 170,
+          "gaussian": 170,
+          "multi-gauss": 184,
+          "okada-like": 149,
+          "rough": 153
+        },
+        "bathymetry_type_counts": {
+          "canyon": 225,
+          "continental": 202,
+          "island": 179,
+          "seamounts": 174,
+          "trench": 220
+        },
+        "solver_name_counts": {
+          "swe_muscl_hr": 1000
+        },
+        "quality_status_counts": {
+          "ok": 1000
+        },
+        "source_strength_min": 0.4502161741256714,
+        "source_strength_max": 0.8498041033744812
+      }
+    }
+  },
+  "total_samples_by_dataset": {
+    "boussinesq": 13500,
+    "hydrostatic": 13500,
+    "muscl_hr": 13500
+  }
+}

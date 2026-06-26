@@ -1,0 +1,72 @@
+{
+  "evaluation_type": "speed_table",
+  "notes": "speedup_vs_solver_rollout = solver rollout_time_per_sample_s / model time_per_sample_mean_s",
+  "rows": [
+    {
+      "model": "fno",
+      "model_method": "fno2d",
+      "solver": "swe_hydrostatic",
+      "model_time_per_sample_s": 0.0009055169726565282,
+      "solver_rollout_time_per_sample_s": 33.297878585291606,
+      "speedup_vs_solver_rollout": 36772.23021850727,
+      "model_samples_per_second": 1104.341531077309,
+      "solver_samples_per_second": 0.030031757697678282,
+      "model_device": "cuda",
+      "model_precision": "fp32",
+      "solver_precision": "float64"
+    },
+    {
+      "model": "cnn",
+      "model_method": "cnn",
+      "solver": "swe_hydrostatic",
+      "model_time_per_sample_s": 0.000172781691406243,
+      "solver_rollout_time_per_sample_s": 33.297878585291606,
+      "speedup_vs_solver_rollout": 192716.47542216664,
+      "model_samples_per_second": 5787.650253109327,
+      "solver_samples_per_second": 0.030031757697678282,
+      "model_device": "cuda",
+      "model_precision": "fp32",
+      "solver_precision": "float64"
+    },
+    {
+      "model": "unet",
+      "model_method": "unet",
+      "solver": "swe_hydrostatic",
+      "model_time_per_sample_s": 0.0002409289726564623,
+      "solver_rollout_time_per_sample_s": 33.297878585291606,
+      "speedup_vs_solver_rollout": 138206.2033393163,
+      "model_samples_per_second": 4150.600855405995,
+      "solver_samples_per_second": 0.030031757697678282,
+      "model_device": "cuda",
+      "model_precision": "fp32",
+      "solver_precision": "float64"
+    },
+    {
+      "model": "fno_muscl_hr",
+      "model_method": "fno2d",
+      "solver": "swe_muscl_hr",
+      "model_time_per_sample_s": 0.0009055140726566436,
+      "solver_rollout_time_per_sample_s": 72.31076227074998,
+      "speedup_vs_solver_rollout": 79856.03366560716,
+      "model_samples_per_second": 1104.3450678421252,
+      "solver_samples_per_second": 0.013829168470580747,
+      "model_device": "cuda",
+      "model_precision": "fp32",
+      "solver_precision": "float64"
+    },
+    {
+      "model": "fno_boussinesq",
+      "model_method": "fno2d",
+      "solver": "boussinesq",
+      "model_time_per_sample_s": 0.0009060868445317283,
+      "solver_rollout_time_per_sample_s": 16.38122957087482,
+      "speedup_vs_solver_rollout": 18079.09437129147,
+      "model_samples_per_second": 1103.6469694213547,
+      "solver_samples_per_second": 0.06104465991771496,
+      "model_device": "cuda",
+      "model_precision": "fp32",
+      "solver_precision": "float64"
+    }
+  ],
+  "missing_inputs": []
+}

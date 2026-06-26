@@ -1,0 +1,1 @@
+model,model_method,solver,model_time_per_sample_s,solver_rollout_time_per_sample_s,speedup_vs_solver_rollout,model_samples_per_second,solver_samples_per_second,model_device,model_precision,solver_precision

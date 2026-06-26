@@ -1,0 +1,70 @@
+{
+  "evaluation_type": "native_real_resolution_benchmark",
+  "rows": [
+    {
+      "label": "main_morphology",
+      "dataset_path": "data/processed_real_bathymetry/main_morphology/hydrostatic/test",
+      "num_samples": 1,
+      "normalized_targets": true,
+      "mae": 0.10510646820068359,
+      "rmse": 0.19155255389879658,
+      "rel_l2": 0.11182931389217447,
+      "max_error": 5.372428894042969,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072,
+      "mae_physical": 0.0010220270603895187,
+      "rmse_physical": 0.0018626055429443952,
+      "rel_l2_physical": 0.10913786591864916,
+      "max_error_physical": 0.05224005877971649
+    },
+    {
+      "label": "appendix_coastline_stress",
+      "dataset_path": "data/processed_real_bathymetry/appendix_coastline_stress/hydrostatic/test",
+      "num_samples": 1,
+      "normalized_targets": true,
+      "mae": 7.618425903320312,
+      "rmse": 42.73309058855912,
+      "rel_l2": 0.9990137521403876,
+      "max_error": 514.2147827148438,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072,
+      "mae_physical": 0.07407951831817627,
+      "rmse_physical": 0.41552508307625347,
+      "rel_l2_physical": 0.9984631323264113,
+      "max_error_physical": 5.000086307525635
+    },
+    {
+      "label": "appendix_coastline_fully_wet",
+      "dataset_path": "data/processed_real_bathymetry/appendix_coastline_fully_wet/hydrostatic/test",
+      "num_samples": 1,
+      "normalized_targets": true,
+      "mae": 0.15700393676757812,
+      "rmse": 0.30864580318997087,
+      "rel_l2": 0.1779702639373349,
+      "max_error": 6.215238571166992,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072,
+      "mae_physical": 0.0015266640484333039,
+      "rmse_physical": 0.003001189115105618,
+      "rel_l2_physical": 0.1737285233215459,
+      "max_error_physical": 0.06043531000614166
+    }
+  ],
+  "normalization_policy": "require_target_stats_match",
+  "normalization_mismatch": "fail",
+  "checkpoint_reference_mismatch": "fail",
+  "normalization_tol": 1e-06,
+  "normalization_reference": {
+    "dataset_path": "data/processed/hydrostatic/train/shards/shard_00000.npz",
+    "normalized_targets": true,
+    "target_offset": 0.0012094725389033556,
+    "target_scale": 0.009723731316626072
+  },
+  "checkpoint_train_path": "data/processed/hydrostatic/train",
+  "checkpoint_train_signature": {
+    "dataset_path": "data/processed/hydrostatic/train/shards/shard_00000.npz",
+    "normalized_targets": true,
+    "target_offset": 0.0012094725389033556,
+    "target_scale": 0.009723731316626072
+  }
+}
