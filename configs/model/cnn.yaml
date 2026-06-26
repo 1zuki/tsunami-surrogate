@@ -30,5 +30,5 @@ train:
 
 eval:
   dataset_path: data/processed/hydrostatic/test
-  batch_size: 8
+  batch_size: 64
   output_dir: experiments/cnn/eval

@@ -7,10 +7,10 @@ data:
   train_path: data/processed_res128/muscl_hr/train/eval_dataset.npz
   val_path: data/processed_res128/muscl_hr/val/eval_dataset.npz
   test_path: data/processed_res128/muscl_hr/test/eval_dataset.npz
-  batch_size: 2
-  num_workers: 0
+  batch_size: 16
+  num_workers: 2
 
 eval:
   dataset_path: data/processed_res128/muscl_hr/test
-  batch_size: 2
+  batch_size: 32
   output_dir: experiments/fno_res128_muscl_hr/eval

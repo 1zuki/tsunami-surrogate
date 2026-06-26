@@ -4,13 +4,13 @@ defaults:
 output_dir: experiments/fno_res32_hydrostatic
 
 data:
-  train_path: data/processed_res32/hydrostatic/train/eval_dataset.npz
-  val_path: data/processed_res32/hydrostatic/val/eval_dataset.npz
-  test_path: data/processed_res32/hydrostatic/test/eval_dataset.npz
-  batch_size: 16
-  num_workers: 0
+  train_path: data/processed_crossres/res32/train/eval_dataset.npz
+  val_path: data/processed_crossres/res32/val/eval_dataset.npz
+  test_path: data/processed_crossres/res32/test/eval_dataset.npz
+  batch_size: 128
+  num_workers: 4
 
 eval:
-  dataset_path: data/processed_res32/hydrostatic/test
-  batch_size: 16
+  dataset_path: data/processed_crossres/res32/test
+  batch_size: 128
   output_dir: experiments/fno_res32_hydrostatic/eval

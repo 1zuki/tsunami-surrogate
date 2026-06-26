@@ -91,6 +91,7 @@ pip-delete-this-directory.txt
 
 .gitignore
 .sixth
+.venv/
 
 # Unit test / coverage reports
 htmlcov/

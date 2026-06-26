@@ -3,6 +3,10 @@ defaults:
 
 output_dir: experiments/convlstm
 
+data:
+  batch_size: 8
+  num_workers: 2
+
 model:
   name: convlstm
   in_channels: 3
@@ -14,7 +18,7 @@ model:
   use_feedback: true
 
 train:
-  epochs: 256
+  epochs: 64
   lr: 0.0005
   min_lr: 0.00005
   scheduler: cosine

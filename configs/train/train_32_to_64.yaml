@@ -5,7 +5,7 @@ output_dir: experiments/fno_32_to_64
 
 data:
   path: data/processed/train_32
-  batch_size: 8
+  batch_size: 32
   split:
     type: iid
     train: 0.7
@@ -14,7 +14,7 @@ data:
 
 eval:
   dataset_path: data/processed/test_64
-  batch_size: 8
+  batch_size: 32
   output_dir: experiments/fno_32_to_64/eval
 
 resolution_transfer:

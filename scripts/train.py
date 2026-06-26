@@ -19,10 +19,13 @@ from src.training.train import Trainer
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--config', required=True)
+    p.add_argument('--resume', default=None,
+                   help="Path to a checkpoint to resume from (e.g. experiments/fno/checkpoints/last.pt). "
+                        "Restores model, optimizer, scheduler, early-stopping state, and history.")
     args = p.parse_args()
     cfg = load_config(args.config)
     seed_everything(int(cfg.get('seed', 42)))
-    out = init_run(cfg.get('output_dir', 'experiments/default'), cfg)
+    out = init_run(cfg.get('output_dir', 'experiments/default'), cfg, fresh=args.resume is None)
     cfg['output_dir'] = str(out)
     device = resolve_device(cfg.get('device', 'auto'))
     loaders = create_dataloaders(cfg)
@@ -53,7 +56,7 @@ def main():
         )
     model = build_model(cfg)
     trainer = Trainer(model, loaders, cfg, device)
-    trainer.fit()
+    trainer.fit(resume_path=args.resume)
 
 
 if __name__ == '__main__':

@@ -10,8 +10,10 @@ data:
   n_samples: null        # optional train-subset size for sample-scaling experiments
   val_samples: null      # optional validation subset size
   test_samples: null     # optional test subset size
-  batch_size: 8
-  num_workers: 0
+  # RTX 4050 laptop default: enough batch to keep GPU busy, without overdriving
+  # compressed shard loading or leaving too little VRAM headroom.
+  batch_size: 64
+  num_workers: 4
 
 model:
   name: fno2d
@@ -25,7 +27,7 @@ model:
   use_grid: true
 
 train:
-  epochs: 40
+  epochs: 256
   lr: 0.001
   weight_decay: 1.0e-6
   loss: mse
@@ -37,7 +39,7 @@ train:
 
 eval:
   dataset_path: data/processed/hydrostatic/test
-  batch_size: 8
+  batch_size: 64
   output_dir: experiments/eval
   warmup_steps: 5
   timed_steps: 20

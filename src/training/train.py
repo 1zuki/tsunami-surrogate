@@ -8,8 +8,8 @@ from torch import optim
 from .losses import build_loss
 from .engine import train_one_epoch, evaluate_epoch
 from .callbacks import EarlyStopping
-from .checkpointing import save_checkpoint
-from src.utils.io import save_json
+from .checkpointing import save_checkpoint, load_checkpoint
+from src.utils.io import save_json, load_json
 
 
 class Trainer:
@@ -50,14 +50,39 @@ class Trainer:
             raise ValueError(f"Unsupported checkpoint_mode: {checkpoint_mode}. Use 'min' or 'max'.")
         self.checkpoint_mode = checkpoint_mode
 
-    def fit(self):
+    def _resume_from(self, resume_path: Path):
+        ckpt = load_checkpoint(resume_path, self.model, self.optimizer, self.scheduler, map_location=self.device)
+        state = ckpt.get("trainer_state") or {}
+
+        start_epoch = int(state.get("epoch", ckpt.get("epoch", 0))) + 1
+        best_value = state.get("best_value")
+        if best_value is None:
+            best_value = float("inf") if self.checkpoint_mode == "min" else -float("inf")
+
+        self.early.best = state.get("early_best")
+        self.early.count = int(state.get("early_count", 0))
+
+        history_path = self.output_dir / "history.json"
+        history = load_json(history_path) if history_path.exists() else []
+        history = [r for r in history if int(r.get("epoch", 0)) < start_epoch]
+
+        print(f"[train] resuming from {resume_path} at epoch {start_epoch} (best {self.checkpoint_mode}={best_value})")
+        return start_epoch, float(best_value), history
+
+    def fit(self, resume_path=None):
         train_cfg = self.cfg.get("train", {})
         epochs = int(train_cfg.get("epochs", 5))
         grad_clip = train_cfg.get("grad_clip", None)
-        best_value = float("inf") if self.checkpoint_mode == "min" else -float("inf")
-        history = []
 
-        for epoch in range(1, epochs + 1):
+        if resume_path is not None:
+            start_epoch, best_value, history = self._resume_from(Path(resume_path))
+        else:
+            start_epoch = 1
+            best_value = float("inf") if self.checkpoint_mode == "min" else -float("inf")
+            history = []
+
+        epoch = start_epoch - 1
+        for epoch in range(start_epoch, epochs + 1):
             train_metrics = train_one_epoch(self.model, self.loaders["train"], self.optimizer, self.loss_fn, self.device, grad_clip)
             val_metrics = evaluate_epoch(self.model, self.loaders["val"], self.loss_fn, self.device) if "val" in self.loaders else {}
 
@@ -72,18 +97,30 @@ class Trainer:
                 or (self.checkpoint_mode == "max" and value > best_value)
             ):
                 best_value = value
-                save_checkpoint(self.output_dir / "best.pt", self.model, self.optimizer, epoch, row, self.cfg)
+                save_checkpoint(self.output_dir / "best.pt", self.model, self.optimizer, epoch, row, self.cfg,
+                                scheduler=self.scheduler, trainer_state=self._trainer_state(epoch, best_value))
 
             save_json(history, self.output_dir / "history.json")
             print(row)
 
-            if value is not None and self.early.step(float(value)):
+            stop = value is not None and self.early.step(float(value))
+
+            if self.scheduler is not None and not stop:
+                self.scheduler.step()
+
+            save_checkpoint(self.checkpoint_dir / "last.pt", self.model, self.optimizer, epoch, history[-1], self.cfg,
+                            scheduler=self.scheduler, trainer_state=self._trainer_state(epoch, best_value))
+
+            if stop:
                 print(f"Early stopping at epoch {epoch}")
                 break
 
-            if self.scheduler is not None:
-                self.scheduler.step()
-
-        save_checkpoint(self.checkpoint_dir / "last.pt", self.model, self.optimizer, epoch, history[-1], self.cfg)
-
         return history
+
+    def _trainer_state(self, epoch, best_value):
+        return {
+            "epoch": int(epoch),
+            "best_value": float(best_value),
+            "early_best": self.early.best,
+            "early_count": int(self.early.count),
+        }
