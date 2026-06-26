@@ -1,0 +1,16 @@
+defaults:
+  - ../model/fno_window5_hydrostatic.yaml
+
+eval:
+  output_dir: experiments/fno_window5_hydrostatic/eval_real_bathymetry
+  report_physical_metrics: true
+  window_suites:
+    - label: main_morphology
+      path: data/processed_real_bathymetry/main_morphology/hydrostatic/test
+      batch_size: 1
+    - label: appendix_coastline_stress
+      path: data/processed_real_bathymetry/appendix_coastline_stress/hydrostatic/test
+      batch_size: 1
+    - label: appendix_coastline_fully_wet
+      path: data/processed_real_bathymetry/appendix_coastline_fully_wet/hydrostatic/test
+      batch_size: 1

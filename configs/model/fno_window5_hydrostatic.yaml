@@ -1,0 +1,50 @@
+defaults:
+  - ../train/base.yaml
+
+output_dir: experiments/fno_window5_hydrostatic
+
+data:
+  train_path: data/processed/hydrostatic/train/eval_dataset.npz
+  val_path: data/processed/hydrostatic/val/eval_dataset.npz
+  test_path: data/processed/hydrostatic/test/eval_dataset.npz
+  batch_size: 64
+  num_workers: 0
+  windowed: true
+  window_K: 5
+  window_prev: true
+  window_include_source: true
+
+model:
+  name: fno2d
+  in_channels: 4
+  out_channels: 5
+  modes1: 14
+  modes2: 14
+  width: 48
+  depth: 6
+  padding: 6
+  use_grid: true
+
+train:
+  epochs: 256
+  lr: 0.0005
+  min_lr: 0.00005
+  scheduler: cosine
+  weight_decay: 1.0e-6
+  grad_clip: 1.0
+
+  loss: horizon_weighted_mse
+  horizon_min_weight: 0.8
+  horizon_max_weight: 2.0
+  horizon_power: 1.7
+
+  checkpoint_metric: val_rel_l2
+
+  early_stopping:
+    patience: 20
+    mode: min
+
+eval:
+  dataset_path: data/processed/hydrostatic/test
+  batch_size: 64
+  output_dir: experiments/fno_window5_hydrostatic/eval

@@ -1,0 +1,16 @@
+defaults:
+  - ../model/fno_window5_hydrostatic.yaml
+
+eval:
+  output_dir: experiments/fno_window5_hydrostatic/eval_crossres_native
+  report_physical_metrics: true
+  window_suites:
+    - label: native32_hydrostatic
+      path: data/processed_crossres/res32/test
+      batch_size: 64
+    - label: native64_hydrostatic
+      path: data/processed_crossres/res64/test
+      batch_size: 64
+    - label: native128_hydrostatic
+      path: data/processed_crossres/res128/test
+      batch_size: 16

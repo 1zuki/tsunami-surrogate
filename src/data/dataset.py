@@ -336,6 +336,63 @@ class ShardedBatchSampler(Sampler[List[int]]):
         return int(self._num_batches)
 
 
+class WindowedShardBatchSampler(Sampler[List[int]]):
+    """Shard-local batches for a WindowedTrajectoryDataset.
+
+    Groups window indices by the shard their base sample lives in, shuffles
+    within each shard, and emits batches that stay inside one shard. This keeps
+    the underlying ShardedTsunamiDataset's small LRU cache hot (no per-item
+    shard reloads), which is what makes shuffled windowed training feasible
+    without exhausting host RAM or thrashing disk.
+    """
+
+    def __init__(self, dataset, batch_size: int, seed: int, drop_last: bool = False) -> None:
+        if batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {batch_size}")
+
+        base = getattr(dataset, "base", None)
+        source = _sharded_dataset_with_parent_indices(base) if base is not None else None
+        if source is None:
+            raise TypeError("WindowedShardBatchSampler requires a WindowedTrajectoryDataset over a sharded base.")
+        sharded_dataset, parent_indices = source
+
+        self.batch_size = int(batch_size)
+        self.seed = int(seed)
+        self.drop_last = bool(drop_last)
+        self._epoch = 0
+
+        wps = int(dataset.windows_per_sample)
+        groups: List[List[int]] = [[] for _ in sharded_dataset.shards]
+        for win_idx in range(len(dataset)):
+            base_local = win_idx // wps
+            parent_idx = int(parent_indices[base_local])
+            shard_idx = sharded_dataset.shard_index_for_sample(parent_idx)
+            groups[shard_idx].append(win_idx)
+
+        self.groups = [g for g in groups if g]
+        if self.drop_last:
+            self._num_batches = sum(len(g) // self.batch_size for g in self.groups)
+        else:
+            self._num_batches = sum((len(g) + self.batch_size - 1) // self.batch_size for g in self.groups)
+
+    def __iter__(self):
+        rng = np.random.default_rng(self.seed + self._epoch)
+        self._epoch += 1
+        group_order = rng.permutation(len(self.groups)).tolist()
+        for group_idx in group_order:
+            group = self.groups[group_idx]
+            order = rng.permutation(len(group)).tolist()
+            shuffled = [group[i] for i in order]
+            for start in range(0, len(shuffled), self.batch_size):
+                batch = shuffled[start : start + self.batch_size]
+                if len(batch) < self.batch_size and self.drop_last:
+                    continue
+                yield batch
+
+    def __len__(self) -> int:
+        return int(self._num_batches)
+
+
 def _split_indices(n: int, split_cfg: Dict[str, Any], seed: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     split_type = str(split_cfg.get("type", "iid")).lower()
 
@@ -413,11 +470,22 @@ def _limit_dataset(dataset: Dataset, n_samples: int | None, seed: int) -> Datase
 
 
 def _prepare_split_dataset(data_cfg: Dict[str, Any], split_name: str, dataset: Dataset, seed: int) -> Dataset:
-    return _limit_dataset(
+    limited = _limit_dataset(
         dataset,
         _sample_limit_for_split(data_cfg, split_name),
         seed,
     )
+    if bool(data_cfg.get("windowed", False)):
+        from .window_dataset import WindowedTrajectoryDataset
+
+        return WindowedTrajectoryDataset(
+            limited,
+            K=int(data_cfg.get("window_K", 5)),
+            prev=bool(data_cfg.get("window_prev", True)),
+            include_source=bool(data_cfg.get("window_include_source", True)),
+        )
+    return limited
+
 
 
 def _sharded_dataset_with_parent_indices(dataset: Dataset) -> Tuple[ShardedTsunamiDataset, List[int]] | None:
@@ -428,6 +496,13 @@ def _sharded_dataset_with_parent_indices(dataset: Dataset) -> Tuple[ShardedTsuna
         return dataset.dataset, [int(idx) for idx in dataset.indices]
 
     return None
+
+
+def _is_windowed_over_sharded(dataset: Dataset) -> bool:
+    base = getattr(dataset, "base", None)
+    if base is None or not hasattr(dataset, "windows_per_sample"):
+        return False
+    return _sharded_dataset_with_parent_indices(base) is not None
 
 
 def _make_loader(
@@ -442,6 +517,19 @@ def _make_loader(
         print(
             "[data] using shard-aware batch sampler "
             f"samples={len(dataset)} batches={len(batch_sampler)} batch_size={batch_size}"
+        )
+        return DataLoader(
+            dataset,
+            batch_sampler=batch_sampler,
+            num_workers=num_workers,
+            worker_init_fn=make_worker_init_fn(seed),
+        )
+
+    if shuffle and _is_windowed_over_sharded(dataset):
+        batch_sampler = WindowedShardBatchSampler(dataset, batch_size=batch_size, seed=seed)
+        print(
+            "[data] using windowed shard-local batch sampler "
+            f"windows={len(dataset)} batches={len(batch_sampler)} batch_size={batch_size}"
         )
         return DataLoader(
             dataset,
