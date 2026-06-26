@@ -9,3 +9,71 @@
 
 \subsection{Additional result tables}
 % TODO: Add full per-suite/per-model metrics, ensemble member details, and speed JSON summaries.
+% TODO: Data-scaling study figure. Train the hydrostatic FNO at training-set sizes
+%   {100, 250, 500, 1000, 2500, 5000, 10000} and plot RMSE, MAE, rel-L2, and max error
+%   vs training-set size (one curve per metric, log-x). Deferred: run only after the
+%   uncertainty (probabilistic FNO) and ConvLSTM checkpoints are trained, since those
+%   share GPU time.
+
+\begin{table}[H]
+\centering
+\caption{Window-FNO-5 diagnostic details for the hydrostatic test split. The model predicts in $K=5$ frame blocks and is evaluated autoregressively after being seeded with the true first frame.}
+\label{tab:app-window-fno5}
+\begin{tabular}{lc}
+    \toprule
+    Quantity & Value \\
+    \midrule
+    Test scenarios & $2500$ \\
+    Predicted frames & $49$ \\
+    Rollout chunks & $10$ \\
+    Full-rollout rel-$L_2$ & $0.0795$ \\
+    Frame-1 rel-$L_2$ & $0.0518$ \\
+    Mid-horizon rel-$L_2$ & $0.1334$ \\
+    Final-frame rel-$L_2$ & $0.1884$ \\
+    Rollout time per sample & $11.15$ ms \\
+    Speedup vs hydrostatic CPU solver & $\approx 3.0 \times 10^3$ \\
+    Best per-window validation rel-$L_2$ & $\approx 0.0487$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Real-bathymetry diagnostics}
+
+\begin{table}[H]
+\centering
+\caption{Status of the real-bathymetry crops. The offshore crop is the main morphology-transfer diagnostic. The coastline crop is evaluated both as a fully wet ablation and as a wet-dry OOD stress test.}
+\label{tab:app-real-bath-status}
+\begin{tabular}{llll}
+    \toprule
+    Crop & Rescale & Status & Reading \\
+    \midrule
+    Offshore & $[-10,\,-0.75]$ & Main & Fully wet transfer \\
+    Coastline & $[-10,\,-0.75]$ & Appendix & Geometry ablation \\
+    Coastline & $[-10,\,5]$ & Appendix & Wet-dry stress \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Direct FNO and Window-FNO-5 on the synthetic-source real-bathymetry diagnostics. Each suite contains one scenario, so the rows should be read as case studies, not distribution-level estimates. The coastline row is included only as an appendix stress test.}
+\label{tab:app-real-bath-window}
+\begin{tabular}{llcccc}
+    \toprule
+    Crop & Quality & Direct rel-$L_2$ & Window rel-$L_2$ & Window final rel-$L_2$ & Window RMSE \\
+    \midrule
+    Offshore wet & ok & $0.226$ & $0.044$ & $0.241$ & $0.00132$ \\
+    Coast wet & ok & $0.245$ & $0.063$ & $0.217$ & $0.00189$ \\
+    Coast wet-dry & warn & $0.996$ & $0.980$ & $1.000$ & $0.40866$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+Both coastline rows use the same GEBCO-derived Japan-Trench-region crop (internal tag \texttt{gebco\_japan\_coast}), covering lon $138^\circ$--$144^\circ$E and lat $30 ^ \circ$--$36 ^ \circ$N, resampled to $64\times64$ under the identical Okada-like synthetic source (strength $0.826$, seed $367$) as the main offshore diagnostic; only the depth-range rescale differs. The crop is taken from the GEBCO 2026 Global grid. The two coastline rows separate morphology from wet-dry shift. When the coastline geometry is linearly rescaled into the fully wet range $[-10,\,-0.75]$, both models remain usable: the direct FNO gives rel-$L_2=0.245$ and Window-FNO-5 gives rel-$L_2=0.063$. When the same coastline crop keeps positive topography in the $[-10,\,5]$ range, the reference rollout triggers a small quality warning (maximum $|\eta|=5.0135$ against the configured limit $5.0$), and both models rise to rel-$L_2\approx1.0$. We therefore interpret the stress failure mainly as a dry-land/positive-topography distribution shift, not as evidence that coastline geometry alone breaks the surrogate.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{figures/real_bathymetry_suites.pdf}
+\caption{Real-bathymetry appendix suites under the identical synthetic Okada-like source. One row per suite: de-normalized bathymetry crop, source field, and hydrostatic reference surface elevation $\eta$ at frame 49. Top: offshore morphology crop, fully wet. Middle: coastline crop with positive topography retained (wet-dry stress test); the reference $\eta$ develops the large-amplitude artifacts over the dry-land region that drive the rel-$L_2\approx1.0$ failure in Table~\ref{tab:app-real-bath-window}. Bottom: the same coastline geometry forced fully wet, which both models handle.}
+\label{fig:app-real-bath}
+\end{figure}
