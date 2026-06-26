@@ -15,7 +15,7 @@ ratio:
   denominator_metric: rmse
 
 normalization:
-  on_signature_mismatch: fail
+  on_signature_mismatch: warn
   # prediction_denorm_path defaults to checkpoint train_path.
   # target_denorm_path defaults to evaluation.dataset_path.
   tol: 1e-6

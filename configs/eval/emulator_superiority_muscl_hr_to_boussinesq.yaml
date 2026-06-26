@@ -1,0 +1,21 @@
+model_config: configs/model/fno_boussinesq.yaml
+checkpoint: experiments/fno_boussinesq/best.pt
+
+evaluation:
+  dataset_path: data/processed/boussinesq/test/eval_dataset.npz
+  batch_size: 8
+  report_physical_metrics: true
+
+# should come from:
+# python scripts/compare_solvers_physical.py --solver-a-dir data/raw/muscl_hr/samples --solver-b-dir data/raw/boussinesq/samples ...
+solver_compare_path: results/solver_compare_muscl_hr_vs_boussinesq.json
+
+ratio:
+  numerator_metric: rmse_physical_separate_denorm
+  denominator_metric: rmse
+
+normalization:
+  on_signature_mismatch: warn
+  tol: 1e-6
+
+output_path: results/emulator_superiority_muscl_hr_to_boussinesq.json

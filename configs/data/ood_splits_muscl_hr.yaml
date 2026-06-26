@@ -14,4 +14,4 @@ suites:
 
   - label: source_strength_extreme_high
     filters:
-      source_strength_min: 1.6
+      source_strength_min: 0.82

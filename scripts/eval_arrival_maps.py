@@ -20,6 +20,7 @@ from src.utils.config import load_config
 from src.utils.device import resolve_device
 from src.utils.io import save_json
 from src.utils.model_io import validate_model_io_channels
+from src.utils.seed import seed_everything
 
 
 def _model_output(model, x: torch.Tensor) -> torch.Tensor:
@@ -108,6 +109,7 @@ def main() -> None:
     cfg = load_config(args.config)
     if args.device is not None:
         cfg["device"] = args.device
+    seed_everything(int(cfg.get("seed", 42)))
     eval_cfg = cfg.get("eval", cfg.get("evaluation", {}))
     data_cfg = dict(cfg.get("data", {}))
     if eval_cfg.get("dataset_path"):

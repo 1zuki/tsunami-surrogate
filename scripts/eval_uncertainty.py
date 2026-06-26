@@ -18,6 +18,7 @@ from src.evaluation.calibration import interval_calibration
 from src.evaluation.uncertainty import error_uncertainty_correlation
 from src.evaluation.target_scaling import load_target_denorm, resolve_eval_dataset_path
 from src.utils.io import save_json
+from src.utils.seed import seed_everything
 
 
 def _evaluate_uncertainty_loader(
@@ -100,6 +101,7 @@ def main():
     cfg = load_config(args.config)
     if args.device is not None:
         cfg["device"] = args.device
+    seed_everything(int(cfg.get("seed", 42)))
     eval_cfg = cfg.get("eval", cfg.get("evaluation", {}))
     ckpts = list(cfg.get('uncertainty', {}).get('ensemble_checkpoints', []))
     if args.checkpoint:

@@ -23,14 +23,17 @@ from src.utils.config import load_config
 from src.utils.device import resolve_device
 from src.utils.io import save_json
 from src.utils.model_io import validate_model_io_channels
+from src.utils.seed import seed_everything
 
 
 def _suite_test_loader(cfg: Dict[str, Any], dataset_path: str, batch_size: int):
     resolved_dataset_path = resolve_dataset_npz(dataset_path)
     local_cfg = dict(cfg)
-    local_data = dict(local_cfg.get("data", {}))
-    local_data["test_path"] = str(resolved_dataset_path)
-    local_data["batch_size"] = batch_size
+    local_data = {
+        "test_path": str(resolved_dataset_path),
+        "batch_size": int(batch_size),
+        "num_workers": 0,
+    }
     local_cfg["data"] = local_data
 
     loaders = create_dataloaders(local_cfg)
@@ -85,6 +88,7 @@ def main() -> None:
     cfg = load_config(args.config)
     if args.device is not None:
         cfg["device"] = args.device
+    seed_everything(int(cfg.get("seed", 42)))
     eval_cfg = cfg.get("eval", cfg.get("evaluation", {}))
     rr_cfg = eval_cfg.get("real_resolution", cfg.get("real_resolution", {}))
     suites = list(rr_cfg.get("suites", []))

@@ -15,6 +15,7 @@ from src.training.checkpointing import load_checkpoint
 from src.evaluation.generalization_suite import evaluate_by_regime
 from src.evaluation.target_scaling import load_target_denorm, resolve_eval_dataset_path
 from src.utils.io import save_json
+from src.utils.seed import seed_everything
 
 
 def _dataset_num_samples(loader: Any) -> int:
@@ -76,6 +77,7 @@ def main():
     cfg = load_config(args.config)
     if args.device is not None:
         cfg["device"] = args.device
+    seed_everything(int(cfg.get("seed", 42)))
     eval_cfg = cfg.get("eval", cfg.get("evaluation", {}))
     data_cfg = dict(cfg.get("data", {}))
     dataset_cfg = cfg.get("dataset", {})

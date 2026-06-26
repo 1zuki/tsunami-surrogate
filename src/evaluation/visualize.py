@@ -119,10 +119,98 @@ def _model_mean_and_variance(
     return mean, variance
 
 
-def _load_processed_eval_dataset(processed_path: str | Path) -> Dict[str, np.ndarray]:
+def _read_input_order_manifest(manifest_path: Path) -> Optional[np.ndarray]:
+    if not manifest_path.exists():
+        return None
+
+    try:
+        with manifest_path.open("r", encoding="utf-8") as f:
+            manifest = json.load(f)
+        input_order = manifest.get("input_order")
+        if isinstance(input_order, list) and all(isinstance(x, str) for x in input_order):
+            return np.asarray(input_order, dtype=object)
+    except Exception:
+        return None
+
+    return None
+
+
+def _load_processed_eval_dataset(
+    processed_path: str | Path,
+    sample_id: Optional[str] = None,
+    sample_index: int = 0,
+) -> Dict[str, np.ndarray]:
     processed_path = Path(processed_path)
     npz_path = processed_path
     if processed_path.is_dir():
+        shard_manifest = processed_path / "shards_manifest.json"
+        if shard_manifest.exists():
+            with shard_manifest.open("r", encoding="utf-8") as f:
+                manifest = json.load(f)
+            shards = list(manifest.get("shards", []))
+            if not shards:
+                raise FileNotFoundError(f"No shards found in directory: {processed_path}")
+
+            if sample_id is None:
+                global_idx = int(sample_index)
+                if global_idx < 0:
+                    global_idx += int(manifest.get("num_samples", 0))
+                if global_idx < 0:
+                    raise IndexError(f"sample_index out of range: {int(sample_index)}")
+
+                offset = 0
+                selected = None
+                for shard in shards:
+                    count = int(shard.get("num_samples", 0))
+                    if global_idx < offset + count:
+                        selected = (shard, global_idx - offset)
+                        break
+                    offset += count
+                if selected is None:
+                    raise IndexError(f"sample_index out of range: {int(sample_index)} not in [0, {offset - 1}]")
+            else:
+                selected = None
+                for shard in shards:
+                    shard_file = shard.get("file")
+                    if not shard_file:
+                        raise KeyError(f"Shard entry in {shard_manifest} is missing a file path.")
+                    with np.load(processed_path / str(shard_file), allow_pickle=True) as data:
+                        ids = _normalize_sample_ids(data["sample_id"])
+                        matches = np.where(ids == sample_id)[0]
+                        if len(matches) > 0:
+                            selected = (shard, int(matches[0]))
+                            break
+                if selected is None:
+                    raise KeyError(f"sample_id '{sample_id}' not found in processed shard dataset.")
+
+            shard, local_idx = selected
+            shard_file = shard.get("file")
+            if not shard_file:
+                raise KeyError(f"Selected shard in {shard_manifest} is missing a file path.")
+            shard_path = processed_path / str(shard_file)
+
+            with np.load(shard_path, allow_pickle=True) as data:
+                if "inputs" not in data or "targets" not in data:
+                    raise KeyError(f"{shard_path} must contain 'inputs' and 'targets'")
+                ids = _normalize_sample_ids(data["sample_id"]) if "sample_id" in data else None
+                out = {
+                    "inputs": np.asarray(data["inputs"][local_idx : local_idx + 1], dtype=np.float32),
+                    "targets": np.asarray(data["targets"][local_idx : local_idx + 1], dtype=np.float32),
+                }
+                if ids is not None:
+                    out["sample_id"] = np.asarray([ids[local_idx]], dtype=object)
+                else:
+                    out["sample_id"] = np.asarray([f"sample_{local_idx:06d}"], dtype=object)
+                if "input_order" in data:
+                    out["input_order"] = np.asarray(data["input_order"], dtype=object)
+
+            if "input_order" not in out:
+                input_order = _read_input_order_manifest(processed_path / "eval_manifest.json")
+                if input_order is not None:
+                    out["input_order"] = input_order
+
+            return out
+
         candidate = processed_path / "eval_dataset.npz"
         if not candidate.exists():
             raise FileNotFoundError(f"Missing eval dataset archive: {candidate}")
@@ -131,24 +219,23 @@ def _load_processed_eval_dataset(processed_path: str | Path) -> Dict[str, np.nda
     with np.load(npz_path, allow_pickle=True) as data:
         if "inputs" not in data or "targets" not in data:
             raise KeyError(f"{npz_path} must contain 'inputs' and 'targets'")
-        out = {
-            "inputs": np.asarray(data["inputs"], dtype=np.float32),
-            "targets": np.asarray(data["targets"], dtype=np.float32),
-        }
         if "sample_id" in data:
-            out["sample_id"] = np.asarray(data["sample_id"])
+            sample_ids = _normalize_sample_ids(data["sample_id"])
         else:
-            out["sample_id"] = np.asarray([f"sample_{i:06d}" for i in range(out["inputs"].shape[0])], dtype=object)
+            sample_ids = np.asarray([f"sample_{i:06d}" for i in range(data["inputs"].shape[0])], dtype=object)
+        idx = _pick_sample_index(sample_ids, sample_id=sample_id, sample_index=sample_index)
+        out = {
+            "inputs": np.asarray(data["inputs"][idx : idx + 1], dtype=np.float32),
+            "targets": np.asarray(data["targets"][idx : idx + 1], dtype=np.float32),
+            "sample_id": np.asarray([sample_ids[idx]], dtype=object),
+        }
+        if "input_order" in data:
+            out["input_order"] = np.asarray(data["input_order"], dtype=object)
     manifest_path = npz_path.with_name("eval_manifest.json")
-    if manifest_path.exists():
-        try:
-            with manifest_path.open("r", encoding="utf-8") as f:
-                manifest = json.load(f)
-            input_order = manifest.get("input_order")
-            if isinstance(input_order, list) and all(isinstance(x, str) for x in input_order):
-                out["input_order"] = np.asarray(input_order, dtype=object)
-        except Exception:
-            pass
+    if "input_order" not in out:
+        input_order = _read_input_order_manifest(manifest_path)
+        if input_order is not None:
+            out["input_order"] = input_order
     return out
 
 
@@ -240,9 +327,13 @@ def prepare_visual_rollout(
     load_checkpoint(checkpoint_path, model, map_location=dev)
     model = model.to(dev).eval()
 
-    processed = _load_processed_eval_dataset(processed_path)
+    processed = _load_processed_eval_dataset(
+        processed_path,
+        sample_id=sample_id,
+        sample_index=sample_index,
+    )
     sample_ids = _normalize_sample_ids(processed["sample_id"])
-    idx = _pick_sample_index(sample_ids, sample_id=sample_id, sample_index=sample_index)
+    idx = 0
     sid = str(sample_ids[idx])
 
     x_np = np.asarray(processed["inputs"][idx], dtype=np.float32)

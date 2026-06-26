@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import sys
 from typing import Any, Dict, Iterable
@@ -88,8 +89,61 @@ def _subset_npz(payload: Dict[str, np.ndarray], mask: np.ndarray) -> Dict[str, n
     return out
 
 
+def _load_npz_payload(path: Path) -> Dict[str, np.ndarray]:
+    with np.load(path, allow_pickle=True) as data:
+        return {k: data[k] for k in data.files}
+
+
+def _load_sharded_payload(path: Path) -> Dict[str, np.ndarray]:
+    manifest_path = path / "shards_manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(manifest_path)
+
+    with manifest_path.open("r", encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    chunks: Dict[str, list[np.ndarray]] = {}
+    constants: Dict[str, np.ndarray] = {}
+
+    for shard in manifest.get("shards", []):
+        shard_file = shard.get("file")
+        if not shard_file:
+            raise KeyError(f"Shard entry in {manifest_path} is missing a file path.")
+        shard_path = path / str(shard_file)
+        with np.load(shard_path, allow_pickle=True) as data:
+            if "inputs" in data:
+                n = int(data["inputs"].shape[0])
+            elif "x" in data:
+                n = int(data["x"].shape[0])
+            else:
+                raise KeyError(f"Shard {shard_path} must contain inputs or x")
+
+            for key in data.files:
+                arr = np.asarray(data[key])
+                if arr.shape and arr.shape[0] == n:
+                    chunks.setdefault(key, []).append(arr)
+                elif key not in constants:
+                    constants[key] = arr
+
+    payload = dict(constants)
+    for key, arrays in chunks.items():
+        payload[key] = np.concatenate(arrays, axis=0)
+
+    return payload
+
+
+def _load_payload(path: Path) -> Dict[str, np.ndarray]:
+    if path.name == "eval_dataset.npz" and (path.parent / "shards_manifest.json").is_file():
+        return _load_sharded_payload(path.parent)
+    if path.is_dir() and (path / "shards_manifest.json").is_file():
+        return _load_sharded_payload(path)
+    if path.is_dir() and (path / "eval_dataset.npz").is_file():
+        return _load_npz_payload(path / "eval_dataset.npz")
+    return _load_npz_payload(path)
+
+
 def main() -> None:
-    p = argparse.ArgumentParser(description="Build OOD evaluation suites from an eval_dataset.npz archive.")
+    p = argparse.ArgumentParser(description="Build OOD evaluation suites from a flat or sharded processed dataset.")
     p.add_argument("--config", type=str, required=True)
     p.add_argument("--overwrite", action="store_true")
     args = p.parse_args()
@@ -120,14 +174,19 @@ def main() -> None:
         if min_samples_default < 0:
             raise ValueError("min_samples must be >= 0")
     
-    if not input_dataset.exists():
+    if not input_dataset.exists() and not (
+        input_dataset.name == "eval_dataset.npz" and (input_dataset.parent / "shards_manifest.json").is_file()
+    ):
         raise FileNotFoundError(input_dataset)
 
-    with np.load(input_dataset, allow_pickle=True) as data:
-        payload: Dict[str, np.ndarray] = {k: data[k] for k in data.files}
+    payload = _load_payload(input_dataset)
 
+    if "inputs" not in payload and "x" in payload:
+        payload["inputs"] = payload["x"]
+    if "targets" not in payload and "y" in payload:
+        payload["targets"] = payload["y"]
     if "inputs" not in payload or "targets" not in payload:
-        raise KeyError("input_dataset must contain keys: inputs, targets")
+        raise KeyError("input_dataset must contain keys: inputs/targets or x/y")
     n = int(payload["inputs"].shape[0])
     if int(payload["targets"].shape[0]) != n:
         raise ValueError("inputs and targets must have matching sample dimension")
