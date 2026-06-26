@@ -123,6 +123,10 @@ class SourceGenerator:
         self.depth_range_o = _parse_array_float("okada", "depth_range", [0.0, 0.2])
         self.smoothing_sigma_o = _parse_array_float("okada", "smoothing_sigma", [0.01, 0.03])
 
+        okada_cfg = cfg.get("okada", {})
+        self.center_x_o = self._parse_optional_center(okada_cfg.get("center_x", None), "center_x")
+        self.center_y_o = self._parse_optional_center(okada_cfg.get("center_y", None), "center_y")
+
         # noise
         self.enabled_n = bool(cfg.get("noise", {}).get("enabled", True))
         self.scale_range_n = _parse_array_float("noise", "scale_range", [0.01, 0.05])
@@ -143,6 +147,15 @@ class SourceGenerator:
             raise ValueError("normalization.mode must be one of: none, per_sample")
 
         self.clip_output = bool(norm_cfg.get("clip_output", self.normalize_mode == "per_sample"))
+
+    @staticmethod
+    def _parse_optional_center(value: object, key: str) -> Optional[float]:
+        if value is None:
+            return None
+        center = float(value)
+        if not 0.0 <= center <= 1.0:
+            raise ValueError(f"{key} must be in [0, 1]")
+        return center
 
     @staticmethod
     def _parse_source_type(source_type: object) -> tuple[str, ...]:
@@ -320,6 +333,11 @@ class SourceGenerator:
     def _gen_okada_like(self) -> np.ndarray:
         x_c = self.rng.uniform(0.0, 1.0)
         y_c = self.rng.uniform(0.0, 1.0)
+
+        if self.center_x_o is not None:
+            x_c = self.center_x_o
+        if self.center_y_o is not None:
+            y_c = self.center_y_o
 
         slip = self._sample(self.slip_range_o)
         length = self._sample(self.len_range_o)

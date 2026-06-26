@@ -125,9 +125,23 @@ class TsunamiPreprocessor:
         shard_size = int(saving_cfg.get("shard_size", 128))
         if shard_size <= 0:
             raise ValueError("saving.shard_size must be a positive integer")
-        write_legacy_eval_archive = bool(saving_cfg.get("write_legacy_eval_archive", False))
+        write_legacy_eval_archive = bool(
+            saving_cfg.get(
+                "write_legacy_eval_archive",
+                saving_cfg.get(
+                    "write_legacy_test_archive",
+                    saving_cfg.get(
+                        "write_legacy_val_archive",
+                        saving_cfg.get("write_legacy_train_archive", False),
+                    ),
+                ),
+            )
+        )
 
-        eval_cfg = cfg.get("eval_export", {})
+        eval_cfg = cfg.get(
+            "eval_export",
+            cfg.get("test_export", cfg.get("val_export", cfg.get("train_export", {}))),
+        )
         export_eval_arrays = bool(eval_cfg.get("enabled", True))
         eval_input_order = list(eval_cfg.get("input_order", ["bathymetry", "source", "initial_depth", "initial_surface"]))
         eval_inputs_name = str(eval_cfg.get("inputs_name", "inputs.npy"))
@@ -566,10 +580,23 @@ class TsunamiPreprocessor:
         if train_records:
             return None
 
-        candidate = output_dir / "normalization_stats.json"
-        if candidate.is_file():
-            print(f"[preprocess] no train split records; reusing normalization stats: {candidate}")
-            return candidate
+        solver_name = output_dir.name
+        candidates = [
+            output_dir / "normalization_stats.json",
+            output_dir.parent / solver_name / "normalization_stats.json",
+            output_dir.parent / "train" / solver_name / "normalization_stats.json",
+            output_dir.parent.parent / solver_name / "normalization_stats.json",
+            output_dir.parent.parent / "train" / solver_name / "normalization_stats.json",
+        ]
+        seen: Set[pathlib.Path] = set()
+        for candidate in candidates:
+            candidate = candidate.resolve()
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            if candidate.is_file():
+                print(f"[preprocess] no train split records; reusing normalization stats: {candidate}")
+                return candidate
 
         if self._normalization_enabled():
             raise ValueError(
@@ -933,6 +960,15 @@ class TsunamiPreprocessor:
         else:
             np.savez(path, **payload)
 
+    def _write_eval_manifest(self, out_dir: pathlib.Path, payload: Dict[str, Any]) -> None:
+        manifest_names = [self.cfg.eval_manifest_name]
+        if self.cfg.eval_manifest_name != "eval_manifest.json":
+            manifest_names.append("eval_manifest.json")
+
+        for name in manifest_names:
+            with (out_dir / name).open("w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2)
+
     def _clear_generated_split_outputs(self, out_dir: pathlib.Path) -> None:
         known_files = {
             self.cfg.eval_inputs_name,
@@ -940,6 +976,7 @@ class TsunamiPreprocessor:
             self.cfg.eval_ids_name,
             self.cfg.eval_archive_name,
             self.cfg.eval_manifest_name,
+            "eval_manifest.json",
             "Y.npy",
             "meta.jsonl",
             "shards_manifest.json",
@@ -1111,8 +1148,7 @@ class TsunamiPreprocessor:
             "inputs_shape": first_inputs_shape,
             "targets_shape": first_targets_shape,
         }
-        with (out_dir / self.cfg.eval_manifest_name).open("w", encoding="utf-8") as f:
-            json.dump(eval_manifest, f, indent=2)
+        self._write_eval_manifest(out_dir, eval_manifest)
 
     def save_split(self, split_name: str, X: List[Dict[str, np.ndarray]], Y: List[np.ndarray],
                    meta_list: List[Dict[str, Any]], sample_ids: List[str]) -> None:
@@ -1218,8 +1254,7 @@ class TsunamiPreprocessor:
                 "inputs_shape": list(map(int, eval_inputs.shape)),
                 "targets_shape": list(map(int, eval_targets.shape)),
             }
-            with (out_dir / self.cfg.eval_manifest_name).open("w", encoding="utf-8") as f:
-                json.dump(eval_manifest, f, indent=2)
+            self._write_eval_manifest(out_dir, eval_manifest)
 
         if self.cfg.include_meta:
             meta_path = out_dir / "meta.jsonl"

@@ -3,8 +3,8 @@ configs:
   source: "configs/data/source.yaml"
 
 dataset:
-  num_samples: 10000
-  seed: 69
+  num_samples: 2500
+  seed: 367
   num_workers: 10
   n_steps: 250
   save_every: 5
@@ -17,10 +17,10 @@ dataset:
   # near [-1, 1], so this range gives visible waves without routinely creating
   # dry/explosive shallow-water states.
   source_strength_range: [0.45, 0.85]
-  bathymetry_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/eval/bathymetry"
-  source_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/eval/sources"
-  output_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/eval/raw"
-  manifest_path: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/eval/synthetic/scenario_manifest.jsonl"
+  bathymetry_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/test/bathymetry"
+  source_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/test/sources"
+  output_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/test/raw"
+  manifest_path: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/test/synthetic/scenario_manifest.jsonl"
   copy_configs: true
 
 fdes:

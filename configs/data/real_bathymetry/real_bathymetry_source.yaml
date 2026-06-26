@@ -1,0 +1,71 @@
+nx: 64
+ny: 64
+seed: null
+
+# Shared pinned source for all real-bathymetry diagnostic suites (main offshore
+# morphology + both coastline appendix crops). Forces a single okada-like source
+# placed off the corner/edge so every suite uses an identical, cleanly centered
+# earthquake. The source field depends only on this config + run seed (367) +
+# sample index (1), all of which match across suites, so the three sources are
+# byte-identical.
+source_type: ["okada-like"]
+
+# gaussian
+gaussian:
+  enabled: false
+  amp_range: [0.08, 0.55]
+  sigma_range: [0.015, 0.10]
+  num_range: [1, 3]
+
+# multi-source
+multi:
+  enabled: false
+  num_sources: [2, 4]
+
+# okada-like (complex earthquake)
+okada:
+  enabled: true
+  length_range: [0.1, 0.6]
+  width_range: [0.05, 0.30]
+  slip_range: [0.10, 0.60]
+  angle_range: [0.0, 3.14]
+  dip_range: [0.0, 0.6]
+  depth_range: [0.0, 0.30]
+  smoothing_sigma: [0.1, 0.3]
+  # Pin the fault center off the corner/edge (domain is the unit square).
+  center_x: 0.45
+  center_y: 0.75
+
+# dipole (uplift + subsidence, the classic tsunami shape)
+dipole:
+  enabled: false
+  amp_range: [0.10, 0.65]
+  sigma_range: [0.02, 0.12]
+  separation_range: [0.05, 0.24]
+  angle_range: [0.0, 3.14]
+
+# simple fault (long rectangular block uplift)
+fault:
+  enabled: false
+  amp_range: [0.10, 0.60]
+  length_range: [0.2, 0.8]
+  width_range: [0.02, 0.12]
+  angle_range: [0.0, 3.14]
+  smoothing_sigma: [0.01, 0.03]
+
+rough:
+  enabled: false
+  amp_range: [0.08, 0.45]
+  smoothing_sigma: [0.4, 2.0]
+
+# noise
+noise:
+  enabled: true
+  scale_range: [0.005, 0.035]
+  smoothing_sigma: [1.0, 3.0]
+
+# normalization
+normalization:
+  mode: none
+  clip_output: true
+  height_scale: [-1.0, 1.0]

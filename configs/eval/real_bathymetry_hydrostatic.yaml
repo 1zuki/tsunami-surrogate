@@ -1,0 +1,23 @@
+defaults:
+  - ../model/fno.yaml
+
+eval:
+  output_dir: experiments/fno/eval_real_bathymetry
+  report_physical_metrics: true
+  real_resolution:
+    normalization_policy: require_target_stats_match
+    normalization_mismatch: fail
+    checkpoint_reference_mismatch: fail
+    normalization_reference_path: data/processed/hydrostatic/train
+    checkpoint_train_path: data/processed/hydrostatic/train
+    normalization_tol: 1e-6
+    suites:
+      - label: main_morphology
+        path: data/processed_real_bathymetry/main_morphology/hydrostatic/test
+        batch_size: 1
+      - label: appendix_coastline_stress
+        path: data/processed_real_bathymetry/appendix_coastline_stress/hydrostatic/test
+        batch_size: 1
+      - label: appendix_coastline_fully_wet
+        path: data/processed_real_bathymetry/appendix_coastline_fully_wet/hydrostatic/test
+        batch_size: 1
