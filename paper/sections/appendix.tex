@@ -64,7 +64,7 @@ Table~\ref{tab:app-ensemble} reports the individual ensemble members used for th
 
 \begin{table}[H]
 \centering
-\caption{Inference-benchmark settings from the per-model speed JSON, on the hydrostatic test split. All surrogates are timed on GPU (CUDA, fp32) with batch size $64$, five warm-up batches, and twenty timed repeats. Hardware: NVIDIA GeForce RTC 4050 Laptop GPU, Intel Core i5-13420H, PyTorch $2.10$ / CUDA $12.8$.}
+\caption{Inference-benchmark settings from the per-model speed JSON, on the hydrostatic test split. All surrogates are timed on GPU (CUDA, fp32) with batch size $64$, five warm-up batches, and twenty timed repeats. Hardware: NVIDIA GeForce RTX 4050 Laptop GPU, Intel Core i5-13420H, PyTorch $2.10$ / CUDA $12.8$.}
 \label{tab:app-speed-detail}
 \begin{tabular}{lccccc}
     \toprule
@@ -106,12 +106,12 @@ The curve is monotone and smooth: relative $L_2$ falls from $0.586$ at $N = 100$
     Train $N$ & MAE & RMSE & rel-$L_2$ & max-err \\
     \midrule
     $100$       & $0.00237$ & $0.00567$ & $0.586$ & $54.5$ \\
-    $250$       & $0.00237$ & $0.00567$ & $0.586$ & $54.5$ \\
-    $500$       & $0.00237$ & $0.00567$ & $0.586$ & $54.5$ \\
-    $1{,}000$   & $0.00237$ & $0.00567$ & $0.586$ & $54.5$ \\
-    $2{,}500$   & $0.00237$ & $0.00567$ & $0.586$ & $54.5$ \\
-    $5{,}000$   & $0.00237$ & $0.00567$ & $0.586$ & $54.5$ \\
-    $10{,}000$  & $0.00237$ & $0.00567$ & $0.586$ & $54.5$ \\
+    $250$       & $0.00196$ & $0.00449$ & $0.464$ & $42.5$ \\
+    $500$       & $0.00164$ & $0.00386$ & $0.399$ & $38.5$ \\
+    $1{,}000$   & $0.00137$ & $0.00329$ & $0.340$ & $34.0$ \\
+    $2{,}500$   & $0.00111$ & $0.00276$ & $0.285$ & $32.5$ \\
+    $5{,}000$   & $0.00097$ & $0.00246$ & $0.254$ & $25.5$ \\
+    $10{,}000$  & $0.00087$ & $0.00227$ & $0.235$ & $22.9$ \\
     \bottomrule
 \end{tabular}
 \end{table}

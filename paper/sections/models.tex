@@ -16,7 +16,7 @@ where $W$ is the pointwise (local) path and $\mathcal{K}$ is the spectral (globa
 
 In the main configuration we use $L=6$ Fourier blocks, width $d=48$, and $m_1=m_2=14$ retained modes in each spatial direction, with a padding of $6$ cells. The same architecture is trained separately on the hydrostatic, MUSCL-HR, and Boussinesq labels; only the output channel count would change if the forecast horizon were changed.
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \begin{tikzpicture}[
     font=\small,
@@ -90,7 +90,7 @@ In the main configuration we use $L=6$ Fourier blocks, width $d=48$, and $m_1=m_
 
 To check whether the spectral, global structure of the FNO actually helps, we include two purely convolutional baselines that have a local receptive field.
 
-The \textbf{CNN} is a small fully convolutional neural network: $3 \times 3$ convolutions followed by a GELU activation, then a $1 \times 1$ output convolution that produces $T$ output frames at a width-$d = 48$. It has no down-sampling and no global mixing, so its receptive field grews only with depth. So this represents the simplest reasonable local predictor and is useful as a lower comparison anchor.
+The \textbf{CNN} is a small fully convolutional neural network: $3 \times 3$ convolutions followed by a GELU activation, then a $1 \times 1$ output convolution that produces $T$ output frames at a width-$d = 48$. It has no down-sampling and no global mixing, so its receptive field grows only with depth. So this represents the simplest reasonable local predictor and is useful as a lower comparison anchor.
 
 The \textbf{U-Net} adds a single encoder--decoder with a skip connection \citep{ronneberger2015unet}. An input double convolution block is followed by an average-pooling with down-sampling and a second double convolution at double the width; the coarse features are then bi-linearly up-sampled and then concatenated with a high-resolution skip feature and then decoded by a final double convolution and $1 \times 1$ output convolution; at a base width of $32$. The pooling gives it a larger effective receptive field compared to the plain \textbf{CNN} at a modest cost, which is why it is a stronger convolution comparison.
 

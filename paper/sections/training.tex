@@ -21,7 +21,7 @@ where $\mathrm{MSE}_t$ is the mean-squared error of frame $t$ and we use $w_{\mi
 
 \subsection{Experiment configurations}
 \label{subsec:train-configs}
-Each model--target pair is defined by a single configuration file. The primary configurations train the Fourier Neural Operator on the hydrostatic, MUSCL-HR, and Boussinesq labels, and the CNN and U-Net baselines are trained on the shallow-water targets under the matched protocol above. Hydrostatic is the main reference target, while MUSCL-HR and Boussinesq are the main comparison targets; Boussinesq is included becuase it gives a weakly dispersive baseline on the same scenarios, not because it is treated as final physical truth.
+Each model--target pair is defined by a single configuration file. The primary configurations train the Fourier Neural Operator on the hydrostatic, MUSCL-HR, and Boussinesq labels, and the CNN and U-Net baselines are trained on the shallow-water targets under the matched protocol above. Hydrostatic is the main reference target, while MUSCL-HR and Boussinesq are the main comparison targets; Boussinesq is included because it gives a weakly dispersive baseline on the same scenarios, not because it is treated as final physical truth.
 
 For the uncertainty experiments we train a deep ensemble of three members that differ only in their random seed, following the procedure of Section~\ref{subsec:uncertainty}. The ensemble shares the architecture and the training protocol of a single FNO model and only changes the seed, so any spread between member reflects optimization stochastically rather than a different model design.
 
