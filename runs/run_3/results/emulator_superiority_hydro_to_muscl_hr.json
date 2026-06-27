@@ -49,15 +49,56 @@
     "on_signature_mismatch": "warn",
     "check_input_stats": true,
     "on_input_stats_mismatch": "warn",
-    "prediction_input_signature": null,
-    "eval_input_signature": null,
+    "prediction_input_signature": {
+      "dataset_path": "data/processed/hydrostatic/train/shards/shard_00000.npz",
+      "normalization_stats_path": "data/processed/hydrostatic/normalization_stats.json",
+      "input_order": [
+        "bathymetry",
+        "source",
+        "initial_depth"
+      ],
+      "channels": {
+        "bathymetry": {
+          "offset": -5.821641735947132,
+          "scale": 3.753549000532554
+        },
+        "source": {
+          "offset": 0.01231608353800566,
+          "scale": 0.07928885694531032
+        }
+      }
+    },
+    "eval_input_signature": {
+      "dataset_path": "data/processed/muscl_hr/test/shards/shard_00000.npz",
+      "normalization_stats_path": "data/processed/muscl_hr/normalization_stats.json",
+      "input_order": [
+        "bathymetry",
+        "source",
+        "initial_depth"
+      ],
+      "channels": {
+        "bathymetry": {
+          "offset": -5.821641735947132,
+          "scale": 3.753549000532554
+        },
+        "source": {
+          "offset": 0.01231608353800566,
+          "scale": 0.07928885694531032
+        }
+      }
+    },
     "input_check": {
-      "checked": false,
-      "compatible": false,
-      "reason": "missing_input_signature",
-      "shared_channels": [],
+      "checked": true,
+      "compatible": true,
+      "reason": "ok",
+      "shared_channels": [
+        "bathymetry",
+        "source"
+      ],
       "mismatch_channels": [],
-      "unscaled_shared_channels": [],
+      "unscaled_shared_channels": [
+        "initial_depth"
+      ],
       "mixed_scaled_channels": []
     }
   },

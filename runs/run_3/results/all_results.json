@@ -503,20 +503,61 @@
           "target_offset": 0.0012094725389033556,
           "target_scale": 0.009723731316626072
         },
-        "eval_input_signature": null,
+        "eval_input_signature": {
+          "channels": {
+            "bathymetry": {
+              "offset": -5.821641735947132,
+              "scale": 3.753549000532554
+            },
+            "source": {
+              "offset": 0.01231608353800566,
+              "scale": 0.07928885694531032
+            }
+          },
+          "dataset_path": "data/processed/hydrostatic/test/shards/shard_00000.npz",
+          "input_order": [
+            "bathymetry",
+            "source",
+            "initial_depth"
+          ],
+          "normalization_stats_path": "data/processed/hydrostatic/normalization_stats.json"
+        },
         "input_check": {
-          "checked": false,
-          "compatible": false,
+          "checked": true,
+          "compatible": true,
           "mismatch_channels": [],
           "mixed_scaled_channels": [],
-          "reason": "missing_input_signature",
-          "shared_channels": [],
-          "unscaled_shared_channels": []
+          "reason": "ok",
+          "shared_channels": [
+            "bathymetry",
+            "source"
+          ],
+          "unscaled_shared_channels": [
+            "initial_depth"
+          ]
         },
         "on_input_stats_mismatch": "warn",
         "on_signature_mismatch": "warn",
         "prediction_denorm_path": "data/processed/boussinesq/train/eval_dataset.npz",
-        "prediction_input_signature": null,
+        "prediction_input_signature": {
+          "channels": {
+            "bathymetry": {
+              "offset": -5.821641735947132,
+              "scale": 3.753549000532554
+            },
+            "source": {
+              "offset": 0.01231608353800566,
+              "scale": 0.07928885694531032
+            }
+          },
+          "dataset_path": "data/processed/boussinesq/train/shards/shard_00000.npz",
+          "input_order": [
+            "bathymetry",
+            "source",
+            "initial_depth"
+          ],
+          "normalization_stats_path": "data/processed/boussinesq/normalization_stats.json"
+        },
         "prediction_signature": {
           "dataset_path": "data/processed/boussinesq/train/shards/shard_00000.npz",
           "normalized_targets": true,
@@ -568,20 +609,61 @@
           "target_offset": 0.0011845336994156241,
           "target_scale": 0.010740278288722038
         },
-        "eval_input_signature": null,
+        "eval_input_signature": {
+          "channels": {
+            "bathymetry": {
+              "offset": -5.821641735947132,
+              "scale": 3.753549000532554
+            },
+            "source": {
+              "offset": 0.01231608353800566,
+              "scale": 0.07928885694531032
+            }
+          },
+          "dataset_path": "data/processed/muscl_hr/test/shards/shard_00000.npz",
+          "input_order": [
+            "bathymetry",
+            "source",
+            "initial_depth"
+          ],
+          "normalization_stats_path": "data/processed/muscl_hr/normalization_stats.json"
+        },
         "input_check": {
-          "checked": false,
-          "compatible": false,
+          "checked": true,
+          "compatible": true,
           "mismatch_channels": [],
           "mixed_scaled_channels": [],
-          "reason": "missing_input_signature",
-          "shared_channels": [],
-          "unscaled_shared_channels": []
+          "reason": "ok",
+          "shared_channels": [
+            "bathymetry",
+            "source"
+          ],
+          "unscaled_shared_channels": [
+            "initial_depth"
+          ]
         },
         "on_input_stats_mismatch": "warn",
         "on_signature_mismatch": "warn",
         "prediction_denorm_path": "data/processed/boussinesq/train/eval_dataset.npz",
-        "prediction_input_signature": null,
+        "prediction_input_signature": {
+          "channels": {
+            "bathymetry": {
+              "offset": -5.821641735947132,
+              "scale": 3.753549000532554
+            },
+            "source": {
+              "offset": 0.01231608353800566,
+              "scale": 0.07928885694531032
+            }
+          },
+          "dataset_path": "data/processed/boussinesq/train/shards/shard_00000.npz",
+          "input_order": [
+            "bathymetry",
+            "source",
+            "initial_depth"
+          ],
+          "normalization_stats_path": "data/processed/boussinesq/normalization_stats.json"
+        },
         "prediction_signature": {
           "dataset_path": "data/processed/boussinesq/train/shards/shard_00000.npz",
           "normalized_targets": true,
@@ -633,20 +715,61 @@
           "target_offset": 0.002938094548881054,
           "target_scale": 0.022135447710752487
         },
-        "eval_input_signature": null,
+        "eval_input_signature": {
+          "channels": {
+            "bathymetry": {
+              "offset": -5.821641735947132,
+              "scale": 3.753549000532554
+            },
+            "source": {
+              "offset": 0.01231608353800566,
+              "scale": 0.07928885694531032
+            }
+          },
+          "dataset_path": "data/processed/boussinesq/test/shards/shard_00000.npz",
+          "input_order": [
+            "bathymetry",
+            "source",
+            "initial_depth"
+          ],
+          "normalization_stats_path": "data/processed/boussinesq/normalization_stats.json"
+        },
         "input_check": {
-          "checked": false,
-          "compatible": false,
+          "checked": true,
+          "compatible": true,
           "mismatch_channels": [],
           "mixed_scaled_channels": [],
-          "reason": "missing_input_signature",
-          "shared_channels": [],
-          "unscaled_shared_channels": []
+          "reason": "ok",
+          "shared_channels": [
+            "bathymetry",
+            "source"
+          ],
+          "unscaled_shared_channels": [
+            "initial_depth"
+          ]
         },
         "on_input_stats_mismatch": "warn",
         "on_signature_mismatch": "warn",
         "prediction_denorm_path": "data/processed/boussinesq/train/eval_dataset.npz",
-        "prediction_input_signature": null,
+        "prediction_input_signature": {
+          "channels": {
+            "bathymetry": {
+              "offset": -5.821641735947132,
+              "scale": 3.753549000532554
+            },
+            "source": {
+              "offset": 0.01231608353800566,
+              "scale": 0.07928885694531032
+            }
+          },
+          "dataset_path": "data/processed/boussinesq/train/shards/shard_00000.npz",
+          "input_order": [
+            "bathymetry",
+            "source",
+            "initial_depth"
+          ],
+          "normalization_stats_path": "data/processed/boussinesq/normalization_stats.json"
+        },
         "prediction_signature": {
           "dataset_path": "data/processed/boussinesq/train/shards/shard_00000.npz",
           "normalized_targets": true,
@@ -698,20 +821,61 @@
           "target_offset": 0.0011845336994156241,
           "target_scale": 0.010740278288722038
         },
-        "eval_input_signature": null,
+        "eval_input_signature": {
+          "channels": {
+            "bathymetry": {
+              "offset": -5.821641735947132,
+              "scale": 3.753549000532554
+            },
+            "source": {
+              "offset": 0.01231608353800566,
+              "scale": 0.07928885694531032
+            }
+          },
+          "dataset_path": "data/processed/muscl_hr/test/shards/shard_00000.npz",
+          "input_order": [
+            "bathymetry",
+            "source",
+            "initial_depth"
+          ],
+          "normalization_stats_path": "data/processed/muscl_hr/normalization_stats.json"
+        },
         "input_check": {
-          "checked": false,
-          "compatible": false,
+          "checked": true,
+          "compatible": true,
           "mismatch_channels": [],
           "mixed_scaled_channels": [],
-          "reason": "missing_input_signature",
-          "shared_channels": [],
-          "unscaled_shared_channels": []
+          "reason": "ok",
+          "shared_channels": [
+            "bathymetry",
+            "source"
+          ],
+          "unscaled_shared_channels": [
+            "initial_depth"
+          ]
         },
         "on_input_stats_mismatch": "warn",
         "on_signature_mismatch": "warn",
         "prediction_denorm_path": "data/processed/hydrostatic/train/eval_dataset.npz",
-        "prediction_input_signature": null,
+        "prediction_input_signature": {
+          "channels": {
+            "bathymetry": {
+              "offset": -5.821641735947132,
+              "scale": 3.753549000532554
+            },
+            "source": {
+              "offset": 0.01231608353800566,
+              "scale": 0.07928885694531032
+            }
+          },
+          "dataset_path": "data/processed/hydrostatic/train/shards/shard_00000.npz",
+          "input_order": [
+            "bathymetry",
+            "source",
+            "initial_depth"
+          ],
+          "normalization_stats_path": "data/processed/hydrostatic/normalization_stats.json"
+        },
         "prediction_signature": {
           "dataset_path": "data/processed/hydrostatic/train/shards/shard_00000.npz",
           "normalized_targets": true,
@@ -763,20 +927,61 @@
           "target_offset": 0.002938094548881054,
           "target_scale": 0.022135447710752487
         },
-        "eval_input_signature": null,
+        "eval_input_signature": {
+          "channels": {
+            "bathymetry": {
+              "offset": -5.821641735947132,
+              "scale": 3.753549000532554
+            },
+            "source": {
+              "offset": 0.01231608353800566,
+              "scale": 0.07928885694531032
+            }
+          },
+          "dataset_path": "data/processed/boussinesq/test/shards/shard_00000.npz",
+          "input_order": [
+            "bathymetry",
+            "source",
+            "initial_depth"
+          ],
+          "normalization_stats_path": "data/processed/boussinesq/normalization_stats.json"
+        },
         "input_check": {
-          "checked": false,
-          "compatible": false,
+          "checked": true,
+          "compatible": true,
           "mismatch_channels": [],
           "mixed_scaled_channels": [],
-          "reason": "missing_input_signature",
-          "shared_channels": [],
-          "unscaled_shared_channels": []
+          "reason": "ok",
+          "shared_channels": [
+            "bathymetry",
+            "source"
+          ],
+          "unscaled_shared_channels": [
+            "initial_depth"
+          ]
         },
         "on_input_stats_mismatch": "warn",
         "on_signature_mismatch": "warn",
         "prediction_denorm_path": "data/processed/boussinesq/train/eval_dataset.npz",
-        "prediction_input_signature": null,
+        "prediction_input_signature": {
+          "channels": {
+            "bathymetry": {
+              "offset": -5.821641735947132,
+              "scale": 3.753549000532554
+            },
+            "source": {
+              "offset": 0.01231608353800566,
+              "scale": 0.07928885694531032
+            }
+          },
+          "dataset_path": "data/processed/boussinesq/train/shards/shard_00000.npz",
+          "input_order": [
+            "bathymetry",
+            "source",
+            "initial_depth"
+          ],
+          "normalization_stats_path": "data/processed/boussinesq/normalization_stats.json"
+        },
         "prediction_signature": {
           "dataset_path": "data/processed/boussinesq/train/shards/shard_00000.npz",
           "normalized_targets": true,
@@ -828,20 +1033,61 @@
           "target_offset": 0.0012094725389033556,
           "target_scale": 0.009723731316626072
         },
-        "eval_input_signature": null,
+        "eval_input_signature": {
+          "channels": {
+            "bathymetry": {
+              "offset": -5.821641735947132,
+              "scale": 3.753549000532554
+            },
+            "source": {
+              "offset": 0.01231608353800566,
+              "scale": 0.07928885694531032
+            }
+          },
+          "dataset_path": "data/processed/hydrostatic/test/shards/shard_00000.npz",
+          "input_order": [
+            "bathymetry",
+            "source",
+            "initial_depth"
+          ],
+          "normalization_stats_path": "data/processed/hydrostatic/normalization_stats.json"
+        },
         "input_check": {
-          "checked": false,
-          "compatible": false,
+          "checked": true,
+          "compatible": true,
           "mismatch_channels": [],
           "mixed_scaled_channels": [],
-          "reason": "missing_input_signature",
-          "shared_channels": [],
-          "unscaled_shared_channels": []
+          "reason": "ok",
+          "shared_channels": [
+            "bathymetry",
+            "source"
+          ],
+          "unscaled_shared_channels": [
+            "initial_depth"
+          ]
         },
         "on_input_stats_mismatch": "warn",
         "on_signature_mismatch": "warn",
         "prediction_denorm_path": "data/processed/muscl_hr/train/eval_dataset.npz",
-        "prediction_input_signature": null,
+        "prediction_input_signature": {
+          "channels": {
+            "bathymetry": {
+              "offset": -5.821641735947132,
+              "scale": 3.753549000532554
+            },
+            "source": {
+              "offset": 0.01231608353800566,
+              "scale": 0.07928885694531032
+            }
+          },
+          "dataset_path": "data/processed/muscl_hr/train/shards/shard_00000.npz",
+          "input_order": [
+            "bathymetry",
+            "source",
+            "initial_depth"
+          ],
+          "normalization_stats_path": "data/processed/muscl_hr/normalization_stats.json"
+        },
         "prediction_signature": {
           "dataset_path": "data/processed/muscl_hr/train/shards/shard_00000.npz",
           "normalized_targets": true,
@@ -3192,48 +3438,48 @@
         {
           "dataset_path": "data/processed_real_bathymetry/main_morphology/hydrostatic/test",
           "label": "main_morphology",
-          "mae": 0.10510646820068359,
-          "mae_physical": 0.0010220270603895187,
-          "max_error": 5.372428894042969,
-          "max_error_physical": 0.05224005877971649,
+          "mae": 0.3903561019897461,
+          "mae_physical": 0.0037957179546356202,
+          "max_error": 9.59771728515625,
+          "max_error_physical": 0.09332561492919922,
           "normalized_targets": true,
           "num_samples": 1,
-          "rel_l2": 0.11182931389217447,
-          "rel_l2_physical": 0.10913786591864916,
-          "rmse": 0.19155255389879658,
-          "rmse_physical": 0.0018626055429443952,
+          "rel_l2": 0.22832802050833947,
+          "rel_l2_physical": 0.22555150276953065,
+          "rmse": 0.756383055024195,
+          "rmse_physical": 0.007354864855391163,
           "target_offset": 0.0012094725389033556,
           "target_scale": 0.009723731316626072
         },
         {
           "dataset_path": "data/processed_real_bathymetry/appendix_coastline_stress/hydrostatic/test",
           "label": "appendix_coastline_stress",
-          "mae": 7.618425903320312,
-          "mae_physical": 0.07407951831817627,
-          "max_error": 514.2147827148438,
-          "max_error_physical": 5.000086307525635,
+          "mae": 7.900306396484375,
+          "mae_physical": 0.07682044506072998,
+          "max_error": 514.2073364257812,
+          "max_error_physical": 5.000013828277588,
           "normalized_targets": true,
           "num_samples": 1,
-          "rel_l2": 0.9990137521403876,
-          "rel_l2_physical": 0.9984631323264113,
-          "rmse": 42.73309058855912,
-          "rmse_physical": 0.41552508307625347,
+          "rel_l2": 0.9964612664849972,
+          "rel_l2_physical": 0.9958705109728805,
+          "rmse": 42.73526061696594,
+          "rmse_physical": 0.4155461975195408,
           "target_offset": 0.0012094725389033556,
           "target_scale": 0.009723731316626072
         },
         {
           "dataset_path": "data/processed_real_bathymetry/appendix_coastline_fully_wet/hydrostatic/test",
           "label": "appendix_coastline_fully_wet",
-          "mae": 0.15700393676757812,
-          "mae_physical": 0.0015266640484333039,
-          "max_error": 6.215238571166992,
-          "max_error_physical": 0.06043531000614166,
+          "mae": 0.4284280014038086,
+          "mae_physical": 0.004165918529033661,
+          "max_error": 8.252164840698242,
+          "max_error_physical": 0.08024182915687561,
           "normalized_targets": true,
           "num_samples": 1,
-          "rel_l2": 0.1779702639373349,
-          "rel_l2_physical": 0.1737285233215459,
-          "rmse": 0.30864580318997087,
-          "rmse_physical": 0.003001189115105618,
+          "rel_l2": 0.24772958036545856,
+          "rel_l2_physical": 0.24473393211302116,
+          "rmse": 0.8280596322225843,
+          "rmse_physical": 0.00805182920184854,
           "target_offset": 0.0012094725389033556,
           "target_scale": 0.009723731316626072
         }
@@ -350010,6 +350256,152 @@
     "notes": "speedup_vs_solver_rollout = solver rollout_time_per_sample_s / model time_per_sample_mean_s",
     "rows": []
   },
+  "window5_crossres_native": {
+    "hydrostatic": {
+      "checkpoint": "experiments/fno_window5_hydrostatic/best.pt",
+      "evaluation_type": "window_rollout_suites",
+      "rows": [
+        {
+          "dataset_path": "data/processed_crossres/res32/test",
+          "final_frame_rel_l2": 5.416020601115454,
+          "first_frame_rel_l2": 0.45465354560640825,
+          "label": "native32_hydrostatic",
+          "mae": 2.787379225127551,
+          "mae_physical": 0.027103727431524366,
+          "max_error": 346.1769714355469,
+          "max_error_physical": 3.3661317825317383,
+          "mid_frame_rel_l2": 3.7407790013203805,
+          "num_predicted_frames": 49,
+          "num_samples": 150,
+          "rel_l2": 1.1006644103108423,
+          "rel_l2_physical": 1.0982599972687381,
+          "rmse": 7.513286700294108,
+          "rmse_physical": 0.07305718246209675,
+          "samples_per_second_rollout": 221.03714222666247,
+          "target_offset": 0.0012094725389033556,
+          "target_scale": 0.009723731316626072,
+          "time_per_sample_rollout_s": 0.004524126533334159
+        },
+        {
+          "dataset_path": "data/processed_crossres/res64/test",
+          "final_frame_rel_l2": 0.14775651656689587,
+          "first_frame_rel_l2": 0.05574334489136593,
+          "label": "native64_hydrostatic",
+          "mae": 0.028648948150427164,
+          "mae_physical": 0.0002785746580889436,
+          "max_error": 11.94342041015625,
+          "max_error_physical": 0.11613459885120392,
+          "mid_frame_rel_l2": 0.13177223480971673,
+          "num_predicted_frames": 49,
+          "num_samples": 150,
+          "rel_l2": 0.07565273191883122,
+          "rel_l2_physical": 0.07492675399995827,
+          "rmse": 0.0699201000334678,
+          "rmse_physical": 0.0006798842700872201,
+          "samples_per_second_rollout": 89.94521794756295,
+          "target_offset": 0.0012094725389033556,
+          "target_scale": 0.009723731316626072,
+          "time_per_sample_rollout_s": 0.011117878446667267
+        },
+        {
+          "dataset_path": "data/processed_crossres/res128/test",
+          "final_frame_rel_l2": 0.9845619635024704,
+          "first_frame_rel_l2": 0.2581499116176065,
+          "label": "native128_hydrostatic",
+          "mae": 7.313921396683673,
+          "mae_physical": 0.07111860573697253,
+          "max_error": 450.6457824707031,
+          "max_error_physical": 4.381958484649658,
+          "mid_frame_rel_l2": 0.9991200072989757,
+          "num_predicted_frames": 49,
+          "num_samples": 150,
+          "rel_l2": 0.8278046064319947,
+          "rel_l2_physical": 0.8266010667740762,
+          "rmse": 16.43909400330991,
+          "rmse_physical": 0.15984933441570243,
+          "samples_per_second_rollout": 20.7839647056693,
+          "target_offset": 0.0012094725389033556,
+          "target_scale": 0.009723731316626072,
+          "time_per_sample_rollout_s": 0.04811401549999876
+        }
+      ],
+      "seeded_with_true_first_frame": true,
+      "window_K": 5
+    }
+  },
+  "window5_ood": {
+    "hydrostatic": {
+      "checkpoint": "experiments/fno_window5_hydrostatic/best.pt",
+      "evaluation_type": "window_rollout_suites",
+      "rows": [
+        {
+          "dataset_path": "data/processed_ood/hydrostatic/source_holdout_multi_gauss",
+          "final_frame_rel_l2": 0.14954880054076436,
+          "first_frame_rel_l2": 0.02524477024219576,
+          "label": "source_holdout_multi_gauss",
+          "mae": 0.032077629467703636,
+          "mae_physical": 0.0003119142441240439,
+          "max_error": 2.9474430084228516,
+          "max_error_physical": 0.02866014838218689,
+          "mid_frame_rel_l2": 0.10639441054730062,
+          "num_predicted_frames": 49,
+          "num_samples": 414,
+          "rel_l2": 0.0546257531553612,
+          "rel_l2_physical": 0.05350492990588172,
+          "rmse": 0.06512120517830768,
+          "rmse_physical": 0.0006332211066282873,
+          "samples_per_second_rollout": 89.1356683405014,
+          "target_offset": 0.0012094725389033556,
+          "target_scale": 0.009723731316626072,
+          "time_per_sample_rollout_s": 0.011218853446859956
+        },
+        {
+          "dataset_path": "data/processed_ood/hydrostatic/bathymetry_holdout_trench",
+          "final_frame_rel_l2": 0.21926834714456125,
+          "first_frame_rel_l2": 0.05148721462333578,
+          "label": "bathymetry_holdout_trench",
+          "mae": 0.038461120882559915,
+          "mae_physical": 0.0003739855919570531,
+          "max_error": 7.6378021240234375,
+          "max_error_physical": 0.07426793873310089,
+          "mid_frame_rel_l2": 0.13158678395730652,
+          "num_predicted_frames": 49,
+          "num_samples": 481,
+          "rel_l2": 0.08766616571855934,
+          "rel_l2_physical": 0.08676627529248883,
+          "rmse": 0.09231932299530739,
+          "rmse_physical": 0.0008976882860901432,
+          "samples_per_second_rollout": 91.71853020144403,
+          "target_offset": 0.0012094725389033556,
+          "target_scale": 0.009723731316626072,
+          "time_per_sample_rollout_s": 0.010902922209979503
+        },
+        {
+          "dataset_path": "data/processed_ood/hydrostatic/source_strength_extreme_high",
+          "final_frame_rel_l2": 0.22100234252784856,
+          "first_frame_rel_l2": 0.04521575177958541,
+          "label": "source_strength_extreme_high",
+          "mae": 0.03668976176082412,
+          "mae_physical": 0.00035676138471313617,
+          "max_error": 13.364175796508789,
+          "max_error_physical": 0.1299496442079544,
+          "mid_frame_rel_l2": 0.15804689397902752,
+          "num_predicted_frames": 49,
+          "num_samples": 180,
+          "rel_l2": 0.09167517160021092,
+          "rel_l2_physical": 0.09127988506547478,
+          "rmse": 0.10894818949473153,
+          "rmse_physical": 0.0010593829315203875,
+          "samples_per_second_rollout": 90.1793771066004,
+          "target_offset": 0.0012094725389033556,
+          "target_scale": 0.009723731316626072,
+          "time_per_sample_rollout_s": 0.011089009838889297
+        }
+      ],
+      "seeded_with_true_first_frame": true,
+      "window_K": 5
+    }
+  },
   "window5_real_bathymetry": {
     "hydrostatic": {
       "checkpoint": "experiments/fno_window5_hydrostatic/best.pt",
@@ -350017,66 +350409,66 @@
       "rows": [
         {
           "dataset_path": "data/processed_real_bathymetry/main_morphology/hydrostatic/test",
-          "final_frame_rel_l2": 0.13229696031221633,
-          "first_frame_rel_l2": 0.015166842784844347,
+          "final_frame_rel_l2": 0.24070011119164983,
+          "first_frame_rel_l2": 0.012263887306140997,
           "label": "main_morphology",
-          "mae": 0.03698413469353501,
-          "mae_physical": 0.0003596238259758268,
-          "max_error": 0.9304044246673584,
-          "max_error_physical": 0.009047001600265503,
-          "mid_frame_rel_l2": 0.1223187803129166,
+          "mae": 0.07457382338387626,
+          "mae_physical": 0.0007251358914132021,
+          "max_error": 1.8291826248168945,
+          "max_error_physical": 0.017786480486392975,
+          "mid_frame_rel_l2": 0.08868106337466285,
           "num_predicted_frames": 49,
           "num_samples": 1,
-          "rel_l2": 0.043345495257072084,
-          "rel_l2_physical": 0.042094683148800875,
-          "rmse": 0.06270515577562094,
-          "rmse_physical": 0.0006097280714000152,
-          "samples_per_second_rollout": 1.8910266612966873,
+          "rel_l2": 0.045052335498013005,
+          "rel_l2_physical": 0.04446838115663729,
+          "rmse": 0.13562320148011328,
+          "rmse_physical": 0.0013187634758100376,
+          "samples_per_second_rollout": 2.6275466520021205,
           "target_offset": 0.0012094725389033556,
           "target_scale": 0.009723731316626072,
-          "time_per_sample_rollout_s": 0.5288132740097353
+          "time_per_sample_rollout_s": 0.3805831570061855
         },
         {
           "dataset_path": "data/processed_real_bathymetry/appendix_coastline_stress/hydrostatic/test",
-          "final_frame_rel_l2": 1.0002846317313856,
-          "first_frame_rel_l2": 0.48406457280141085,
+          "final_frame_rel_l2": 1.0002480280669785,
+          "first_frame_rel_l2": 0.47796545132314083,
           "label": "appendix_coastline_stress",
-          "mae": 7.856898716517857,
-          "mae_physical": 0.07639837265014648,
-          "max_error": 525.453369140625,
-          "max_error_physical": 5.1093668937683105,
-          "mid_frame_rel_l2": 1.000053899205193,
+          "mae": 7.923623844068878,
+          "mae_physical": 0.07704719232053173,
+          "max_error": 524.4143676757812,
+          "max_error_physical": 5.099264621734619,
+          "mid_frame_rel_l2": 0.9992766584439856,
           "num_predicted_frames": 49,
           "num_samples": 1,
-          "rel_l2": 0.9836298526967293,
-          "rel_l2_physical": 0.9830926970825564,
-          "rmse": 42.0614168447735,
-          "rmse_physical": 0.4089939267482444,
-          "samples_per_second_rollout": 2.254224775107394,
+          "rel_l2": 0.9805114908752474,
+          "rel_l2_physical": 0.9799376364034651,
+          "rmse": 42.02698014310545,
+          "rmse_physical": 0.40865903980175555,
+          "samples_per_second_rollout": 3.8268567589874083,
           "target_offset": 0.0012094725389033556,
           "target_scale": 0.009723731316626072,
-          "time_per_sample_rollout_s": 0.44361148499592673
+          "time_per_sample_rollout_s": 0.26131106100365287
         },
         {
           "dataset_path": "data/processed_real_bathymetry/appendix_coastline_fully_wet/hydrostatic/test",
-          "final_frame_rel_l2": 0.15283764289389679,
-          "first_frame_rel_l2": 0.013778141117710247,
+          "final_frame_rel_l2": 0.21700610386107952,
+          "first_frame_rel_l2": 0.011536588351046657,
           "label": "appendix_coastline_fully_wet",
-          "mae": 0.03514063844875413,
-          "mae_physical": 0.0003416981091912912,
-          "max_error": 0.6331491470336914,
-          "max_error_physical": 0.006156571209430695,
-          "mid_frame_rel_l2": 0.12155864059718995,
+          "mae": 0.09824650628226143,
+          "mae_physical": 0.0009553225672974878,
+          "max_error": 1.7407523393630981,
+          "max_error_physical": 0.016926607117056847,
+          "mid_frame_rel_l2": 0.1396054386842825,
           "num_predicted_frames": 49,
           "num_samples": 1,
-          "rel_l2": 0.040154939650842394,
-          "rel_l2_physical": 0.039017050242464255,
-          "rmse": 0.059154430751836726,
-          "rmse_physical": 0.0005752018197121514,
-          "samples_per_second_rollout": 0.8403505206965359,
+          "rel_l2": 0.06394940365422684,
+          "rel_l2_physical": 0.06312764385019898,
+          "rmse": 0.19474022306135805,
+          "rmse_physical": 0.0018936016046668088,
+          "samples_per_second_rollout": 4.655241063392488,
           "target_offset": 0.0012094725389033556,
           "target_scale": 0.009723731316626072,
-          "time_per_sample_rollout_s": 1.1899796279903967
+          "time_per_sample_rollout_s": 0.21481164699798683
         }
       ],
       "seeded_with_true_first_frame": true,
