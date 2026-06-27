@@ -211,7 +211,9 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "--raw-root",
-        default="/mnt/Windows/Users/Izu/tsunami-surrogate/data/real_bathymetry",
+        default="data/real_bathymetry_raw",
+        help="Directory of raw real-bathymetry crops (GEBCO-derived). "
+        "Override with the path where you downloaded/prepared the crops.",
     )
     p.add_argument("--base-config", default="configs/data/dataset.yaml")
     p.add_argument("--out-root", default="data/real_bathymetry")

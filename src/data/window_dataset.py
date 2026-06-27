@@ -20,7 +20,9 @@ class WindowedTrajectoryDataset(Dataset):
     Frame y[0] is treated as given (the rollout seed); the model never predicts it.
 
     Window starts are non-overlapping: s in {0, K, 2K, ...} with s+1+K <= T (last window clamped).
-    Each base sample with T=50, K=5 yields starts {0,5,...,45} -> 10 windows, targets covering y[1..50].
+    Each base sample with T=50, K=5 yields starts {0,5,...,40,44} -> 10 windows; the final start
+    is clamped from 45 to 44 so the target window y[s+1:s+1+K] stays in range, and together the
+    windows cover targets y[1..50].
     """
 
     def __init__(

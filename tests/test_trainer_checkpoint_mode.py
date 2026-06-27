@@ -33,7 +33,7 @@ def test_trainer_checkpoint_mode_max_uses_larger_is_better(monkeypatch, tmp_path
             "max_error": 1.0,
         }
 
-    def fake_save_checkpoint(path, model, optimizer, epoch, metrics, cfg):
+    def fake_save_checkpoint(path, model, optimizer, epoch, metrics, cfg, **kwargs):
         saved.append((Path(path).name, int(epoch), float(metrics.get("val_rel_l2", -1.0))))
 
     monkeypatch.setattr(train_mod, "train_one_epoch", fake_train_one_epoch)

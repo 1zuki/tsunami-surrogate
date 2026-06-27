@@ -21,7 +21,9 @@ cd "$(dirname "$0")/.."
 PY=.venv/bin/python
 DEVICE="${DEVICE:-cuda}"
 RESULTS=results
-RAW_DATA_BASE="${RAW_DATA_BASE:-/mnt/Windows/Users/Izu/tsunami-surrogate/data}"
+# Raw-rollout base dir, only needed by evals that read raw samples (e.g. solver
+# timing, arrival maps). Override with: RAW_DATA_BASE=/path/to/data bash ...
+RAW_DATA_BASE="${RAW_DATA_BASE:-data}"
 RAW_SPLIT="${RAW_SPLIT:-test}"
 mkdir -p "$RESULTS"
 

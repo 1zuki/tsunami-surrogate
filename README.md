@@ -30,7 +30,7 @@ Separate follow-up track (not part of the current forward-surrogate paper):
 ## 3) What Is Implemented vs Planned
 
 - Implemented core: synthetic data generation, preprocessing, forward surrogate training, and benchmark evaluation.
-- Implemented models: FNO (primary) with CNN/U-Net/ConvLSTM and ensemble paths for comparison.
+- Implemented models: FNO (primary) with CNN/U-Net and ensemble paths for comparison. (A ConvLSTM baseline exists in the code but is experimental and not part of the paper results.)
 - Implemented evaluations: accuracy, speed, generalization, resolution transfer, and uncertainty.
 - Separate follow-up work: dedicated inverse-problem experiments and a separate paper track.
 
@@ -54,6 +54,39 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+## 5b) Reproduce from the released benchmark data (recommended)
+
+You do **not** need to regenerate the 300 GB raw rollouts to reproduce the paper.
+The released benchmark bundle ships the model-ready *processed* arrays, so you can
+go straight to training (Section 6.3) and evaluation (6.4+).
+
+1. Download the dataset bundle from the archive (DOI: `[Zenodo/OSF DOI]`).
+2. Verify integrity, then extract each archive into `data/processed/`:
+
+```bash
+# from the bundle directory
+sha256sum -c SHA256SUMS.txt
+
+# main 64x64 references (hydrostatic / MUSCL-HR / Boussinesq) + eval split
+for f in main_processed/*.tar.zst; do
+  tar --use-compress-program=unzstd -xf "$f" -C /path/to/tsunami-surrogate/data/processed/
+done
+
+# optional: OOD suites, cross-resolution, and real-bathymetry diagnostics
+for f in ood_processed/*.tar.zst crossres_processed/*.tar.zst real_bathymetry_processed/*.tar.zst; do
+  tar --use-compress-program=unzstd -xf "$f" -C /path/to/tsunami-surrogate/data/processed/
+done
+```
+
+After extraction you should have `data/processed/hydrostatic/{train,val,test}`,
+`data/processed/muscl_hr/...`, and `data/processed/boussinesq/...`, which is what the
+training and evaluation configs expect. The exact archive layout, per-suite contents,
+and citation are documented in the bundle's own `README.md`.
+
+Skipping the bundle? Generate everything from scratch via Sections 6.1--6.2 instead.
+All data paths in `configs/` are repo-relative (`./data/...`), so commands run from
+the repository root without edits.
 
 ## 6) Run Commands
 
@@ -329,9 +362,10 @@ python scripts/train.py --config configs/model/fno_boussinesq.yaml
 ```
 
 Optional training tracks:
-- ConvLSTM baseline: `python scripts/train.py --config configs/model/convlstm.yaml`
-- ConvLSTM (MUSCL-HR labels): `python scripts/train.py --config configs/model/convlstm_muscl_hr.yaml`
 - Ensemble for uncertainty: `python scripts/train_ensemble.py --config configs/model/fno.yaml`
+- Experimental (not reported in the paper): a ConvLSTM baseline exists in the code
+  (`configs/model/convlstm.yaml`) but did not converge under the training budget and
+  is excluded from all paper results.
 
 Native-resolution training tracks (P2 extension):
 - Hydrostatic: `configs/model/fno_res{32,64,128}_hydrostatic.yaml`
@@ -794,7 +828,7 @@ tsunami-surrogate/
 This README follows the same framing as the paper abstract/introduction:
 
 - controlled synthetic benchmark setting;
-- FNO-centered surrogate evaluation against CNN/U-Net/ConvLSTM baselines;
+- FNO-centered surrogate evaluation against CNN/U-Net baselines;
 - emphasis on speed-accuracy-robustness trade-offs;
 - explicit non-operational scope (research benchmark, not production warning stack);
 - inverse-problem work kept as separate follow-up paper scope, not part of forward-surrogate claims here.
