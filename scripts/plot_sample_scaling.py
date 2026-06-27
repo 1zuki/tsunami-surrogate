@@ -1,0 +1,208 @@
+#!/usr/bin/env python
+"""Build the sample-scaling (learning-curve) figure and appendix table.
+
+Reads the aggregate written by ``scripts/run_sample_scaling.py`` for the small
+training subsets and merges in the already-trained full-data point (the main
+FNO at ``experiments/fno``), then emits:
+
+* ``--main-output`` -- a single-panel rel-L2 vs training-samples curve
+  (log x-axis), the compact main-paper learning-curve figure.
+* ``--appendix-fig-output`` -- three stacked panels (MAE | RMSE | rel-L2)
+  sharing the log x-axis, for the appendix.
+* ``--table-output`` -- a booktabs LaTeX table with MAE, RMSE, rel-L2, and
+  max-err for every training-set size, matching the ``tab:accuracy`` style.
+
+Metric conventions follow the paper's same-solver accuracy table: MAE and RMSE
+in physical surface-elevation units (``*_physical``); rel-L2 and max-err in
+normalized units.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+from pathlib import Path
+import sys
+from typing import Any
+
+os.environ.setdefault("MPLCONFIGDIR", str(Path("/tmp") / "matplotlib"))
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.ticker
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from src.utils.io import load_json, save_json
+
+
+DEFAULT_RESULTS = "experiments/sample_scaling/sample_scaling_results.json"
+DEFAULT_FULL_METRICS = "experiments/fno/eval/metrics.json"
+DEFAULT_FULL_N = 10000
+
+DEFAULT_MAIN_OUTPUT = "paper/figures/sample_scaling.pdf"
+DEFAULT_APPENDIX_FIG_OUTPUT = "paper/figures/sample_scaling_metrics.pdf"
+DEFAULT_TABLE_OUTPUT = "paper/tables/sample_scaling.tex"
+
+
+def _metric_row(n: int, metrics: dict[str, Any]) -> dict[str, float]:
+    """Pull the four reported metrics from one eval metrics dict."""
+    return {
+        "train_samples": int(n),
+        "mae": float(metrics["mae_physical"]),
+        "rmse": float(metrics["rmse_physical"]),
+        "rel_l2": float(metrics["rel_l2"]),
+        "max_error": float(metrics["max_error"]),
+    }
+
+
+def _collect_points(results_path: Path, full_metrics_path: Path, full_n: int) -> list[dict[str, float]]:
+    points: dict[int, dict[str, float]] = {}
+
+    # The sweep aggregate may not exist yet (still running) or be partial; in
+    # that case we still produce a figure from whatever points are available,
+    # including just the full-data point below.
+    if results_path.exists():
+        results = load_json(results_path)
+        for row in results.get("rows", []):
+            if row.get("status") != "ok":
+                continue
+            metrics = row.get("metrics")
+            if not isinstance(metrics, dict):
+                continue
+            n = row.get("train_samples_effective") or row.get("train_samples_requested")
+            if n is None:
+                continue
+            points[int(n)] = _metric_row(int(n), metrics)
+
+    if full_metrics_path.exists():
+        full = load_json(full_metrics_path)
+        if isinstance(full, dict) and "rel_l2" in full:
+            points[int(full_n)] = _metric_row(int(full_n), full)
+
+    if not points:
+        raise RuntimeError(
+            f"No usable sample-scaling points found in {results_path} "
+            f"(and no full-data metrics at {full_metrics_path})."
+        )
+
+    return [points[n] for n in sorted(points)]
+
+
+def _save(fig, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, bbox_inches="tight")
+    fig.savefig(output_path.with_suffix(".png"), dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _plot_main(points: list[dict[str, float]], output_path: Path) -> None:
+    xs = [p["train_samples"] for p in points]
+    ys = [p["rel_l2"] for p in points]
+
+    fig, ax = plt.subplots(figsize=(5.4, 3.6), constrained_layout=True)
+    ax.plot(xs, ys, marker="o", color="#1f77b4", linewidth=1.8, markersize=6)
+    ax.set_xscale("log")
+    ax.set_xlabel("training samples")
+    ax.set_ylabel(r"test rel-$L_2$")
+    ax.set_xticks(xs)
+    ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    ax.tick_params(axis="x", labelrotation=45)
+    ax.grid(True, which="both", linestyle=":", linewidth=0.5, alpha=0.6)
+    _save(fig, output_path)
+
+
+def _plot_appendix(points: list[dict[str, float]], output_path: Path) -> None:
+    xs = [p["train_samples"] for p in points]
+    specs = [
+        ("mae", "MAE (phys.)", "#d62728"),
+        ("rmse", "RMSE (phys.)", "#2ca02c"),
+        ("rel_l2", r"rel-$L_2$", "#1f77b4"),
+    ]
+
+    fig, axes = plt.subplots(3, 1, figsize=(5.4, 7.6), sharex=True, constrained_layout=True)
+    for ax, (key, label, color) in zip(axes, specs):
+        ax.plot(xs, [p[key] for p in points], marker="o", color=color, linewidth=1.8, markersize=5)
+        ax.set_ylabel(label)
+        ax.grid(True, which="both", linestyle=":", linewidth=0.5, alpha=0.6)
+
+    axes[-1].set_xscale("log")
+    axes[-1].set_xlabel("training samples")
+    axes[-1].set_xticks(xs)
+    axes[-1].get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    axes[-1].tick_params(axis="x", labelrotation=45)
+    _save(fig, output_path)
+
+
+def _format_table(points: list[dict[str, float]]) -> str:
+    lines = [
+        r"\begin{table}[!htbp]",
+        r"\centering",
+        r"\caption{Single-seed sample-scaling diagnostic for the FNO on the "
+        r"hydrostatic reference. Each row is an independent training run on a "
+        r"nested random subset of the $10{,}000$-sample training pool, scored on "
+        r"the same held-out test split ($N = 2500$) with the same architecture, "
+        r"optimizer, schedule, and early stopping. MAE and RMSE are in physical "
+        r"surface-elevation units; relative $L_2$ is dimensionless; max-err is the "
+        r"global worst-case element in normalized units.}",
+        r"\label{tab:sample-scaling}",
+        r"\begin{tabular}{rcccc}",
+        r"    \toprule",
+        r"    Train $N$ & MAE & RMSE & rel-$L_2$ & max-err \\",
+        r"    \midrule",
+    ]
+
+    best_idx = min(range(len(points)), key=lambda i: points[i]["rel_l2"])
+    for i, p in enumerate(points):
+        n_str = f"{p['train_samples']:,}".replace(",", r"{,}")
+        rel = f"{p['rel_l2']:.3f}"
+        rel_cell = rf"\mathbf{{{rel}}}" if i == best_idx else rel
+        lines.append(
+            f"    ${n_str}$ & ${p['mae']:.5f}$ & ${p['rmse']:.5f}$ & "
+            f"${rel_cell}$ & ${p['max_error']:.1f}$ \\\\"
+        )
+
+    lines += [
+        r"    \bottomrule",
+        r"\end{tabular}",
+        r"\end{table}",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--results", default=DEFAULT_RESULTS)
+    p.add_argument("--full-metrics", default=DEFAULT_FULL_METRICS)
+    p.add_argument("--full-n", type=int, default=DEFAULT_FULL_N)
+    p.add_argument("--main-output", default=DEFAULT_MAIN_OUTPUT)
+    p.add_argument("--appendix-fig-output", default=DEFAULT_APPENDIX_FIG_OUTPUT)
+    p.add_argument("--table-output", default=DEFAULT_TABLE_OUTPUT)
+    p.add_argument("--points-output", default="experiments/sample_scaling/sample_scaling_points.json")
+    args = p.parse_args()
+
+    points = _collect_points(Path(args.results), Path(args.full_metrics), int(args.full_n))
+
+    _plot_main(points, Path(args.main_output))
+    _plot_appendix(points, Path(args.appendix_fig_output))
+
+    table_path = Path(args.table_output)
+    table_path.parent.mkdir(parents=True, exist_ok=True)
+    table_path.write_text(_format_table(points), encoding="utf-8")
+
+    save_json({"points": points}, Path(args.points_output))
+
+    print(f"points: {[p['train_samples'] for p in points]}")
+    for p in points:
+        print(f"  N={p['train_samples']:>6}  rel_l2={p['rel_l2']:.4f}  mae={p['mae']:.6f}  rmse={p['rmse']:.6f}")
+    print(f"saved_main={args.main_output}")
+    print(f"saved_appendix_fig={args.appendix_fig_output}")
+    print(f"saved_table={args.table_output}")
+
+
+if __name__ == "__main__":
+    main()

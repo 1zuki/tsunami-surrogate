@@ -66,9 +66,11 @@ def _checkpoint_train_path(ckpt: Dict[str, Any]) -> str | None:
 def _input_norm_signature(dataset_path: str | Path) -> Dict[str, Any] | None:
     npz_path = resolve_dataset_npz(dataset_path)
     split_dir = npz_path.parent
+    if split_dir.name == "shards":
+        split_dir = split_dir.parent
     processed_root = split_dir.parent
     stats_path = processed_root / "normalization_stats.json"
-    manifest_path = npz_path.with_name("eval_manifest.json")
+    manifest_path = split_dir / "eval_manifest.json"
 
     input_order: list[str] = []
     if manifest_path.exists():

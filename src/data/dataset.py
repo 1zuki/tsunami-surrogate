@@ -435,6 +435,47 @@ def _split_indices(n: int, split_cfg: Dict[str, Any], seed: int) -> Tuple[np.nda
     return train_idx, val_idx, test_idx
 
 
+class _InMemoryDataset(Dataset):
+    """Flat in-memory dataset built from selected indices of a source dataset.
+
+    Used for sample-scaling subsets of a sharded dataset. Materializing the
+    chosen samples lets the standard shuffle loader apply a constant batch size,
+    instead of the shard-local batch sampler whose effective batch size scales
+    with how the subset happens to scatter across shards -- which would confound
+    a sample-scaling sweep by training small-N points with tiny noisy batches.
+    """
+
+    def __init__(self, source: Dataset, indices: List[int]):
+        # Load in ascending index order so each shard is read once (shard index
+        # ranges are contiguous), avoiding LRU-cache thrashing during the build.
+        items = [source[int(i)] for i in sorted(int(i) for i in indices)]
+        self.x = torch.stack([torch.as_tensor(it["x"]).float() for it in items])
+        self.y = torch.stack([torch.as_tensor(it["y"]).float() for it in items])
+        self.sample_id = [str(it.get("sample_id", "")) for it in items]
+        self.source_id = [str(it.get("source_id", "")) for it in items]
+        self.source_type = [str(it.get("source_type", "")) for it in items]
+        self.bathymetry_type = [str(it.get("bathymetry_type", "")) for it in items]
+        self.source_strength = [float(it.get("source_strength", 0.0)) for it in items]
+        self.scenario_id = [str(it.get("scenario_id", "")) for it in items]
+        self.solver_name = [str(it.get("solver_name", "")) for it in items]
+
+    def __len__(self) -> int:
+        return int(self.x.shape[0])
+
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        return {
+            "x": self.x[idx],
+            "y": self.y[idx],
+            "sample_id": self.sample_id[idx],
+            "source_id": self.source_id[idx],
+            "source_type": self.source_type[idx],
+            "bathymetry_type": self.bathymetry_type[idx],
+            "source_strength": self.source_strength[idx],
+            "scenario_id": self.scenario_id[idx],
+            "solver_name": self.solver_name[idx],
+        }
+
+
 def _parse_optional_sample_count(value: Any, name: str) -> int | None:
     if value is None:
         return None
@@ -466,6 +507,16 @@ def _limit_dataset(dataset: Dataset, n_samples: int | None, seed: int) -> Datase
 
     rng = np.random.default_rng(seed)
     indices = rng.permutation(len(dataset))[:n_samples].tolist()
+
+    # For sharded sources, materialize the subset into a flat in-memory dataset
+    # so the standard shuffle loader applies a constant batch size. A Subset over
+    # a ShardedTsunamiDataset would instead route through the shard-local batch
+    # sampler, whose effective batch size scales with the subset size -- a
+    # confound for sample-scaling sweeps. Safe to materialize here: subsets are
+    # small (<= a few thousand) relative to the full pool.
+    if _sharded_dataset_with_parent_indices(dataset) is not None:
+        return _InMemoryDataset(dataset, indices)
+
     return Subset(dataset, indices)
 
 
