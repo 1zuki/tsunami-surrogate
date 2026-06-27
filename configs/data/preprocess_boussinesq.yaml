@@ -1,9 +1,9 @@
 raw:
-  scenario_manifest: /mnt/Windows/Users/Izu/tsunami-surrogate/data/bouss_debug/synthetic/scenario_manifest.jsonl
+  scenario_manifest: ./data/bouss_debug/synthetic/scenario_manifest.jsonl
   fde_manifests:
-    boussinesq: /mnt/Windows/Users/Izu/tsunami-surrogate/data/bouss_debug/synthetic/boussinesq_manifest.jsonl
+    boussinesq: ./data/bouss_debug/synthetic/boussinesq_manifest.jsonl
   raw_dirs:
-    boussinesq: /mnt/Windows/Users/Izu/tsunami-surrogate/data/bouss_debug/raw/boussinesq/samples
+    boussinesq: ./data/bouss_debug/raw/boussinesq/samples
 
 processed_dir: data/processed
 

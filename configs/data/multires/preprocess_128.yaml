@@ -1,11 +1,11 @@
 raw:
-  scenario_manifest: /mnt/Windows/Users/Izu/tsunami-surrogate/data/res128/synthetic/scenario_manifest.jsonl
+  scenario_manifest: ./data/res128/synthetic/scenario_manifest.jsonl
   fde_manifests:
-    hydrostatic: /mnt/Windows/Users/Izu/tsunami-surrogate/data/res128/synthetic/hydrostatic_manifest.jsonl
-    muscl_hr: /mnt/Windows/Users/Izu/tsunami-surrogate/data/res128/synthetic/muscl_hr_manifest.jsonl
+    hydrostatic: ./data/res128/synthetic/hydrostatic_manifest.jsonl
+    muscl_hr: ./data/res128/synthetic/muscl_hr_manifest.jsonl
   raw_dirs:
-    hydrostatic: /mnt/Windows/Users/Izu/tsunami-surrogate/data/res128/raw/hydrostatic/samples
-    muscl_hr: /mnt/Windows/Users/Izu/tsunami-surrogate/data/res128/raw/muscl_hr/samples
+    hydrostatic: ./data/res128/raw/hydrostatic/samples
+    muscl_hr: ./data/res128/raw/muscl_hr/samples
 
 processed_dir: data/processed_res128
 

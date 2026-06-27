@@ -17,10 +17,10 @@ dataset:
   # near [-1, 1], so this range gives visible waves without routinely creating
   # dry/explosive shallow-water states.
   source_strength_range: [0.45, 0.85]
-  bathymetry_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/test/bathymetry"
-  source_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/test/sources"
-  output_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/test/raw"
-  manifest_path: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/test/synthetic/scenario_manifest.jsonl"
+  bathymetry_dir: "./data/test/bathymetry"
+  source_dir: "./data/test/sources"
+  output_dir: "./data/test/raw"
+  manifest_path: "./data/test/synthetic/scenario_manifest.jsonl"
   copy_configs: true
 
 fdes:

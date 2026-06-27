@@ -14,7 +14,7 @@ dataset:
   source_strength_range:
   - 0.45
   - 0.85
-  bathymetry_dir: /mnt/Windows/Users/Izu/tsunami-surrogate/data/real_bathymetry/main_morphology
+  bathymetry_dir: ./data/real_bathymetry/main_morphology
   source_dir: data/real_bathymetry/sources/main_morphology
   output_dir: data/real_bathymetry/raw/main_morphology
   manifest_path: data/real_bathymetry/manifests/main_morphology/scenario_manifest.jsonl

@@ -13,10 +13,10 @@ dataset:
   include_initial_state: true
   sea_level_offset: 0.0
   source_strength_range: [0.01, 0.05]
-  bathymetry_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/bouss_debug/bathymetry"
-  source_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/bouss_debug/sources"
-  output_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/bouss_debug/raw"
-  manifest_path: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/bouss_debug/synthetic/scenario_manifest.jsonl"
+  bathymetry_dir: "./data/bouss_debug/bathymetry"
+  source_dir: "./data/bouss_debug/sources"
+  output_dir: "./data/bouss_debug/raw"
+  manifest_path: "./data/bouss_debug/synthetic/scenario_manifest.jsonl"
   copy_configs: true
 
 fdes:

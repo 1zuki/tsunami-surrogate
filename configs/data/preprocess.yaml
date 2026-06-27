@@ -1,13 +1,13 @@
 raw:
-  scenario_manifest: /mnt/Windows/Users/Izu/tsunami-surrogate/data/test/synthetic/scenario_manifest.jsonl
+  scenario_manifest: ./data/test/synthetic/scenario_manifest.jsonl
   fde_manifests:
-    hydrostatic: /mnt/Windows/Users/Izu/tsunami-surrogate/data/test/synthetic/hydrostatic_manifest.jsonl
-    muscl_hr: /mnt/Windows/Users/Izu/tsunami-surrogate/data/test/synthetic/muscl_hr_manifest.jsonl
-    boussinesq: /mnt/Windows/Users/Izu/tsunami-surrogate/data/test/synthetic/boussinesq_manifest.jsonl
+    hydrostatic: ./data/test/synthetic/hydrostatic_manifest.jsonl
+    muscl_hr: ./data/test/synthetic/muscl_hr_manifest.jsonl
+    boussinesq: ./data/test/synthetic/boussinesq_manifest.jsonl
   raw_dirs:
-    hydrostatic: /mnt/Windows/Users/Izu/tsunami-surrogate/data/test/raw/hydrostatic/samples
-    muscl_hr: /mnt/Windows/Users/Izu/tsunami-surrogate/data/test/raw/muscl_hr/samples
-    boussinesq: /mnt/Windows/Users/Izu/tsunami-surrogate/data/test/raw/boussinesq/samples
+    hydrostatic: ./data/test/raw/hydrostatic/samples
+    muscl_hr: ./data/test/raw/muscl_hr/samples
+    boussinesq: ./data/test/raw/boussinesq/samples
 
 processed_dir: data/processed
 

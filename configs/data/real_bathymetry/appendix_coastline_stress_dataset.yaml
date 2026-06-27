@@ -14,7 +14,7 @@ dataset:
   source_strength_range:
   - 0.45
   - 0.85
-  bathymetry_dir: /mnt/Windows/Users/Izu/tsunami-surrogate/data/real_bathymetry/appendix_coastline_stress
+  bathymetry_dir: ./data/real_bathymetry/appendix_coastline_stress
   source_dir: data/real_bathymetry/sources/appendix_coastline_stress
   output_dir: data/real_bathymetry/raw/appendix_coastline_stress
   manifest_path: data/real_bathymetry/manifests/appendix_coastline_stress/scenario_manifest.jsonl

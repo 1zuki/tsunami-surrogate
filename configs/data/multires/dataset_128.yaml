@@ -13,10 +13,10 @@ dataset:
   include_initial_state: true
   sea_level_offset: 0.0
   source_strength_range: [0.45, 0.85]
-  bathymetry_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/res128/bathymetry"
-  source_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/res128/sources"
-  output_dir: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/res128/raw"
-  manifest_path: "/mnt/Windows/Users/Izu/tsunami-surrogate/data/res128/synthetic/scenario_manifest.jsonl"
+  bathymetry_dir: "./data/res128/bathymetry"
+  source_dir: "./data/res128/sources"
+  output_dir: "./data/res128/raw"
+  manifest_path: "./data/res128/synthetic/scenario_manifest.jsonl"
   copy_configs: true
 
 fdes:
