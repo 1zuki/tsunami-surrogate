@@ -19,7 +19,7 @@ The experiments share a single base training configuration, with per-model overr
                  & spatial padding & $6$ \\
                  & coordinate grid channels  & enabled \\
     \midrule
-    Optimization & optimizer & Adam \\
+    Optimization & optimizer & AdamW \\
                  & learning rate & $5 \times 10 ^ {-4}$ \\
                  & min.\ learning rate & $5 \times 10 ^ {-5}$ \\
                  & schedule & cosine \\
@@ -45,11 +45,11 @@ Beyond the dataset-level quality policy of Section~\ref{sec:data-generation}, bo
 
 \subsection{Additional result tables}
 \label{app:add-result-tab}
-Table~\ref{tab:app-ensemble} reports the individual ensemble members used for the uncertainty study of Section~\ref{subsec:res-uncertainty}. The three members differ only in random seed and otherwise share the main FNO configuration; their best validation relative $L_2$ values are tightly clustered ($0.241$--$0.245$), so the ensemble spread comes from independent optimization trajectories rather than from differing model capacity or stopping criteria. Table~\ref{tab:app-speed-detail} expands the runtime summary of Section~\ref{subsec:res-speed} with the raw benchmark settings recorded in the per-model speed JSON, so the per-sample timings can be reproduced.
+Table~\ref{tab:app-ensemble} reports the individual ensemble members used for the uncertainty study of Section~\ref{subsec:res-uncertainty}. The seven members differ only in random seed and otherwise share the main FNO configuration; their best validation relative $L_2$ values are tightly clustered ($0.240$--$0.245$), so the ensemble spread comes from independent optimization trajectories rather than from differing model capacity or stopping criteria. Table~\ref{tab:app-speed-detail} expands the runtime summary of Section~\ref{subsec:res-speed} with the raw benchmark settings recorded in the per-model speed JSON, so the per-sample timings can be reproduced.
 
 \begin{table}[H]
 \centering
-\caption{Deep-ensemble members for the uncertainty study. All three share the main hydrostatic FNO configuration and differ only in random seed. Best validation relative $L_2$ is the checkpoint-selection metric; epochs is the early-stopped training length.}
+\caption{Deep-ensemble members for the uncertainty study. All seven share the main hydrostatic FNO configuration and differ only in random seed. Best validation relative $L_2$ is the checkpoint-selection metric; epochs is the training length.}
 \label{tab:app-ensemble}
 \begin{tabular}{lccc}
     \toprule
@@ -58,6 +58,10 @@ Table~\ref{tab:app-ensemble} reports the individual ensemble members used for th
     1 & $11$ & $202$ & $0.2413$ \\
     2 & $22$ & $208$ & $0.2454$ \\
     3 & $33$ & $141$ & $0.2451$ \\
+    4 & $44$ & $256$ & $0.2408$ \\
+    5 & $55$ & $168$ & $0.2427$ \\
+    6 & $66$ & $201$ & $0.2409$ \\
+    7 & $77$ & $241$ & $0.2401$ \\
     \bottomrule
 \end{tabular}
 \end{table}

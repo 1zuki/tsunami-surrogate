@@ -269,27 +269,27 @@ We additionally score Window-FNO-5 on the same distribution-shift and native-res
 
 \subsection{Uncertainty}
 \label{subsec:res-uncertainty}
-We quantify predictive uncertainty with a deep ensemble of $M = 3$ hydrostatic FNOs that differ only in random seed (seeds $11$, $22$, $33$), following the protocol of Section~\ref{subsec:uncertainty}. Table~\ref{tab:uncertainty} reports two complementary diagnostics: the empirical coverage of central Gaussian prediction intervals at four nominal levels, and the Pearson correlation between the per-element predictive standard deviation and the absolute error, on the in-distribution test split and on the three distribution-shift suites.
+We quantify predictive uncertainty with a deep ensemble of $M = 7$ hydrostatic FNOs that differ only in random seed (seeds $11$, $22$, $33$, $44$, $55$, $66$, $77$), following the protocol of Section~\ref{subsec:uncertainty}. Table~\ref{tab:uncertainty} reports two complementary diagnostics: the empirical coverage of central Gaussian prediction intervals at four nominal levels, and the Pearson correlation between the per-element predictive standard deviation and the absolute error, on the in-distribution test split and on the three distribution-shift suites.
 
 \begin{table}[H]
 \centering
-\caption{Ensemble uncertainty diagnostics for the hydrostatic FNO ($M = 3$). Coverage columns are the empirical fraction of test elements inside the nominal central interval (ideal values $0.50$/$0.80$/$0.90$/$0.95$); err--unc.\ is the Pearson correlation between predictive standard deviation and absolute error. The in-distribution row is the full $N = 2500$ test split; the remaining rows are the distribution-shift suites of Section~\ref{subsec:res-ood}.}
+\caption{Ensemble uncertainty diagnostics for the hydrostatic FNO ($M = 7$). Coverage columns are the empirical fraction of test elements inside the nominal central interval (ideal values $0.50$/$0.80$/$0.90$/$0.95$); err--unc.\ is the Pearson correlation between predictive standard deviation and absolute error. The in-distribution row is the full $N = 2500$ test split; the remaining rows are the distribution-shift suites of Section~\ref{subsec:res-ood}.}
 \label{tab:uncertainty}
 \begin{tabular}{lccccc}
     \toprule
     Suite & cov$_{50}$ & cov$_{80}$ & cov$_{90}$ & cov$_{95}$ & err--unc.\ \\
     \midrule
-    In-distribution             & $0.337$ & $0.547$ & $0.632$ & $0.690$ & $0.585$ \\
-    \texttt{multi-gauss} subset & $0.296$ & $0.493$ & $0.579$ & $0.640$ & $0.583$ \\
-    \texttt{trench} subset      & $0.354$ & $0.568$ & $0.654$ & $0.711$ & $0.584$ \\
-    Extreme high strength       & $0.279$ & $0.463$ & $0.543$ & $0.600$ & $0.633$ \\
+    In-distribution             & $0.463$ & $0.700$ & $0.782$ & $0.832$ & $0.646$ \\
+    \texttt{multi-gauss} subset & $0.398$ & $0.630$ & $0.721$ & $0.780$ & $0.658$ \\
+    \texttt{trench} subset      & $0.488$ & $0.725$ & $0.804$ & $0.851$ & $0.648$ \\
+    Extreme high strength       & $0.376$ & $0.589$ & $0.673$ & $0.728$ & $0.700$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-Two findings stand out. First, the ensemble is systematically \emph{overconfident}: empirical coverage sits well below the nominal level at every interval, with the nominal $95\%$ interval capturing only $69\%$ of in-distribution targets and $60$--$71\%$ under shift. A three-member ensemble spans too little of the function space to recover the full predictive spread, so the Gaussian intervals built from its variance are too narrow; we read the coverage numbers as a lower bound on what a larger ensemble would achieve rather than as evidence that the uncertainty is useless. Second, and more positively, the error--uncertainty correlation is stable and moderately strong across all settings ($0.58$--$0.63$), and is in fact highest on the extreme high-strength tail ($0.633$). So even though the absolute scale of the uncertainty is miscalibrated, its \emph{spatial structure} tracks where the model is actually wrong, which is the property that matters for flagging untrustworthy regions of a prediction.
+Two findings stand out. First, the ensemble is \emph{overconfident}: empirical coverage remains below the nominal level at every interval, with the nominal $95\%$ interval capturing $83\%$ of in-distribution targets and $73$--$85\%$ under shift. Thus the Gaussian intervals built from ensemble variance are still too narrow and should not be read as calibrated probabilities. Second, and more positively, the error--uncertainty correlation is stable and moderately strong across all settings ($0.65$--$0.70$), and is highest on the extreme high-strength tail ($0.700$). So even though the absolute scale of the uncertainty is miscalibrated, its \emph{spatial structure} tracks where the model is actually wrong, which is the property that matters for flagging untrustworthy regions of a prediction.
 
-The behavior under shift is mixed and worth stating plainly. Coverage does not improve under distribution shift, and on the high-strength tail the Gaussian negative log-likelihood rises sharply (about $62$ in normalized units against $25$ in-distribution), meaning the variance fails to grow enough to match the larger errors in the most extreme regime. The \texttt{trench} bathymetry suite is the one case where coverage edges above the in-distribution level, but not enough to reach the nominal targets. We therefore treat these as reliability diagnostics rather than calibrated risk estimates: the ensemble produces a useful relative ranking of where error concentrates, but its intervals would need either more members or an explicit recalibration step before being read as probabilities. We flag the small ensemble size as the main limitation here and leave a larger-$M$ study and post-hoc calibration to future work.
+The behavior under shift is mixed and worth stating plainly. Coverage does not improve uniformly under distribution shift, and on the high-strength tail the normalized Gaussian negative log-likelihood is worse than in distribution ($-0.22$ versus $-1.91$), meaning the variance still fails to grow enough to match the larger errors in the msot extreme regime. The \texttt{trench} bathymetry suite is the one case where coverage edges above the in-distribution level, but not enough to reach the nominal targets. We therefore treat these as reliability diagnostics rather than calibrated risk estimates: the ensemble produces a useful relative ranking of where error concentrates, but its intervals would need either more members or an explicit recalibration step before being read as probabilities. We leave larger ensembles and post-hoc calibration to future work.
 
 \subsection{Boussinesq comparison reference}
 \label{subsec:res-boussinesq}

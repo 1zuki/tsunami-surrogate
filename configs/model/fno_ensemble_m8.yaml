@@ -1,10 +1,10 @@
 defaults:
   - ../train/base.yaml
 
-# Extra ensemble members to extend the deep ensemble from M=3 to M=8.
+# Extra ensemble members to extend the deep ensemble from M=3 to M=7.
 # The original members (seeds 11, 22, 33) already live in
 # experiments/ensemble/member_{seed} and are NOT retrained here.
-# This config only trains the five new seeds so the existing checkpoints
+# This config only trains the four new seeds so the existing checkpoints
 # are left untouched.
 output_dir: experiments/fno
 
@@ -44,5 +44,5 @@ eval:
   output_dir: experiments/fno/eval
 
 ensemble:
-  seeds: [44, 55, 66, 77, 88]
+  seeds: [44, 55, 66, 77]
   member_dir_template: experiments/ensemble/member_{seed}

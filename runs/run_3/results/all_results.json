@@ -350256,6 +350256,84 @@
     "notes": "speedup_vs_solver_rollout = solver rollout_time_per_sample_s / model time_per_sample_mean_s",
     "rows": []
   },
+  "uncertainty": {
+    "fno": {
+      "coverage_50": 0.4634630765914917,
+      "coverage_50_physical": 0.4634630865097046,
+      "coverage_80": 0.6999625574111938,
+      "coverage_80_physical": 0.6999625696182251,
+      "coverage_90": 0.7821516913414002,
+      "coverage_90_physical": 0.7821517020225525,
+      "coverage_95": 0.8321093036651611,
+      "coverage_95_physical": 0.8321093265533447,
+      "error_uncertainty_corr": 0.6464883620262146,
+      "error_uncertainty_corr_physical": 0.6464883452415466,
+      "evaluation_type": "in_distribution_uncertainty",
+      "nll": -1.9062584294438363,
+      "nll_physical": -6.539444231414795,
+      "num_samples": 2500.0,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072
+    }
+  },
+  "uncertainty_ood": {
+    "fno": {
+      "evaluation_type": "ood_uncertainty_suites",
+      "suites": {
+        "bathymetry_holdout_trench": {
+          "coverage_50": 0.48772155557005914,
+          "coverage_50_physical": 0.4877215578625455,
+          "coverage_80": 0.7245712044828895,
+          "coverage_80_physical": 0.7245712044828895,
+          "coverage_90": 0.8038610236064808,
+          "coverage_90_physical": 0.8038610236064808,
+          "coverage_95": 0.8512022873220225,
+          "coverage_95_physical": 0.8512023190450767,
+          "error_uncertainty_corr": 0.6480839631661556,
+          "error_uncertainty_corr_physical": 0.6480839831169827,
+          "nll": -1.8520059246035474,
+          "nll_physical": -6.485191702099203,
+          "num_samples": 481.0,
+          "target_offset": 0.0012094725389033556,
+          "target_scale": 0.009723731316626072
+        },
+        "source_holdout_multi_gauss": {
+          "coverage_50": 0.3983422981368171,
+          "coverage_50_physical": 0.3983423257795509,
+          "coverage_80": 0.6298041732414909,
+          "coverage_80_physical": 0.6298041640272463,
+          "coverage_90": 0.7206461593724679,
+          "coverage_90_physical": 0.7206461409439787,
+          "coverage_95": 0.7796610783839572,
+          "coverage_95_physical": 0.7796611097699778,
+          "error_uncertainty_corr": 0.658038434199089,
+          "error_uncertainty_corr_physical": 0.658038388127866,
+          "nll": -1.1429211540498596,
+          "nll_physical": -5.776106979535974,
+          "num_samples": 414.0,
+          "target_offset": 0.0012094725389033556,
+          "target_scale": 0.009723731316626072
+        },
+        "source_strength_extreme_high": {
+          "coverage_50": 0.37582390507062274,
+          "coverage_50_physical": 0.375823880566491,
+          "coverage_80": 0.5890694061915079,
+          "coverage_80_physical": 0.5890693638059828,
+          "coverage_90": 0.6727920201089647,
+          "coverage_90_physical": 0.6727919856707255,
+          "coverage_95": 0.728327649169498,
+          "coverage_95_physical": 0.7283277048004998,
+          "error_uncertainty_corr": 0.6996216548813714,
+          "error_uncertainty_corr_physical": 0.6996216972668966,
+          "nll": -0.22199819617801242,
+          "nll_physical": -4.855184035831027,
+          "num_samples": 180.0,
+          "target_offset": 0.0012094725389033556,
+          "target_scale": 0.009723731316626072
+        }
+      }
+    }
+  },
   "window5_crossres_native": {
     "hydrostatic": {
       "checkpoint": "experiments/fno_window5_hydrostatic/best.pt",
