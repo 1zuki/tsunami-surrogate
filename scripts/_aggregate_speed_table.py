@@ -11,8 +11,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 MODEL_TO_SOLVER = {
     "fno": "swe_hydrostatic",
+    "ffno": "swe_hydrostatic",
     "cnn": "swe_hydrostatic",
     "unet": "swe_hydrostatic",
+    "fno_modes8": "swe_hydrostatic",
+    "fno_modes20": "swe_hydrostatic",
+    "ufno": "swe_hydrostatic",
+    "wno": "swe_hydrostatic",
     "fno_muscl_hr": "swe_muscl_hr",
     "fno_boussinesq": "boussinesq",
 }

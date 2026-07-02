@@ -15,7 +15,19 @@ ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 RESULTS.mkdir(exist_ok=True)
 
-ACCURACY_MODELS = ["fno", "cnn", "unet", "fno_muscl_hr", "fno_boussinesq"]
+ACCURACY_MODELS = [
+    "fno",
+    "ffno",
+    "cnn",
+    "unet",
+    "fno_modes8",
+    "fno_modes20",
+    "ufno",
+    "wno",
+    "fno_muscl_hr",
+    "fno_boussinesq",
+]
+WINDOW_MODELS = ["fno_window5_hydrostatic", "ffno_window5_hydrostatic"]
 FNO_MODELS = ["fno", "fno_muscl_hr", "fno_boussinesq"]
 SOLVERS = ["swe_hydrostatic", "swe_muscl_hr", "boussinesq"]
 
@@ -30,6 +42,7 @@ PER_MODEL_EVALS = [
         "resolution_transfer_proxy",
     ),
     ("perframe.json", "perframe", "perframe"),
+    ("physics_diagnostics.json", "physics_diagnostics", "physics_diagnostics"),
 ]
 
 PAPER_MODEL_EVALS = [
@@ -95,15 +108,26 @@ DIRECT_RESULTS = [
         "boussinesq_to_muscl_hr",
     ),
     (
+        "strict_holdout/strict_holdout_summary.json",
+        "strict_holdout",
+        "summary",
+    ),
+    (
         "native_resolution_transfer_matrix_fno_hydrostatic.json",
         "native_resolution_transfer_matrix",
         "fno_hydrostatic",
+    ),
+    (
+        "solver_validation_full/phase3_solver_validation.json",
+        "solver_validation",
+        "phase3_full",
     ),
 ]
 
 SINGLE_RESULTS = [
     ("speed_table.json", "speed_table"),
     ("dataset_summary.json", "dataset_summary"),
+    ("parameter_counts.json", "parameter_counts"),
 ]
 
 EXPERIMENT_RESULTS = [
@@ -113,19 +137,49 @@ EXPERIMENT_RESULTS = [
         "fno",
     ),
     (
+        "experiments/ffno/eval_real_bathymetry/real_resolution.json",
+        "real_bathymetry",
+        "ffno",
+    ),
+    (
+        "experiments/fno/eval_uncertainty_indist/uncertainty.json",
+        "uncertainty",
+        "hydrostatic_indist_m7",
+    ),
+    (
+        "experiments/fno/eval_uncertainty_ood/uncertainty_ood.json",
+        "uncertainty",
+        "hydrostatic_ood_m7",
+    ),
+    (
         "experiments/fno_window5_hydrostatic/eval_ood_suites/window_rollout_suites.json",
         "window5_ood",
-        "hydrostatic",
+        "fno_window5_hydrostatic",
+    ),
+    (
+        "experiments/ffno_window5_hydrostatic/eval_ood_suites/window_rollout_suites.json",
+        "window5_ood",
+        "ffno_window5_hydrostatic",
     ),
     (
         "experiments/fno_window5_hydrostatic/eval_crossres_native/window_rollout_suites.json",
         "window5_crossres_native",
-        "hydrostatic",
+        "fno_window5_hydrostatic",
+    ),
+    (
+        "experiments/ffno_window5_hydrostatic/eval_crossres_native/window_rollout_suites.json",
+        "window5_crossres_native",
+        "ffno_window5_hydrostatic",
     ),
     (
         "experiments/fno_window5_hydrostatic/eval_real_bathymetry/window_rollout_suites.json",
         "window5_real_bathymetry",
-        "hydrostatic",
+        "fno_window5_hydrostatic",
+    ),
+    (
+        "experiments/ffno_window5_hydrostatic/eval_real_bathymetry/window_rollout_suites.json",
+        "window5_real_bathymetry",
+        "ffno_window5_hydrostatic",
     ),
 ]
 
@@ -143,6 +197,19 @@ def main():
     for fname, group, prefix in PER_MODEL_EVALS:
         merged.setdefault(group, {})
         for m in ACCURACY_MODELS:
+            src = ROOT / "experiments" / m / "eval" / fname
+            if src.is_file():
+                shutil.copyfile(src, RESULTS / f"{prefix}_{m}.json")
+                data = load(src)
+                if data is not None:
+                    merged[group][m] = data
+
+    for fname, group, prefix in [
+        ("metrics.json", "window_rollout", "window_rollout"),
+        ("perframe.json", "window_rollout_perframe", "window_rollout_perframe"),
+    ]:
+        merged.setdefault(group, {})
+        for m in WINDOW_MODELS:
             src = ROOT / "experiments" / m / "eval" / fname
             if src.is_file():
                 shutil.copyfile(src, RESULTS / f"{prefix}_{m}.json")
@@ -186,6 +253,7 @@ def main():
     for rel_path, group, key in EXPERIMENT_RESULTS:
         src = ROOT / rel_path
         if src.is_file():
+            shutil.copyfile(src, RESULTS / f"{group}_{key}.json")
             data = load(src)
             if data is not None:
                 merged.setdefault(group, {})[key] = data
