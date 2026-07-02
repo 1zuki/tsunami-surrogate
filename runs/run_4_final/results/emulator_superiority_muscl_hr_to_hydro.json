@@ -1,0 +1,106 @@
+{
+  "evaluation_type": "emulator_superiority_ratio",
+  "model_config": "configs/model/fno_muscl_hr.yaml",
+  "checkpoint": "experiments/fno_muscl_hr/best.pt",
+  "model_metrics": {
+    "mae": 0.1215047718963623,
+    "rmse": 0.29233508535865627,
+    "rel_l2": 0.29368807760321747,
+    "max_error": 26.61743927001953,
+    "num_samples": 2500.0,
+    "dataset_path": "data/processed/hydrostatic/test/eval_dataset.npz",
+    "mae_physical": 0.0011814797513484954,
+    "rmse_physical": 0.0028425878175390947,
+    "rel_l2_physical": 0.2914367382945616,
+    "max_error_physical": 0.2588208317756653,
+    "target_offset": 0.0012094725389033556,
+    "target_scale": 0.009723731316626072,
+    "mae_physical_separate_denorm": 0.0012758779401779174,
+    "rmse_physical_separate_denorm": 0.003046485627111512,
+    "rel_l2_physical_separate_denorm": 0.3123413915125,
+    "max_error_physical_separate_denorm": 0.2390676736831665,
+    "prediction_offset": 0.0011845336994156241,
+    "prediction_scale": 0.010740278288722038
+  },
+  "solver_compare_path": "results/solver_compare_muscl_hr_vs_hydro.json",
+  "solver_denominator_metric": "rmse",
+  "solver_denominator_mean": 0.0017305985359725377,
+  "emulator_numerator_metric": "rmse_physical_separate_denorm",
+  "emulator_numerator_value": 0.003046485627111512,
+  "ratio": 1.7603653093347211,
+  "normalization": {
+    "dataset_signature": {
+      "dataset_path": "data/processed/hydrostatic/test/shards/shard_00000.npz",
+      "normalized_targets": true,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072
+    },
+    "prediction_signature": {
+      "dataset_path": "data/processed/muscl_hr/train/shards/shard_00000.npz",
+      "normalized_targets": true,
+      "target_offset": 0.0011845336994156241,
+      "target_scale": 0.010740278288722038
+    },
+    "signature_mismatch": true,
+    "prediction_denorm_path": "data/processed/muscl_hr/train/eval_dataset.npz",
+    "target_denorm_path": "data/processed/hydrostatic/test/eval_dataset.npz",
+    "checkpoint_train_path": "data/processed/muscl_hr/train/eval_dataset.npz",
+    "tolerance": 1e-06,
+    "on_signature_mismatch": "warn",
+    "check_input_stats": true,
+    "on_input_stats_mismatch": "warn",
+    "prediction_input_signature": {
+      "dataset_path": "data/processed/muscl_hr/train/shards/shard_00000.npz",
+      "normalization_stats_path": "data/processed/muscl_hr/normalization_stats.json",
+      "input_order": [
+        "bathymetry",
+        "source",
+        "initial_depth"
+      ],
+      "channels": {
+        "bathymetry": {
+          "offset": -5.821641735947132,
+          "scale": 3.753549000532554
+        },
+        "source": {
+          "offset": 0.01231608353800566,
+          "scale": 0.07928885694531032
+        }
+      }
+    },
+    "eval_input_signature": {
+      "dataset_path": "data/processed/hydrostatic/test/shards/shard_00000.npz",
+      "normalization_stats_path": "data/processed/hydrostatic/normalization_stats.json",
+      "input_order": [
+        "bathymetry",
+        "source",
+        "initial_depth"
+      ],
+      "channels": {
+        "bathymetry": {
+          "offset": -5.821641735947132,
+          "scale": 3.753549000532554
+        },
+        "source": {
+          "offset": 0.01231608353800566,
+          "scale": 0.07928885694531032
+        }
+      }
+    },
+    "input_check": {
+      "checked": true,
+      "compatible": true,
+      "reason": "ok",
+      "shared_channels": [
+        "bathymetry",
+        "source"
+      ],
+      "mismatch_channels": [],
+      "unscaled_shared_channels": [
+        "initial_depth"
+      ],
+      "mixed_scaled_channels": []
+    }
+  },
+  "interpretation": "ratio < 1 means emulator error is lower than solver-A vs solver-B disagreement."
+}

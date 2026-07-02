@@ -1,0 +1,14 @@
+{
+  "mae": 0.06167478849792481,
+  "rmse": 0.21149259659816114,
+  "rel_l2": 0.20964373845909287,
+  "max_error": 15.937835693359375,
+  "num_samples": 2500.0,
+  "dataset_path": "data/processed/boussinesq/test",
+  "mae_physical": 0.001365199066877365,
+  "rmse_physical": 0.004681483227499351,
+  "rel_l2_physical": 0.20778890815194126,
+  "max_error_physical": 0.3527911305427551,
+  "target_offset": 0.002938094548881054,
+  "target_scale": 0.022135447710752487
+}

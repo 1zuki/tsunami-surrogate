@@ -1,0 +1,31 @@
+{
+  "config_path": "configs/data/dataset_boussinesq.yaml",
+  "sample_index": 3,
+  "sample_seed": 30063,
+  "source_type": "dipole",
+  "bathymetry_type": "continental",
+  "source_strength": 0.04748731596036829,
+  "n_steps": 250,
+  "save_every": 5,
+  "auto_dt": true,
+  "target_cfl": 0.35,
+  "num_saved_frames": 51,
+  "final_time": 0.5456367184690787,
+  "final_max_abs_eta": 0.0015319439116865396,
+  "final_l2_eta": 0.00038504628622554007,
+  "final_energy_radius": 0.16596250769951676,
+  "final_center_eta": 0.0011770310811698437,
+  "final_argmax_ij": [
+    22,
+    37
+  ],
+  "last_cg_iterations": 105.0,
+  "last_cg_initial_residual": 9.88796222994522,
+  "last_cg_final_residual": 8.96962187925504e-06,
+  "last_cg_converged": true,
+  "cg_converged_fraction": 1.0,
+  "mean_cg_iterations": 103.41176470588235,
+  "p90_cg_iterations": 109.0,
+  "max_cg_iterations": 110.0,
+  "all_finite": true
+}

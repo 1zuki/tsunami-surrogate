@@ -1,0 +1,530 @@
+{
+  "boussinesq_cg": {
+    "cg_converged_fraction": {
+      "count": 13500,
+      "max": 1.0,
+      "mean": 1.0,
+      "median": 1.0,
+      "min": 1.0
+    },
+    "cg_failed_step_count_sum": 0,
+    "check": "boussinesq_cg_convergence_statistics",
+    "max_cg_iterations": {
+      "count": 13500,
+      "max": 416.0,
+      "mean": 371.49688888888886,
+      "median": 381.0,
+      "min": 227.0
+    },
+    "max_cg_residual_ratio": {
+      "count": 13500,
+      "max": 9.999999974752427e-07,
+      "mean": 9.997119744066704e-07,
+      "median": 9.998466339311562e-07,
+      "min": 9.500522537564393e-07
+    },
+    "num_samples": 13500,
+    "samples_with_cg_diagnostics": 13500,
+    "samples_with_cg_failure": 0,
+    "split_counts": {
+      "test": 2500,
+      "train": 10000,
+      "val": 1000
+    }
+  },
+  "cfl_sensitivity": {
+    "baseline_cfl": 0.45,
+    "by_solver": {
+      "swe_hydrostatic": {
+        "by_cfl": {
+          "0.30": {
+            "end_time": {
+              "count": 2,
+              "max": 0.0424151412124692,
+              "mean": 0.04240141143839368,
+              "median": 0.04240141143839368,
+              "min": 0.04238768166431817
+            },
+            "finite_pass_fraction": 1.0,
+            "max_abs_eta": {
+              "count": 2,
+              "max": 0.06624367170230983,
+              "mean": 0.04524701940737641,
+              "median": 0.04524701940737641,
+              "min": 0.024250367112442994
+            },
+            "max_abs_final_eta_diff_vs_cfl_0_45": {
+              "count": 2,
+              "max": 0.013379257914700737,
+              "mean": 0.01017870012714539,
+              "median": 0.01017870012714539,
+              "min": 0.006978142339590043
+            },
+            "max_velocity_or_eta_t": {
+              "count": 2,
+              "max": 0.1169741843925833,
+              "mean": 0.08023802546513381,
+              "median": 0.08023802546513381,
+              "min": 0.04350186653768434
+            },
+            "num_samples": 2,
+            "rel_l2_final_eta_vs_cfl_0_45": {
+              "count": 2,
+              "max": 0.29819067616632977,
+              "mean": 0.21830802761610962,
+              "median": 0.21830802761610962,
+              "min": 0.13842537906588945
+            }
+          },
+          "0.45": {
+            "end_time": {
+              "count": 2,
+              "max": 0.0424151412124692,
+              "mean": 0.04240141143839368,
+              "median": 0.04240141143839368,
+              "min": 0.04238768166431817
+            },
+            "finite_pass_fraction": 1.0,
+            "max_abs_eta": {
+              "count": 2,
+              "max": 0.07060050113218352,
+              "mean": 0.05008270384517566,
+              "median": 0.05008270384517566,
+              "min": 0.02956490655816779
+            },
+            "max_abs_final_eta_diff_vs_cfl_0_45": {
+              "count": 2,
+              "max": 0.0,
+              "mean": 0.0,
+              "median": 0.0,
+              "min": 0.0
+            },
+            "max_velocity_or_eta_t": {
+              "count": 2,
+              "max": 0.12260647324228634,
+              "mean": 0.08442043318265238,
+              "median": 0.08442043318265238,
+              "min": 0.046234393123018414
+            },
+            "num_samples": 2,
+            "rel_l2_final_eta_vs_cfl_0_45": {
+              "count": 2,
+              "max": 0.0,
+              "mean": 0.0,
+              "median": 0.0,
+              "min": 0.0
+            }
+          },
+          "0.60": {
+            "end_time": {
+              "count": 2,
+              "max": 0.0424151412124692,
+              "mean": 0.04240141143839368,
+              "median": 0.04240141143839368,
+              "min": 0.04238768166431817
+            },
+            "finite_pass_fraction": 1.0,
+            "max_abs_eta": {
+              "count": 2,
+              "max": 0.3357737340399396,
+              "mean": 0.20537851417722042,
+              "median": 0.20537851417722042,
+              "min": 0.07498329431450124
+            },
+            "max_abs_final_eta_diff_vs_cfl_0_45": {
+              "count": 2,
+              "max": 0.3299620054094543,
+              "mean": 0.19241225761619063,
+              "median": 0.19241225761619063,
+              "min": 0.05486250982292695
+            },
+            "max_velocity_or_eta_t": {
+              "count": 2,
+              "max": 0.4118082329044253,
+              "mean": 0.2698967724522993,
+              "median": 0.2698967724522993,
+              "min": 0.1279853120001733
+            },
+            "num_samples": 2,
+            "rel_l2_final_eta_vs_cfl_0_45": {
+              "count": 2,
+              "max": 5.058769570587075,
+              "mean": 2.934605957466934,
+              "median": 2.934605957466934,
+              "min": 0.8104423443467926
+            }
+          }
+        },
+        "rows": [
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0004732556618899926,
+            "dt_min": 0.00041967839505743787,
+            "end_time": 0.0424151412124692,
+            "max_abs_eta": 0.024250367112442994,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.013379257914700737,
+            "max_velocity_or_eta_t": 0.04350186653768434,
+            "min_h": 0.7581247574605756,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.29819067616632977,
+            "sample_id": "sample_000001",
+            "scenario_id": "scenario_000001",
+            "source_type": "okada-like",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007098599058677169,
+            "dt_min": 0.0006929880423873879,
+            "end_time": 0.0424151412124692,
+            "max_abs_eta": 0.02956490655816779,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.046234393123018414,
+            "min_h": 0.7605697535159729,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000001",
+            "scenario_id": "scenario_000001",
+            "source_type": "okada-like",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0009459385232642002,
+            "dt_min": 0.0002323596382773352,
+            "end_time": 0.0424151412124692,
+            "max_abs_eta": 0.3357737340399396,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.3299620054094543,
+            "max_velocity_or_eta_t": 0.4118082329044253,
+            "min_h": 0.7618500311867394,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 5.058769570587075,
+            "sample_id": "sample_000001",
+            "scenario_id": "scenario_000001",
+            "source_type": "okada-like",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.00047321315860652033,
+            "dt_min": 0.0004564397762892858,
+            "end_time": 0.04238768166431817,
+            "max_abs_eta": 0.06624367170230983,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.006978142339590043,
+            "max_velocity_or_eta_t": 0.1169741843925833,
+            "min_h": 0.7500126546868627,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.13842537906588945,
+            "sample_id": "sample_002500",
+            "scenario_id": "scenario_002500",
+            "source_type": "gaussian",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007098197379097806,
+            "dt_min": 0.0007038792094530134,
+            "end_time": 0.04238768166431817,
+            "max_abs_eta": 0.07060050113218352,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.12260647324228634,
+            "min_h": 0.7500119429750131,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_002500",
+            "scenario_id": "scenario_002500",
+            "source_type": "gaussian",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0009464263172130407,
+            "dt_min": 2.940854282022093e-05,
+            "end_time": 0.04238768166431817,
+            "max_abs_eta": 0.07498329431450124,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.05486250982292695,
+            "max_velocity_or_eta_t": 0.1279853120001733,
+            "min_h": 0.7500087038072435,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.8104423443467926,
+            "sample_id": "sample_002500",
+            "scenario_id": "scenario_002500",
+            "source_type": "gaussian",
+            "target_cfl": 0.6
+          }
+        ]
+      }
+    },
+    "cfl_values": [
+      0.3,
+      0.45,
+      0.6
+    ],
+    "check": "cfl_sensitivity",
+    "n_steps": 60,
+    "solver_setup": {
+      "boundary": "open",
+      "note": "Uses default paper boundary/sponge settings and compares final eta against CFL 0.45 at matched physical end time.",
+      "use_sponge": true
+    }
+  },
+  "config_path": "configs/data/dataset.yaml",
+  "conservation": {
+    "by_solver": {
+      "boussinesq": {
+        "finite_pass_fraction": 0.0,
+        "free_surface_integral_abs_change_max": null,
+        "mass_relative_change_max": null,
+        "num_samples": 0,
+        "rows": []
+      },
+      "swe_hydrostatic": {
+        "finite_pass_fraction": 0.0,
+        "free_surface_integral_abs_change_max": null,
+        "mass_relative_change_max": null,
+        "num_samples": 0,
+        "rows": []
+      },
+      "swe_muscl_hr": {
+        "finite_pass_fraction": 0.0,
+        "free_surface_integral_abs_change_max": null,
+        "mass_relative_change_max": null,
+        "num_samples": 0,
+        "rows": []
+      }
+    },
+    "check": "conservation_no_sponge_reflective",
+    "n_steps": 60,
+    "solver_setup": {
+      "boundary": "reflective",
+      "boussinesq_filter_strength": 0.0,
+      "note": "No-sponge reflective-boundary diagnostic isolates numerical conservation; the paper dataset uses open boundaries with sponge.",
+      "use_sponge": false
+    },
+    "target_cfl": 0.45
+  },
+  "dynamic_dataset_statistics": {
+    "by_solver": {
+      "boussinesq": {
+        "dt_max": {
+          "count": 13500,
+          "max": 0.0003549506946001202,
+          "mean": 0.0003549506946001202,
+          "median": 0.0003549506946001202,
+          "min": 0.0003549506946001202
+        },
+        "dt_min": {
+          "count": 13500,
+          "max": 0.0003549506946001202,
+          "mean": 0.0003549506946001202,
+          "median": 0.0003549506946001202,
+          "min": 0.0003549506946001202
+        },
+        "inf_count_sum": 0,
+        "max_abs_eta": {
+          "count": 13500,
+          "max": 0.8493594527244568,
+          "mean": 0.25152376110993185,
+          "median": 0.2391190379858017,
+          "min": 0.0034688515588641167
+        },
+        "max_abs_eta_over_depth": {
+          "count": 13500,
+          "max": 0.9891061186790466,
+          "mean": 0.12679373261225582,
+          "median": 0.08001406863331795,
+          "min": 0.001101772766560316
+        },
+        "max_abs_velocity": {
+          "count": 0
+        },
+        "min_h": {
+          "count": 13500,
+          "max": 1.3046795129776,
+          "mean": 0.7340134348979702,
+          "median": 0.7499411404132843,
+          "min": 0.00817042589187622
+        },
+        "nan_count_sum": 0,
+        "num_samples": 13500,
+        "quality_ok_fraction": 1.0,
+        "quality_status_counts": {
+          "ok": 13500
+        },
+        "split_counts": {
+          "test": 2500,
+          "train": 10000,
+          "val": 1000
+        }
+      },
+      "hydrostatic": {
+        "dt_max": {
+          "count": 13500,
+          "max": 0.0007189307361841202,
+          "mean": 0.0007099379424686992,
+          "median": 0.0007099013892002404,
+          "min": 0.0007091932347975671
+        },
+        "dt_min": {
+          "count": 13500,
+          "max": 0.000709900283254683,
+          "mean": 0.0007079063324706146,
+          "median": 0.0007090680592227727,
+          "min": 0.0006788049940951169
+        },
+        "inf_count_sum": 0,
+        "max_abs_eta": {
+          "count": 13500,
+          "max": 0.8493595123291016,
+          "mean": 0.2515237626256766,
+          "median": 0.2391190528869629,
+          "min": 0.003468751907348633
+        },
+        "max_abs_eta_over_depth": {
+          "count": 0
+        },
+        "max_abs_velocity": {
+          "count": 13500,
+          "max": 1.1523206233978271,
+          "mean": 0.12413147511176283,
+          "median": 0.10169374197721481,
+          "min": 0.00265350635163486
+        },
+        "min_h": {
+          "count": 13500,
+          "max": 0.7502171993255615,
+          "mean": 0.726155233166836,
+          "median": 0.7461115717887878,
+          "min": 0.00817042589187622
+        },
+        "nan_count_sum": 0,
+        "num_samples": 13500,
+        "quality_ok_fraction": 1.0,
+        "quality_status_counts": {
+          "ok": 13500
+        },
+        "split_counts": {
+          "test": 2500,
+          "train": 10000,
+          "val": 1000
+        }
+      },
+      "muscl_hr": {
+        "dt_max": {
+          "count": 13500,
+          "max": 0.0007182500557973981,
+          "mean": 0.000709939578504957,
+          "median": 0.0007099013892002404,
+          "min": 0.0007092370069585741
+        },
+        "dt_min": {
+          "count": 13500,
+          "max": 0.0007098991773091257,
+          "mean": 0.0007076003232634523,
+          "median": 0.000708824023604393,
+          "min": 0.0006753159104846418
+        },
+        "inf_count_sum": 0,
+        "max_abs_eta": {
+          "count": 13500,
+          "max": 0.8493595123291016,
+          "mean": 0.25152911500356817,
+          "median": 0.2391296625137329,
+          "min": 0.003468751907348633
+        },
+        "max_abs_eta_over_depth": {
+          "count": 0
+        },
+        "max_abs_velocity": {
+          "count": 13500,
+          "max": 1.552255392074585,
+          "mean": 0.15717458200722037,
+          "median": 0.12814216315746307,
+          "min": 0.0028084684163331985
+        },
+        "min_h": {
+          "count": 13500,
+          "max": 0.7502521276473999,
+          "mean": 0.7224503659407298,
+          "median": 0.744621992111206,
+          "min": 0.00817042589187622
+        },
+        "nan_count_sum": 0,
+        "num_samples": 13500,
+        "quality_ok_fraction": 1.0,
+        "quality_status_counts": {
+          "ok": 13500
+        },
+        "split_counts": {
+          "test": 2500,
+          "train": 10000,
+          "val": 1000
+        }
+      }
+    },
+    "check": "dynamic_finite_state_dataset_statistics"
+  },
+  "elapsed_s": 101.83921337127686,
+  "evaluation_type": "phase3_solver_validation",
+  "lake_at_rest": {
+    "by_solver": {
+      "boussinesq": {
+        "finite_pass_fraction": 0.0,
+        "max_eta_drift": null,
+        "max_momentum_or_eta_t_drift": null,
+        "num_samples": 0,
+        "rows": []
+      },
+      "swe_hydrostatic": {
+        "finite_pass_fraction": 0.0,
+        "max_eta_drift": null,
+        "max_momentum_or_eta_t_drift": null,
+        "num_samples": 0,
+        "rows": []
+      },
+      "swe_muscl_hr": {
+        "finite_pass_fraction": 0.0,
+        "max_eta_drift": null,
+        "max_momentum_or_eta_t_drift": null,
+        "num_samples": 0,
+        "rows": []
+      }
+    },
+    "check": "lake_at_rest",
+    "n_steps": 60,
+    "solver_setup": {
+      "boundary": "open",
+      "use_sponge": false
+    },
+    "target_cfl": 0.45
+  },
+  "n_steps": 60,
+  "notes": [
+    "Dynamic dataset statistics and Boussinesq CG summaries are aggregated from processed meta.jsonl files.",
+    "Lake-rest, conservation, and CFL diagnostics rerun a deterministic subset using denormalized bathymetry and physical initial_depth inputs."
+  ],
+  "processed_root": "data/processed",
+  "reference_dataset_for_reruns": "hydrostatic",
+  "rerun_solver_selection": {
+    "cfl_sensitivity": [
+      "swe_hydrostatic"
+    ],
+    "conservation": [
+      "swe_hydrostatic",
+      "swe_muscl_hr",
+      "boussinesq"
+    ],
+    "lake_at_rest": [
+      "swe_hydrostatic",
+      "swe_muscl_hr",
+      "boussinesq"
+    ]
+  },
+  "splits": [
+    "train",
+    "val",
+    "test"
+  ],
+  "started_unix": 1782693062.751484,
+  "target_cfl": 0.45
+}

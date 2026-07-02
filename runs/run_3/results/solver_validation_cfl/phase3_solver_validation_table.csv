@@ -1,0 +1,31 @@
+check,solver,samples,metric,result,pass_criterion
+Lake at rest,swe_hydrostatic,0,max eta drift,nan,< 1e-8 target
+Lake at rest,swe_hydrostatic,0,finite pass rate,0.000,1.0
+Lake at rest,swe_muscl_hr,0,max eta drift,nan,< 1e-8 target
+Lake at rest,swe_muscl_hr,0,finite pass rate,0.000,1.0
+Lake at rest,boussinesq,0,max eta drift,nan,< 1e-8 target
+Lake at rest,boussinesq,0,finite pass rate,0.000,1.0
+Conservation,swe_hydrostatic,0,max mass rel. change,,diagnostic
+Conservation,swe_hydrostatic,0,max eta-integral abs. change,nan,diagnostic
+Conservation,swe_muscl_hr,0,max mass rel. change,,diagnostic
+Conservation,swe_muscl_hr,0,max eta-integral abs. change,nan,diagnostic
+Dynamic rollout,hydrostatic,13500,finite pass rate,1.000,1.0
+Dynamic rollout,hydrostatic,13500,nan + inf count,0,0
+Dynamic rollout,muscl_hr,13500,finite pass rate,1.000,1.0
+Dynamic rollout,muscl_hr,13500,nan + inf count,0,0
+Dynamic rollout,boussinesq,13500,finite pass rate,1.000,1.0
+Dynamic rollout,boussinesq,13500,nan + inf count,0,0
+Boussinesq CG,boussinesq,13500,samples with CG failures,0,0
+Boussinesq CG,boussinesq,13500,max iterations,416.0,reported
+CFL 0.30,swe_hydrostatic,12,finite pass rate,1.000,1.0
+CFL 0.30,swe_hydrostatic,12,mean final eta rel-L2 vs CFL 0.45,5.029877e-01,small relative to paper error
+CFL 0.45,swe_hydrostatic,12,finite pass rate,1.000,1.0
+CFL 0.45,swe_hydrostatic,12,mean final eta rel-L2 vs CFL 0.45,0.000000e+00,small relative to paper error
+CFL 0.60,swe_hydrostatic,12,finite pass rate,1.000,1.0
+CFL 0.60,swe_hydrostatic,12,mean final eta rel-L2 vs CFL 0.45,4.503570e+03,small relative to paper error
+CFL 0.30,swe_muscl_hr,12,finite pass rate,1.000,1.0
+CFL 0.30,swe_muscl_hr,12,mean final eta rel-L2 vs CFL 0.45,4.565347e-01,small relative to paper error
+CFL 0.45,swe_muscl_hr,12,finite pass rate,1.000,1.0
+CFL 0.45,swe_muscl_hr,12,mean final eta rel-L2 vs CFL 0.45,0.000000e+00,small relative to paper error
+CFL 0.60,swe_muscl_hr,12,finite pass rate,1.000,1.0
+CFL 0.60,swe_muscl_hr,12,mean final eta rel-L2 vs CFL 0.45,2.797156e+03,small relative to paper error

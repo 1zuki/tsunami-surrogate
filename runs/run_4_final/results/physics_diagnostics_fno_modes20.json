@@ -1,0 +1,144 @@
+{
+  "evaluation_type": "physics_diagnostics",
+  "evaluation_mode": "direct_single_pass",
+  "config_path": "configs/model/fno_modes20.yaml",
+  "checkpoint": "experiments/fno_modes20/best.pt",
+  "dataset_path": "data/processed/hydrostatic/test",
+  "num_samples_seen": 2500,
+  "num_samples_dataset": 2500,
+  "target_units": "physical",
+  "target_offset": 0.0012094725389033556,
+  "target_scale": 0.009723731316626072,
+  "normalization_stats_path": "data/processed/hydrostatic/normalization_stats.json",
+  "input_order": [
+    "bathymetry",
+    "source",
+    "initial_depth"
+  ],
+  "diagnostics": {
+    "free_surface_integral": {
+      "description": "Spatial-mean eta time-series error; equivalent to free-surface integral error up to constant cell area.",
+      "mae": 0.00034013744011034656,
+      "rmse": 0.0008238894424026881,
+      "rel_l2": 0.18975772082580672,
+      "max_abs_error": 0.027083396107869362
+    },
+    "mass_proxy_integral": {
+      "description": "Spatial-mean water-depth h=eta-b time-series error for fully wet cases.",
+      "mae": 0.00034013744011034656,
+      "rmse": 0.0008238894424026881,
+      "rel_l2": 0.000119956619359847,
+      "max_abs_error": 0.027083396107869362
+    },
+    "spectral_band_rel_l2": {
+      "low_0_8": {
+        "rel_l2": 0.22132600908632638,
+        "sum_sq_err": 1647.168885231018,
+        "sum_sq_target": 33625.846336364746
+      },
+      "mid_8_16": {
+        "rel_l2": 0.4473776557704427,
+        "sum_sq_err": 55.5370262041688,
+        "sum_sq_target": 277.48150554299355
+      },
+      "high_16_plus": {
+        "rel_l2": 0.6452829243503482,
+        "sum_sq_err": 24.671793583780527,
+        "sum_sq_target": 59.25164023041725
+      }
+    },
+    "sample_rel_l2_summary": {
+      "count": 2500,
+      "min": 0.06304804439682295,
+      "max": 1.4840363604384086,
+      "mean": 0.27076617608920933,
+      "median": 0.2521261691252361,
+      "p90": 0.42234337180860243
+    },
+    "source_strength_bins": [
+      {
+        "bin": "source_strength_q1",
+        "count": 625,
+        "value_min": 0.4500366449356079,
+        "value_max": 0.5475442409515381,
+        "value_mean": 0.49911715035438536,
+        "rel_l2_mean": 0.37704799157903435,
+        "rel_l2_median": 0.3675517033855699,
+        "rel_l2_p90": 0.505130610182601
+      },
+      {
+        "bin": "source_strength_q2",
+        "count": 625,
+        "value_min": 0.5475695133209229,
+        "value_max": 0.6431041359901428,
+        "value_mean": 0.5956625170707702,
+        "rel_l2_mean": 0.23209502004099644,
+        "rel_l2_median": 0.2126444828933015,
+        "rel_l2_p90": 0.34376260753142296
+      },
+      {
+        "bin": "source_strength_q3",
+        "count": 625,
+        "value_min": 0.6431112885475159,
+        "value_max": 0.7475765347480774,
+        "value_mean": 0.6965679500579834,
+        "rel_l2_mean": 0.20597933890553669,
+        "rel_l2_median": 0.1866162816494786,
+        "rel_l2_p90": 0.32885297429981053
+      },
+      {
+        "bin": "source_strength_q4",
+        "count": 625,
+        "value_min": 0.7476558685302734,
+        "value_max": 0.8499025106430054,
+        "value_mean": 0.7998519358634949,
+        "rel_l2_mean": 0.2679423538312697,
+        "rel_l2_median": 0.2590453489164664,
+        "rel_l2_p90": 0.36300642085991586
+      }
+    ],
+    "bathymetry_gradient_bins": [
+      {
+        "bin": "bathymetry_gradient_q1",
+        "count": 625,
+        "value_min": 0.20875664434830676,
+        "value_max": 0.33127596109097235,
+        "value_mean": 0.2641553656560871,
+        "rel_l2_mean": 0.24948182592303336,
+        "rel_l2_median": 0.23169618772216524,
+        "rel_l2_p90": 0.40333546403163467
+      },
+      {
+        "bin": "bathymetry_gradient_q2",
+        "count": 625,
+        "value_min": 0.33216995451852604,
+        "value_max": 0.49310435037219846,
+        "value_mean": 0.42204890989567484,
+        "rel_l2_mean": 0.27398041968804815,
+        "rel_l2_median": 0.25960866304206276,
+        "rel_l2_p90": 0.42260820854394004
+      },
+      {
+        "bin": "bathymetry_gradient_q3",
+        "count": 625,
+        "value_min": 0.4934959082204276,
+        "value_max": 0.6265213767286364,
+        "value_mean": 0.5577667580931961,
+        "rel_l2_mean": 0.2714512116976637,
+        "rel_l2_median": 0.24819430232636322,
+        "rel_l2_p90": 0.4216245041490669
+      },
+      {
+        "bin": "bathymetry_gradient_q4",
+        "count": 625,
+        "value_min": 0.6267628155678973,
+        "value_max": 1.391369535013286,
+        "value_mean": 0.7719525985540353,
+        "rel_l2_mean": 0.288151247048092,
+        "rel_l2_median": 0.26473563723163834,
+        "rel_l2_p90": 0.4332858218578535
+      }
+    ]
+  },
+  "per_sample_csv": "experiments/fno_modes20/eval/physics_diagnostics_per_sample.csv"
+}

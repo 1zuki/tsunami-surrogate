@@ -1,0 +1,106 @@
+{
+  "evaluation_type": "emulator_superiority_ratio",
+  "model_config": "configs/model/fno.yaml",
+  "checkpoint": "experiments/fno/best.pt",
+  "model_metrics": {
+    "mae": 0.43864163641357423,
+    "rmse": 1.2286571564439994,
+    "rel_l2": 1.2179162919360829,
+    "max_error": 47.907432556152344,
+    "num_samples": 2500.0,
+    "dataset_path": "data/processed/boussinesq/test/eval_dataset.npz",
+    "mae_physical": 0.009709528988838196,
+    "rmse_physical": 0.027196876051353864,
+    "rel_l2_physical": 1.2071407418723357,
+    "max_error_physical": 1.0604524612426758,
+    "target_offset": 0.002938094548881054,
+    "target_scale": 0.022135447710752487,
+    "mae_physical_separate_denorm": 0.0067300791568756105,
+    "rmse_physical_separate_denorm": 0.02219149502496567,
+    "rel_l2_physical_separate_denorm": 0.984975543408405,
+    "max_error_physical_separate_denorm": 0.9230101704597473,
+    "prediction_offset": 0.0012094725389033556,
+    "prediction_scale": 0.009723731316626072
+  },
+  "solver_compare_path": "results/solver_compare_hydro_vs_boussinesq.json",
+  "solver_denominator_metric": "rmse",
+  "solver_denominator_mean": 0.016320490023489537,
+  "emulator_numerator_metric": "rmse_physical_separate_denorm",
+  "emulator_numerator_value": 0.02219149502496567,
+  "ratio": 1.3597321522225247,
+  "normalization": {
+    "dataset_signature": {
+      "dataset_path": "data/processed/boussinesq/test/shards/shard_00000.npz",
+      "normalized_targets": true,
+      "target_offset": 0.002938094548881054,
+      "target_scale": 0.022135447710752487
+    },
+    "prediction_signature": {
+      "dataset_path": "data/processed/hydrostatic/train/shards/shard_00000.npz",
+      "normalized_targets": true,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072
+    },
+    "signature_mismatch": true,
+    "prediction_denorm_path": "data/processed/hydrostatic/train/eval_dataset.npz",
+    "target_denorm_path": "data/processed/boussinesq/test/eval_dataset.npz",
+    "checkpoint_train_path": "data/processed/hydrostatic/train/eval_dataset.npz",
+    "tolerance": 1e-06,
+    "on_signature_mismatch": "warn",
+    "check_input_stats": true,
+    "on_input_stats_mismatch": "warn",
+    "prediction_input_signature": {
+      "dataset_path": "data/processed/hydrostatic/train/shards/shard_00000.npz",
+      "normalization_stats_path": "data/processed/hydrostatic/normalization_stats.json",
+      "input_order": [
+        "bathymetry",
+        "source",
+        "initial_depth"
+      ],
+      "channels": {
+        "bathymetry": {
+          "offset": -5.821641735947132,
+          "scale": 3.753549000532554
+        },
+        "source": {
+          "offset": 0.01231608353800566,
+          "scale": 0.07928885694531032
+        }
+      }
+    },
+    "eval_input_signature": {
+      "dataset_path": "data/processed/boussinesq/test/shards/shard_00000.npz",
+      "normalization_stats_path": "data/processed/boussinesq/normalization_stats.json",
+      "input_order": [
+        "bathymetry",
+        "source",
+        "initial_depth"
+      ],
+      "channels": {
+        "bathymetry": {
+          "offset": -5.821641735947132,
+          "scale": 3.753549000532554
+        },
+        "source": {
+          "offset": 0.01231608353800566,
+          "scale": 0.07928885694531032
+        }
+      }
+    },
+    "input_check": {
+      "checked": true,
+      "compatible": true,
+      "reason": "ok",
+      "shared_channels": [
+        "bathymetry",
+        "source"
+      ],
+      "mismatch_channels": [],
+      "unscaled_shared_channels": [
+        "initial_depth"
+      ],
+      "mixed_scaled_channels": []
+    }
+  },
+  "interpretation": "ratio < 1 means emulator error is lower than solver-A vs solver-B disagreement."
+}

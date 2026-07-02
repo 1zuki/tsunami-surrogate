@@ -1,0 +1,2955 @@
+{
+  "boussinesq_cg": {
+    "cg_converged_fraction": {
+      "count": 13500,
+      "max": 1.0,
+      "mean": 1.0,
+      "median": 1.0,
+      "min": 1.0
+    },
+    "cg_failed_step_count_sum": 0,
+    "check": "boussinesq_cg_convergence_statistics",
+    "max_cg_iterations": {
+      "count": 13500,
+      "max": 416.0,
+      "mean": 371.49688888888886,
+      "median": 381.0,
+      "min": 227.0
+    },
+    "max_cg_residual_ratio": {
+      "count": 13500,
+      "max": 9.999999974752427e-07,
+      "mean": 9.997119744066704e-07,
+      "median": 9.998466339311562e-07,
+      "min": 9.500522537564393e-07
+    },
+    "num_samples": 13500,
+    "samples_with_cg_diagnostics": 13500,
+    "samples_with_cg_failure": 0,
+    "split_counts": {
+      "test": 2500,
+      "train": 10000,
+      "val": 1000
+    }
+  },
+  "cfl_sensitivity": {
+    "baseline_cfl": 0.45,
+    "by_solver": {
+      "swe_hydrostatic": {
+        "by_cfl": {
+          "0.30": {
+            "end_time": {
+              "count": 12,
+              "max": 0.17747480211717226,
+              "mean": 0.1773453952986617,
+              "median": 0.177454098728811,
+              "min": 0.17674174871720763
+            },
+            "finite_pass_fraction": 1.0,
+            "max_abs_eta": {
+              "count": 12,
+              "max": 0.011303252008496356,
+              "mean": 0.0014185501293934033,
+              "median": 0.00026282799816373936,
+              "min": 1.7529294508378257e-05
+            },
+            "max_abs_final_eta_diff_vs_cfl_0_45": {
+              "count": 12,
+              "max": 0.005379855214099338,
+              "mean": 0.0007008356832593857,
+              "median": 0.0002024063455468017,
+              "min": 2.0246226382414356e-05
+            },
+            "max_velocity_or_eta_t": {
+              "count": 12,
+              "max": 0.03778792758229609,
+              "mean": 0.004682043081315198,
+              "median": 0.0014022545494843564,
+              "min": 7.76569358403042e-05
+            },
+            "num_samples": 12,
+            "rel_l2_final_eta_vs_cfl_0_45": {
+              "count": 12,
+              "max": 0.6400622997229587,
+              "mean": 0.44184021868355844,
+              "median": 0.45419146139275535,
+              "min": 0.31571236322082463
+            }
+          },
+          "0.45": {
+            "end_time": {
+              "count": 12,
+              "max": 0.17747480211717226,
+              "mean": 0.1773453952986617,
+              "median": 0.177454098728811,
+              "min": 0.17674174871720763
+            },
+            "finite_pass_fraction": 1.0,
+            "max_abs_eta": {
+              "count": 12,
+              "max": 0.01470731663830871,
+              "mean": 0.0018825058611607604,
+              "median": 0.0004063374038597578,
+              "min": 3.565049161258216e-05
+            },
+            "max_abs_final_eta_diff_vs_cfl_0_45": {
+              "count": 12,
+              "max": 0.0,
+              "mean": 0.0,
+              "median": 0.0,
+              "min": 0.0
+            },
+            "max_velocity_or_eta_t": {
+              "count": 12,
+              "max": 0.0422235762612885,
+              "mean": 0.005515501615404279,
+              "median": 0.0018171212761924173,
+              "min": 0.00010018640032172806
+            },
+            "num_samples": 12,
+            "rel_l2_final_eta_vs_cfl_0_45": {
+              "count": 12,
+              "max": 0.0,
+              "mean": 0.0,
+              "median": 0.0,
+              "min": 0.0
+            }
+          },
+          "0.60": {
+            "end_time": {
+              "count": 12,
+              "max": 0.17747480211717226,
+              "mean": 0.1773453952986617,
+              "median": 0.177454098728811,
+              "min": 0.17674174871720763
+            },
+            "finite_pass_fraction": 1.0,
+            "max_abs_eta": {
+              "count": 12,
+              "max": 2.9373500971506328,
+              "mean": 1.24744519210385,
+              "median": 1.6047819748381436,
+              "min": 0.0003263437649382306
+            },
+            "max_abs_final_eta_diff_vs_cfl_0_45": {
+              "count": 12,
+              "max": 2.937396570637844,
+              "mean": 1.2458399521293437,
+              "median": 1.6046553663023015,
+              "min": 8.576197479459591e-05
+            },
+            "max_velocity_or_eta_t": {
+              "count": 12,
+              "max": 3.654496146288513,
+              "mean": 1.4876303089554803,
+              "median": 1.4813813457465108,
+              "min": 0.0011175848303726392
+            },
+            "num_samples": 12,
+            "rel_l2_final_eta_vs_cfl_0_45": {
+              "count": 12,
+              "max": 5946.770618071008,
+              "mean": 1484.6226159346024,
+              "median": 412.35365744304556,
+              "min": 0.2843364223411786
+            }
+          }
+        },
+        "rows": [
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.00047326761644733267,
+            "dt_min": 0.0004189934946070839,
+            "end_time": 0.17729529466925686,
+            "max_abs_eta": 0.0002980526049221055,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0002309411562642083,
+            "max_velocity_or_eta_t": 0.0012660489213748287,
+            "min_h": 0.7500943663927973,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.5917861958150238,
+            "sample_id": "sample_000001",
+            "scenario_id": "scenario_000001",
+            "source_type": "okada-like",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007099012808146125,
+            "dt_min": 0.0006929880423873879,
+            "end_time": 0.17729529466925686,
+            "max_abs_eta": 0.0004360363028990122,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.001769297057859048,
+            "min_h": 0.7502644625888121,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000001",
+            "scenario_id": "scenario_000001",
+            "source_type": "okada-like",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0009459385232642002,
+            "dt_min": 0.00046183960488851983,
+            "end_time": 0.17729529466925686,
+            "max_abs_eta": 1.667581678766453,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 1.6674481829854138,
+            "max_velocity_or_eta_t": 1.8246112388097473,
+            "min_h": 0.755170730891783,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 360.4696985209127,
+            "sample_id": "sample_000001",
+            "scenario_id": "scenario_000001",
+            "source_type": "okada-like",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.00047330367020275105,
+            "dt_min": 0.0004584783621465194,
+            "end_time": 0.17742601421840057,
+            "max_abs_eta": 0.001567058960455503,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0010306329769109723,
+            "max_velocity_or_eta_t": 0.004811543979436246,
+            "min_h": 0.7499999142903567,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.4614927904364585,
+            "sample_id": "sample_000109",
+            "scenario_id": "scenario_000109",
+            "source_type": "multi-gauss",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0007099555053041266,
+            "dt_min": 0.0007094305416015213,
+            "end_time": 0.17742601421840057,
+            "max_abs_eta": 0.0024134376758355724,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.006638734028452792,
+            "min_h": 0.7500017025942778,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000109",
+            "scenario_id": "scenario_000109",
+            "source_type": "multi-gauss",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0009466073404055021,
+            "dt_min": 0.0004861633339781901,
+            "end_time": 0.17742601421840057,
+            "max_abs_eta": 0.0032158552287184783,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0010014622469332046,
+            "max_velocity_or_eta_t": 0.008171836861808439,
+            "min_h": 0.7500102210281572,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.4721404214991855,
+            "sample_id": "sample_000109",
+            "scenario_id": "scenario_000109",
+            "source_type": "multi-gauss",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0004732887954008268,
+            "dt_min": 0.0004701766480317837,
+            "end_time": 0.17747116570192734,
+            "max_abs_eta": 0.00021592124144120817,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0001908278232951588,
+            "max_velocity_or_eta_t": 0.0015384601775938842,
+            "min_h": 0.7498278773036576,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.4468901323490522,
+            "sample_id": "sample_000218",
+            "scenario_id": "scenario_000218",
+            "source_type": "multi-gauss",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099037157320772,
+            "dt_min": 0.0007097404662839702,
+            "end_time": 0.17747116570192734,
+            "max_abs_eta": 0.00037663850482050343,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.0018649454945257867,
+            "min_h": 0.7496809047080502,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000218",
+            "scenario_id": "scenario_000218",
+            "source_type": "multi-gauss",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0009465388791157335,
+            "dt_min": 0.0003921223958252007,
+            "end_time": 0.17747116570192734,
+            "max_abs_eta": 1.541982270909834,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 1.5418625496191893,
+            "max_velocity_or_eta_t": 1.1399037909640652,
+            "min_h": 0.854827722652365,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 724.1922447991132,
+            "sample_id": "sample_000218",
+            "scenario_id": "scenario_000218",
+            "source_type": "multi-gauss",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0004732664086009964,
+            "dt_min": 0.0003572294154063349,
+            "end_time": 0.1770340398895293,
+            "max_abs_eta": 0.0005154471249166903,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0002139848677984446,
+            "max_velocity_or_eta_t": 0.0023357915156100115,
+            "min_h": 0.7500592708219868,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.323971885841186,
+            "sample_id": "sample_000326",
+            "scenario_id": "scenario_000326",
+            "source_type": "okada-like",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007098956545233213,
+            "dt_min": 0.0006946421068004032,
+            "end_time": 0.1770340398895293,
+            "max_abs_eta": 0.0006111635023184903,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.002915622280485971,
+            "min_h": 0.7501259085234809,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000326",
+            "scenario_id": "scenario_000326",
+            "source_type": "okada-like",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.000933283156629546,
+            "dt_min": 4.682141148817931e-05,
+            "end_time": 0.1770340398895293,
+            "max_abs_eta": 2.189021596257822,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 2.1889867572130797,
+            "max_velocity_or_eta_t": 3.492417409671761,
+            "min_h": 0.7499862955064679,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 464.23761636517844,
+            "sample_id": "sample_000326",
+            "scenario_id": "scenario_000326",
+            "source_type": "okada-like",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0004732739669675844,
+            "dt_min": 0.0004682016231930819,
+            "end_time": 0.177405547705185,
+            "max_abs_eta": 0.002073960894828586,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0008081555145253994,
+            "max_velocity_or_eta_t": 0.005615416768992381,
+            "min_h": 0.7499998816458388,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.3381455663076072,
+            "sample_id": "sample_000435",
+            "scenario_id": "scenario_000435",
+            "source_type": "dipole",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099103661903498,
+            "dt_min": 0.0007078746770799994,
+            "end_time": 0.177405547705185,
+            "max_abs_eta": 0.0026438139064410837,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.007257369798301162,
+            "min_h": 0.7500003358840646,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000435",
+            "scenario_id": "scenario_000435",
+            "source_type": "dipole",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0009465882392854651,
+            "dt_min": 0.0004727737707717894,
+            "end_time": 0.177405547705185,
+            "max_abs_eta": 0.0032294739314864263,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0008711105932115437,
+            "max_velocity_or_eta_t": 0.008475701949068668,
+            "min_h": 0.7500024228221845,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.3329641385942579,
+            "sample_id": "sample_000435",
+            "scenario_id": "scenario_000435",
+            "source_type": "dipole",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.00047326734950174057,
+            "dt_min": 0.00047007181495128947,
+            "end_time": 0.17746489854430406,
+            "max_abs_eta": 0.0006619372496123876,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0002779370207903753,
+            "max_velocity_or_eta_t": 0.0017718731013449537,
+            "min_h": 0.7499998611590262,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.3769400921956977,
+            "sample_id": "sample_000544",
+            "scenario_id": "scenario_000544",
+            "source_type": "gaussian",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099028143446714,
+            "dt_min": 0.0007097606894369571,
+            "end_time": 0.17746489854430406,
+            "max_abs_eta": 0.0007880107809665748,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.002062310960940494,
+            "min_h": 0.7499998506403718,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000544",
+            "scenario_id": "scenario_000544",
+            "source_type": "gaussian",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0009465409660413209,
+            "dt_min": 0.00047563438372932865,
+            "end_time": 0.17746489854430406,
+            "max_abs_eta": 0.0008889277285681896,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0002791553076373354,
+            "max_velocity_or_eta_t": 0.002259902417581513,
+            "min_h": 0.7499998388191661,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.3710847157118988,
+            "sample_id": "sample_000544",
+            "scenario_id": "scenario_000544",
+            "source_type": "gaussian",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0004732676627482997,
+            "dt_min": 0.0004659678076468776,
+            "end_time": 0.1774554826822944,
+            "max_abs_eta": 4.5326640731535583e-05,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 3.107383397593644e-05,
+            "max_velocity_or_eta_t": 7.76569358403042e-05,
+            "min_h": 0.7500426831707603,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.48010388121806047,
+            "sample_id": "sample_000652",
+            "scenario_id": "scenario_000652",
+            "source_type": "rough",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099017914058804,
+            "dt_min": 0.0007058693607291494,
+            "end_time": 0.1774554826822944,
+            "max_abs_eta": 7.266643015646501e-05,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.00010018640032172806,
+            "min_h": 0.7500719653662852,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000652",
+            "scenario_id": "scenario_000652",
+            "source_type": "rough",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.000941993962248899,
+            "dt_min": 0.0001725366203790546,
+            "end_time": 0.1774554826822944,
+            "max_abs_eta": 2.13965402708582,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 2.1396196686442135,
+            "max_velocity_or_eta_t": 2.612811510751106,
+            "min_h": 0.7481373566126758,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 4276.973716204457,
+            "sample_id": "sample_000652",
+            "scenario_id": "scenario_000652",
+            "source_type": "rough",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0004732676862699937,
+            "dt_min": 0.00046963036092026456,
+            "end_time": 0.1774675518810413,
+            "max_abs_eta": 4.6962715011034106e-05,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 9.00832203143409e-05,
+            "max_velocity_or_eta_t": 0.00010808477571100519,
+            "min_h": 0.7499902288065861,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.6400622997229587,
+            "sample_id": "sample_000761",
+            "scenario_id": "scenario_000761",
+            "source_type": "dipole",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.000709902468264545,
+            "dt_min": 0.0007085869251110504,
+            "end_time": 0.1774675518810413,
+            "max_abs_eta": 0.00013163905913771146,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.000128392222864176,
+            "min_h": 0.7499843881642598,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000761",
+            "scenario_id": "scenario_000761",
+            "source_type": "dipole",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0009465387510768552,
+            "dt_min": 0.00011422663019694523,
+            "end_time": 0.1774675518810413,
+            "max_abs_eta": 2.785300714688823,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 2.7852764790177034,
+            "max_velocity_or_eta_t": 3.654496146288513,
+            "min_h": 0.7471065919036135,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 2750.3085242216916,
+            "sample_id": "sample_000761",
+            "scenario_id": "scenario_000761",
+            "source_type": "dipole",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.000473261461156213,
+            "dt_min": 0.0004711408945769213,
+            "end_time": 0.17745485106974754,
+            "max_abs_eta": 0.00022760339140537322,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 9.662459591341932e-05,
+            "max_velocity_or_eta_t": 0.0006434514658767117,
+            "min_h": 0.7499998632719589,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.31571236322082463,
+            "sample_id": "sample_000870",
+            "scenario_id": "scenario_000870",
+            "source_type": "fault",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007098896584146318,
+            "dt_min": 0.000707898195891278,
+            "end_time": 0.17745485106974754,
+            "max_abs_eta": 0.000285569694083887,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.0008751705650595155,
+            "min_h": 0.7499999096048755,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000870",
+            "scenario_id": "scenario_000870",
+            "source_type": "fault",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0009465168332648288,
+            "dt_min": 0.0004748447703679659,
+            "end_time": 0.17745485106974754,
+            "max_abs_eta": 0.0003263437649382306,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 8.576197479459591e-05,
+            "max_velocity_or_eta_t": 0.0011175848303726392,
+            "min_h": 0.7500002100971224,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.2843364223411786,
+            "sample_id": "sample_000870",
+            "scenario_id": "scenario_000870",
+            "source_type": "fault",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.00047331125468378905,
+            "dt_min": 0.0004729053336578193,
+            "end_time": 0.17747480211717226,
+            "max_abs_eta": 1.7529294508378257e-05,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 2.0246226382414356e-05,
+            "max_velocity_or_eta_t": 0.0001052776544066317,
+            "min_h": 0.7499844582158696,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.5411374682263499,
+            "sample_id": "sample_000978",
+            "scenario_id": "scenario_000978",
+            "source_type": "fault",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099668820256836,
+            "dt_min": 0.0007098480840469031,
+            "end_time": 0.17747480211717226,
+            "max_abs_eta": 3.565049161258216e-05,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.00015399079470635948,
+            "min_h": 0.7499642119894872,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000978",
+            "scenario_id": "scenario_000978",
+            "source_type": "fault",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0009466225093675781,
+            "dt_min": 0.0004485862831618938,
+            "end_time": 0.17747480211717226,
+            "max_abs_eta": 1.6828292656369435,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 1.68282514948881,
+            "max_velocity_or_eta_t": 1.8228589005289562,
+            "min_h": 0.7494531705709371,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 5946.770618071008,
+            "sample_id": "sample_000978",
+            "scenario_id": "scenario_000978",
+            "source_type": "fault",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0004733693464652077,
+            "dt_min": 0.00040777705093419936,
+            "end_time": 0.17674174871720763,
+            "max_abs_eta": 0.011303252008496356,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.005379855214099338,
+            "max_velocity_or_eta_t": 0.03778792758229609,
+            "min_h": 0.7500000859630503,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.3175656078289614,
+            "sample_id": "sample_001087",
+            "scenario_id": "scenario_001087",
+            "source_type": "okada-like",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007100705740489966,
+            "dt_min": 0.0007049334011199426,
+            "end_time": 0.17674174871720763,
+            "max_abs_eta": 0.01470731663830871,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.0422235762612885,
+            "min_h": 0.7500042277973603,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_001087",
+            "scenario_id": "scenario_001087",
+            "source_type": "okada-like",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0009467842974824006,
+            "dt_min": 0.0005245646776473878,
+            "end_time": 0.17674174871720763,
+            "max_abs_eta": 0.01796205409616136,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.004426577823296363,
+            "max_velocity_or_eta_t": 0.04468777497233821,
+            "min_h": 0.75002178610006,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.2869855353753081,
+            "sample_id": "sample_001087",
+            "scenario_id": "scenario_001087",
+            "source_type": "okada-like",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0004732903974112245,
+            "dt_min": 0.00046510886025127873,
+            "end_time": 0.17745334638787444,
+            "max_abs_eta": 4.9549426391681806e-05,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 3.9665748842621085e-05,
+            "max_velocity_or_eta_t": 0.00012298409729932463,
+            "min_h": 0.7500477947988249,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.4682743410405205,
+            "sample_id": "sample_001196",
+            "scenario_id": "scenario_001196",
+            "source_type": "rough",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007100313426571385,
+            "dt_min": 0.0007047388931426241,
+            "end_time": 0.17745334638787444,
+            "max_abs_eta": 8.812734734853223e-05,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.00019642352004581567,
+            "min_h": 0.7500874605476675,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_001196",
+            "scenario_id": "scenario_001196",
+            "source_type": "rough",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0009424530193061746,
+            "dt_min": 0.00014789131750683748,
+            "end_time": 0.17745334638787444,
+            "max_abs_eta": 2.9373500971506328,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 2.937396570637844,
+            "max_velocity_or_eta_t": 3.2397519094204443,
+            "min_h": 0.7447563713370116,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 3290.7714617993465,
+            "sample_id": "sample_001196",
+            "scenario_id": "scenario_001196",
+            "source_type": "rough",
+            "target_cfl": 0.6
+          }
+        ]
+      },
+      "swe_muscl_hr": {
+        "by_cfl": {
+          "0.30": {
+            "end_time": {
+              "count": 12,
+              "max": 0.1774748099890923,
+              "mean": 0.1773113185217724,
+              "median": 0.17745285022462026,
+              "min": 0.17662706236861617
+            },
+            "finite_pass_fraction": 1.0,
+            "max_abs_eta": {
+              "count": 12,
+              "max": 0.01967096790324041,
+              "mean": 0.0027434390755893454,
+              "median": 0.0005821107178682894,
+              "min": 6.386471649588721e-05
+            },
+            "max_abs_final_eta_diff_vs_cfl_0_45": {
+              "count": 12,
+              "max": 0.010398383825472424,
+              "mean": 0.0014177685367498343,
+              "median": 0.0002698080312456552,
+              "min": 2.3364753456434073e-05
+            },
+            "max_velocity_or_eta_t": {
+              "count": 12,
+              "max": 0.060224061403588915,
+              "mean": 0.008123553447549087,
+              "median": 0.0025978417315291828,
+              "min": 0.0002163745868020624
+            },
+            "num_samples": 12,
+            "rel_l2_final_eta_vs_cfl_0_45": {
+              "count": 12,
+              "max": 0.5752850782721212,
+              "mean": 0.4018809144097613,
+              "median": 0.4142564907115175,
+              "min": 0.25344526640362514
+            }
+          },
+          "0.45": {
+            "end_time": {
+              "count": 12,
+              "max": 0.1774748099890923,
+              "mean": 0.1773113185217724,
+              "median": 0.17745285022462026,
+              "min": 0.17662706236861617
+            },
+            "finite_pass_fraction": 1.0,
+            "max_abs_eta": {
+              "count": 12,
+              "max": 0.022561831730945614,
+              "mean": 0.0032844925931271216,
+              "median": 0.0005797954528597993,
+              "min": 7.898999025535147e-05
+            },
+            "max_abs_final_eta_diff_vs_cfl_0_45": {
+              "count": 12,
+              "max": 0.0,
+              "mean": 0.0,
+              "median": 0.0,
+              "min": 0.0
+            },
+            "max_velocity_or_eta_t": {
+              "count": 12,
+              "max": 0.05957387328778293,
+              "mean": 0.008840630744491228,
+              "median": 0.0032464994957856876,
+              "min": 0.0002704967882414589
+            },
+            "num_samples": 12,
+            "rel_l2_final_eta_vs_cfl_0_45": {
+              "count": 12,
+              "max": 0.0,
+              "mean": 0.0,
+              "median": 0.0,
+              "min": 0.0
+            }
+          },
+          "0.60": {
+            "end_time": {
+              "count": 12,
+              "max": 0.1774748099890923,
+              "mean": 0.1773113185217724,
+              "median": 0.17745285022462026,
+              "min": 0.17662706236861617
+            },
+            "finite_pass_fraction": 1.0,
+            "max_abs_eta": {
+              "count": 12,
+              "max": 3.1764980623977124,
+              "mean": 1.3014415079504684,
+              "median": 1.607271095528274,
+              "min": 0.0005608325609631759
+            },
+            "max_abs_final_eta_diff_vs_cfl_0_45": {
+              "count": 12,
+              "max": 3.176503220596956,
+              "mean": 1.2989473537990848,
+              "median": 1.6070555142578948,
+              "min": 0.00012025726779552048
+            },
+            "max_velocity_or_eta_t": {
+              "count": 12,
+              "max": 4.556128173209684,
+              "mean": 1.8131194567180264,
+              "median": 2.175394966356137,
+              "min": 0.0017886094846426238
+            },
+            "num_samples": 12,
+            "rel_l2_final_eta_vs_cfl_0_45": {
+              "count": 12,
+              "max": 5815.936844722385,
+              "mean": 1072.6362679620809,
+              "median": 229.5668396969602,
+              "min": 0.2723803658583857
+            }
+          }
+        },
+        "rows": [
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.00047326762068245463,
+            "dt_min": 0.0004174424598305526,
+            "end_time": 0.1772912937697953,
+            "max_abs_eta": 0.0006474079959772894,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0002671529682718443,
+            "max_velocity_or_eta_t": 0.0027749938078926004,
+            "min_h": 0.750124058469854,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.47737724277990473,
+            "sample_id": "sample_000001",
+            "scenario_id": "scenario_000001",
+            "source_type": "okada-like",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007099008880466745,
+            "dt_min": 0.0006929880423873879,
+            "end_time": 0.1772912937697953,
+            "max_abs_eta": 0.0006469063334915148,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.0038106620475747434,
+            "min_h": 0.7503231952203258,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000001",
+            "scenario_id": "scenario_000001",
+            "source_type": "okada-like",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0009441636798354558,
+            "dt_min": 0.00024485602206550383,
+            "end_time": 0.1772912937697953,
+            "max_abs_eta": 1.7254258815002181,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 1.7250019274536683,
+            "max_velocity_or_eta_t": 2.8248828921802605,
+            "min_h": 0.7541746891109073,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 282.528518646814,
+            "sample_id": "sample_000001",
+            "scenario_id": "scenario_000001",
+            "source_type": "okada-like",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.00047330367020275105,
+            "dt_min": 0.00045508388515089204,
+            "end_time": 0.17741304256552498,
+            "max_abs_eta": 0.00309193314013112,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.00269570944027131,
+            "max_velocity_or_eta_t": 0.007235257165157723,
+            "min_h": 0.7500000086572741,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.4691192824518296,
+            "sample_id": "sample_000109",
+            "scenario_id": "scenario_000109",
+            "source_type": "multi-gauss",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0007099555053041266,
+            "dt_min": 0.0007092972961957436,
+            "end_time": 0.17741304256552498,
+            "max_abs_eta": 0.00471223401160259,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.009582600755954105,
+            "min_h": 0.7500036267632276,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000109",
+            "scenario_id": "scenario_000109",
+            "source_type": "multi-gauss",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0009466073404055021,
+            "dt_min": 0.0004889296222569395,
+            "end_time": 0.17741304256552498,
+            "max_abs_eta": 0.00620047166134885,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0024152823207868046,
+            "max_velocity_or_eta_t": 0.012188367964391938,
+            "min_h": 0.7500198993027211,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.444497230378098,
+            "sample_id": "sample_000109",
+            "scenario_id": "scenario_000109",
+            "source_type": "multi-gauss",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.00047328975021072953,
+            "dt_min": 0.00046955911622847957,
+            "end_time": 0.17747056814964005,
+            "max_abs_eta": 0.0005168134397592894,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.00027246309421946613,
+            "max_velocity_or_eta_t": 0.002420689655165765,
+            "min_h": 0.750169422092813,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.4283204680710938,
+            "sample_id": "sample_000218",
+            "scenario_id": "scenario_000218",
+            "source_type": "multi-gauss",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099032467308266,
+            "dt_min": 0.0007094902364390436,
+            "end_time": 0.17747056814964005,
+            "max_abs_eta": 0.0004827405230294346,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.002882990049975555,
+            "min_h": 0.7498969589985935,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000218",
+            "scenario_id": "scenario_000218",
+            "source_type": "multi-gauss",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0009465392301779536,
+            "dt_min": 0.0004814213541830503,
+            "end_time": 0.17747056814964005,
+            "max_abs_eta": 2.726019111116317,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 2.725971489633821,
+            "max_velocity_or_eta_t": 3.675781157969582,
+            "min_h": 0.8209727634484861,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 751.8077864992991,
+            "sample_id": "sample_000218",
+            "scenario_id": "scenario_000218",
+            "source_type": "multi-gauss",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.00047326548742986384,
+            "dt_min": 0.0003848465247569821,
+            "end_time": 0.17676606830303962,
+            "max_abs_eta": 0.0012965365599910683,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.00028251904796450233,
+            "max_velocity_or_eta_t": 0.006806690561893865,
+            "min_h": 0.7501286681716085,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.25344526640362514,
+            "sample_id": "sample_000326",
+            "scenario_id": "scenario_000326",
+            "source_type": "okada-like",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007098931810326512,
+            "dt_min": 0.0006931970948717421,
+            "end_time": 0.17676606830303962,
+            "max_abs_eta": 0.0014970054072431793,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.007675061949684318,
+            "min_h": 0.7502719483804821,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000326",
+            "scenario_id": "scenario_000326",
+            "source_type": "okada-like",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0009285394786149421,
+            "dt_min": 0.0004183342278862856,
+            "end_time": 0.17676606830303962,
+            "max_abs_eta": 1.734994488617569,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 1.7348396760336042,
+            "max_velocity_or_eta_t": 1.8464937038868885,
+            "min_h": 0.7510495732535504,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 176.60516074710637,
+            "sample_id": "sample_000326",
+            "scenario_id": "scenario_000326",
+            "source_type": "okada-like",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0004732706449799012,
+            "dt_min": 0.00047191648993230665,
+            "end_time": 0.17740907317110796,
+            "max_abs_eta": 0.005738993021184191,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.001961724764185213,
+            "max_velocity_or_eta_t": 0.01262140348868423,
+            "min_h": 0.7499998707712431,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.31904206706685795,
+            "sample_id": "sample_000435",
+            "scenario_id": "scenario_000435",
+            "source_type": "dipole",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099082067180002,
+            "dt_min": 0.0007074328117103156,
+            "end_time": 0.17740907317110796,
+            "max_abs_eta": 0.006934795132970795,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.015967182526046297,
+            "min_h": 0.7500003126182978,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000435",
+            "scenario_id": "scenario_000435",
+            "source_type": "dipole",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0009465379024561922,
+            "dt_min": 0.0004775849020999534,
+            "end_time": 0.17740907317110796,
+            "max_abs_eta": 0.00804972676639748,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0016598415807200784,
+            "max_velocity_or_eta_t": 0.01900571052180229,
+            "min_h": 0.7500027016168253,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.2723803658583857,
+            "sample_id": "sample_000435",
+            "scenario_id": "scenario_000435",
+            "source_type": "dipole",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0004732671977442177,
+            "dt_min": 0.00046939962036299243,
+            "end_time": 0.17746225315260353,
+            "max_abs_eta": 0.0010831475850641148,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0006290619797513219,
+            "max_velocity_or_eta_t": 0.0029029256103832975,
+            "min_h": 0.749999861115607,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.4001925133519412,
+            "sample_id": "sample_000544",
+            "scenario_id": "scenario_000544",
+            "source_type": "gaussian",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099007529943326,
+            "dt_min": 0.0007097440297358818,
+            "end_time": 0.17746225315260353,
+            "max_abs_eta": 0.0013987715127710132,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.00361000894159582,
+            "min_h": 0.7499998324405049,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000544",
+            "scenario_id": "scenario_000544",
+            "source_type": "gaussian",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0009465383174661514,
+            "dt_min": 0.0004759095377371847,
+            "end_time": 0.17746225315260353,
+            "max_abs_eta": 0.001714884660106053,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0005530796005563943,
+            "max_velocity_or_eta_t": 0.0044861497478369625,
+            "min_h": 0.74999969937348,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.35364544926388247,
+            "sample_id": "sample_000544",
+            "scenario_id": "scenario_000544",
+            "source_type": "gaussian",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0004732676371016392,
+            "dt_min": 0.00046671437336306965,
+            "end_time": 0.1774550434754974,
+            "max_abs_eta": 8.691192083709609e-05,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 4.271369089536847e-05,
+            "max_velocity_or_eta_t": 0.0002777525773293055,
+            "min_h": 0.7500075714756766,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.4288798766667177,
+            "sample_id": "sample_000652",
+            "scenario_id": "scenario_000652",
+            "source_type": "rough",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099017318607694,
+            "dt_min": 0.0007058693607291494,
+            "end_time": 0.1774550434754974,
+            "max_abs_eta": 8.355733861442616e-05,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.00035878281834239394,
+            "min_h": 0.7500347886730004,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000652",
+            "scenario_id": "scenario_000652",
+            "source_type": "rough",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0009438325804973366,
+            "dt_min": 0.00032315273681296497,
+            "end_time": 0.1774550434754974,
+            "max_abs_eta": 2.2341342240827426,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 2.234182256881086,
+            "max_velocity_or_eta_t": 2.589656942364722,
+            "min_h": 0.7887855470407934,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 3148.43366161375,
+            "sample_id": "sample_000652",
+            "scenario_id": "scenario_000652",
+            "source_type": "rough",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.00047326768915390216,
+            "dt_min": 0.0004695168152807905,
+            "end_time": 0.1774609068671109,
+            "max_abs_eta": 0.00021251860702875547,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.00023773590718789706,
+            "max_velocity_or_eta_t": 0.0003645873267712844,
+            "min_h": 0.7499797143354624,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.5752850782721212,
+            "sample_id": "sample_000761",
+            "scenario_id": "scenario_000761",
+            "source_type": "dipole",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007099020816376274,
+            "dt_min": 0.0007077133994703768,
+            "end_time": 0.1774609068671109,
+            "max_abs_eta": 0.00040076993568050057,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.0003826727504583854,
+            "min_h": 0.7499689165073158,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000761",
+            "scenario_id": "scenario_000761",
+            "source_type": "dipole",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0009465265284221312,
+            "dt_min": 4.094052061057174e-05,
+            "end_time": 0.1774609068671109,
+            "max_abs_eta": 2.4891801161077796,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 2.489215477691558,
+            "max_velocity_or_eta_t": 3.6593467540717133,
+            "min_h": 0.7389599521617467,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 1135.3069927718657,
+            "sample_id": "sample_000761",
+            "scenario_id": "scenario_000761",
+            "source_type": "dipole",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0004732633747151521,
+            "dt_min": 0.0004711933751222752,
+            "end_time": 0.1774539385495935,
+            "max_abs_eta": 0.00041181399282186337,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.00014759217981952233,
+            "max_velocity_or_eta_t": 0.0010730588561106097,
+            "min_h": 0.7499998631103846,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.3374665437400349,
+            "sample_id": "sample_000870",
+            "scenario_id": "scenario_000870",
+            "source_type": "fault",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007098873536097124,
+            "dt_min": 0.000707942645422111,
+            "end_time": 0.1774539385495935,
+            "max_abs_eta": 0.0005126845722280837,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.0014105116506017295,
+            "min_h": 0.7499999072792894,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000870",
+            "scenario_id": "scenario_000870",
+            "source_type": "fault",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0009465125707556181,
+            "dt_min": 0.0004742881117268116,
+            "end_time": 0.1774539385495935,
+            "max_abs_eta": 0.0005608325609631759,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.00012025726779552048,
+            "max_velocity_or_eta_t": 0.0017886094846426238,
+            "min_h": 0.7500002261995131,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.28257776629105846,
+            "sample_id": "sample_000870",
+            "scenario_id": "scenario_000870",
+            "source_type": "fault",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.00047331125468378905,
+            "dt_min": 0.0004728766259887718,
+            "end_time": 0.1774748099890923,
+            "max_abs_eta": 6.386471649588721e-05,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 2.3364753456434073e-05,
+            "max_velocity_or_eta_t": 0.0002163745868020624,
+            "min_h": 0.750062759725294,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.335224870540407,
+            "sample_id": "sample_000978",
+            "scenario_id": "scenario_000978",
+            "source_type": "fault",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099668820256836,
+            "dt_min": 0.0007098487378050366,
+            "end_time": 0.1774748099890923,
+            "max_abs_eta": 7.898999025535147e-05,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.0002704967882414589,
+            "min_h": 0.7500764281082983,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_000978",
+            "scenario_id": "scenario_000978",
+            "source_type": "fault",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0009466225093675781,
+            "dt_min": 6.986601091416023e-05,
+            "end_time": 0.1774748099890923,
+            "max_abs_eta": 3.1764980623977124,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 3.176503220596956,
+            "max_velocity_or_eta_t": 4.556128173209684,
+            "min_h": 0.7544509728018947,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 5815.936844722385,
+            "sample_id": "sample_000978",
+            "scenario_id": "scenario_000978",
+            "source_type": "fault",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.00047335483082727405,
+            "dt_min": 0.0004032011753025977,
+            "end_time": 0.17662706236861617,
+            "max_abs_eta": 0.01967096790324041,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.010398383825472424,
+            "max_velocity_or_eta_t": 0.060224061403588915,
+            "min_h": 0.7499999000707886,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.3363240362237278,
+            "sample_id": "sample_001087",
+            "scenario_id": "scenario_001087",
+            "source_type": "okada-like",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007100751340569975,
+            "dt_min": 0.0007040026944880244,
+            "end_time": 0.17662706236861617,
+            "max_abs_eta": 0.022561831730945614,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.05957387328778293,
+            "min_h": 0.7500015282830257,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_001087",
+            "scenario_id": "scenario_001087",
+            "source_type": "okada-like",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0009468284492492084,
+            "dt_min": 0.0005271844445618179,
+            "end_time": 0.17662706236861617,
+            "max_abs_eta": 0.025403986378137455,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.007796635466342794,
+            "max_velocity_or_eta_t": 0.06337879038940845,
+            "min_h": 0.7500121891367384,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.27986504707415333,
+            "sample_id": "sample_001087",
+            "scenario_id": "scenario_001087",
+            "source_type": "okada-like",
+            "target_cfl": 0.6
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0004732819447088434,
+            "dt_min": 0.0004652974019909162,
+            "end_time": 0.17745176189964706,
+            "max_abs_eta": 0.00010036002454105741,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 5.480078950270695e-05,
+            "max_velocity_or_eta_t": 0.000564846330809394,
+            "min_h": 0.749912051681906,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.46189372734887535,
+            "sample_id": "sample_001196",
+            "scenario_id": "scenario_001196",
+            "source_type": "rough",
+            "target_cfl": 0.3
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099078710477496,
+            "dt_min": 0.0007047388931426241,
+            "end_time": 0.17745176189964706,
+            "max_abs_eta": 0.00010362462869295541,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 0.0,
+            "max_velocity_or_eta_t": 0.0005627253676369948,
+            "min_h": 0.7499105863390279,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 0.0,
+            "sample_id": "sample_001196",
+            "scenario_id": "scenario_001196",
+            "source_type": "rough",
+            "target_cfl": 0.45
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0009450556093959537,
+            "dt_min": 0.0002425964504721989,
+            "end_time": 0.17745176189964706,
+            "max_abs_eta": 1.48911630955633,
+            "max_abs_final_eta_diff_vs_cfl_0_45": 1.4891091010621214,
+            "max_velocity_or_eta_t": 2.504296228825386,
+            "min_h": 0.7470014183120051,
+            "ok": true,
+            "rel_l2_final_eta_vs_cfl_0_45": 1559.3832846848834,
+            "sample_id": "sample_001196",
+            "scenario_id": "scenario_001196",
+            "source_type": "rough",
+            "target_cfl": 0.6
+          }
+        ]
+      }
+    },
+    "cfl_values": [
+      0.3,
+      0.45,
+      0.6
+    ],
+    "check": "cfl_sensitivity",
+    "n_steps": 250,
+    "solver_setup": {
+      "boundary": "open",
+      "note": "Uses default paper boundary/sponge settings and compares final eta against CFL 0.45 at matched physical end time.",
+      "use_sponge": true
+    }
+  },
+  "config_path": "configs/data/dataset.yaml",
+  "conservation": {
+    "by_solver": {
+      "swe_hydrostatic": {
+        "finite_pass_fraction": 1.0,
+        "free_surface_integral_abs_change_max": 3.2298382718343177e-16,
+        "mass_relative_change_max": 2.574214063554703e-16,
+        "num_samples": 24,
+        "rows": [
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007107421447035454,
+            "dt_min": 0.0006913845213283684,
+            "free_surface_integral_abs_change_max": 1.5959455978986625e-16,
+            "mass_relative_change_max": 2.0423428426435657e-16,
+            "ok": true,
+            "sample_id": "sample_000001",
+            "scenario_id": "scenario_000001",
+            "source_type": "okada-like"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0007099555053041266,
+            "dt_min": 0.0007077595254571525,
+            "free_surface_integral_abs_change_max": 1.3357370765021415e-16,
+            "mass_relative_change_max": 1.3408763699969303e-16,
+            "ok": true,
+            "sample_id": "sample_000109",
+            "scenario_id": "scenario_000109",
+            "source_type": "multi-gauss"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.000710267121324927,
+            "dt_min": 0.0007059881541418572,
+            "free_surface_integral_abs_change_max": 1.3183898417423734e-16,
+            "mass_relative_change_max": 1.8859009160144935e-16,
+            "ok": true,
+            "sample_id": "sample_000218",
+            "scenario_id": "scenario_000218",
+            "source_type": "multi-gauss"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007080478979728188,
+            "dt_min": 0.0006934161025370758,
+            "free_surface_integral_abs_change_max": 1.3877787807814457e-16,
+            "mass_relative_change_max": 1.9070505782179004e-16,
+            "ok": true,
+            "sample_id": "sample_000326",
+            "scenario_id": "scenario_000326",
+            "source_type": "okada-like"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007098706034773046,
+            "dt_min": 0.0007070284879146786,
+            "free_surface_integral_abs_change_max": 4.529254575558195e-17,
+            "mass_relative_change_max": 1.393588373923897e-16,
+            "ok": true,
+            "sample_id": "sample_000435",
+            "scenario_id": "scenario_000435",
+            "source_type": "dipole"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099347653161044,
+            "dt_min": 0.0007096357979402886,
+            "free_surface_integral_abs_change_max": 2.1250362580715887e-17,
+            "mass_relative_change_max": 1.3250951857033986e-16,
+            "ok": true,
+            "sample_id": "sample_000544",
+            "scenario_id": "scenario_000544",
+            "source_type": "gaussian"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007106808295305846,
+            "dt_min": 0.0007058693607291494,
+            "free_surface_integral_abs_change_max": 1.9255430583342559e-16,
+            "mass_relative_change_max": 1.8885622372848798e-16,
+            "ok": true,
+            "sample_id": "sample_000652",
+            "scenario_id": "scenario_000652",
+            "source_type": "rough"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007101389655254791,
+            "dt_min": 0.0007065009290491682,
+            "free_surface_integral_abs_change_max": 1.4861701279345052e-16,
+            "mass_relative_change_max": 1.2085994682389847e-16,
+            "ok": true,
+            "sample_id": "sample_000761",
+            "scenario_id": "scenario_000761",
+            "source_type": "dipole"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099297296855262,
+            "dt_min": 0.000707880088595695,
+            "free_surface_integral_abs_change_max": 2.8406096919120216e-17,
+            "mass_relative_change_max": 1.5143080175402175e-16,
+            "ok": true,
+            "sample_id": "sample_000870",
+            "scenario_id": "scenario_000870",
+            "source_type": "fault"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099668820256836,
+            "dt_min": 0.0007095636336394829,
+            "free_surface_integral_abs_change_max": 2.5543803183758484e-16,
+            "mass_relative_change_max": 1.965697732879006e-16,
+            "ok": true,
+            "sample_id": "sample_000978",
+            "scenario_id": "scenario_000978",
+            "source_type": "fault"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007080481164608812,
+            "dt_min": 0.0007025491074924379,
+            "free_surface_integral_abs_change_max": 4.163336342344337e-17,
+            "mass_relative_change_max": 1.2761884595482644e-16,
+            "ok": true,
+            "sample_id": "sample_001087",
+            "scenario_id": "scenario_001087",
+            "source_type": "okada-like"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007104121394161184,
+            "dt_min": 0.0007047070578805352,
+            "free_surface_integral_abs_change_max": 1.3248950547772864e-16,
+            "mass_relative_change_max": 1.9719609264736917e-16,
+            "ok": true,
+            "sample_id": "sample_001196",
+            "scenario_id": "scenario_001196",
+            "source_type": "rough"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099406080433738,
+            "dt_min": 0.0007094346602355884,
+            "free_surface_integral_abs_change_max": 3.2298382718343177e-16,
+            "mass_relative_change_max": 1.9352248897815522e-16,
+            "ok": true,
+            "sample_id": "sample_001304",
+            "scenario_id": "scenario_001304",
+            "source_type": "fault"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007103741143953409,
+            "dt_min": 0.0007039880274919382,
+            "free_surface_integral_abs_change_max": 8.673617379884035e-17,
+            "mass_relative_change_max": 1.8843109709091023e-16,
+            "ok": true,
+            "sample_id": "sample_001413",
+            "scenario_id": "scenario_001413",
+            "source_type": "rough"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0007095014027143378,
+            "dt_min": 0.0007072242010477192,
+            "free_surface_integral_abs_change_max": 3.469446951953614e-17,
+            "mass_relative_change_max": 1.2972813765457594e-16,
+            "ok": true,
+            "sample_id": "sample_001522",
+            "scenario_id": "scenario_001522",
+            "source_type": "fault"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007098847516665389,
+            "dt_min": 0.0007086686444194942,
+            "free_surface_integral_abs_change_max": 2.2724877535296173e-16,
+            "mass_relative_change_max": 1.2204412539852743e-16,
+            "ok": true,
+            "sample_id": "sample_001630",
+            "scenario_id": "scenario_001630",
+            "source_type": "okada-like"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007110138727761176,
+            "dt_min": 0.0007057652902896299,
+            "free_surface_integral_abs_change_max": 1.7520707107365752e-16,
+            "mass_relative_change_max": 1.198725200944006e-16,
+            "ok": true,
+            "sample_id": "sample_001739",
+            "scenario_id": "scenario_001739",
+            "source_type": "dipole"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007101254801287975,
+            "dt_min": 0.0007096226209127544,
+            "free_surface_integral_abs_change_max": 2.0155318386505527e-16,
+            "mass_relative_change_max": 1.9873447679626489e-16,
+            "ok": true,
+            "sample_id": "sample_001848",
+            "scenario_id": "scenario_001848",
+            "source_type": "gaussian"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007101512955088371,
+            "dt_min": 0.0007071554752716662,
+            "free_surface_integral_abs_change_max": 2.7517051137682103e-16,
+            "mass_relative_change_max": 1.9147689830218193e-16,
+            "ok": true,
+            "sample_id": "sample_001956",
+            "scenario_id": "scenario_001956",
+            "source_type": "dipole"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007124618648358047,
+            "dt_min": 0.0007085481605427368,
+            "free_surface_integral_abs_change_max": 1.74122868901172e-16,
+            "mass_relative_change_max": 1.9725555908465413e-16,
+            "ok": true,
+            "sample_id": "sample_002065",
+            "scenario_id": "scenario_002065",
+            "source_type": "dipole"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099042677169674,
+            "dt_min": 0.0007083839657542358,
+            "free_surface_integral_abs_change_max": 2.38524477946811e-16,
+            "mass_relative_change_max": 1.8895024021441326e-16,
+            "ok": true,
+            "sample_id": "sample_002174",
+            "scenario_id": "scenario_002174",
+            "source_type": "gaussian"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007100128943147762,
+            "dt_min": 0.000709708566627577,
+            "free_surface_integral_abs_change_max": 1.3175766901130093e-16,
+            "mass_relative_change_max": 2.4548088265694263e-16,
+            "ok": true,
+            "sample_id": "sample_002282",
+            "scenario_id": "scenario_002282",
+            "source_type": "dipole"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0007099381026870952,
+            "dt_min": 0.0007060995076635098,
+            "free_surface_integral_abs_change_max": 3.122502256758253e-17,
+            "mass_relative_change_max": 1.2441689417566153e-16,
+            "ok": true,
+            "sample_id": "sample_002391",
+            "scenario_id": "scenario_002391",
+            "source_type": "multi-gauss"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007098197379097806,
+            "dt_min": 0.000702977679209239,
+            "free_surface_integral_abs_change_max": 2.8449465006019636e-16,
+            "mass_relative_change_max": 2.574214063554703e-16,
+            "ok": true,
+            "sample_id": "sample_002500",
+            "scenario_id": "scenario_002500",
+            "source_type": "gaussian"
+          }
+        ]
+      },
+      "swe_muscl_hr": {
+        "finite_pass_fraction": 1.0,
+        "free_surface_integral_abs_change_max": 3.222248856626919e-16,
+        "mass_relative_change_max": 2.594562753091519e-16,
+        "num_samples": 24,
+        "rows": [
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007108336725156227,
+            "dt_min": 0.0006908805112998903,
+            "free_surface_integral_abs_change_max": 3.191891195797325e-16,
+            "mass_relative_change_max": 2.0423428426435657e-16,
+            "ok": true,
+            "sample_id": "sample_000001",
+            "scenario_id": "scenario_000001",
+            "source_type": "okada-like"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0007099555053041266,
+            "dt_min": 0.0007069738749330455,
+            "free_surface_integral_abs_change_max": 6.418476861114186e-17,
+            "mass_relative_change_max": 1.3408763699969303e-16,
+            "ok": true,
+            "sample_id": "sample_000109",
+            "scenario_id": "scenario_000109",
+            "source_type": "multi-gauss"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007097404662839702,
+            "dt_min": 0.000704616463127369,
+            "free_surface_integral_abs_change_max": 1.942890293094024e-16,
+            "mass_relative_change_max": 1.8859009160144935e-16,
+            "ok": true,
+            "sample_id": "sample_000218",
+            "scenario_id": "scenario_000218",
+            "source_type": "multi-gauss"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007063965441980328,
+            "dt_min": 0.0006917453172074181,
+            "free_surface_integral_abs_change_max": 1.4224732503009818e-16,
+            "mass_relative_change_max": 1.9070505782179004e-16,
+            "ok": true,
+            "sample_id": "sample_000326",
+            "scenario_id": "scenario_000326",
+            "source_type": "okada-like"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099335487773529,
+            "dt_min": 0.0007062452352127829,
+            "free_surface_integral_abs_change_max": 1.951563910473908e-17,
+            "mass_relative_change_max": 1.393588373923897e-16,
+            "ok": true,
+            "sample_id": "sample_000435",
+            "scenario_id": "scenario_000435",
+            "source_type": "dipole"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099434556010327,
+            "dt_min": 0.000709537761315822,
+            "free_surface_integral_abs_change_max": 3.2959746043559335e-17,
+            "mass_relative_change_max": 1.3250951857033986e-16,
+            "ok": true,
+            "sample_id": "sample_000544",
+            "scenario_id": "scenario_000544",
+            "source_type": "gaussian"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.000710671339197476,
+            "dt_min": 0.0007058693607291494,
+            "free_surface_integral_abs_change_max": 1.3834419720915037e-16,
+            "mass_relative_change_max": 1.8885622372848798e-16,
+            "ok": true,
+            "sample_id": "sample_000652",
+            "scenario_id": "scenario_000652",
+            "source_type": "rough"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007100771029538196,
+            "dt_min": 0.0007041226899181175,
+            "free_surface_integral_abs_change_max": 1.9160562893250077e-16,
+            "mass_relative_change_max": 1.2085994682389847e-16,
+            "ok": true,
+            "sample_id": "sample_000761",
+            "scenario_id": "scenario_000761",
+            "source_type": "dipole"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099390478387391,
+            "dt_min": 0.000707942645422111,
+            "free_surface_integral_abs_change_max": 5.084908188957016e-17,
+            "mass_relative_change_max": 1.5143080175402175e-16,
+            "ok": true,
+            "sample_id": "sample_000870",
+            "scenario_id": "scenario_000870",
+            "source_type": "fault"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099668820256836,
+            "dt_min": 0.0007094466253392442,
+            "free_surface_integral_abs_change_max": 2.6085904270001237e-16,
+            "mass_relative_change_max": 1.965697732879006e-16,
+            "ok": true,
+            "sample_id": "sample_000978",
+            "scenario_id": "scenario_000978",
+            "source_type": "fault"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007080481164608812,
+            "dt_min": 0.0007011257826422972,
+            "free_surface_integral_abs_change_max": 4.163336342344337e-17,
+            "mass_relative_change_max": 1.2761884595482644e-16,
+            "ok": true,
+            "sample_id": "sample_001087",
+            "scenario_id": "scenario_001087",
+            "source_type": "okada-like"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007107845365717356,
+            "dt_min": 0.0007047388931426241,
+            "free_surface_integral_abs_change_max": 2.1499729080387553e-16,
+            "mass_relative_change_max": 1.9719609264736917e-16,
+            "ok": true,
+            "sample_id": "sample_001196",
+            "scenario_id": "scenario_001196",
+            "source_type": "rough"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099663367291781,
+            "dt_min": 0.0007093705230923244,
+            "free_surface_integral_abs_change_max": 1.3704315460216776e-16,
+            "mass_relative_change_max": 1.9352248897815522e-16,
+            "ok": true,
+            "sample_id": "sample_001304",
+            "scenario_id": "scenario_001304",
+            "source_type": "fault"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007104392100719597,
+            "dt_min": 0.0007039880274919382,
+            "free_surface_integral_abs_change_max": 2.1597307275911248e-16,
+            "mass_relative_change_max": 1.8843109709091023e-16,
+            "ok": true,
+            "sample_id": "sample_001413",
+            "scenario_id": "scenario_001413",
+            "source_type": "rough"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.000709611200576498,
+            "dt_min": 0.000706961746887715,
+            "free_surface_integral_abs_change_max": 4.163336342344337e-17,
+            "mass_relative_change_max": 2.594562753091519e-16,
+            "ok": true,
+            "sample_id": "sample_001522",
+            "scenario_id": "scenario_001522",
+            "source_type": "fault"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007098847516665389,
+            "dt_min": 0.0007086166403961089,
+            "free_surface_integral_abs_change_max": 1.3704315460216776e-16,
+            "mass_relative_change_max": 1.2204412539852743e-16,
+            "ok": true,
+            "sample_id": "sample_001630",
+            "scenario_id": "scenario_001630",
+            "source_type": "okada-like"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007109990484030547,
+            "dt_min": 0.0007030813379319483,
+            "free_surface_integral_abs_change_max": 1.1427490897997217e-16,
+            "mass_relative_change_max": 1.198725200944006e-16,
+            "ok": true,
+            "sample_id": "sample_001739",
+            "scenario_id": "scenario_001739",
+            "source_type": "dipole"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007101659652296413,
+            "dt_min": 0.0007095502463888444,
+            "free_surface_integral_abs_change_max": 3.222248856626919e-16,
+            "mass_relative_change_max": 1.9873447679626489e-16,
+            "ok": true,
+            "sample_id": "sample_001848",
+            "scenario_id": "scenario_001848",
+            "source_type": "gaussian"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007102633006121931,
+            "dt_min": 0.0007071879777303958,
+            "free_surface_integral_abs_change_max": 1.973247953923618e-16,
+            "mass_relative_change_max": 1.9147689830218193e-16,
+            "ok": true,
+            "sample_id": "sample_001956",
+            "scenario_id": "scenario_001956",
+            "source_type": "dipole"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007123114854426424,
+            "dt_min": 0.0007072697403837856,
+            "free_surface_integral_abs_change_max": 2.929514270055833e-16,
+            "mass_relative_change_max": 1.9725555908465413e-16,
+            "ok": true,
+            "sample_id": "sample_002065",
+            "scenario_id": "scenario_002065",
+            "source_type": "dipole"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007098842820397988,
+            "dt_min": 0.0007080023493923166,
+            "free_surface_integral_abs_change_max": 2.402592014227878e-16,
+            "mass_relative_change_max": 1.8895024021441326e-16,
+            "ok": true,
+            "sample_id": "sample_002174",
+            "scenario_id": "scenario_002174",
+            "source_type": "gaussian"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007101078591706755,
+            "dt_min": 0.0007096278012791853,
+            "free_surface_integral_abs_change_max": 1.1888276821303556e-16,
+            "mass_relative_change_max": 1.2274044132847132e-16,
+            "ok": true,
+            "sample_id": "sample_002282",
+            "scenario_id": "scenario_002282",
+            "source_type": "dipole"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0007099381026870952,
+            "dt_min": 0.0007042981983929962,
+            "free_surface_integral_abs_change_max": 3.122502256758253e-17,
+            "mass_relative_change_max": 1.2441689417566153e-16,
+            "ok": true,
+            "sample_id": "sample_002391",
+            "scenario_id": "scenario_002391",
+            "source_type": "multi-gauss"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007098197379097806,
+            "dt_min": 0.0007023095323435069,
+            "free_surface_integral_abs_change_max": 1.3530843112619095e-16,
+            "mass_relative_change_max": 2.574214063554703e-16,
+            "ok": true,
+            "sample_id": "sample_002500",
+            "scenario_id": "scenario_002500",
+            "source_type": "gaussian"
+          }
+        ]
+      }
+    },
+    "check": "conservation_no_sponge_reflective",
+    "n_steps": 250,
+    "solver_setup": {
+      "boundary": "reflective",
+      "boussinesq_filter_strength": 0.0,
+      "note": "No-sponge reflective-boundary diagnostic isolates numerical conservation; the paper dataset uses open boundaries with sponge.",
+      "use_sponge": false
+    },
+    "target_cfl": 0.45
+  },
+  "dynamic_dataset_statistics": {
+    "by_solver": {
+      "boussinesq": {
+        "dt_max": {
+          "count": 13500,
+          "max": 0.0003549506946001202,
+          "mean": 0.0003549506946001202,
+          "median": 0.0003549506946001202,
+          "min": 0.0003549506946001202
+        },
+        "dt_min": {
+          "count": 13500,
+          "max": 0.0003549506946001202,
+          "mean": 0.0003549506946001202,
+          "median": 0.0003549506946001202,
+          "min": 0.0003549506946001202
+        },
+        "inf_count_sum": 0,
+        "max_abs_eta": {
+          "count": 13500,
+          "max": 0.8493594527244568,
+          "mean": 0.25152376110993185,
+          "median": 0.2391190379858017,
+          "min": 0.0034688515588641167
+        },
+        "max_abs_eta_over_depth": {
+          "count": 13500,
+          "max": 0.9891061186790466,
+          "mean": 0.12679373261225582,
+          "median": 0.08001406863331795,
+          "min": 0.001101772766560316
+        },
+        "max_abs_velocity": {
+          "count": 0
+        },
+        "min_h": {
+          "count": 13500,
+          "max": 1.3046795129776,
+          "mean": 0.7340134348979702,
+          "median": 0.7499411404132843,
+          "min": 0.00817042589187622
+        },
+        "nan_count_sum": 0,
+        "num_samples": 13500,
+        "quality_ok_fraction": 1.0,
+        "quality_status_counts": {
+          "ok": 13500
+        },
+        "split_counts": {
+          "test": 2500,
+          "train": 10000,
+          "val": 1000
+        }
+      },
+      "hydrostatic": {
+        "dt_max": {
+          "count": 13500,
+          "max": 0.0007189307361841202,
+          "mean": 0.0007099379424686992,
+          "median": 0.0007099013892002404,
+          "min": 0.0007091932347975671
+        },
+        "dt_min": {
+          "count": 13500,
+          "max": 0.000709900283254683,
+          "mean": 0.0007079063324706146,
+          "median": 0.0007090680592227727,
+          "min": 0.0006788049940951169
+        },
+        "inf_count_sum": 0,
+        "max_abs_eta": {
+          "count": 13500,
+          "max": 0.8493595123291016,
+          "mean": 0.2515237626256766,
+          "median": 0.2391190528869629,
+          "min": 0.003468751907348633
+        },
+        "max_abs_eta_over_depth": {
+          "count": 0
+        },
+        "max_abs_velocity": {
+          "count": 13500,
+          "max": 1.1523206233978271,
+          "mean": 0.12413147511176283,
+          "median": 0.10169374197721481,
+          "min": 0.00265350635163486
+        },
+        "min_h": {
+          "count": 13500,
+          "max": 0.7502171993255615,
+          "mean": 0.726155233166836,
+          "median": 0.7461115717887878,
+          "min": 0.00817042589187622
+        },
+        "nan_count_sum": 0,
+        "num_samples": 13500,
+        "quality_ok_fraction": 1.0,
+        "quality_status_counts": {
+          "ok": 13500
+        },
+        "split_counts": {
+          "test": 2500,
+          "train": 10000,
+          "val": 1000
+        }
+      },
+      "muscl_hr": {
+        "dt_max": {
+          "count": 13500,
+          "max": 0.0007182500557973981,
+          "mean": 0.000709939578504957,
+          "median": 0.0007099013892002404,
+          "min": 0.0007092370069585741
+        },
+        "dt_min": {
+          "count": 13500,
+          "max": 0.0007098991773091257,
+          "mean": 0.0007076003232634523,
+          "median": 0.000708824023604393,
+          "min": 0.0006753159104846418
+        },
+        "inf_count_sum": 0,
+        "max_abs_eta": {
+          "count": 13500,
+          "max": 0.8493595123291016,
+          "mean": 0.25152911500356817,
+          "median": 0.2391296625137329,
+          "min": 0.003468751907348633
+        },
+        "max_abs_eta_over_depth": {
+          "count": 0
+        },
+        "max_abs_velocity": {
+          "count": 13500,
+          "max": 1.552255392074585,
+          "mean": 0.15717458200722037,
+          "median": 0.12814216315746307,
+          "min": 0.0028084684163331985
+        },
+        "min_h": {
+          "count": 13500,
+          "max": 0.7502521276473999,
+          "mean": 0.7224503659407298,
+          "median": 0.744621992111206,
+          "min": 0.00817042589187622
+        },
+        "nan_count_sum": 0,
+        "num_samples": 13500,
+        "quality_ok_fraction": 1.0,
+        "quality_status_counts": {
+          "ok": 13500
+        },
+        "split_counts": {
+          "test": 2500,
+          "train": 10000,
+          "val": 1000
+        }
+      }
+    },
+    "check": "dynamic_finite_state_dataset_statistics"
+  },
+  "elapsed_s": 9429.771002531052,
+  "evaluation_type": "phase3_solver_validation",
+  "lake_at_rest": {
+    "by_solver": {
+      "boussinesq": {
+        "finite_pass_fraction": 1.0,
+        "max_eta_drift": 0.0,
+        "max_momentum_or_eta_t_drift": 0.0,
+        "num_samples": 24,
+        "rows": [
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_000001",
+            "scenario_id": "scenario_000001"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_000109",
+            "scenario_id": "scenario_000109"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_000218",
+            "scenario_id": "scenario_000218"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_000326",
+            "scenario_id": "scenario_000326"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_000435",
+            "scenario_id": "scenario_000435"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_000544",
+            "scenario_id": "scenario_000544"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_000652",
+            "scenario_id": "scenario_000652"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_000761",
+            "scenario_id": "scenario_000761"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_000870",
+            "scenario_id": "scenario_000870"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_000978",
+            "scenario_id": "scenario_000978"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_001087",
+            "scenario_id": "scenario_001087"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_001196",
+            "scenario_id": "scenario_001196"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_001304",
+            "scenario_id": "scenario_001304"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_001413",
+            "scenario_id": "scenario_001413"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_001522",
+            "scenario_id": "scenario_001522"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_001630",
+            "scenario_id": "scenario_001630"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_001739",
+            "scenario_id": "scenario_001739"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_001848",
+            "scenario_id": "scenario_001848"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_001956",
+            "scenario_id": "scenario_001956"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_002065",
+            "scenario_id": "scenario_002065"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_002174",
+            "scenario_id": "scenario_002174"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_002282",
+            "scenario_id": "scenario_002282"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_002391",
+            "scenario_id": "scenario_002391"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0003549507086939139,
+            "dt_min": 0.0003549507086939139,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 0.0,
+            "ok": true,
+            "sample_id": "sample_002500",
+            "scenario_id": "scenario_002500"
+          }
+        ]
+      },
+      "swe_hydrostatic": {
+        "finite_pass_fraction": 1.0,
+        "max_eta_drift": 8.881784197001252e-16,
+        "max_momentum_or_eta_t_drift": 7.237553839283526e-15,
+        "num_samples": 24,
+        "rows": [
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878276,
+            "max_eta_drift": 8.881784197001252e-16,
+            "max_momentum_or_eta_t_drift": 4.633612718855674e-15,
+            "ok": true,
+            "sample_id": "sample_000001",
+            "scenario_id": "scenario_000001"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 8.881784197001252e-16,
+            "max_momentum_or_eta_t_drift": 3.733265310132924e-15,
+            "ok": true,
+            "sample_id": "sample_000109",
+            "scenario_id": "scenario_000109"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 3.9025418009959576e-15,
+            "ok": true,
+            "sample_id": "sample_000218",
+            "scenario_id": "scenario_000218"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 8.881784197001252e-16,
+            "max_momentum_or_eta_t_drift": 7.237553839283526e-15,
+            "ok": true,
+            "sample_id": "sample_000326",
+            "scenario_id": "scenario_000326"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 8.881784197001252e-16,
+            "max_momentum_or_eta_t_drift": 4.286210616924258e-15,
+            "ok": true,
+            "sample_id": "sample_000435",
+            "scenario_id": "scenario_000435"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 8.881784197001252e-16,
+            "max_momentum_or_eta_t_drift": 2.8867095067238492e-15,
+            "ok": true,
+            "sample_id": "sample_000544",
+            "scenario_id": "scenario_000544"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 4.578161739253984e-15,
+            "ok": true,
+            "sample_id": "sample_000652",
+            "scenario_id": "scenario_000652"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 4.4356587844344335e-15,
+            "ok": true,
+            "sample_id": "sample_000761",
+            "scenario_id": "scenario_000761"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 8.881784197001252e-16,
+            "max_momentum_or_eta_t_drift": 3.4627541073044565e-15,
+            "ok": true,
+            "sample_id": "sample_000870",
+            "scenario_id": "scenario_000870"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 4.6966620104764835e-15,
+            "ok": true,
+            "sample_id": "sample_000978",
+            "scenario_id": "scenario_000978"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 8.881784197001252e-16,
+            "max_momentum_or_eta_t_drift": 4.592393807856057e-15,
+            "ok": true,
+            "sample_id": "sample_001087",
+            "scenario_id": "scenario_001087"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 4.928537026243451e-15,
+            "ok": true,
+            "sample_id": "sample_001196",
+            "scenario_id": "scenario_001196"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878276,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 5.1866547437231244e-15,
+            "ok": true,
+            "sample_id": "sample_001304",
+            "scenario_id": "scenario_001304"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878276,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 4.7971524195757205e-15,
+            "ok": true,
+            "sample_id": "sample_001413",
+            "scenario_id": "scenario_001413"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 8.881784197001252e-16,
+            "max_momentum_or_eta_t_drift": 3.3839987407069353e-15,
+            "ok": true,
+            "sample_id": "sample_001522",
+            "scenario_id": "scenario_001522"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 3.8397982992577885e-15,
+            "ok": true,
+            "sample_id": "sample_001630",
+            "scenario_id": "scenario_001630"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 8.881784197001252e-16,
+            "max_momentum_or_eta_t_drift": 5.728196539623443e-15,
+            "ok": true,
+            "sample_id": "sample_001739",
+            "scenario_id": "scenario_001739"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 5.645199294012722e-15,
+            "ok": true,
+            "sample_id": "sample_001848",
+            "scenario_id": "scenario_001848"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 6.490949329422124e-15,
+            "ok": true,
+            "sample_id": "sample_001956",
+            "scenario_id": "scenario_001956"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878278,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 3.966232751489751e-15,
+            "ok": true,
+            "sample_id": "sample_002065",
+            "scenario_id": "scenario_002065"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 5.064052860315204e-15,
+            "ok": true,
+            "sample_id": "sample_002174",
+            "scenario_id": "scenario_002174"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 8.881784197001252e-16,
+            "max_momentum_or_eta_t_drift": 4.748851263586868e-15,
+            "ok": true,
+            "sample_id": "sample_002282",
+            "scenario_id": "scenario_002282"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878276,
+            "max_eta_drift": 8.881784197001252e-16,
+            "max_momentum_or_eta_t_drift": 3.220202640569876e-15,
+            "ok": true,
+            "sample_id": "sample_002391",
+            "scenario_id": "scenario_002391"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 0.0,
+            "max_momentum_or_eta_t_drift": 5.573038505199873e-15,
+            "ok": true,
+            "sample_id": "sample_002500",
+            "scenario_id": "scenario_002500"
+          }
+        ]
+      },
+      "swe_muscl_hr": {
+        "finite_pass_fraction": 1.0,
+        "max_eta_drift": 5.329070518200751e-15,
+        "max_momentum_or_eta_t_drift": 1.7823193492164875e-14,
+        "num_samples": 24,
+        "rows": [
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878276,
+            "max_eta_drift": 3.552713678800501e-15,
+            "max_momentum_or_eta_t_drift": 1.1952292518125068e-14,
+            "ok": true,
+            "sample_id": "sample_000001",
+            "scenario_id": "scenario_000001"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 1.7763568394002505e-15,
+            "max_momentum_or_eta_t_drift": 4.436829699048277e-15,
+            "ok": true,
+            "sample_id": "sample_000109",
+            "scenario_id": "scenario_000109"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878272,
+            "max_eta_drift": 3.552713678800501e-15,
+            "max_momentum_or_eta_t_drift": 1.1265019525679942e-14,
+            "ok": true,
+            "sample_id": "sample_000218",
+            "scenario_id": "scenario_000218"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 3.552713678800501e-15,
+            "max_momentum_or_eta_t_drift": 1.2426149179051145e-14,
+            "ok": true,
+            "sample_id": "sample_000326",
+            "scenario_id": "scenario_000326"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878278,
+            "max_eta_drift": 1.7763568394002505e-15,
+            "max_momentum_or_eta_t_drift": 6.06015340032309e-15,
+            "ok": true,
+            "sample_id": "sample_000435",
+            "scenario_id": "scenario_000435"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 1.7763568394002505e-15,
+            "max_momentum_or_eta_t_drift": 5.2187723300577255e-15,
+            "ok": true,
+            "sample_id": "sample_000544",
+            "scenario_id": "scenario_000544"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878275,
+            "max_eta_drift": 3.552713678800501e-15,
+            "max_momentum_or_eta_t_drift": 1.1561367131376495e-14,
+            "ok": true,
+            "sample_id": "sample_000652",
+            "scenario_id": "scenario_000652"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878276,
+            "max_eta_drift": 3.552713678800501e-15,
+            "max_momentum_or_eta_t_drift": 1.2663838239109909e-14,
+            "ok": true,
+            "sample_id": "sample_000761",
+            "scenario_id": "scenario_000761"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878275,
+            "max_eta_drift": 1.7763568394002505e-15,
+            "max_momentum_or_eta_t_drift": 5.357754485631757e-15,
+            "ok": true,
+            "sample_id": "sample_000870",
+            "scenario_id": "scenario_000870"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878273,
+            "max_eta_drift": 5.329070518200751e-15,
+            "max_momentum_or_eta_t_drift": 1.3541193107993327e-14,
+            "ok": true,
+            "sample_id": "sample_000978",
+            "scenario_id": "scenario_000978"
+          },
+          {
+            "bathymetry_type": "canyon",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878278,
+            "max_eta_drift": 1.7763568394002505e-15,
+            "max_momentum_or_eta_t_drift": 4.391361654794742e-15,
+            "ok": true,
+            "sample_id": "sample_001087",
+            "scenario_id": "scenario_001087"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878273,
+            "max_eta_drift": 3.552713678800501e-15,
+            "max_momentum_or_eta_t_drift": 1.574116609102876e-14,
+            "ok": true,
+            "sample_id": "sample_001196",
+            "scenario_id": "scenario_001196"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878276,
+            "max_eta_drift": 3.552713678800501e-15,
+            "max_momentum_or_eta_t_drift": 1.2451802869006083e-14,
+            "ok": true,
+            "sample_id": "sample_001304",
+            "scenario_id": "scenario_001304"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878273,
+            "max_eta_drift": 3.552713678800501e-15,
+            "max_momentum_or_eta_t_drift": 1.3501225904470403e-14,
+            "ok": true,
+            "sample_id": "sample_001413",
+            "scenario_id": "scenario_001413"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878276,
+            "max_eta_drift": 1.7763568394002505e-15,
+            "max_momentum_or_eta_t_drift": 4.499915399602319e-15,
+            "ok": true,
+            "sample_id": "sample_001522",
+            "scenario_id": "scenario_001522"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878276,
+            "max_eta_drift": 1.7763568394002505e-15,
+            "max_momentum_or_eta_t_drift": 1.019446167749202e-14,
+            "ok": true,
+            "sample_id": "sample_001630",
+            "scenario_id": "scenario_001630"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 1.7763568394002505e-15,
+            "max_momentum_or_eta_t_drift": 1.2298000579858042e-14,
+            "ok": true,
+            "sample_id": "sample_001739",
+            "scenario_id": "scenario_001739"
+          },
+          {
+            "bathymetry_type": "seamounts",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878276,
+            "max_eta_drift": 3.552713678800501e-15,
+            "max_momentum_or_eta_t_drift": 9.133574495579455e-15,
+            "ok": true,
+            "sample_id": "sample_001848",
+            "scenario_id": "scenario_001848"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878276,
+            "max_eta_drift": 3.552713678800501e-15,
+            "max_momentum_or_eta_t_drift": 1.4164245412854666e-14,
+            "ok": true,
+            "sample_id": "sample_001956",
+            "scenario_id": "scenario_001956"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878273,
+            "max_eta_drift": 3.552713678800501e-15,
+            "max_momentum_or_eta_t_drift": 1.0821705129274165e-14,
+            "ok": true,
+            "sample_id": "sample_002065",
+            "scenario_id": "scenario_002065"
+          },
+          {
+            "bathymetry_type": "island",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 3.552713678800501e-15,
+            "max_momentum_or_eta_t_drift": 1.036014108422646e-14,
+            "ok": true,
+            "sample_id": "sample_002174",
+            "scenario_id": "scenario_002174"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878273,
+            "max_eta_drift": 3.552713678800501e-15,
+            "max_momentum_or_eta_t_drift": 1.0784385544013149e-14,
+            "ok": true,
+            "sample_id": "sample_002282",
+            "scenario_id": "scenario_002282"
+          },
+          {
+            "bathymetry_type": "trench",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 1.7763568394002505e-15,
+            "max_momentum_or_eta_t_drift": 4.711096574598686e-15,
+            "ok": true,
+            "sample_id": "sample_002391",
+            "scenario_id": "scenario_002391"
+          },
+          {
+            "bathymetry_type": "continental",
+            "dt_max": 0.0007099014173878278,
+            "dt_min": 0.0007099014173878277,
+            "max_eta_drift": 1.7763568394002505e-15,
+            "max_momentum_or_eta_t_drift": 1.7823193492164875e-14,
+            "ok": true,
+            "sample_id": "sample_002500",
+            "scenario_id": "scenario_002500"
+          }
+        ]
+      }
+    },
+    "check": "lake_at_rest",
+    "n_steps": 250,
+    "solver_setup": {
+      "boundary": "open",
+      "use_sponge": false
+    },
+    "target_cfl": 0.45
+  },
+  "n_steps": 250,
+  "notes": [
+    "Dynamic dataset statistics and Boussinesq CG summaries are aggregated from processed meta.jsonl files.",
+    "Lake-rest, conservation, and CFL diagnostics rerun a deterministic subset using denormalized bathymetry and physical initial_depth inputs."
+  ],
+  "processed_root": "data/processed",
+  "reference_dataset_for_reruns": "hydrostatic",
+  "rerun_solver_selection": {
+    "cfl_sensitivity": [
+      "swe_hydrostatic",
+      "swe_muscl_hr"
+    ],
+    "conservation": [
+      "swe_hydrostatic",
+      "swe_muscl_hr"
+    ],
+    "lake_at_rest": [
+      "swe_hydrostatic",
+      "swe_muscl_hr",
+      "boussinesq"
+    ]
+  },
+  "splits": [
+    "train",
+    "val",
+    "test"
+  ],
+  "started_unix": 1782974872.4273484,
+  "target_cfl": 0.45
+}

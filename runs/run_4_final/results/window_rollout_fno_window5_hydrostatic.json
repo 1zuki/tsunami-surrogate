@@ -1,0 +1,18 @@
+{
+  "mae": 0.0270101008804477,
+  "rmse": 0.06789214859705468,
+  "rel_l2": 0.07712410615221754,
+  "max_error": 13.364374160766602,
+  "num_samples": 2500.0,
+  "dataset_path": "data/processed/hydrostatic/test",
+  "rollout_chunks": 10,
+  "window_K": 5,
+  "time_per_sample_rollout_s": 0.011131759816799923,
+  "samples_per_second_rollout": 89.83305573039868,
+  "mae_physical": 0.00026263896412387187,
+  "rmse_physical": 0.0006601650139304035,
+  "rel_l2_physical": 0.07651095320147232,
+  "max_error_physical": 0.1299515813589096,
+  "target_offset": 0.0012094725389033556,
+  "target_scale": 0.009723731316626072
+}

@@ -1,0 +1,51 @@
+{
+  "evaluation_type": "proxy_resolution_transfer",
+  "dataset_path": "data/processed/muscl_hr/test",
+  "dataset_num_samples": 2500,
+  "eval_resolutions": [
+    32,
+    64,
+    128
+  ],
+  "rows": {
+    "32": {
+      "mae": 0.2798817385864258,
+      "rmse": 0.5316956899982314,
+      "rel_l2": 0.5400566823434544,
+      "max_error": 23.76523208618164,
+      "num_samples": 2500,
+      "mae_physical": 0.0030060077619552612,
+      "rmse_physical": 0.005710559655043503,
+      "rel_l2_physical": 0.5367234540679798,
+      "max_error_physical": 0.255245178937912,
+      "target_offset": 0.0011845336994156241,
+      "target_scale": 0.010740278288722038
+    },
+    "64": {
+      "mae": 0.11087493551635742,
+      "rmse": 0.26142335775865844,
+      "rel_l2": 0.2632192427826079,
+      "max_error": 22.125835418701172,
+      "num_samples": 2500,
+      "mae_physical": 0.0011908276623487472,
+      "rmse_physical": 0.002807759632809359,
+      "rel_l2_physical": 0.26162260338894416,
+      "max_error_physical": 0.23763763904571533,
+      "target_offset": 0.0011845336994156241,
+      "target_scale": 0.010740278288722038
+    },
+    "128": {
+      "mae": 0.2539973016052246,
+      "rmse": 0.5006727418763756,
+      "rel_l2": 0.5074267422543256,
+      "max_error": 21.856081008911133,
+      "num_samples": 2500,
+      "mae_physical": 0.0027280017075538635,
+      "rmse_physical": 0.005377364564473211,
+      "rel_l2_physical": 0.5043085526813269,
+      "max_error_physical": 0.23474037647247314,
+      "target_offset": 0.0011845336994156241,
+      "target_scale": 0.010740278288722038
+    }
+  }
+}

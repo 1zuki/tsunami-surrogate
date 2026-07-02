@@ -1,0 +1,624 @@
+{
+  "summary_type": "strict_holdout_fno",
+  "num_holdouts": 4,
+  "expected_holdouts": 4,
+  "missing_outputs": [],
+  "rows": [
+    {
+      "label": "bathymetry_trench",
+      "family": "bathymetry",
+      "holdout_key": "bathymetry_type",
+      "holdout_value": "trench",
+      "checkpoint": "experiments/fno_holdout/bathymetry_trench/best.pt",
+      "full_checkpoint": "experiments/fno/best.pt",
+      "config_id": "configs/model/fno_holdout_bathymetry_trench_eval_id.yaml",
+      "config_heldout": "configs/model/fno_holdout_bathymetry_trench.yaml",
+      "config_full": "configs/model/fno_full_on_holdout_bathymetry_trench.yaml",
+      "manifest": "data/processed_strict_holdout/hydrostatic/bathymetry_holdout_trench/holdout_manifest.json",
+      "normalization_policy": "refit_from_filtered_train_only",
+      "normalization_from_train_only": true,
+      "sanity_passed": true,
+      "counts": {
+        "train": 7982,
+        "val": 780,
+        "test_id": 2019,
+        "test_heldout": 481
+      },
+      "id": {
+        "output_dir": "/home/izu/Projects/tsunami-surrogate/experiments/fno_holdout/bathymetry_trench/eval_id",
+        "metrics": {
+          "mae": 0.10452573265162596,
+          "rmse": 0.25480106216174836,
+          "rel_l2": 0.25491210987151397,
+          "max_error": 23.98245620727539,
+          "num_samples": 2019.0,
+          "dataset_path": "data/processed_strict_holdout/hydrostatic/bathymetry_holdout_trench/test_id",
+          "mae_physical": 0.0009657661344463014,
+          "rmse_physical": 0.0023542359390540646,
+          "rel_l2_physical": 0.2530951885440058,
+          "max_error_physical": 0.22158604860305786,
+          "target_offset": 0.0010964443208649755,
+          "target_scale": 0.009239505976438522
+        },
+        "perframe": {
+          "num_samples": 2019,
+          "num_frames": 50,
+          "final_frame": {
+            "frame": 49,
+            "mae": 0.021393986321451727,
+            "rmse": 0.0485711476400128,
+            "rel_l2": 0.3319089457136867
+          },
+          "final_frame_physical": {
+            "frame": 49,
+            "mae": 0.00019766986493259658,
+            "rmse": 0.00044877341148866266,
+            "rel_l2": 0.6368876679035922
+          }
+        },
+        "physics": {
+          "num_samples_seen": 2019,
+          "evaluation_mode": "direct_single_pass",
+          "target_units": "physical",
+          "free_surface_integral_rel_l2": 0.20924873769454716,
+          "mass_proxy_integral_rel_l2": 0.00011438583938326057,
+          "spectral_band_rel_l2": {
+            "low_0_8": 0.23793448451436566,
+            "mid_8_16": 0.5867267905937705,
+            "high_16_plus": 0.7943282417290564
+          },
+          "sample_rel_l2_summary": {
+            "count": 2019,
+            "min": 0.08966902495786247,
+            "max": 1.971329381962281,
+            "mean": 0.3135404489249799,
+            "median": 0.29304038112253805,
+            "p90": 0.4686595579644858
+          }
+        }
+      },
+      "heldout": {
+        "output_dir": "/home/izu/Projects/tsunami-surrogate/experiments/fno_holdout/bathymetry_trench/eval_heldout",
+        "metrics": {
+          "mae": 0.14522983606540735,
+          "rmse": 0.33724648787154204,
+          "rel_l2": 0.2744001431694546,
+          "max_error": 26.84854507446289,
+          "num_samples": 481.0,
+          "dataset_path": "data/processed_strict_holdout/hydrostatic/bathymetry_holdout_trench/test_heldout",
+          "mae_physical": 0.0013418519224297728,
+          "rmse_physical": 0.0031159909381375654,
+          "rel_l2_physical": 0.2719527308487854,
+          "max_error_physical": 0.24806731939315796,
+          "target_offset": 0.0010964443208649755,
+          "target_scale": 0.009239505976438522
+        },
+        "perframe": {
+          "num_samples": 481,
+          "num_frames": 50,
+          "final_frame": {
+            "frame": 49,
+            "mae": 0.051510739669994116,
+            "rmse": 0.11136037025193404,
+            "rel_l2": 0.5239647413958723
+          },
+          "final_frame_physical": {
+            "frame": 49,
+            "mae": 0.00047593378971715007,
+            "rmse": 0.0010289148105013099,
+            "rel_l2": 0.6901400271104317
+          }
+        },
+        "physics": {
+          "num_samples_seen": 481,
+          "evaluation_mode": "direct_single_pass",
+          "target_units": "physical",
+          "free_surface_integral_rel_l2": 0.19990622969147515,
+          "mass_proxy_integral_rel_l2": 0.0005694110194148633,
+          "spectral_band_rel_l2": {
+            "low_0_8": 0.25142153076195733,
+            "mid_8_16": 0.621481643919585,
+            "high_16_plus": 0.9241621412161413
+          },
+          "sample_rel_l2_summary": {
+            "count": 481,
+            "min": 0.11289069532391573,
+            "max": 1.5590249840876207,
+            "mean": 0.3295437659374847,
+            "median": 0.29634936266156653,
+            "p90": 0.4890685892583653
+          }
+        }
+      },
+      "full_model_on_heldout": {
+        "output_dir": "/home/izu/Projects/tsunami-surrogate/experiments/fno_full_on_holdout/bathymetry_trench/eval_heldout",
+        "metrics": {
+          "mae": 0.14692976541182107,
+          "rmse": 0.32968586134231553,
+          "rel_l2": 0.26824844974437506,
+          "max_error": 23.040767669677734,
+          "num_samples": 481.0,
+          "dataset_path": "data/processed_strict_holdout/hydrostatic/bathymetry_holdout_trench/test_heldout",
+          "mae_physical": 0.0013575584923155343,
+          "rmse_physical": 0.0030461345040999465,
+          "rel_l2_physical": 0.2658559069551821,
+          "max_error_physical": 0.212885320186615,
+          "target_offset": 0.0010964443208649755,
+          "target_scale": 0.009239505976438522
+        }
+      },
+      "degradation": {
+        "rel_l2_ratio_heldout_over_id": 1.0764500098004892,
+        "rel_l2_delta_heldout_minus_id": 0.019488033297940632,
+        "rel_l2_ratio_heldout_over_full": 1.0229328200440366,
+        "rel_l2_delta_heldout_minus_full": 0.006151693425079541,
+        "rel_l2_physical_ratio_heldout_over_id": 1.0745077076070169,
+        "rel_l2_physical_delta_heldout_minus_id": 0.018857542304779595,
+        "rel_l2_physical_ratio_heldout_over_full": 1.0229328133552855,
+        "rel_l2_physical_delta_heldout_minus_full": 0.0060968238936033314
+      }
+    },
+    {
+      "label": "bathymetry_continental",
+      "family": "bathymetry",
+      "holdout_key": "bathymetry_type",
+      "holdout_value": "continental",
+      "checkpoint": "experiments/fno_holdout/bathymetry_continental/best.pt",
+      "full_checkpoint": "experiments/fno/best.pt",
+      "config_id": "configs/model/fno_holdout_bathymetry_continental_eval_id.yaml",
+      "config_heldout": "configs/model/fno_holdout_bathymetry_continental.yaml",
+      "config_full": "configs/model/fno_full_on_holdout_bathymetry_continental.yaml",
+      "manifest": "data/processed_strict_holdout/hydrostatic/bathymetry_holdout_continental/holdout_manifest.json",
+      "normalization_policy": "refit_from_filtered_train_only",
+      "normalization_from_train_only": true,
+      "sanity_passed": true,
+      "counts": {
+        "train": 8066,
+        "val": 798,
+        "test_id": 1985,
+        "test_heldout": 515
+      },
+      "id": {
+        "output_dir": "/home/izu/Projects/tsunami-surrogate/experiments/fno_holdout/bathymetry_continental/eval_id",
+        "metrics": {
+          "mae": 0.09246213816395335,
+          "rmse": 0.23596269172349496,
+          "rel_l2": 0.23448968567724335,
+          "max_error": 22.096874237060547,
+          "num_samples": 1985.0,
+          "dataset_path": "data/processed_strict_holdout/hydrostatic/bathymetry_holdout_continental/test_id",
+          "mae_physical": 0.0009144231884245308,
+          "rmse_physical": 0.002333601200608421,
+          "rel_l2_physical": 0.23252237211388918,
+          "max_error_physical": 0.2185315191745758,
+          "target_offset": 0.0012620717752724886,
+          "target_scale": 0.009889704175293446
+        },
+        "perframe": {
+          "num_samples": 1985,
+          "num_frames": 50,
+          "final_frame": {
+            "frame": 49,
+            "mae": 0.02271971869295145,
+            "rmse": 0.05545185928636178,
+            "rel_l2": 0.3212129662717061
+          },
+          "final_frame_physical": {
+            "frame": 49,
+            "mae": 0.00022469129740648817,
+            "rmse": 0.000548402484357128,
+            "rel_l2": 0.5379526219209371
+          }
+        },
+        "physics": {
+          "num_samples_seen": 1985,
+          "evaluation_mode": "direct_single_pass",
+          "target_units": "physical",
+          "free_surface_integral_rel_l2": 0.18649581171761553,
+          "mass_proxy_integral_rel_l2": 0.00012391543345492868,
+          "spectral_band_rel_l2": {
+            "low_0_8": 0.21770628932973643,
+            "mid_8_16": 0.5256982229806281,
+            "high_16_plus": 0.7325244935839671
+          },
+          "sample_rel_l2_summary": {
+            "count": 1985,
+            "min": 0.07047808546200256,
+            "max": 1.7169224791053557,
+            "mean": 0.2800083694685109,
+            "median": 0.26182610616439417,
+            "p90": 0.43594354207752645
+          }
+        }
+      },
+      "heldout": {
+        "output_dir": "/home/izu/Projects/tsunami-surrogate/experiments/fno_holdout/bathymetry_continental/eval_heldout",
+        "metrics": {
+          "mae": 0.12733960597954908,
+          "rmse": 0.2986700579504559,
+          "rel_l2": 0.34559530940906374,
+          "max_error": 23.185264587402344,
+          "num_samples": 515.0,
+          "dataset_path": "data/processed_strict_holdout/hydrostatic/bathymetry_holdout_continental/test_heldout",
+          "mae_physical": 0.0012593510683300425,
+          "rmse_physical": 0.002953758501038773,
+          "rel_l2_physical": 0.3442994247911409,
+          "max_error_physical": 0.22929543256759644,
+          "target_offset": 0.0012620717752724886,
+          "target_scale": 0.009889704175293446
+        },
+        "perframe": {
+          "num_samples": 515,
+          "num_frames": 50,
+          "final_frame": {
+            "frame": 49,
+            "mae": 0.011705360955726876,
+            "rmse": 0.01855405849971085,
+            "rel_l2": 0.14655197145423896
+          },
+          "final_frame_physical": {
+            "frame": 49,
+            "mae": 0.00011576255755096996,
+            "rmse": 0.00018349415018010772,
+            "rel_l2": 1.4105501864281733
+          }
+        },
+        "physics": {
+          "num_samples_seen": 515,
+          "evaluation_mode": "direct_single_pass",
+          "target_units": "physical",
+          "free_surface_integral_rel_l2": 0.2629161164077931,
+          "mass_proxy_integral_rel_l2": 0.00013612339279435096,
+          "spectral_band_rel_l2": {
+            "low_0_8": 0.3264009524357972,
+            "mid_8_16": 0.6707772624006546,
+            "high_16_plus": 0.7283464629727197
+          },
+          "sample_rel_l2_summary": {
+            "count": 515,
+            "min": 0.15663951769155612,
+            "max": 2.2620982096812035,
+            "mean": 0.4508563383078524,
+            "median": 0.4042900120422383,
+            "p90": 0.6745287377133408
+          }
+        }
+      },
+      "full_model_on_heldout": {
+        "output_dir": "/home/izu/Projects/tsunami-surrogate/experiments/fno_full_on_holdout/bathymetry_continental/eval_heldout",
+        "metrics": {
+          "mae": 0.08448561192484735,
+          "rmse": 0.22402965143654952,
+          "rel_l2": 0.25922784907304713,
+          "max_error": 21.27874755859375,
+          "num_samples": 515.0,
+          "dataset_path": "data/processed_strict_holdout/hydrostatic/bathymetry_holdout_continental/test_heldout",
+          "mae_physical": 0.0008355377125508576,
+          "rmse_physical": 0.0022155869581707887,
+          "rel_l2_physical": 0.25825581712407664,
+          "max_error_physical": 0.2104405164718628,
+          "target_offset": 0.0012620717752724886,
+          "target_scale": 0.009889704175293446
+        }
+      },
+      "degradation": {
+        "rel_l2_ratio_heldout_over_id": 1.4738188096032019,
+        "rel_l2_delta_heldout_minus_id": 0.1111056237318204,
+        "rel_l2_ratio_heldout_over_full": 1.333171997703377,
+        "rel_l2_delta_heldout_minus_full": 0.08636746033601661,
+        "rel_l2_physical_ratio_heldout_over_id": 1.4807152604761122,
+        "rel_l2_physical_delta_heldout_minus_id": 0.11177705267725171,
+        "rel_l2_physical_ratio_heldout_over_full": 1.333172002184661,
+        "rel_l2_physical_delta_heldout_minus_full": 0.08604360766706426
+      }
+    },
+    {
+      "label": "source_rough",
+      "family": "source",
+      "holdout_key": "source_type",
+      "holdout_value": "rough",
+      "checkpoint": "experiments/fno_holdout/source_rough/best.pt",
+      "full_checkpoint": "experiments/fno/best.pt",
+      "config_id": "configs/model/fno_holdout_source_rough_eval_id.yaml",
+      "config_heldout": "configs/model/fno_holdout_source_rough.yaml",
+      "config_full": "configs/model/fno_full_on_holdout_source_rough.yaml",
+      "manifest": "data/processed_strict_holdout/hydrostatic/source_holdout_rough/holdout_manifest.json",
+      "normalization_policy": "refit_from_filtered_train_only",
+      "normalization_from_train_only": true,
+      "sanity_passed": true,
+      "counts": {
+        "train": 8325,
+        "val": 847,
+        "test_id": 2097,
+        "test_heldout": 403
+      },
+      "id": {
+        "output_dir": "/home/izu/Projects/tsunami-surrogate/experiments/fno_holdout/source_rough/eval_id",
+        "metrics": {
+          "mae": 0.08820654611219152,
+          "rmse": 0.23381144898779166,
+          "rel_l2": 0.23550098735477215,
+          "max_error": 23.277637481689453,
+          "num_samples": 2097.0,
+          "dataset_path": "data/processed_strict_holdout/hydrostatic/source_holdout_rough/test_id",
+          "mae_physical": 0.0009122188056032602,
+          "rmse_physical": 0.0024180427424212217,
+          "rel_l2_physical": 0.23320327877548105,
+          "max_error_physical": 0.2407337725162506,
+          "target_offset": 0.0014506308361887932,
+          "target_scale": 0.01034184917807579
+        },
+        "perframe": {
+          "num_samples": 2097,
+          "num_frames": 50,
+          "final_frame": {
+            "frame": 49,
+            "mae": 0.021491341208118523,
+            "rmse": 0.05464581596985599,
+            "rel_l2": 0.30779679258603587
+          },
+          "final_frame_physical": {
+            "frame": 49,
+            "mae": 0.00022226020911284792,
+            "rmse": 0.000565138784624699,
+            "rel_l2": 0.5730730036090904
+          }
+        },
+        "physics": {
+          "num_samples_seen": 2097,
+          "evaluation_mode": "direct_single_pass",
+          "target_units": "physical",
+          "free_surface_integral_rel_l2": 0.19034818369513723,
+          "mass_proxy_integral_rel_l2": 0.00013163164203256681,
+          "spectral_band_rel_l2": {
+            "low_0_8": 0.22239733247442406,
+            "mid_8_16": 0.6230397773518926,
+            "high_16_plus": 0.5759323275853344
+          },
+          "sample_rel_l2_summary": {
+            "count": 2097,
+            "min": 0.06709591594045233,
+            "max": 1.3479074575230787,
+            "mean": 0.2671017501511009,
+            "median": 0.24602929749371072,
+            "p90": 0.41206830542857004
+          }
+        }
+      },
+      "heldout": {
+        "output_dir": "/home/izu/Projects/tsunami-surrogate/experiments/fno_holdout/source_rough/eval_heldout",
+        "metrics": {
+          "mae": 0.13208678517684747,
+          "rmse": 0.31714701869881234,
+          "rel_l2": 0.571382337251118,
+          "max_error": 22.754243850708008,
+          "num_samples": 403.0,
+          "dataset_path": "data/processed_strict_holdout/hydrostatic/source_holdout_rough/test_heldout",
+          "mae_physical": 0.0013660215562389744,
+          "rmse_physical": 0.0032798866448141848,
+          "rel_l2_physical": 0.5916878226432144,
+          "max_error_physical": 0.23532095551490784,
+          "target_offset": 0.0014506308361887932,
+          "target_scale": 0.01034184917807579
+        },
+        "perframe": {
+          "num_samples": 403,
+          "num_frames": 50,
+          "final_frame": {
+            "frame": 49,
+            "mae": 0.01757876869908914,
+            "rmse": 0.03279882883576161,
+            "rel_l2": 0.2291139853660845
+          },
+          "final_frame_physical": {
+            "frame": 49,
+            "mae": 0.00018179697438461655,
+            "rmse": 0.000339200540904739,
+            "rel_l2": 1.1991328695515926
+          }
+        },
+        "physics": {
+          "num_samples_seen": 403,
+          "evaluation_mode": "direct_single_pass",
+          "target_units": "physical",
+          "free_surface_integral_rel_l2": 0.760321184115229,
+          "mass_proxy_integral_rel_l2": 9.97431957479495e-05,
+          "spectral_band_rel_l2": {
+            "low_0_8": 0.5348263399434087,
+            "mid_8_16": 0.8195354782796603,
+            "high_16_plus": 1.0497636093828213
+          },
+          "sample_rel_l2_summary": {
+            "count": 403,
+            "min": 0.33811635145763363,
+            "max": 0.7951395935363241,
+            "mean": 0.549280121340426,
+            "median": 0.5490030477289286,
+            "p90": 0.6845168135557864
+          }
+        }
+      },
+      "full_model_on_heldout": {
+        "output_dir": "/home/izu/Projects/tsunami-surrogate/experiments/fno_full_on_holdout/source_rough/eval_heldout",
+        "metrics": {
+          "mae": 0.11318556868408809,
+          "rmse": 0.2515524121537979,
+          "rel_l2": 0.45320497032353735,
+          "max_error": 11.82163143157959,
+          "num_samples": 403.0,
+          "dataset_path": "data/processed_strict_holdout/hydrostatic/source_holdout_rough/test_heldout",
+          "mae_physical": 0.0011705480793273773,
+          "rmse_physical": 0.002601517153495742,
+          "rel_l2_physical": 0.4693107374776587,
+          "max_error_physical": 0.1222575306892395,
+          "target_offset": 0.0014506308361887932,
+          "target_scale": 0.01034184917807579
+        }
+      },
+      "degradation": {
+        "rel_l2_ratio_heldout_over_id": 2.4262417906144695,
+        "rel_l2_delta_heldout_minus_id": 0.3358813498963458,
+        "rel_l2_ratio_heldout_over_full": 1.260759203155286,
+        "rel_l2_delta_heldout_minus_full": 0.11817736692758063,
+        "rel_l2_physical_ratio_heldout_over_id": 2.5372191409575686,
+        "rel_l2_physical_delta_heldout_minus_id": 0.3584845438677333,
+        "rel_l2_physical_ratio_heldout_over_full": 1.2607591844654553,
+        "rel_l2_physical_delta_heldout_minus_full": 0.12237708516555568
+      }
+    },
+    {
+      "label": "source_okada_like",
+      "family": "source",
+      "holdout_key": "source_type",
+      "holdout_value": "okada-like",
+      "checkpoint": "experiments/fno_holdout/source_okada_like/best.pt",
+      "full_checkpoint": "experiments/fno/best.pt",
+      "config_id": "configs/model/fno_holdout_source_okada_like_eval_id.yaml",
+      "config_heldout": "configs/model/fno_holdout_source_okada_like.yaml",
+      "config_full": "configs/model/fno_full_on_holdout_source_okada_like.yaml",
+      "manifest": "data/processed_strict_holdout/hydrostatic/source_holdout_okada_like/holdout_manifest.json",
+      "normalization_policy": "refit_from_filtered_train_only",
+      "normalization_from_train_only": true,
+      "sanity_passed": true,
+      "counts": {
+        "train": 8340,
+        "val": 851,
+        "test_id": 2053,
+        "test_heldout": 447
+      },
+      "id": {
+        "output_dir": "/home/izu/Projects/tsunami-surrogate/experiments/fno_holdout/source_okada_like/eval_id",
+        "metrics": {
+          "mae": 0.08940634900746669,
+          "rmse": 0.233909829863064,
+          "rel_l2": 0.23630426007988875,
+          "max_error": 19.188016891479492,
+          "num_samples": 2053.0,
+          "dataset_path": "data/processed_strict_holdout/hydrostatic/source_holdout_okada_like/test_id",
+          "mae_physical": 0.0007637262004674846,
+          "rmse_physical": 0.0019981026995806984,
+          "rel_l2_physical": 0.2341883880642348,
+          "max_error_physical": 0.1639077514410019,
+          "target_offset": 0.0011807008413597941,
+          "target_scale": 0.008542192168533802
+        },
+        "perframe": {
+          "num_samples": 2053,
+          "num_frames": 50,
+          "final_frame": {
+            "frame": 49,
+            "mae": 0.018659893209510104,
+            "rmse": 0.043388374376129905,
+            "rel_l2": 0.25600342332105397
+          },
+          "final_frame_physical": {
+            "frame": 49,
+            "mae": 0.00015939639211342172,
+            "rmse": 0.00037063182922565115,
+            "rel_l2": 0.5094347273144283
+          }
+        },
+        "physics": {
+          "num_samples_seen": 2053,
+          "evaluation_mode": "direct_single_pass",
+          "target_units": "physical",
+          "free_surface_integral_rel_l2": 0.1905532236741962,
+          "mass_proxy_integral_rel_l2": 0.0001024987575678711,
+          "spectral_band_rel_l2": {
+            "low_0_8": 0.22034567238475852,
+            "mid_8_16": 0.4623226276447133,
+            "high_16_plus": 0.7197244949997791
+          },
+          "sample_rel_l2_summary": {
+            "count": 2053,
+            "min": 0.07104174631487521,
+            "max": 1.01809509116601,
+            "mean": 0.26377281474564596,
+            "median": 0.25242788773339314,
+            "p90": 0.40467680753104623
+          }
+        }
+      },
+      "heldout": {
+        "output_dir": "/home/izu/Projects/tsunami-surrogate/experiments/fno_holdout/source_okada_like/eval_heldout",
+        "metrics": {
+          "mae": 0.17584707511884787,
+          "rmse": 0.5041122698039031,
+          "rel_l2": 0.30792323165325075,
+          "max_error": 29.512042999267578,
+          "num_samples": 447.0,
+          "dataset_path": "data/processed_strict_holdout/hydrostatic/source_holdout_okada_like/test_heldout",
+          "mae_physical": 0.001502119529433965,
+          "rmse_physical": 0.004306223910405448,
+          "rel_l2_physical": 0.30623492906808014,
+          "max_error_physical": 0.25209754705429077,
+          "target_offset": 0.0011807008413597941,
+          "target_scale": 0.008542192168533802
+        },
+        "perframe": {
+          "num_samples": 447,
+          "num_frames": 50,
+          "final_frame": {
+            "frame": 49,
+            "mae": 0.03695698870123332,
+            "rmse": 0.10745147134680604,
+            "rel_l2": 0.46277445439013043
+          },
+          "final_frame_physical": {
+            "frame": 49,
+            "mae": 0.0003156936971376512,
+            "rmse": 0.0009178711141145584,
+            "rel_l2": 0.6183529598958302
+          }
+        },
+        "physics": {
+          "num_samples_seen": 447,
+          "evaluation_mode": "direct_single_pass",
+          "target_units": "physical",
+          "free_surface_integral_rel_l2": 0.33442311884120457,
+          "mass_proxy_integral_rel_l2": 0.00032056794074168107,
+          "spectral_band_rel_l2": {
+            "low_0_8": 0.3030502690739659,
+            "mid_8_16": 0.6708268571104028,
+            "high_16_plus": 0.5102278237096217
+          },
+          "sample_rel_l2_summary": {
+            "count": 447,
+            "min": 0.09799084971404823,
+            "max": 0.7986010770548173,
+            "mean": 0.29504206607383315,
+            "median": 0.2713634586146484,
+            "p90": 0.46687694231281424
+          }
+        }
+      },
+      "full_model_on_heldout": {
+        "output_dir": "/home/izu/Projects/tsunami-surrogate/experiments/fno_full_on_holdout/source_okada_like/eval_heldout",
+        "metrics": {
+          "mae": 0.14024942624222245,
+          "rmse": 0.40411196457509513,
+          "rel_l2": 0.24684077245354888,
+          "max_error": 32.84202194213867,
+          "num_samples": 447.0,
+          "dataset_path": "data/processed_strict_holdout/hydrostatic/source_holdout_okada_like/test_heldout",
+          "mae_physical": 0.0011980375294183992,
+          "rmse_physical": 0.0034520019933961723,
+          "rel_l2_physical": 0.24548737074171692,
+          "max_error_physical": 0.28054291009902954,
+          "target_offset": 0.0011807008413597941,
+          "target_scale": 0.008542192168533802
+        }
+      },
+      "degradation": {
+        "rel_l2_ratio_heldout_over_id": 1.3030794770654974,
+        "rel_l2_delta_heldout_minus_id": 0.071618971573362,
+        "rel_l2_ratio_heldout_over_full": 1.2474569277698908,
+        "rel_l2_delta_heldout_minus_full": 0.06108245919970187,
+        "rel_l2_physical_ratio_heldout_over_id": 1.3076435240849085,
+        "rel_l2_physical_delta_heldout_minus_id": 0.07204654100384533,
+        "rel_l2_physical_ratio_heldout_over_full": 1.247456959365446,
+        "rel_l2_physical_delta_heldout_minus_full": 0.06074755832636322
+      }
+    }
+  ]
+}

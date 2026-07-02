@@ -1,0 +1,14 @@
+{
+  "mae": 0.06750528734588623,
+  "rmse": 0.167199127021135,
+  "rel_l2": 0.16797296252252447,
+  "max_error": 18.594654083251953,
+  "num_samples": 2500.0,
+  "dataset_path": "data/processed/hydrostatic/test",
+  "mae_physical": 0.0006564032746553422,
+  "rmse_physical": 0.0016257993861486751,
+  "rel_l2_physical": 0.16668532354189858,
+  "max_error_physical": 0.1808094084262848,
+  "target_offset": 0.0012094725389033556,
+  "target_scale": 0.009723731316626072
+}

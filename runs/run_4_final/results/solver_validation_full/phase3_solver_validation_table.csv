@@ -1,0 +1,31 @@
+check,solver,samples,metric,result,pass_criterion
+Lake at rest,swe_hydrostatic,24,max eta drift,8.881784e-16,< 1e-8 target
+Lake at rest,swe_hydrostatic,24,finite pass rate,1.000,1.0
+Lake at rest,swe_muscl_hr,24,max eta drift,5.329071e-15,< 1e-8 target
+Lake at rest,swe_muscl_hr,24,finite pass rate,1.000,1.0
+Lake at rest,boussinesq,24,max eta drift,0.000000e+00,< 1e-8 target
+Lake at rest,boussinesq,24,finite pass rate,1.000,1.0
+Conservation,swe_hydrostatic,24,max mass rel. change,2.574214e-16,diagnostic
+Conservation,swe_hydrostatic,24,max eta-integral abs. change,3.229838e-16,diagnostic
+Conservation,swe_muscl_hr,24,max mass rel. change,2.594563e-16,diagnostic
+Conservation,swe_muscl_hr,24,max eta-integral abs. change,3.222249e-16,diagnostic
+Dynamic rollout,hydrostatic,13500,finite pass rate,1.000,1.0
+Dynamic rollout,hydrostatic,13500,nan + inf count,0,0
+Dynamic rollout,muscl_hr,13500,finite pass rate,1.000,1.0
+Dynamic rollout,muscl_hr,13500,nan + inf count,0,0
+Dynamic rollout,boussinesq,13500,finite pass rate,1.000,1.0
+Dynamic rollout,boussinesq,13500,nan + inf count,0,0
+Boussinesq CG,boussinesq,13500,samples with CG failures,0,0
+Boussinesq CG,boussinesq,13500,max iterations,416.0,reported
+CFL 0.30,swe_hydrostatic,12,finite pass rate,1.000,1.0
+CFL 0.30,swe_hydrostatic,12,mean final eta rel-L2 vs CFL 0.45,4.418402e-01,diagnostic; large values indicate unstable/sensitive timestep regime
+CFL 0.45,swe_hydrostatic,12,finite pass rate,1.000,1.0
+CFL 0.45,swe_hydrostatic,12,mean final eta rel-L2 vs CFL 0.45,0.000000e+00,diagnostic; large values indicate unstable/sensitive timestep regime
+CFL 0.60,swe_hydrostatic,12,finite pass rate,1.000,1.0
+CFL 0.60,swe_hydrostatic,12,mean final eta rel-L2 vs CFL 0.45,1.484623e+03,diagnostic; large values indicate unstable/sensitive timestep regime
+CFL 0.30,swe_muscl_hr,12,finite pass rate,1.000,1.0
+CFL 0.30,swe_muscl_hr,12,mean final eta rel-L2 vs CFL 0.45,4.018809e-01,diagnostic; large values indicate unstable/sensitive timestep regime
+CFL 0.45,swe_muscl_hr,12,finite pass rate,1.000,1.0
+CFL 0.45,swe_muscl_hr,12,mean final eta rel-L2 vs CFL 0.45,0.000000e+00,diagnostic; large values indicate unstable/sensitive timestep regime
+CFL 0.60,swe_muscl_hr,12,finite pass rate,1.000,1.0
+CFL 0.60,swe_muscl_hr,12,mean final eta rel-L2 vs CFL 0.45,1.072636e+03,diagnostic; large values indicate unstable/sensitive timestep regime
