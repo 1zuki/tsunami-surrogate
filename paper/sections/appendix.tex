@@ -3,6 +3,7 @@
 
 \subsection{Configuration details}
 \label{app:conf-details}
+
 The experiments share a single base training configuration, with per-model overrides layered on top. Table~\ref{tab:app-config} lists the settings that are referenced only indirectly in the main text. The main hydrostatic FNO widens the base architecture (width $48$, depth $6$, $14$ spectral modes per axis against the base $32$/$4$/$12$) and replaces the plain MSE objective with a horizon-weighted MSE that up-weights late frames, together with cosine learning-rate decay, gradient clipping, and a longer early-stopping patience. The convolutional baselines and the cross-resolution and windowed variants reuse this base and change only the fields noted in their respective sections.
 
 \begin{table}[H]
@@ -34,18 +35,20 @@ The experiments share a single base training configuration, with per-model overr
     Data         & batch size & $64$ \\
                  & train / val / test pool & $10{,}000$ / $1{,}000$ / $2{,}500$ \\
     \midrule
-    Ensemble     & member seeds & $11,\, 22,\, 33$ \\
+    Ensemble     & member seeds & $\{11,\,22,\,33,\,44,\,55,\,66,\,77\}$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{Additional solver diagnostics}
 \label{app:solver-diag}
+
 Beyond the dataset-level quality policy of Section~\ref{sec:data-generation}, both shallow-water references are checked against two standard finite-volume sanity properties in the test suite. The first is the lake-at-rest (well-balanced) property: starting from a flat free surface $\eta_0 = 0$ over non-flat fully submerged bathymetry with zero initial momentum, a well-balanced scheme must keep the surface flat and the momentum zero rather than spuriously generating flow at the bathymetry gradients. Both the hydrostatic and MUSCL-HR solvers hold this to a tight tolerance over a short rollout: the maximum free-surface drift stays below $10 ^ {-8}$ and the maximum momentum component below $10 ^ {-7}$ in normalized units. The second is a dynamic-pulse stability check: a small Gaussian surface perturbation is advanced over flat, sloped, and multi-Gaussian bathymetry under periodic and open boundaries, and the rollout must stay finite, keep depth nonnegative (to within $10 ^ {-8}$), respect the velocity safeguard, and still produce a non-trivial propagating signal. The MUSCL-HR solver passes these across the tested grids ($32 ^ 2$ and $64 ^ 2$) and boundary conditions. These are not convergence-order measurements; they are guardrails confirming that the references preserve the trivial steady state and remain stable on dynamic inputs, which is what justifies treating their outputs as clean supervised-learning labels.
 
 \subsection{Additional result tables}
 \label{app:add-result-tab}
-Table~\ref{tab:app-ensemble} reports the individual ensemble members used for the uncertainty study of Section~\ref{subsec:res-uncertainty}. The seven members differ only in random seed and otherwise share the main FNO configuration; their best validation relative $L_2$ values are tightly clustered ($0.240$--$0.245$), so the ensemble spread comes from independent optimization trajectories rather than from differing model capacity or stopping criteria. Table~\ref{tab:app-speed-detail} expands the runtime summary of Section~\ref{subsec:res-speed} with the raw benchmark settings recorded in the per-model speed JSON, so the per-sample timings can be reproduced.
+
+Table~\ref{tab:app-ensemble} reports the individual ensemble members used for the uncertainty study of Section~\ref{subsec:res-uncertainty}. The seven members differ only in random seed and otherwise share the main FNO configuration; their best validation relative $L_2$ values are tightly clustered ($0.240$--$0.245$), so the ensemble spread comes from independent optimization trajectories rather than from differing model capacity or stopping criteria. Table~\ref{tab:app-speed-detail} expands the runtime summary of Section~\ref{subsec:res-speed} with the raw benchmark settings recorded in the per-model speed JSON and the trainable parameter counts, so the per-sample timings can be reproduced without conflating parameter count with throughput.
 
 \begin{table}[H]
 \centering
@@ -68,21 +71,27 @@ Table~\ref{tab:app-ensemble} reports the individual ensemble members used for th
 
 \begin{table}[H]
 \centering
-\caption{Inference-benchmark settings from the per-model speed JSON, on the hydrostatic test split. All surrogates are timed on GPU (CUDA, fp32) with batch size $64$, five warm-up batches, and twenty timed repeats. Hardware: NVIDIA GeForce RTX 4050 Laptop GPU, Intel Core i5-13420H, PyTorch $2.10$ / CUDA $12.8$.}
+\caption{Inference-benchmark settings from the per-model speed JSON, on the hydrostatic test split. Parameter counts are in millions. All surrogates are timed on GPU (CUDA, fp32) with batch size $64$, five warm-up batches, and twenty timed repeats. Hardware: NVIDIA GeForce RTX 4050 Laptop GPU, Intel Core i5-13420H, PyTorch $2.10$ / CUDA $12.8$.}
 \label{tab:app-speed-detail}
-\begin{tabular}{lccccc}
+\begin{tabular}{lcccccc}
     \toprule
-    Model & Device & Precision & Batch & Warm-up / repeats & Infer (ms) \\
+    Model & Params (M) & Device & Precision & Batch & Warm-up / repeats & Infer (ms) \\
     \midrule
-    FNO   & CUDA & fp32 & $64$ & $5$ / $20$ & $0.906$ \\
-    U-Net & CUDA & fp32 & $64$ & $5$ / $20$ & $0.241$ \\
-    CNN   & CUDA & fp32 & $64$ & $5$ / $20$ & $0.173$ \\
+    FNO         & $5.443$  & CUDA & fp32 & $64$ & $5$ / $20$ & $0.904$ \\
+    FFNO        & $0.411$  & CUDA & fp32 & $64$ & $5$ / $20$ & $1.664$ \\
+    CNN         & $0.045$  & CUDA & fp32 & $64$ & $5$ / $20$ & $0.171$ \\
+    U-Net       & $0.104$  & CUDA & fp32 & $64$ & $5$ / $20$ & $0.237$ \\
+    FNO-modes8  & $1.793$  & CUDA & fp32 & $64$ & $5$ / $20$ & $0.861$ \\
+    FNO-modes20 & $11.083$ & CUDA & fp32 & $64$ & $5$ / $20$ & $0.954$ \\
+    U-FNO       & $6.938$  & CUDA & fp32 & $64$ & $5$ / $20$ & $3.895$ \\
+    WNO         & $2.016$  & CUDA & fp32 & $64$ & $5$ / $20$ & $2.086$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{Sample-scaling diagnostic}
 \label{app:sample-scaling}
+
 To characterize how the hydrostatic FNO's accuracy depends on the amount of training data, we train the same architecture on nested random subsets of the $10{,}000$-sample training pool, holding the optimizer, learning-rate schedule, early-stopping criterion, and the held-out test split ($N = 2500$) fixed across runs. Each subset is materialized into a flat in-memory dataset so that every run trains with the same constant batch size, removing batch size as a confound. Figure~\ref{fig:sample-scaling} plots the resulting test relative $L_2$ against training-set size on a log-scaled horizontal axis, and Figure~\ref{fig:sample-scaling-metrics} shows the companion MAE, RMSE, and relative $L_2$ curves. Table~\ref{tab:sample-scaling} reports the underlying numbers.
 
 The curve is monotone and smooth: relative $L_2$ falls from $0.586$ at $N = 100$ to $0.235$ at the full $N = 10{,}000$, with the steepest gains below $N = 1{,}000$ and clear diminishing returns past $N = 2{,}500$. We label this a single-seed diagnostic rather than a converged scaling law, since each point is one training run and we do not estimate run-to-run variance. The two smallest subsets ($N \le 250$) train to the $256$-epoch cap, but their validation relative $L_2$ is flat to within $10 ^ {-3}$ over the final $50$ epochs, indicating data-limited rather than budget-limited convergence; the larger subsets early-stop before the cap.
@@ -122,22 +131,14 @@ The curve is monotone and smooth: relative $L_2$ falls from $0.586$ at $N = 100$
 
 \begin{table}[H]
 \centering
-\caption{Window-FNO-5 diagnostic details for the hydrostatic test split. The model predicts in $K=5$ frame blocks and is evaluated autoregressively after being seeded with the true first frame.}
+\caption{Windowed rollout diagnostic details for the hydrostatic test split. Both models predict in $K=5$ frame blocks and are evaluated autoregressively after being seeded with the true first frame.}
 \label{tab:app-window-fno5}
-\begin{tabular}{lc}
+\begin{tabular}{lcccccc}
     \toprule
-    Quantity & Value \\
+    Model & Scenarios & rel-$L_2$ & physical rel-$L_2$ & frame $1$ & final & time (ms) \\
     \midrule
-    Test scenarios & $2500$ \\
-    Predicted frames & $49$ \\
-    Rollout chunks & $10$ \\
-    Full-rollout rel-$L_2$ & $0.0771$ \\
-    Frame-1 rel-$L_2$ & $0.0512$ \\
-    Mid-horizon rel-$L_2$ & $0.1299$ \\
-    Final-frame rel-$L_2$ & $0.1725$ \\
-    Rollout time per sample & $11.20$ ms \\
-    Speedup vs hydrostatic CPU solver & $\approx 3.0 \times 10^3$ \\
-    Best per-window validation rel-$L_2$ & $\approx 0.0487$ \\
+    Window-FNO-5  & $2500$ & $0.0771$ & $0.0765$ & $0.0512$ & $0.1725$ & $11.13$ \\
+    Window-FFNO-5 & $2500$ & $0.0517$ & $0.0513$ & $0.0303$ & $0.1695$ & $21.63$ \\
     \bottomrule
 \end{tabular}
 \end{table}
@@ -165,13 +166,14 @@ The curve is monotone and smooth: relative $L_2$ falls from $0.586$ at $N = 100$
 
 \begin{table}[H]
 \centering
-\caption{Status of the real-bathymetry crops. The offshore crop is the main morphology-transfer diagnostic. The coastline crop is evaluated both as a fully wet ablation and as a wet-dry OOD stress test.}
+\caption{Status of the real-bathymetry diagnostics. The main paper uses the fully wet 10-crop morphology suite; the single Tohoku crop remains an illustrative figure case. The coastline crop is evaluated both as a fully wet ablation and as a wet-dry OOD stress test.}
 \label{tab:app-real-bath-status}
 \begin{tabular}{llll}
     \toprule
     Crop & Rescale & Status & Reading \\
     \midrule
-    Offshore & $[-10,\,-0.75]$ & Main & Fully wet transfer \\
+    10-crop offshore suite & $[-10,\,-0.75]$ & Main & Fully wet morphology transfer \\
+    Tohoku offshore & $[-10,\,-0.75]$ & Figure & Illustrative suite crop \\
     Coastline & $[-10,\,-0.75]$ & Appendix & Geometry ablation \\
     Coastline & $[-10,\,5]$ & Appendix & Wet-dry stress \\
     \bottomrule
@@ -180,20 +182,21 @@ The curve is monotone and smooth: relative $L_2$ falls from $0.586$ at $N = 100$
 
 \begin{table}[H]
 \centering
-\caption{Direct FNO and Window-FNO-5 on the synthetic-source real-bathymetry diagnostics. Each suite contains one scenario, so the rows should be read as case studies, not distribution-level estimates. The coastline row is included only as an appendix stress test.}
+\caption{Direct and windowed models on the synthetic-source real-bathymetry diagnostics. Values are dimensionless relative $L_2$. Windowed rows are first-frame seeded and not like-for-like with direct prediction. The coastline wet-dry row is outside the fully wet training distribution and is included only as an appendix stress test.}
 \label{tab:app-real-bath-window}
-\begin{tabular}{llcccc}
+\begin{tabular}{lccccc}
     \toprule
-    Crop & Quality & Direct rel-$L_2$ & Window rel-$L_2$ & Window final rel-$L_2$ & Window RMSE \\
+    Crop & $n$ & Direct FNO & Direct FFNO & Window-FNO-5 & Window-FFNO-5 \\
     \midrule
-    Offshore wet  & ok   & $0.226$ & $0.046$ & $0.241$ & $0.00134$ \\
-    Coast wet     & ok   & $0.245$ & $0.065$ & $0.217$ & $0.00192$ \\
-    Coast wet-dry & warn & $0.996$ & $0.980$ & $1.000$ & $0.40866$ \\
+    10-crop offshore suite & $10$ & $0.275$ & $0.183$ & $0.053$ & $0.039$ \\
+    Tohoku offshore        & $1$  & $0.228$ & $0.165$ & $0.046$ & $0.029$ \\
+    Coast wet              & $1$  & $0.248$ & $0.128$ & $0.065$ & $0.034$ \\
+    Coast wet-dry          & $1$  & $0.996$ & $0.986$ & $0.981$ & $0.973$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-Both coastline rows use the same GEBCO-derived Japan-Trench-region crop (internal tag \texttt{gebco\_japan\_coast}), covering lon $138^\circ$--$144^\circ$E and lat $30 ^ \circ$--$36 ^ \circ$N, resampled to $64\times64$ under the identical Okada-like synthetic source (strength $0.826$, seed $367$) as the main offshore diagnostic; only the depth-range rescale differs. The crop is taken from the GEBCO 2026 Global grid. The two coastline rows separate morphology from wet-dry shift. When the coastline geometry is linearly rescaled into the fully wet range $[-10,\,-0.75]$, both models remain usable: the direct FNO gives rel-$L_2=0.245$ and Window-FNO-5 gives rel-$L_2=0.065$. When the same coastline crop keeps positive topography in the $[-10,\,5]$ range, the reference rollout triggers a small quality warning (maximum $|\eta|=5.0135$ against the configured limit $5.0$), and both models rise to rel-$L_2\approx1.0$. We therefore interpret the stress failure mainly as a dry-land/positive-topography distribution shift, not as evidence that coastline geometry alone breaks the surrogate.
+Both coastline rows use the same GEBCO-derived Japan-Trench-region crop (internal tag \texttt{gebco\_japan\_coast}), covering lon $138 ^ \circ$--$144 ^ \circ$E and lat $30 ^ \circ$--$36 ^ \circ$N, resampled to $64 \times 64$ under the identical Okada-like synthetic source (strength $0.826$, seed $367$) as the illustrative offshore diagnostic; only the depth-range rescale differs. The crop is taken from the GEBCO 2026 Global grid. The two coastline rows separate morphology from wet-dry shift. When the coastline geometry is linearly rescaled into the fully wet range $[-10,\, -0.75]$, all four model variants remain usable. When the same coastline crop keeps positive topography in the $[-10,\, 5]$ range, the reference rollout triggers a small quality warning (maximum $|\eta| = 5.0135$ against the configured limit $5.0$), and all variants rise to rel-$L_2 \approx 1.0$. We therefore interpret the stress failure mainly as a dry-land/positive-topography distribution shift, not as evidence that coastline geometry alone breaks the surrogate.
 
 \begin{figure}[H]
 \centering

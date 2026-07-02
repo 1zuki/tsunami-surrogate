@@ -14,7 +14,7 @@ z \mapsto \mathrm{GELU} \!\left(\mathcal{K}(z) + W z \right),
 \]
 where $W$ is the pointwise (local) path and $\mathcal{K}$ is the spectral (global) path. The spectral path transforms the features with a two-dimensional real Fast-Fourier-Transform (FFT), keeps only the lowest $m_1 \times m_2$ Fourier modes, multiplies them by a learnable complex weight tensor, and maps back with an inverse FFT. Truncating to the low modes is both a regularizer and the reason the layer is resolution-flexible: because the trained mode count is fixed, whole the FFT grid is rebuilt from the current input size, so the same trained weights can be applied at a different grid resolution, which is what we exploit in the cross-resolution experiments. After the Fourier blocks, a two-layer pointwise head with GELU in between projects the width-$d$ features to the $T$ output frames. To reduce warp-around artifacts from a periodic FFT on a non-periodic domain, the features are slightly zero-padded before the blocks and cropped back afterwards.
 
-In the main configuration we use $L=6$ Fourier blocks, width $d=48$, and $m_1=m_2=14$ retained modes in each spatial direction, with a padding of $6$ cells. The same architecture is trained separately on the hydrostatic, MUSCL-HR, and Boussinesq labels; only the output channel count would change if the forecast horizon were changed.
+In the main configuration we use $L = 6$ Fourier blocks, width $d = 48$, and $m_1 = m_2 = 14$ retained modes in each spatial direction, with a padding of $6$ cells. The same architecture is trained separately on the hydrostatic, MUSCL-HR, and Boussinesq labels; only the output channel count would change if the forecast horizon were changed. We also train two hydrostatic mode-count ablations, FNO-modes8 and FNO-modes20, that keep the rest of the configuration fixed while changing the retained Fourier modes to $8$ and $20$ per axis.
 
 \begin{figure}[H]
 \centering
@@ -84,6 +84,16 @@ In the main configuration we use $L=6$ Fourier blocks, width $d=48$, and $m_1=m_
 \caption{FNO architecture used in this work. \textbf{Top:} the input field $X$ (bathymetry, source, initial depth; $C{=}3$) plus two grid-coordinate channels is lifted to width $d{=}48$, passed through $L{=}6$ Fourier blocks, and projected to the $T{=}50$ forecast frames. \textbf{Bottom:} one Fourier block. The spectral path applies a real FFT, keeps the lowest $14{\times}14$ modes, multiplies them by a learnable complex weight $R$, and inverts the transform; the local path $W$ is a $1{\times}1$ convolution. Their sum passes through a GELU. Truncating to the low modes is what lets the same weights run at a different grid resolution.}
 \label{fig:fno-arch}
 \end{figure}
+
+\subsection{Operator variants}
+\label{subsec:operator-variants}
+
+The final comparison set includes three additional neural-operator variants under the same direct single-pass interface. The \textbf{FFNO} replaces the dense two-dimensional spectral mixing with a factorized Fourier structure, reducing the parameter coupling axes while preserving global spectral propagation \citep{tran2023ffno}. The \textbf{U-FNO} combines Fourier blocks with a U-Net-like multiscale path \citep{wen2022ufno}, and the \textbf{WNO} replaces the Fourier basis with a wavelet-style multiresolution operator \citep{tripura2023wno}. These are used as established architecture baselines rather than as new methods proposed here, so they share the same input channel, target frames, normalization, loss, and evaluation metrics as the main FNO wherever possible.
+
+\subsection{Windowed rollout variants}
+\label{subsec:window-models}
+
+The direct models predict all $50$ target frames from the static input stack alone. For the long-horizon drift diagnostic, we also train Window-FNO-5 and Window-FFNO-5 on the hydrostatic reference. These models forecast in blocks of $K=5$ frames from a dynamic stack that includes bathymetry, source, and the two most recent surface-elevation frames. At evaluation time the rollout is seeded with the true first frame and then advanced autoregressively, so the windowed results are reported as a partially observed diagnostic rather than as a like-for-like replacement for the direct single-pass task.
 
 \subsection{Convolutional baselines}
 \label{subsec:conv-baseline}

@@ -10,7 +10,7 @@ The default forward benchmark uses a uniform $64 \times 64$ Cartesian grid on no
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.6\linewidth]{figures/scenario_gallery.pdf}
+\includegraphics[width=0.8\linewidth]{figures/scenario_gallery.pdf}
 \caption{Representative accepted synthetic scenarios from the benchmark generator. Each column shows one paired bathymetry/source scenario before rollout: trench/dipole, continental/Okada-like, and seamounts/multi-Gaussian. Bathymetry uses the shared fully wet range $[-10,-0.75]$; source fields retain family-dependent amplitudes and are shown on a shared symmetric uplift/subsidence scale.}
 \label{fig:scenario-gallery}
 \end{figure}
@@ -109,6 +109,8 @@ Normalization statistics are computed from the training split only and then reus
 \subsection{Distribution-shift and resolution-transfer datasets}
 \label{subsec:shift-resolution-data}
 
-The same metadata-first design supports controlled generalization tests. For source-family shift, bathymetry-family shift, and source-strength shift, the evaluation pipeline builds filtered suites from the processed test archives using metadata such as \texttt{source\_type}, \texttt{bathymetry\_type}, and \texttt{source\_strength}. In the current configuration, these suites include a multi-Gaussian source subset, a trench bathymetry subset, and a high-source-strength subset. When reporting a strict held-out-family experiment, the corresponding family should be excluded from the training split before preprocessing and then evaluated through the same metadata-filtered suite. This distinction avoids confusing a difficult subgroup evaluation with a truly unseen-family generalization test.
+The same metadata-first design supports controlled generalization tests. For source-family shift, bathymetry-family shift, and source-strength shift, the evaluation pipeline builds filtered suites from the processed test archives using metadata such as \texttt{source\_type}, \texttt{bathymetry\_type}, and \texttt{source\_strength}. In the current configuration, these suites include a multi-Gaussian source subset, a trench bathymetry subset, and a high-source-strength subset. These are difficult-subgroup diagnostics because the filtered families are still present in the training distribution.
+
+We also build strict held-out-family datasets for four stress tests: \texttt{trench} and \texttt{continental} bathymetry holdouts, and \texttt{rough} and \texttt{okada-like} source holdouts. For these datasets the held-out family is removed before preprocessing and normalization statistics are refit from the filtered training split only. The held-out test subset is then evaluated separately from the in-distribution remainder of the same test pool, which keeps the scenario accounting explicit and avoids confusing metadata filtering with truly unseen-family generalization.
 
 For cross-resolution transfer, we additionally generate native $32\times32$ and $128\times128$ test pools of $1{,}000$ scenarios each, alongside the main $64\times64$ data. These pools keep the same procedural generation logic while changing the grid spacing, the sponge width, and, for the finest grid, the target CFL value. The shared-from-$64$ preprocessing mode can force the lower- and higher-resolution datasets to use normalization statistics from the $64\times64$ training distribution. This gives a stricter transfer setting: the model is evaluated on a changed grid resolution without recomputing the feature scaling from the target resolution.
