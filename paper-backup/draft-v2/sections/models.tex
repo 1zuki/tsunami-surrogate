@@ -1,0 +1,109 @@
+\section{Surrogate models}
+\label{sec:models}
+
+All surrogates share the same interface fixed in Section~\ref{subsec:forward-task}: they map the stacked input field $X\in\mathbb{R}^{C \times H \times W}$ to the full forecast trajectory $\widehat{Y}\in\mathbb{R}^{T \times H \times W}$, with $C=3$ and $T=50$ in the main experiments. The forecast horizon is therefore predicted as $T$ output channels, so that a whole rollout is produced in a single forward pass. We keep this interface identical across all models so that differences in the results reflect the architecture and not a different problem setup. The Fourier Neural Operator is the main model; the others are baselines that span a local and an encoder--decoder inductive bias.
+
+\subsection{Fourier Neural Operator}
+\label{subsec:fno}
+
+The Fourier Neural Operator (FNO) is our primary model because it learns a mapping between discretized functions rather than a fixed pixel-to-pixel function, and its spectral layer gives it a global receptive field at every depth \citep{li2021fno}. This suits tsunami-like propagation, where a disturbance influences distant parts of the domain within the forecast horizon and a purely local model would need many layers to reach the same range.
+
+The overall architecture is shown in Figure~\ref{fig:fno-arch} The input is first lifted to a width-$d$ feature map by a $1 \times 1$ convolution. Following common practice, we also concatenate two normalized coordinate channels before lifting, so the operator has access to absolute position. The lifted features are then processed by a stack of $L$ Fourier blocks. Each block combines a spectral convolution with an ordinary $1 \times 1$ convolution and a GELU nonlinearity,
+\[
+z \mapsto \mathrm{GELU} \!\left(\mathcal{K}(z) + W z \right),
+\]
+where $W$ is the pointwise (local) path and $\mathcal{K}$ is the spectral (global) path. The spectral path transforms the features with a two-dimensional real Fast-Fourier-Transform (FFT), keeps only the lowest $m_1 \times m_2$ Fourier modes, multiplies them by a learnable complex weight tensor, and maps back with an inverse FFT. Truncating to the low modes is both a regularizer and the reason the layer is resolution-flexible: because the trained mode count is fixed, whole the FFT grid is rebuilt from the current input size, so the same trained weights can be applied at a different grid resolution, which is what we exploit in the cross-resolution experiments. After the Fourier blocks, a two-layer pointwise head with GELU in between projects the width-$d$ features to the $T$ output frames. To reduce warp-around artifacts from a periodic FFT on a non-periodic domain, the features are slightly zero-padded before the blocks and cropped back afterwards.
+
+In the main configuration we use $L = 6$ Fourier blocks, width $d = 48$, and $m_1 = m_2 = 14$ retained modes in each spatial direction, with a padding of $6$ cells. The same architecture is trained separately on the hydrostatic, MUSCL-HR, and Boussinesq labels; only the output channel count would change if the forecast horizon were changed. We also train two hydrostatic mode-count ablations, FNO-modes8 and FNO-modes20, that keep the rest of the configuration fixed while changing the retained Fourier modes to $8$ and $20$ per axis.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    font=\small,
+    box/.style={draw, rounded corners=2pt, minimum height=8mm, minimum width=11mm, align=center, inner sep=3pt},
+    lift/.style={box, fill=blue!10},
+    block/.style={box, fill=orange!15},
+    head/.style={box, fill=green!12},
+    io/.style={box, fill=gray!10},
+    op/.style={draw, circle, inner sep=1pt, minimum size=6mm, fill=orange!20},
+    sm/.style={box, fill=orange!8, minimum height=7mm, minimum width=9mm},
+    >={Stealth[length=2mm]},
+    arr/.style={->, thick},
+]
+
+\node[io] (in) {$X$\\\scriptsize $3{\times}H{\times}W$};
+\node[lift, right=7mm of in] (lift) {Lift\\\scriptsize $1{\times}1$ conv\\\scriptsize $\to d{=}48$};
+\node[block, right=7mm of lift] (b1) {Fourier\\block $1$};
+\node[block, right=5mm of b1] (b2) {Fourier\\block $2$};
+\node[right=4mm of b2] (dots) {$\cdots$};
+\node[block, right=4mm of dots] (bL) {Fourier\\block $6$};
+\node[head, right=6mm of bL] (proj) {Proj.\\\scriptsize head};
+\node[io, right=6mm of proj] (out) {$\widehat{Y}$\\\scriptsize $50{\times}H{\times}W$};
+
+\draw[arr] (in) -- (lift);
+\draw[arr] (lift) -- (b1);
+\draw[arr] (b1) -- (b2);
+\draw[arr] (b2) -- (dots);
+\draw[arr] (dots) -- (bL);
+\draw[arr] (bL) -- (proj);
+\draw[arr] (proj) -- (out);
+
+\node[align=center, below=2mm of lift, text width=24mm, font=\scriptsize] {+\,2 grid coord\\channels.};
+
+\node[draw, dashed, rounded corners, fit={(b1) (bL)}, inner sep=4pt] (fitblk) {};
+\coordinate (dl) at ($(fitblk.south)+(0,-3mm)$);
+
+\node[sm] (vin) at ($(dl)+(-4.7,-1.6)$) {$z$};
+
+\node[op, right=6mm of vin] (fft) {$\mathcal{F}$};
+\node[sm, right=5mm of fft] (modes) {keep\\\scriptsize $14{\times}14$\\\scriptsize modes};
+\node[op, right=5mm of modes] (rmul) {$R$};
+\node[op, right=5mm of rmul] (ifft) {$\mathcal{F}^{-1}$};
+\node[draw, circle, inner sep=0pt, minimum size=5mm, right=5mm of ifft, fill=red!15] (sum) {$+$};
+\node[op, right=5mm of sum, fill=red!20] (act) {$\sigma$};
+\node[sm, right=5mm of act] (vout) {$z'$};
+
+\node[op, below=7mm of rmul, fill=blue!15] (W) {$W$};
+
+\draw[arr] (vin) -- (fft);
+\draw[arr] (fft) -- (modes);
+\draw[arr] (modes) -- (rmul);
+\draw[arr] (rmul) -- (ifft);
+\draw[arr] (ifft) -- (sum);
+\draw[arr] (sum) -- (act);
+\draw[arr] (act) -- (vout);
+\draw[arr] (vin) |- (W);
+\draw[arr] (W) -| (sum);
+
+\draw[densely dotted] (fitblk.south) -- ($(fft)!0.5!(rmul)+(0,0.95)$);
+
+
+\node[align=left, font=\scriptsize, right=2mm of vout, text width=20mm]
+  {$\sigma=\mathrm{GELU}$\\spectral $+$ local};
+\end{tikzpicture}
+\caption{FNO architecture used in this work. \textbf{Top:} the input field $X$ (bathymetry, source, initial depth; $C{=}3$) plus two grid-coordinate channels is lifted to width $d{=}48$, passed through $L{=}6$ Fourier blocks, and projected to the $T{=}50$ forecast frames. \textbf{Bottom:} one Fourier block. The spectral path applies a real FFT, keeps the lowest $14{\times}14$ modes, multiplies them by a learnable complex weight $R$, and inverts the transform; the local path $W$ is a $1{\times}1$ convolution. Their sum passes through a GELU. Truncating to the low modes is what lets the same weights run at a different grid resolution.}
+\label{fig:fno-arch}
+\end{figure}
+
+\subsection{Operator variants}
+\label{subsec:operator-variants}
+
+The final comparison set includes three additional neural-operator variants under the same direct single-pass interface. The \textbf{FFNO} replaces the dense two-dimensional spectral mixing with a factorized Fourier structure, reducing the parameter coupling axes while preserving global spectral propagation \citep{tran2023ffno}. The \textbf{U-FNO} combines Fourier blocks with a U-Net-like multiscale path \citep{wen2022ufno}, and the \textbf{WNO} replaces the Fourier basis with a wavelet-style multiresolution operator \citep{tripura2023wno}. These are used as established architecture baselines rather than as new methods proposed here, so they share the same input channel, target frames, normalization, loss, and evaluation metrics as the main FNO wherever possible.
+
+\subsection{Windowed rollout variants}
+\label{subsec:window-models}
+
+The direct models predict all $50$ target frames from the static input stack alone. For the long-horizon drift diagnostic, we also train Window-FNO-5 and Window-FFNO-5 on the hydrostatic reference. These models forecast in blocks of $K=5$ frames from a dynamic stack that includes bathymetry, source, and the two most recent surface-elevation frames. At evaluation time the rollout is seeded with the true first frame and then advanced autoregressively, so the windowed results are reported as a partially observed diagnostic rather than as a like-for-like replacement for the direct single-pass task.
+
+\subsection{Convolutional baselines}
+\label{subsec:conv-baseline}
+
+To check whether the spectral, global structure of the FNO actually helps, we include two purely convolutional baselines that have a local receptive field.
+
+The \textbf{CNN} is a small fully convolutional neural network: $3 \times 3$ convolutions followed by a GELU activation, then a $1 \times 1$ output convolution that produces $T$ output frames at a width-$d = 48$. It has no down-sampling and no global mixing, so its receptive field grows only with depth. So this represents the simplest reasonable local predictor and is useful as a lower comparison anchor.
+
+The \textbf{U-Net} adds a single encoder--decoder with a skip connection \citep{ronneberger2015unet}. An input double convolution block is followed by an average-pooling with down-sampling and a second double convolution at double the width; the coarse features are then bi-linearly up-sampled and then concatenated with a high-resolution skip feature and then decoded by a final double convolution and $1 \times 1$ output convolution; at a base width of $32$. The pooling gives it a larger effective receptive field compared to the plain \textbf{CNN} at a modest cost, which is why it is a stronger convolution comparison.
+
+\subsection{Ensemble uncertainty}
+\label{subsec:model-ensemble}
+For uncertainty, we do not change the base architecture; we instead train a deep ensemble of independently seeded FNO models and aggregate their predictions, as defined in Section~\ref{subsec:uncertainty}. The ensemble mean is used as the point prediction and the per-element spread across members as the uncertainty, which keeps the uncertainty mechanism simple and architecture-agnostic. Because a single member gives a degenerate zero variance, the ensemble path requires at least two members, and we use seven in the reported experiments.
