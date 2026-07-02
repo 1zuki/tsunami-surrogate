@@ -44,11 +44,18 @@ class Trainer:
         early_mode = str(early_cfg.get("mode", "min")).strip().lower()
         if early_mode not in {"min", "max"}:
             raise ValueError(f"Unsupported early_stopping.mode: {early_mode}. Use 'min' or 'max'.")
-        self.early = EarlyStopping(early_cfg.get("patience", 10), early_mode)
+        self.early = EarlyStopping(
+            early_cfg.get("patience", 10),
+            early_mode,
+            min_delta=float(early_cfg.get("min_delta", 0.0)),
+        )
         checkpoint_mode = str(train_cfg.get("checkpoint_mode", early_mode)).strip().lower()
         if checkpoint_mode not in {"min", "max"}:
             raise ValueError(f"Unsupported checkpoint_mode: {checkpoint_mode}. Use 'min' or 'max'.")
         self.checkpoint_mode = checkpoint_mode
+        self.checkpoint_min_delta = float(
+            train_cfg.get("checkpoint_min_delta", early_cfg.get("min_delta", 0.0))
+        )
 
     def _resume_from(self, resume_path: Path):
         ckpt = load_checkpoint(resume_path, self.model, self.optimizer, self.scheduler, map_location=self.device)
@@ -92,10 +99,7 @@ class Trainer:
             metric_name = train_cfg.get("checkpoint_metric", "val_rel_l2")
             value = row.get(metric_name, row.get("val_loss", row.get("train_loss")))
 
-            if value is not None and (
-                (self.checkpoint_mode == "min" and value < best_value)
-                or (self.checkpoint_mode == "max" and value > best_value)
-            ):
+            if value is not None and self._is_checkpoint_improved(float(value), float(best_value)):
                 best_value = value
                 save_checkpoint(self.output_dir / "best.pt", self.model, self.optimizer, epoch, row, self.cfg,
                                 scheduler=self.scheduler, trainer_state=self._trainer_state(epoch, best_value))
@@ -124,3 +128,8 @@ class Trainer:
             "early_best": self.early.best,
             "early_count": int(self.early.count),
         }
+
+    def _is_checkpoint_improved(self, value: float, best_value: float) -> bool:
+        if self.checkpoint_mode == "min":
+            return value < best_value - self.checkpoint_min_delta
+        return value > best_value + self.checkpoint_min_delta
