@@ -1,0 +1,14 @@
+defaults:
+  - fno.yaml
+
+output_dir: experiments/fno_holdout/source_okada_like
+
+data:
+  train_path: data/processed_strict_holdout/hydrostatic/source_holdout_okada_like/train
+  val_path: data/processed_strict_holdout/hydrostatic/source_holdout_okada_like/val
+  test_path: data/processed_strict_holdout/hydrostatic/source_holdout_okada_like/test_heldout
+  batch_size: 64
+
+eval:
+  dataset_path: data/processed_strict_holdout/hydrostatic/source_holdout_okada_like/test_heldout
+  output_dir: experiments/fno_holdout/source_okada_like/eval_heldout

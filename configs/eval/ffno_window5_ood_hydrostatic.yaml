@@ -1,0 +1,16 @@
+defaults:
+  - ../model/ffno_window5_hydrostatic.yaml
+
+eval:
+  output_dir: experiments/ffno_window5_hydrostatic/eval_ood_suites
+  report_physical_metrics: true
+  window_suites:
+    - label: source_holdout_multi_gauss
+      path: data/processed_ood/hydrostatic/source_holdout_multi_gauss
+      batch_size: 64
+    - label: bathymetry_holdout_trench
+      path: data/processed_ood/hydrostatic/bathymetry_holdout_trench
+      batch_size: 64
+    - label: source_strength_extreme_high
+      path: data/processed_ood/hydrostatic/source_strength_extreme_high
+      batch_size: 64

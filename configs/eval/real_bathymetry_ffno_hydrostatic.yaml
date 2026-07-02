@@ -1,8 +1,8 @@
 defaults:
-  - ../model/fno.yaml
+  - ../model/ffno.yaml
 
 eval:
-  output_dir: experiments/fno/eval_real_bathymetry
+  output_dir: experiments/ffno/eval_real_bathymetry
   report_physical_metrics: true
   real_resolution:
     normalization_policy: require_target_stats_match
@@ -10,7 +10,7 @@ eval:
     checkpoint_reference_mismatch: fail
     normalization_reference_path: data/processed/hydrostatic/train
     checkpoint_train_path: data/processed/hydrostatic/train
-    normalization_tol: 1e-6
+    normalization_tol: 1.0e-6
     suites:
       - label: main_morphology_suite_10
         path: data/processed_real_bathymetry/main_morphology_suite_10/hydrostatic/test

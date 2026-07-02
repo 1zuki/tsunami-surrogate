@@ -1,0 +1,13 @@
+defaults:
+  - fno.yaml
+
+output_dir: experiments/ffno
+
+data:
+  batch_size: 64
+
+model:
+  name: ffno2d
+
+eval:
+  output_dir: experiments/ffno/eval

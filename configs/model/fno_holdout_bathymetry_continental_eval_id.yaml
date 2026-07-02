@@ -1,0 +1,9 @@
+defaults:
+  - fno_holdout_bathymetry_continental.yaml
+
+data:
+  test_path: data/processed_strict_holdout/hydrostatic/bathymetry_holdout_continental/test_id
+
+eval:
+  dataset_path: data/processed_strict_holdout/hydrostatic/bathymetry_holdout_continental/test_id
+  output_dir: experiments/fno_holdout/bathymetry_continental/eval_id

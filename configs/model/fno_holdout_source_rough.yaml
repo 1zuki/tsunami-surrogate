@@ -1,0 +1,14 @@
+defaults:
+  - fno.yaml
+
+output_dir: experiments/fno_holdout/source_rough
+
+data:
+  train_path: data/processed_strict_holdout/hydrostatic/source_holdout_rough/train
+  val_path: data/processed_strict_holdout/hydrostatic/source_holdout_rough/val
+  test_path: data/processed_strict_holdout/hydrostatic/source_holdout_rough/test_heldout
+  batch_size: 64
+
+eval:
+  dataset_path: data/processed_strict_holdout/hydrostatic/source_holdout_rough/test_heldout
+  output_dir: experiments/fno_holdout/source_rough/eval_heldout

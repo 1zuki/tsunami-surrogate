@@ -1,0 +1,10 @@
+defaults:
+  - fno.yaml
+
+output_dir: experiments/ufno
+
+model:
+  name: ufno2d
+
+eval:
+  output_dir: experiments/ufno/eval

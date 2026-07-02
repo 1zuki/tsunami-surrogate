@@ -1,0 +1,9 @@
+defaults:
+  - fno_holdout_source_okada_like.yaml
+
+data:
+  test_path: data/processed_strict_holdout/hydrostatic/source_holdout_okada_like/test_id
+
+eval:
+  dataset_path: data/processed_strict_holdout/hydrostatic/source_holdout_okada_like/test_id
+  output_dir: experiments/fno_holdout/source_okada_like/eval_id

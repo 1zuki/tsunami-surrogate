@@ -1,0 +1,22 @@
+source_root: data/processed/hydrostatic
+output_root: data/processed_strict_holdout/hydrostatic
+reference_stats: data/processed/hydrostatic/normalization_stats.json
+shard_size: 128
+eps: 1.0e-6
+
+holdouts:
+  - label: bathymetry_holdout_trench
+    key: bathymetry_type
+    value: trench
+
+  - label: bathymetry_holdout_continental
+    key: bathymetry_type
+    value: continental
+
+  - label: source_holdout_rough
+    key: source_type
+    value: rough
+
+  - label: source_holdout_okada_like
+    key: source_type
+    value: okada-like

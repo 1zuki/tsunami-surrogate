@@ -1,0 +1,13 @@
+defaults:
+  - fno_window5_hydrostatic.yaml
+
+output_dir: experiments/ffno_window5_hydrostatic
+
+data:
+  batch_size: 64
+
+model:
+  name: ffno2d
+
+eval:
+  output_dir: experiments/ffno_window5_hydrostatic/eval

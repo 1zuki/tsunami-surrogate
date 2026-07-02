@@ -1,0 +1,9 @@
+defaults:
+  - fno_holdout_source_rough.yaml
+
+data:
+  test_path: data/processed_strict_holdout/hydrostatic/source_holdout_rough/test_id
+
+eval:
+  dataset_path: data/processed_strict_holdout/hydrostatic/source_holdout_rough/test_id
+  output_dir: experiments/fno_holdout/source_rough/eval_id

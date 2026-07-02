@@ -1,0 +1,14 @@
+defaults:
+  - fno.yaml
+
+output_dir: experiments/wno
+
+data:
+  batch_size: 64
+
+model:
+  name: wno2d
+  wavelet_kernel_size: 3
+
+eval:
+  output_dir: experiments/wno/eval

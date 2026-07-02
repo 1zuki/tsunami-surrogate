@@ -1,7 +1,9 @@
-model_config: configs/model/fno_boussinesq.yaml
-checkpoint: experiments/fno_boussinesq/best.pt
+model_config: configs/model/fno.yaml
+checkpoint: experiments/fno/best.pt
 
 evaluation:
+  # Cross-reference: hydrostatic-trained FNO scored against the BOUSSINESQ targets
+  # (same input scenarios, different solver).
   dataset_path: data/processed/boussinesq/test/eval_dataset.npz
   batch_size: 8
   report_physical_metrics: true

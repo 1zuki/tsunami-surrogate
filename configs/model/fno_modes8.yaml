@@ -1,0 +1,11 @@
+defaults:
+  - fno.yaml
+
+output_dir: experiments/fno_modes8
+
+model:
+  modes1: 8
+  modes2: 8
+
+eval:
+  output_dir: experiments/fno_modes8/eval

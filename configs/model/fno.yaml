@@ -32,6 +32,7 @@ train:
   early_stopping:
     patience: 20
     mode: min
+    min_delta: 1.0e-4
 
 eval:
   dataset_path: data/processed/hydrostatic/test

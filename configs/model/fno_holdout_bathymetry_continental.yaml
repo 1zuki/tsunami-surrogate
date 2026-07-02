@@ -1,0 +1,14 @@
+defaults:
+  - fno.yaml
+
+output_dir: experiments/fno_holdout/bathymetry_continental
+
+data:
+  train_path: data/processed_strict_holdout/hydrostatic/bathymetry_holdout_continental/train
+  val_path: data/processed_strict_holdout/hydrostatic/bathymetry_holdout_continental/val
+  test_path: data/processed_strict_holdout/hydrostatic/bathymetry_holdout_continental/test_heldout
+  batch_size: 64
+
+eval:
+  dataset_path: data/processed_strict_holdout/hydrostatic/bathymetry_holdout_continental/test_heldout
+  output_dir: experiments/fno_holdout/bathymetry_continental/eval_heldout
