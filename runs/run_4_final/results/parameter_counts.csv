@@ -1,0 +1,13 @@
+model,group,architecture,config_path,checkpoint_path,checkpoint_exists,config_source,in_channels,out_channels,modes1,modes2,width,depth,total_params,trainable_params,non_trainable_params,total_params_millions,trainable_params_millions,fp32_parameter_memory_mb
+fno,single_pass,fno2d,configs/model/fno.yaml,experiments/fno/best.pt,True,checkpoint,3,50,14,14,48,6,5442962,5442962,0,5.442962,5.442962,21.771848
+ffno,single_pass,ffno2d,configs/model/ffno.yaml,experiments/ffno/best.pt,True,checkpoint,3,50,14,14,48,6,411026,411026,0,0.411026,0.411026,1.644104
+cnn,single_pass,cnn,configs/model/cnn.yaml,experiments/cnn/best.pt,True,checkpoint,3,50,,,48,,45362,45362,0,0.045362,0.045362,0.181448
+unet,single_pass,unet,configs/model/unet.yaml,experiments/unet/best.pt,True,checkpoint,3,50,,,32,,104146,104146,0,0.104146,0.104146,0.416584
+fno_modes8,single_pass_ablation,fno2d,configs/model/fno_modes8.yaml,experiments/fno_modes8/best.pt,True,checkpoint,3,50,8,8,48,6,1793426,1793426,0,1.793426,1.793426,7.173704
+fno_modes20,single_pass_ablation,fno2d,configs/model/fno_modes20.yaml,experiments/fno_modes20/best.pt,True,checkpoint,3,50,20,20,48,6,11083154,11083154,0,11.083154,11.083154,44.332616
+ufno,single_pass_baseline,ufno2d,configs/model/ufno.yaml,experiments/ufno/best.pt,True,checkpoint,3,50,14,14,48,6,6938258,6938258,0,6.938258,6.938258,27.753032
+wno,single_pass_baseline,wno2d,configs/model/wno.yaml,experiments/wno/best.pt,True,checkpoint,3,50,,,48,6,2015762,2015762,0,2.015762,2.015762,8.063048
+fno_muscl_hr,target_solver,fno2d,configs/model/fno_muscl_hr.yaml,experiments/fno_muscl_hr/best.pt,True,checkpoint,3,50,14,14,48,6,5442962,5442962,0,5.442962,5.442962,21.771848
+fno_boussinesq,target_solver,fno2d,configs/model/fno_boussinesq.yaml,experiments/fno_boussinesq/best.pt,True,checkpoint,3,50,14,14,48,6,5442962,5442962,0,5.442962,5.442962,21.771848
+fno_window5_hydrostatic,seeded_window,fno2d,configs/model/fno_window5_hydrostatic.yaml,experiments/fno_window5_hydrostatic/best.pt,True,checkpoint,4,5,14,14,48,6,5438645,5438645,0,5.438645,5.438645,21.75458
+ffno_window5_hydrostatic,seeded_window,ffno2d,configs/model/ffno_window5_hydrostatic.yaml,experiments/ffno_window5_hydrostatic/best.pt,True,checkpoint,4,5,14,14,48,6,406709,406709,0,0.406709,0.406709,1.626836

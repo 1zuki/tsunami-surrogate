@@ -1,0 +1,18 @@
+{
+  "evaluation_type": "in_distribution_uncertainty",
+  "num_samples": 2500.0,
+  "coverage_50": 0.4634630765914917,
+  "coverage_80": 0.6999625574111938,
+  "coverage_90": 0.7821516913414002,
+  "coverage_95": 0.8321093036651611,
+  "nll": -1.9062584294438363,
+  "error_uncertainty_corr": 0.6464883620262146,
+  "coverage_50_physical": 0.4634630865097046,
+  "coverage_80_physical": 0.6999625696182251,
+  "coverage_90_physical": 0.7821517020225525,
+  "coverage_95_physical": 0.8321093265533447,
+  "nll_physical": -6.539444231414795,
+  "error_uncertainty_corr_physical": 0.6464883452415466,
+  "target_offset": 0.0012094725389033556,
+  "target_scale": 0.009723731316626072
+}

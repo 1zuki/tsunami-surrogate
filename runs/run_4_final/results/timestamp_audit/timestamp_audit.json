@@ -1,0 +1,132 @@
+{
+  "audit_type": "saved_frame_timestamp_audit",
+  "frame_index": 50,
+  "frame_index_note": "With include_initial_state=true and save_every=5, frame index 50 is the stored solver-step-250 snapshot, not an interpolated common-time value.",
+  "missing_rows_preview": [],
+  "num_loaded_rows": 40500,
+  "num_missing_rows": 0,
+  "output_files": {
+    "frame50_by_solver_csv": "/home/izu/Projects/tsunami-surrogate/results/timestamp_audit/frame50_by_solver.csv",
+    "json": "/home/izu/Projects/tsunami-surrogate/results/timestamp_audit/timestamp_audit.json",
+    "missing_csv": "/home/izu/Projects/tsunami-surrogate/results/timestamp_audit/missing_timestamp_rows.csv",
+    "pairwise_gaps_csv": "/home/izu/Projects/tsunami-surrogate/results/timestamp_audit/frame50_pairwise_gaps.csv",
+    "pairwise_summary_csv": "/home/izu/Projects/tsunami-surrogate/results/timestamp_audit/frame50_pairwise_gap_summary.csv"
+  },
+  "pairwise_frame_timestamp_gap_summaries": [
+    {
+      "abs_gap_count": 13500,
+      "abs_gap_max": 0.00028210878372192383,
+      "abs_gap_mean": 1.281271598957203e-05,
+      "abs_gap_median": 4.030764102935791e-06,
+      "abs_gap_min": 0.0,
+      "abs_gap_p05": 4.470348358154297e-08,
+      "abs_gap_p95": 5.381032824516293e-05,
+      "abs_gap_std": 2.1953446626142657e-05,
+      "num_shared_scenarios": 13500,
+      "signed_gap_count": 13500,
+      "signed_gap_max": 0.00028210878372192383,
+      "signed_gap_mean": 1.2577067922662806e-05,
+      "signed_gap_median": 3.919005393981934e-06,
+      "signed_gap_min": -4.4405460357666016e-05,
+      "signed_gap_p05": -4.3287873268127374e-07,
+      "signed_gap_p95": 5.381032824516293e-05,
+      "signed_gap_std": 2.2089293159018364e-05,
+      "solver_a": "Hydrostatic",
+      "solver_b": "MUSCL-HR"
+    },
+    {
+      "abs_gap_count": 13500,
+      "abs_gap_max": 0.08875858038663864,
+      "abs_gap_mean": 0.08866471579891665,
+      "abs_gap_median": 0.08870674669742584,
+      "abs_gap_min": 0.08749362081289291,
+      "abs_gap_p05": 0.08844226002693176,
+      "abs_gap_p95": 0.08873675018548965,
+      "abs_gap_std": 0.00011290108896904538,
+      "num_shared_scenarios": 13500,
+      "signed_gap_count": 13500,
+      "signed_gap_max": 0.08875858038663864,
+      "signed_gap_mean": 0.08866471579891665,
+      "signed_gap_median": 0.08870674669742584,
+      "signed_gap_min": 0.08749362081289291,
+      "signed_gap_p05": 0.08844226002693176,
+      "signed_gap_p95": 0.08873675018548965,
+      "signed_gap_std": 0.00011290108896904538,
+      "solver_a": "Hydrostatic",
+      "solver_b": "Boussinesq"
+    },
+    {
+      "abs_gap_count": 13500,
+      "abs_gap_max": 0.08877954632043839,
+      "abs_gap_mean": 0.08865213873099398,
+      "abs_gap_median": 0.08870097994804382,
+      "abs_gap_min": 0.08722125738859177,
+      "abs_gap_p05": 0.08839772418141364,
+      "abs_gap_p95": 0.08873670622706413,
+      "abs_gap_std": 0.00012988678815509938,
+      "num_shared_scenarios": 13500,
+      "signed_gap_count": 13500,
+      "signed_gap_max": 0.08877954632043839,
+      "signed_gap_mean": 0.08865213873099398,
+      "signed_gap_median": 0.08870097994804382,
+      "signed_gap_min": 0.08722125738859177,
+      "signed_gap_p05": 0.08839772418141364,
+      "signed_gap_p95": 0.08873670622706413,
+      "signed_gap_std": 0.00012988678815509938,
+      "solver_a": "MUSCL-HR",
+      "solver_b": "Boussinesq"
+    }
+  ],
+  "processed_root": "data/processed",
+  "solver_summaries": [
+    {
+      "frame50_count": 13500,
+      "frame50_max": 0.08873767405748367,
+      "frame50_mean": 0.08873767405748367,
+      "frame50_median": 0.08873767405748367,
+      "frame50_min": 0.08873767405748367,
+      "frame50_p05": 0.08873767405748367,
+      "frame50_p95": 0.08873767405748367,
+      "frame50_std": 0.0,
+      "num_missing": 0,
+      "num_rows": 13500,
+      "solver": "Boussinesq"
+    },
+    {
+      "frame50_count": 13500,
+      "frame50_max": 0.17749625444412231,
+      "frame50_mean": 0.1774023898564003,
+      "frame50_median": 0.17744442075490952,
+      "frame50_min": 0.1762312948703766,
+      "frame50_p05": 0.17717993408441543,
+      "frame50_p95": 0.17747442424297333,
+      "frame50_std": 0.00011290108896904538,
+      "num_missing": 0,
+      "num_rows": 13500,
+      "solver": "Hydrostatic"
+    },
+    {
+      "frame50_count": 13500,
+      "frame50_max": 0.17751722037792206,
+      "frame50_mean": 0.17738981278847765,
+      "frame50_median": 0.1774386540055275,
+      "frame50_min": 0.17595893144607544,
+      "frame50_p05": 0.17713539823889732,
+      "frame50_p95": 0.17747438028454782,
+      "frame50_std": 0.00012988678815509938,
+      "num_missing": 0,
+      "num_rows": 13500,
+      "solver": "MUSCL-HR"
+    }
+  ],
+  "solvers": [
+    "hydrostatic",
+    "muscl_hr",
+    "boussinesq"
+  ],
+  "splits": [
+    "train",
+    "val",
+    "test"
+  ]
+}

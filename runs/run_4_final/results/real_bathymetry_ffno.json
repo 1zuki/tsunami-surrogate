@@ -1,0 +1,86 @@
+{
+  "evaluation_type": "native_real_resolution_benchmark",
+  "rows": [
+    {
+      "label": "main_morphology_suite_10",
+      "dataset_path": "data/processed_real_bathymetry/main_morphology_suite_10/hydrostatic/test",
+      "num_samples": 10,
+      "normalized_targets": true,
+      "mae": 0.1327263081073761,
+      "rmse": 0.28129782338981857,
+      "rel_l2": 0.1825809594126781,
+      "max_error": 5.014823913574219,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072,
+      "mae_physical": 0.0012905949726700783,
+      "rmse_physical": 0.0027352645042031253,
+      "rel_l2_physical": 0.17947708009969876,
+      "max_error_physical": 0.04876279830932617
+    },
+    {
+      "label": "main_morphology",
+      "dataset_path": "data/processed_real_bathymetry/main_morphology/hydrostatic/test",
+      "num_samples": 1,
+      "normalized_targets": true,
+      "mae": 0.3018363571166992,
+      "rmse": 0.5457689009437096,
+      "rel_l2": 0.16475028763397026,
+      "max_error": 4.279378890991211,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072,
+      "mae_physical": 0.0029349756240844727,
+      "rmse_physical": 0.005306910096614492,
+      "rel_l2_physical": 0.16274691253868503,
+      "max_error_physical": 0.04161153733730316
+    },
+    {
+      "label": "appendix_coastline_stress",
+      "dataset_path": "data/processed_real_bathymetry/appendix_coastline_stress/hydrostatic/test",
+      "num_samples": 1,
+      "normalized_targets": true,
+      "mae": 7.877152099609375,
+      "rmse": 42.28556565188646,
+      "rel_l2": 0.985975737247022,
+      "max_error": 516.0442504882812,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072,
+      "mae_physical": 0.07659531593322753,
+      "rmse_physical": 0.41117349672514114,
+      "rel_l2_physical": 0.9853911317156957,
+      "max_error_physical": 5.017875671386719
+    },
+    {
+      "label": "appendix_coastline_fully_wet",
+      "dataset_path": "data/processed_real_bathymetry/appendix_coastline_fully_wet/hydrostatic/test",
+      "num_samples": 1,
+      "normalized_targets": true,
+      "mae": 0.23315162658691407,
+      "rmse": 0.42664177126574176,
+      "rel_l2": 0.12763790024644392,
+      "max_error": 3.315563678741455,
+      "target_offset": 0.0012094725389033556,
+      "target_scale": 0.009723731316626072,
+      "mae_physical": 0.0022671037912368776,
+      "rmse_physical": 0.0041485497655692335,
+      "rel_l2_physical": 0.12609444031192565,
+      "max_error_physical": 0.032239653170108795
+    }
+  ],
+  "normalization_policy": "require_target_stats_match",
+  "normalization_mismatch": "fail",
+  "checkpoint_reference_mismatch": "fail",
+  "normalization_tol": 1e-06,
+  "normalization_reference": {
+    "dataset_path": "data/processed/hydrostatic/train/shards/shard_00000.npz",
+    "normalized_targets": true,
+    "target_offset": 0.0012094725389033556,
+    "target_scale": 0.009723731316626072
+  },
+  "checkpoint_train_path": "data/processed/hydrostatic/train",
+  "checkpoint_train_signature": {
+    "dataset_path": "data/processed/hydrostatic/train/shards/shard_00000.npz",
+    "normalized_targets": true,
+    "target_offset": 0.0012094725389033556,
+    "target_scale": 0.009723731316626072
+  }
+}
