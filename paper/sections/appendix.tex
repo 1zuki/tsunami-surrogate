@@ -1,4 +1,4 @@
-\section{Additional implementation and validation details}
+\section{Additional implementation and health-check details}
 \label{app:details}
 
 \subsection{Configuration details}
@@ -43,29 +43,126 @@ The experiments share a single base training configuration, with per-model overr
 \subsection{Additional solver diagnostics}
 \label{app:solver-diag}
 
-Beyond the dataset-level quality policy of Section~\ref{sec:data-generation}, both shallow-water references are checked against two standard finite-volume sanity properties in the test suite. The first is the lake-at-rest (well-balanced) property: starting from a flat free surface $\eta_0 = 0$ over non-flat fully submerged bathymetry with zero initial momentum, a well-balanced scheme must keep the surface flat and the momentum zero rather than spuriously generating flow at the bathymetry gradients. Both the hydrostatic and MUSCL-HR solvers hold this to a tight tolerance over a short rollout: the maximum free-surface drift stays below $10 ^ {-8}$ and the maximum momentum component below $10 ^ {-7}$ in normalized units. The second is a dynamic-pulse stability check: a small Gaussian surface perturbation is advanced over flat, sloped, and multi-Gaussian bathymetry under periodic and open boundaries, and the rollout must stay finite, keep depth nonnegative (to within $10 ^ {-8}$), respect the velocity safeguard, and still produce a non-trivial propagating signal. The MUSCL-HR solver passes these across the tested grids ($32 ^ 2$ and $64 ^ 2$) and boundary conditions. These are not convergence-order measurements; they are guardrails confirming that the references preserve the trivial steady state and remain stable on dynamic inputs, which is what justifies treating their outputs as clean supervised-learning labels.
+Beyond the dataset-level quality policy of Section~\ref{sec:data-generation}, both shallow-water references are checked against two standard finite-volume sanity properties in the test suite. The first is the lake-at-rest (well-balanced) property: starting from a flat free surface $\eta_0 = 0$ over non-flat fully submerged bathymetry with zero initial momentum, a well-balanced scheme must keep the surface flat and the momentum zero rather than spuriously generating flow at the bathymetry gradients. Both the hydrostatic and MUSCL-HR solvers hold this to a tight tolerance over a short rollout: the maximum free-surface drift stays below $10 ^ {-8}$ and the maximum momentum component below $10 ^ {-7}$ in normalized units. The second is a dynamic-pulse stability check: a small Gaussian surface perturbation is advanced over flat, sloped, and multi-Gaussian bathymetry under periodic and open boundaries, and the rollout must stay finite, keep depth nonnegative (to within $10 ^ {-8}$), respect the velocity safeguard, and still produce a non-trivial propagating signal. The MUSCL-HR solver passes these across the tested grids ($32 ^ 2$ and $64 ^ 2$) and boundary conditions. These are not convergence-order measurements or event-scale validations; they are guardrails confirming that the references preserve the trivial steady state and remain stable on dynamic inputs, which is what justifies treating their outputs as clean supervised-learning labels.
+
+\paragraph{Saved-frame timestamp audit.}
+The raw archives store \texttt{timestamps} and \texttt{dt\_history}, while the processed arrays retain \texttt{sample\_dir} pointers back to those raw files. We audited all processed metadata rows without rerunning the dataset. Table~\ref{tab:app-timestamp-audit} reports the physical timestamp attached to saved frame index $50$, which corresponds to solver update $250$ under the default ``include initial state, save every 5 steps'' policy. Hydrostatic and MUSCL-HR are nearly aligned at this saved index. Boussinesq is not: its frame $50$ timestamp is about half the shallow-water timestamp. The released benchmark therefore uses fixed saved-step/index alignment, not interpolation to common physical times.
 
 \begin{table}[H]
 \centering
-\caption{CFL sensitivity at matched physical end time; finite pass rate, mean maximum $|\eta|$, and mean final rel-$L_2$ against CFL $0.45$.}
-\label{tab:app-cfl}
+\caption{Saved-frame timestamp audit over all processed train/validation/test rows ($13{,}500$ per solver). Pairwise rows summarize same-split, same-scenario absolute timestamp gaps at saved frame index $50$.}
+\label{tab:app-timestamp-audit}
 \small
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{llcccp{0.28\linewidth}}
+\begin{tabular}{llcc}
     \toprule
-    Solver & CFL & Finite & Mean max $|\eta|$ & Final rel-$L_2$ & Interpretation \\
+    Quantity & Item & Mean & Range / Max \\
     \midrule
-    Hydrostatic & $0.30$ & $1.000$ & $1.42 \times 10 ^ {-3}$ & $0.442$ & Bounded lower-CFL variant \\
-    Hydrostatic & $0.45$ & $1.000$ & $1.88 \times 10 ^ {-3}$ & $0$ & Baseline \\
-    Hydrostatic & $0.60$ & $1.000$ & $1.25$ & $1.48 \times 10 ^ {3}$ & Finite but outside operating regime \\
-    MUSCL-HR    & $0.30$ & $1.000$ & $2.74 \times 10 ^ {-3}$ & $0.402$ & Bounded lower-CFL variant \\
-    MUSCL-HR    & $0.45$ & $1.000$ & $3.28 \times 10 ^ {-3}$ & $0$ & Baseline \\
-    MUSCL-HR    & $0.60$ & $1.000$ & $1.30$ & $1.07 \times 10 ^ {3}$ & Finite but outside operating regime \\
+    Frame-$50$ timestamp & Hydrostatic & $0.177402$ & $[0.176231,\, 0.177496]$ \\
+    Frame-$50$ timestamp & MUSCL-HR    & $0.177390$ & $[0.175959,\, 0.177517]$ \\
+    Frame-$50$ timestamp & Boussinesq  & $0.088738$ & $[0.088738,\, 0.088738]$ \\
+    \midrule
+    $|t_{50, A} - t_{50, B}|$ & Hydrostatic--MUSCL-HR   & $1.28 \times 10 ^ {-5}$ & $2.82 \times 10 ^ {-4}$ \\
+    $|t_{50, A} - t_{50, B}|$ & Hydrostatic--Boussinesq & $8.87 \times 10 ^ {-2}$ & $8.88 \times 10 ^ {-2}$ \\
+    $|t_{50, A} - t_{50, B}|$ & MUSCL-HR--Boussinesq    & $8.87 \times 10 ^ {-2}$ & $8.88 \times 10 ^ {-2}$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-CFL $0.30$ and $0.45$ remain bounded; CFL $0.60$ remains finite in this small diagnostic but produces large amplitude/final-field deviations, so it is not treated as a convergence setting.
+\paragraph{Standard SWE sanity cases.}
+We additionally ran three shallow-water sanity cases at $128 \times 128$, CFL $0.40$, reflective no-sponge boundaries, and matched final time $0.05$: a radial Gaussian pulse over flat bathymetry, a Gaussian pulse over smooth variable bathymetry, and a wet-bed dam-break. Table~\ref{tab:app-swe-standard} summarizes the checks. Both shallow-water solvers remain finite, keep depth positive, conserve mass to roundoff, preserve the expected symmetries, and pass all six solver-case checks. These are standard sanity validations, not observed-event validations.
+
+\begin{table}[H]
+\centering
+\caption{Standard SWE validation cases for the Hydrostatic and MUSCL-HR solvers on the full diagnostic run (grid $128$, CFL $0.40$, final time $0.05$). Mass drift and extra metrics are worst values over the two solvers.}
+\label{tab:app-swe-standard}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}p{0.27\linewidth}p{0.18\linewidth}p{0.36\linewidth}p{0.11\linewidth}@{}}
+    \toprule
+    Case & Max mass rel.\ drift & Extra diagnostic & Result \\
+    \midrule
+    Flat radial Gaussian & $0$ & symmetry error $\le 1.11 \times 10 ^ {-15}$; min.\ depth $0.9877$ & $2/2$ pass \\
+    Smooth-bathymetry Gaussian & $0$ & min.\ depth $1.038$ & $2/2$ pass \\
+    Wet-bed dam-break & $1.11 \times 10 ^ {-16}$ & $y$-invariance error $0$; min.\ depth $0.95$ & $2/2$ pass \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Minimal grid/time sensitivity.}
+For a lightweight grid/time diagnostic, we generated $12$ smooth shared scenarios at $128 \times 128$, restricted them to $64 \times 64$ and $32 \times 32$ by cell averaging, and advanced Hydrostatic and MUSCL-HR to final time $0.006$ with the last adaptive step clipped. The full diagnostic uses the same three grids, CFL values $0.30$ and $0.45$, and two shallow-water solvers, giving $144$ rollouts. Table~\ref{tab:app-min-conv} reports final-$\eta$ comparisons after restricting the finer-grid result to the coarser grid. The errors generally shrink from the $32$--$64$ comparison to the $64$--$128$ comparison, and the CFL $0.30$ versus $0.45$ final fields remain close (mean rel-$L_2 \le 9.79 \times 10 ^ {-3}$ for Hydrostatic and $\le 5.08 \times 10 ^ {-3}$ for MUSCL-HR across grids). This documents stability and sensitivity on shared scenarios; it is not a formal convergence proof.
+
+\begin{table}[H]
+\centering
+\caption{Minimal shared-scenario grid sensitivity. Values are mean final-$\eta$ relative $L_2$ over $12$ scenarios at matched final physical time $0.006$.}
+\label{tab:app-min-conv}
+\small
+\begin{tabular}{llcc}
+    \toprule
+    Solver & CFL & $32$ vs restricted $64$ & $64$ vs restricted $128$ \\
+    \midrule
+    Hydrostatic & $0.30$ & $5.04 \times 10 ^ {-2}$ & $2.74 \times 10 ^ {-2}$ \\
+    Hydrostatic & $0.45$ & $5.11 \times 10 ^ {-2}$ & $2.41 \times 10 ^ {-2}$ \\
+    MUSCL-HR    & $0.30$ & $3.95 \times 10 ^ {-2}$ & $1.45 \times 10 ^ {-2}$ \\
+    MUSCL-HR    & $0.45$ & $4.22 \times 10 ^ {-2}$ & $1.57 \times 10 ^ {-2}$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{CFL sensitivity at matched rollout end time. Values compare CFL $0.30$ against CFL $0.45$ over the same $12$ scenarios.}
+\label{tab:app-cfl}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llccc}
+    \toprule
+    Solver & Grid & Mean final rel-$L_2$ & Max final rel-$L_2$ & Mean RMSE \\
+    \midrule
+    Hydrostatic & $32$  & $9.79 \times 10 ^ {-3}$ & $1.31 \times 10 ^ {-2}$ & $3.63 \times 10 ^ {-5}$ \\
+    Hydrostatic & $64$  & $8.56 \times 10 ^ {-3}$ & $1.19 \times 10 ^ {-2}$ & $3.29 \times 10 ^ {-5}$ \\
+    Hydrostatic & $128$ & $4.83 \times 10 ^ {-3}$ & $6.72 \times 10 ^ {-3}$ & $1.90 \times 10 ^ {-5}$ \\
+    MUSCL-HR    & $32$  & $5.08 \times 10 ^ {-3}$ & $9.60 \times 10 ^ {-3}$ & $1.85 \times 10 ^ {-5}$ \\
+    MUSCL-HR    & $64$  & $2.02 \times 10 ^ {-3}$ & $4.22 \times 10 ^ {-3}$ & $7.54 \times 10 ^ {-6}$ \\
+    MUSCL-HR    & $128$ & $4.83 \times 10 ^ {-4}$ & $1.02 \times 10 ^ {-3}$ & $1.82 \times 10 ^ {-6}$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+CFL $0.30$ and $0.45$ remain bounded in this diagnostic; the table reports sensitivity only between those two operating settings.
+
+\paragraph{Boussinesq dispersion check.}
+As an appendix-only sensitivity check for the weakly dispersive reference, we propagated small-amplitude sinusoidal waves on a $256 \times 32$ constant-depth grid with periodic boundaries, no sponge, and no filter. The full diagnostic uses modes $1, 2, 4, 8, 12, 16, 24, 32$, final time $1.5$, and fixed step size $\Delta t = 1.25 \times 10 ^ {-4}$. The initial condition uses the expected discrete frequency for a right-going Fourier mode, and the measured frequency is recovered from the unwrapped phase of the corresponding Fourier coefficient. The expected trend is the implemented discrete relation
+\[
+    \omega ^ 2 =
+    \frac{g H k_d ^ 2}{1 + \alpha_B H ^ 2 k_d ^ 2},
+    \qquad
+    k_d = \frac{2 \sin(k \Delta x / 2)}{\Delta x}.
+\]
+
+Figure~\ref{fig:app-bouss-dispersion} shows the measured phase speeds for $\alpha_B = 0$ and $\alpha_B = 1 / 3$. With $\alpha_B = 0$, the phase speed follows the non-dispersive shallow-water value modified only by the discrete wavenumber. With $\alpha_B = 1 / 3$, the higher modes slow sharply, matching the implemented weakly dispersive trend. The maximum measured phase-speed relative error is $2.45 \times 10 ^ {-4}$ for $\alpha_B = 0$ and $1.91 \times 10 ^ {-8}$ for $\alpha_B = 1 / 3$ in this diagnostic.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.62\linewidth]{figures/boussinesq_dispersion.pdf}
+\caption{Appendix-only Boussinesq dispersion check on constant-depth periodic sinusoidal waves. Markers are phase speeds measured by Fourier phase tracking; dashed curves are the implemented discrete trend. This is a solver-sensitivity diagnostic, not a main result or an event-scale validation.}
+\label{fig:app-bouss-dispersion}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Summary of the constant-depth Boussinesq dispersion diagnostic. The $\alpha_B = 0$ row uses the direct non-CG path; the $\alpha_B = 1 / 3$ row uses the configured conjugate-gradient mass solve with tolerance $10 ^ {-12}$ and maximum $700$ iterations.}
+\label{tab:app-bouss-dispersion}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lp{0.20\linewidth}p{0.18\linewidth}p{0.14\linewidth}p{0.22\linewidth}}
+    \toprule
+    $\alpha_B$ & Modes & Max rel.\ err. & CG failed steps & CG iteration / residual summary \\
+    \midrule
+    $0$     & $1, 2, 4, 8, 12, 16, 24, 32$ & $2.45 \times 10 ^ {-4}$ & direct path & no CG solve \\
+    $1 / 3$ & $1, 2, 4, 8, 12, 16, 24, 32$ & $1.91 \times 10 ^ {-8}$ & $0$         & max iter.\ $35$; max residual ratio $1.0 \times 10 ^ {-12}$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Additional result tables}
 \label{app:add-result-tab}
@@ -87,6 +184,34 @@ Table~\ref{tab:app-ensemble} reports the individual ensemble members used for th
     5 & $55$ & $168$ & $0.2427$ \\
     6 & $66$ & $201$ & $0.2409$ \\
     7 & $77$ & $241$ & $0.2401$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Reliability-curve diagnostic and calibration status.}
+Figure~\ref{fig:app-ensemble-reliability} replots the full regenerated ensemble coverage summaries as a coverage-versus-nominal reliability curve. These are marginal per-element coverages over correlated pixels and frames, so the curve diagnoses interval scale but does not make an independent-sample probability claim. We fit a single post-hoc marginal scale correction, $\sigma ^ 2 \mapsto \gamma \sigma ^ 2$, on validation labels only, with $\gamma = 3.359364$ and corresponding standard-deviation scale $1.832857$, then apply it unchanged to the test and OOD suites. Raw intervals under-cover; the scalar correction improves marginal coverage on the in-distribution test split and some OOD suites, while the hardest high source-strength tail remains under-covered. This is a post-hoc scalar correction, not operational risk calibration.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.58\linewidth]{figures/ensemble_reliability.pdf}
+\caption{Full ensemble reliability curve with raw and validation-calibrated central Gaussian intervals. The ensemble undercovers before calibration; scalar variance inflation improves marginal coverage but remains a post-hoc per-element diagnostic.}
+\label{fig:app-ensemble-reliability}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Headline nominal $90\%$ marginal coverage before and after validation-only scalar variance inflation. Coverages are per-element over correlated pixels and frames.}
+\label{tab:app-ensemble-calibration}
+\small
+\begin{tabular}{lcc}
+    \toprule
+    Suite & Raw & Calibrated \\
+    \midrule
+    Validation & $0.7812$ & $0.9206$ \\
+    Test       & $0.7822$ & $0.9230$ \\
+    \texttt{source\_holdout\_multi\_gauss}   & $0.7206$ & $0.8957$ \\
+    \texttt{bathymetry\_holdout\_trench}     & $0.8039$ & $0.9351$ \\
+    \texttt{source\_strength\_extreme\_high} & $0.6728$ & $0.8464$ \\
     \bottomrule
 \end{tabular}
 \end{table}
@@ -120,21 +245,21 @@ Relative $L_2$ drops monotonically from $0.586$ at $N = 100$ to $0.235$ at $N = 
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.67\linewidth]{figures/sample_scaling.pdf}
+\includegraphics[width=0.6\linewidth]{figures/sample_scaling.pdf}
 \caption{Single-seed sample scaling: hydrostatic-FNO test relative $L_2$ versus training-set size on the fixed test split ($N = 2500$).}
 \label{fig:sample-scaling}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.6\linewidth]{figures/sample_scaling_metrics.pdf}
+\includegraphics[width=0.55\linewidth]{figures/sample_scaling_metrics.pdf}
 \caption{Companion MAE, RMSE, and relative $L_2$ curves for Figure~\ref{fig:sample-scaling}.}
 \label{fig:sample-scaling-metrics}
 \end{figure}
 
 \begin{table}[H]
 \centering
-\caption{Single-seed sample-scaling diagnostic for the FNO on the hydrostatic reference. Each row is an independent training run on a nested random subset of the $10{,}000$-sample training pool, scored on the same held-out test split ($N = 2500$) with the same architecture, optimizer, schedule, and early stopping. MAE and RMSE are in physical surface-elevation units; relative $L_2$ is dimensionless; max-err is the global worst-case element in normalized units.}
+\caption{Single-seed sample-scaling diagnostic for the FNO on the hydrostatic reference. Each row is an independent training run on a nested random subset of the $10{,}000$-sample training pool, scored on the same held-out test split ($N = 2500$) with the same architecture, optimizer, schedule, and early stopping. MAE and RMSE are in denormalized benchmark-scale surface-elevation units; relative $L_2$ is dimensionless; max-err is the global worst-case element in normalized units.}
 \label{tab:sample-scaling}
 \begin{tabular}{rcccc}
     \toprule
@@ -157,7 +282,7 @@ Relative $L_2$ drops monotonically from $0.586$ at $N = 100$ to $0.235$ at $N = 
 \label{tab:app-window-fno5}
 \begin{tabular}{lcccccc}
     \toprule
-    Model & Scenarios & rel-$L_2$ & physical rel-$L_2$ & first scored & final & time (ms) \\
+    Model & Scenarios & rel-$L_2$ & denorm. rel-$L_2$ & first scored & final & time (ms) \\
     \midrule
     Window-FNO-5  & $2500$ & $0.0771$ & $0.0765$ & $0.0512$ & $0.1725$ & $11.13$ \\
     Window-FFNO-5 & $2500$ & $0.0517$ & $0.0513$ & $0.0303$ & $0.1695$ & $21.63$ \\
@@ -249,6 +374,18 @@ Both coastline rows use the same GEBCO-derived Japan-Trench-region crop (interna
 \begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{figures/real_bathymetry_suites.pdf}
-\caption{Real-bathymetry appendix suites under the identical synthetic Okada-like source. One row per suite: de-normalized bathymetry crop, source field, and hydrostatic reference surface elevation $\eta$ at frame 49. Top: offshore morphology crop, fully wet. Middle: coastline crop with positive topography retained (wet-dry stress test); the reference $\eta$ develops the large-amplitude artifacts over the dry-land region that drive the rel-$L_2\approx1.0$ failure in Table~\ref{tab:app-real-bath-window}. Bottom: the same coastline geometry forced fully wet, which all reported model variants handle.}
+\caption{Real-bathymetry appendix suites under the identical synthetic Okada-like source. One row per suite: de-normalized bathymetry crop, source field, and hydrostatic reference surface elevation $\eta$ at frame 49. Top: offshore morphology crop, fully wet. Middle: coastline crop with positive topography retained (wet-dry stress test); the reference $\eta$ develops large-amplitude responses over the dry-land region that drive the rel-$L_2\approx1.0$ failure in Table~\ref{tab:app-real-bath-window}. Bottom: the same coastline geometry forced fully wet, which all reported model variants handle.}
 \label{fig:app-real-bath}
+\end{figure}
+
+\subsection{Selected high-error failure cases}
+\label{app:failure-cases}
+
+Figure~\ref{fig:app-failure-cases} collects four selected high-error examples rather than average or representative cases. The first row is a rough-source hard case from the ordinary hydrostatic test split (\texttt{sample\_000385}, de-normalized rel-$L_2 = 0.598$ for the main FNO). The second is a strict held-out rough-source failure (\texttt{sample\_001861}, de-normalized rel-$L_2 = 0.795$ for the rough-holdout FNO). The third is the Nankai Trough / southwest Japan crop, the worst direct-FNO case in the fully wet 10-crop real-bathymetry morphology suite (normalized rel-$L_2 = 0.530$, de-normalized rel-$L_2 = 0.510$). The fourth is the coastline wet-dry stress failure (\texttt{sample\_000001}, de-normalized rel-$L_2 = 0.996$), whose raw reference rollout carries the warning \texttt{max\_abs\_eta(5.01349) > max\_abs\_eta\_limit(5)}. Within each row, the reference and prediction share the same diverging $\eta$ scale and the absolute-error panel uses a separate sequential scale.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{figures/appendix_failure_cases.pdf}
+\caption{Selected high-error cases, not average or representative cases. Columns show de-normalized bathymetry, source, late-frame hydrostatic reference $\eta$, model prediction, and absolute error. Rows cover an ordinary rough-source hard case, a strict held-out rough-source failure, the worst fully wet real-bathymetry crop, and the wet-dry coastline stress failure.}
+\label{fig:app-failure-cases}
 \end{figure}

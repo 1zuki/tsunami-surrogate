@@ -25,13 +25,13 @@ The stored initial free surface is therefore $h_0 + b$, which equals $\eta_0$ aw
 
 The default supervised input tensor stacks the active spatial channels
 \[
-X = [\,b,\, q,\, h_0\,] \in\mathbb{R}^{C \times H \times W},    % channels x height x width obviously
+X = [\,b,\, q,\, h_0\,] \in\mathbb{R}^{C \times H \times W},
 \]
 with C = 3 for the main single-solver experiments. The preprocessing code also supports optional initial-surface and solver-identity channels, but these are not part of the default single-reference FNO configuration. For a numerical reference solver $s$, the target is a future free-surface trajectory
 \[
 Y_s = [\,\eta_s(t_1),\, \eta_s(t_2),\, \ldots,\, \eta_s(t_T)\,] \in\mathbb{R}^{T \times H \times W}.
 \]
-The initially stored frame is not used as a prediction target. With the default rollout settings the solver is advanced for $250$ steps; including the initial state and saving every fifth frame this gives $51$ stored frames per rollout. Preprocessing then discards the initial frame and keeps $T=50$ future frames as the multi-step forecast target.
+The initially stored frame is not used as a prediction target. With the default rollout settings the solver is advanced for $250$ updates and stores states with solver-step indices $0, 5, 10, \ldots, 250$, giving $51$ saved frames per rollout. For the adaptive-CFL shallow-water references, these saved frames are indexed rollout snapshots with recorded timestamps, not values interpolated onto a shared physical-time grid. Preprocessing then discards the initial frame and keeps $T = 50$ future frames as the multi-step forecast target.
 
 A surrogate model $f_\theta$ is trained to approximate the solver-conditioned operator
 \[
@@ -55,7 +55,7 @@ Ignoring the boundary terms, the two-dimensional shallow-water equations with ba
 \[
 \partial_t U + \partial_x F(U) + \partial_y G(U) = S(U, b),
 \]
-with fluxes % line 385 onwards in src/data_gen/hydrostatic_swe.py
+with fluxes
 \[
 F(U) = 
 \begin{bmatrix}
@@ -83,7 +83,7 @@ S(U, b) =
 In the implementation the divisions by $h$ use dry-cell protection and momentum clipping, to avoid numerical overflow near the nearly dry cells.
 
 Both shallow-water references use finite-volume updates of the form
-\[ % line 257 and 550
+\[
 U_{i, j} ^ {\,n + 1} = U_{i, j} ^ {\,n}
 - \frac{\Delta t}{\Delta x} \left(\mathcal{F}_{i + 1/2,\, j} - \mathcal{F}_{i - 1/2,\, j}\right)
 - \frac{\Delta t}{\Delta y} \left(\mathcal{G}_{i,\, j + 1/2} - \mathcal{G}_{i,\, j - 1/2}\right)
@@ -127,20 +127,20 @@ where
 \[
 H(x, y) = \max\!\left((-b(x, y) + \eta_{\mathrm{sea}})\, s_H,\; H_{\min}\right)
 \]
-is the effective depth used inside this solver. The factor $s_H$ is the depth-scale parameter in the code; it exists so diagnostic runs can make the Boussinesq problem numerically gentler, but in the paper-facing shared dataset, we use $s_H = 1$. The lower bound $H_{\min}$ prevents zero or near-zero depth from making the operator singular or badly conditioned. In the main configuration $H_{\min} = 10^{-4}$, $\alpha_B = 1/3$, and the same normalized bathymetry convention as the shallow-water solvers is used.
+is the effective depth used inside this solver. The factor $s_H$ is an implementation parameter used only for auxiliary diagnostics; in the shared dataset reported here, we use $s_H = 1$. The lower bound $H_{\min}$ prevents zero or near-zero depth from making the operator singular or badly conditioned. In the main configuration $H_{\min} = 10^{-4}$, $\alpha_B = 1/3$, and the same normalized bathymetry convention as the shallow-water solvers is used.
 
-The coefficient $\alpha_B$ controls the strength of the weakly dispersive correction. When $\alpha_B = 0$, the left hand side becomes just $a_\eta$, so the update is just the non-dispersive linear long-wave equation written above. A positive $\alpha_B$ makes the acceleration depend on a spatial solve involving $H ^ 2 \nabla a_\eta$, which is the part that gives this reference its weakly dispersive character. We set $\alpha_B = 1/3$, matching the solver default, and treat it as a fixed model choice rather than a fitted physical parameter. The linear system is applied matrix-free and solved with conjugate gradients, so the code never forms a dense matrix; the rollout is then advanced with a velocity-Verlet step, which updates $\eta$ and $\eta_t$ using accelerations at the start and end of the step. This gives the benchmark a weakly dispersive comparison reference beside the two shallow-water references, while still keeping Hydrostatic as the main solver and not pretending any numerical reference is real-ocean truth.
+The coefficient $\alpha_B$ controls the strength of the weakly dispersive correction. When $\alpha_B = 0$, the left hand side becomes just $a_\eta$, so the update is just the non-dispersive linear long-wave equation written above. A positive $\alpha_B$ makes the acceleration depend on a spatial solve involving $H ^ 2 \nabla a_\eta$, which is the part that gives this reference its weakly dispersive character. We set $\alpha_B = 1/3$, matching the solver default, and treat it as a fixed model choice rather than a fitted physical parameter. The linear system is applied matrix-free and solved with conjugate gradients, so the implementation never forms a dense matrix; the rollout is then advanced with a velocity-Verlet step, which updates $\eta$ and $\eta_t$ using accelerations at the start and end of the step. This gives the benchmark a weakly dispersive comparison reference beside the two shallow-water references, while still keeping Hydrostatic as the main solver and without treating any numerical reference as real-ocean truth.
 
-\subsection{Reference-solver validation}
+\subsection{Reference-solver health and consistency checks}
 \label{subsec:reference-validation}
 
-To validate the usability of the reference solvers used for dataset generation, we run a small series of numerical tests before generation.
+As health and consistency checks for the reference solvers used for dataset generation, we run a small series of numerical tests before generation. These checks screen for basic implementation failures and unstable labels; they are not substitutes for grid/time-step convergence studies, independent solver benchmarks, or event-scale validation against observations.
 
 \paragraph{Lake at rest.} A well-balanced shallow-water solver should preserve a stationary free surface over non-uniform bathymetry. We therefore initialize a fully submerged, spatially varying bathymetry with zero surface elevation, $\eta_0(x,y) = 0$, and zero momentum, $hu(x,y) = hv(x,y) = 0$. Since $\eta = h + b$, this corresponds to an initial water depth $h_0(x,y) = -b(x,y)$. Both the hydrostatic and MUSCL-HR solver are advanced for many adaptive-CFL time steps with the sponge damping disabled. We consider the lake-at-rest condition preserved when the maximum free-surface drift stays below $10^{-8}$ and the maximum absolute momentum stays below $10^{-7}$. This property matters over long rollouts, because a solver that slowly drifts from rest would inject a spurious signal into every training label.
 
-\paragraph{Dynamic finite-state behavior.} Lake at rest only checks the trivial equilibrium, so we additionally run dynamic rollouts from non-trivial initial displacements and confirm that the state remains finite and bounded over the full horizon. This guards against late time blow-up or oscillations that look stable for a few steps and then produce $\pm\infty$ artifacts near the dry cells.
+\paragraph{Dynamic finite-state behavior.} Lake at rest only checks the trivial equilibrium, so we additionally run dynamic rollouts from non-trivial initial displacements and confirm that the state remains finite and bounded over the full horizon. This guards against late time blow-up or oscillations that look stable for a few steps and then produce non-finite values near the dry cells.
 
-\paragraph{Quality status.} During generation each rollout is screened by the quality policy, which records whether the trajectories contain non-finite values, depth below tolerance, or excessive surface amplitude and velocity. For the Boussinesq solver, the same health record also checks the free-surface-to-depth ratio and whether the conjugate-gradient acceleration solve converged. The outcome is written into the per-sample metadata as a quality status. This status is also what lets generation resume safely after an interruption, since completed and accepted samples can be reused instead of being recomputed.
+\paragraph{Quality status.} During generation each rollout is screened by the quality policy, which records whether the trajectories contain non-finite values, depth below tolerance, or excessive surface amplitude and velocity. For the Boussinesq solver, the same health record also checks the free-surface-to-depth ratio and whether the conjugate-gradient acceleration solve converged. The outcome is written into the per-sample metadata as a quality status. This status also makes accepted samples explicitly identifiable during dataset construction, avoiding unnecessary recomputation.
 
 \subsection{Evaluation metrics}
 \label{subsec:eval-metrics}
@@ -157,7 +157,7 @@ For field accuracy, we report the mean absolute error (MAE), root-mean-squared e
 \mathrm{max\text{-}err} = \max_{k} \lvert \widehat{y}_k - y_k \rvert .
 \]
 
-Unless otherwise stated the physical-unit metrics are computed after reversing the target normalization, so that the errors are reported in the same units as $\eta$. The maximum absolute error is also a useful proxy for local worst-case behavior and for time-stepping stability.
+Unless otherwise stated the denormalized benchmark-scale metrics are computed after reversing the target normalization, so that the errors are reported in the same stored scale as $\eta$. The maximum absolute error is also a useful proxy for local worst-case behavior and for time-stepping stability.
 
 When we aggregate these metrics over a whole evaluation split, we accumulate the underlying sums across every sample first and only reduce at the end, instead of averaging the per-batch numbers. Concretely we keep a running total of $\sum_k \lvert \widehat{y}_k - y_k \rvert$, $\sum_k (\widehat{y}_k - y_k) ^ 2$, and $\sum_k y_k ^ 2$ over the full split, and track a single running maximum for max-err. This matters because the relative $L_2$ is a ratio of norms and the max-err is a maximum, so averaging them batch-by-batch would not give the true split-level value: a batch-averaged max-err in particular only reports the mean of the per-batch maxima and therefore understates the real worst case. Computing them from the accumulated sums means the reported rel\, $L_2$ and max-err are the genuine dataset-level quantities, and they no longer depend on the batch size used at evaluation time.
 
@@ -172,6 +172,7 @@ For resolution transfer we keep two settings separate. The \emph{proxy} setting 
 
 \subsection{Runtime benchmarking}
 \label{subsec:runtime}
+
 The numerical reference solvers are timed using their CPU NumPy rollout implementations, excluding the bathymetry and source generation, so the denominator reflects only the forward integration. The neural surrogate is timed on CPU and, when available, the GPU. For every measurement we record the device, the batch size, the numerical precision label, and the TF32 back-end state, and on GPU we synchronize the device before and after timing so that asynchronous kernel launches are not counted as zero. Each configuration uses a short warmup and is then repeated several times, and we report the per-sample time and throughput in samples per second. The speedup is computed as
 \[
 \mathrm{speedup} =
@@ -184,7 +185,7 @@ We stress that these speedups are implementation-level comparisons under the rep
 \subsection{Cross-solver and emulator-superiority analysis}
 \label{subsec:cross-solver}
 
-Because the training solver is not itself the ground truth, we separate two different quantities. The first is the raw solver-vs-solver gap, that is the physical difference between two numerical references evaluated on the same shared scenarios. The second is the surrogate error of a model trained on one reference and compared against another. Keeping these apart is important, since a surrogate can look poor only because the two reference solvers themselves disagree.
+Because the training solver is not itself the ground truth, we separate two different quantities. The first is the raw solver-vs-solver gap, that is the denormalized benchmark-scale difference between two numerical references evaluated on the same shared scenarios. The second is the surrogate error of a model trained on one reference and compared against another. Keeping these apart is important, since a surrogate can look poor only because the two reference solvers themselves disagree.
 
 Following the neural emulator-superiority idea \citep{koehler2026emulator}, we also report a ratio that compares a surrogate trained on reference $A$ against a second reference $B$.
 \[
@@ -192,10 +193,11 @@ Following the neural emulator-superiority idea \citep{koehler2026emulator}, we a
 \frac{\operatorname{Err}\!\left(f_\theta ^ {A},\; \mathrm{ref}\,B \right)}
      {\operatorname{Err}\!\left(\mathrm{ref}\, A,\; \mathrm{ref}\,B \right)},
 \]
-where the error is a physical unit metric evaluated on the same scenarios with separate denormalization for the prediction and target. A value $\rho < 1$ would mean that the emulator trained on $A$ is in fact closer to $B$ than its own training solver $A$ is. We only report this ratio when the prediction and target denormalization, and the input normalization statistics, are compatible, because otherwise the comparison is not physically meaningful. The hydrostatic, MUSCL-HR, and Boussinesq references are generated on the same scenario IDs, so raw solver-vs-solver field gaps can be computed for all pairs. The emulator-superiority ratio is treated as a main result for the hydrostatic/MUSCL-HR pair because those are the two shallow-water references; Boussinesq is reported as the weakly dispersive comparison baseline for the same benchmark.
+where the error is a denormalized benchmark-scale metric evaluated on the same scenarios with separate denormalization for the prediction and target. A value $\rho < 1$ would mean that the emulator trained on $A$ is in fact closer to $B$ than its own training solver $A$ is. We only report this ratio when the prediction and target denormalization, and the input normalization statistics, are compatible, because otherwise the scale comparison is not meaningful. The hydrostatic, MUSCL-HR, and Boussinesq references are generated on the same scenario IDs, so raw solver-vs-solver field gaps can be computed for all pairs. The emulator-superiority ratio is treated as a main result for the hydrostatic/MUSCL-HR pair because those are the two shallow-water references; Boussinesq is reported as the weakly dispersive comparison baseline for the same benchmark.
 
 \subsection{Uncertainty quantification}
 \label{subsec:uncertainty}
+
 Point accuracy alone does not tell a user when a surrogate is likely to be wrong, which matters for any hazard-oriented application. We therefore estimate predictive uncertainty with a deep ensemble of $M$ independently trained models that differ only in their random seed \citep{lakshminarayanan2017deepensembles}. For an input $X$ the members produce predictions $\{\widehat{Y} ^ {(m)}\}_{m = 1} ^ {M}$, and we form the ensemble mean and the per element predictive variance
 \[
 \bar{Y} = \frac{1}{M}\sum_{m = 1} ^ {M}\widehat{Y} ^ {(m)},
