@@ -3,5 +3,7 @@ The source code, configuration files, data-generation and evaluation scripts, pl
 
 The processed benchmark datasets (model-ready train/validation/test arrays for the hydrostatic, MUSCL-HR, and Boussinesq references), together with the scenario manifests, train/validation/test scenario identifiers, normalization statistics, and checksums, are archived with a persistent identifier at \texttt{10.5281/zenodo.20974604}. The full raw rollout archive ($\approx$ 300\,GB) can be regenerated from the released scripts and configuration files; a mirror is additionally available at \url{https://drive.google.com/drive/folders/16hC9hTBBTw_xygkEtc45bYrM2mjrJ5TU?usp=sharing}.
 
+The real-bathymetry diagnostic crops were derived from the GEBCO\_2026 Grid \citep{gebco2026}; we acknowledge the GEBCO Bathymetric Compilation Group 2026 and the NERC EDS British Oceanographic Data Centre NOC for providing the dataset.
+
 Trained model checkpoints are not redistributed in full, but the released
 repository includes the resolved configurations, random seeds, the checkpoint-selection rule, the final per-model metrics, and the training histories needed to reproduce the reported results.
