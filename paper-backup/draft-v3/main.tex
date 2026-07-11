@@ -1,0 +1,65 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{xurl}
+\usepackage{hyperref}
+\usepackage{indentfirst}
+\usepackage[numbers]{natbib}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc, fit}
+
+\titlelabel{\thetitle.\quad}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue,
+  urlcolor=blue
+}
+
+\title{Tsunami-Surrogate: A Controlled Multi-Reference Benchmark for Neural-Operator Emulation of Tsunami-Like Wave Propagation}
+
+\author{
+  Nguyen Tho Binh An \and
+  Le Minh Nhut Tan \and
+  Mai Tien Dung\,\thanks{Corresponding author: \texttt{dungmt@uit.edu.vn}} \\[8pt]
+  \normalsize Faculty of Computer Science, University of Information Technology - VNUHCM \\
+  \normalsize Ho Chi Minh City, Viet Nam \\
+  \normalsize \texttt{Emails: \texttt{25520020@gm.uit.edu.vn}, \texttt{25521650@gm.uit.edu.vn}}
+}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\input{sections/abstract}
+\input{sections/introduction}
+\input{sections/related_work}
+\input{sections/data_gen}
+\input{sections/methods}
+\input{sections/models}
+\input{sections/training}
+\input{sections/results}
+\input{sections/discussion}
+\input{sections/limitations}
+\input{sections/conclusion}
+\input{sections/acknowledgment}
+\input{sections/declarations}
+\input{sections/data_availability}
+
+\appendix
+\input{sections/appendix}
+
+\clearpage
+\bibliographystyle{plainnat}
+\bibliography{sections/references}
+
+\end{document}

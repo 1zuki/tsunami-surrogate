@@ -55,13 +55,23 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## 5a) Reproducibility notes
+
+The intended runtime is Python 3.10, with dependencies listed in
+`requirements.txt`. Paper CUDA timing rows use the recorded speed metadata from
+runs with PyTorch 2.10.0+cu128 and CUDA 12.8. Trained checkpoints are not
+redistributed in full; the release provides configs, seeds, training histories,
+and checkpoint-selection information so reported runs can be reproduced. This
+archive supports research benchmark reproducibility, not operational tsunami
+prediction.
+
 ## 5b) Reproduce from the released benchmark data (recommended)
 
 You do **not** need to regenerate the 300 GB raw rollouts to reproduce the paper.
 The released benchmark bundle ships the model-ready *processed* arrays, so you can
 go straight to training (Section 6.3) and evaluation (6.4+).
 
-1. Download the dataset bundle from the archive (DOI: `[Zenodo/OSF DOI]`).
+1. Download the dataset bundle from the archive (DOI: https://doi.org/10.5281/zenodo.20974604).
 2. Verify integrity, then extract each archive into `data/processed/`:
 
 ```bash
