@@ -10,3 +10,6 @@ data:
 eval:
   dataset_path: data/processed_strict_holdout/hydrostatic/bathymetry_holdout_trench/test_heldout
   output_dir: experiments/fno_full_on_holdout/bathymetry_trench/eval_heldout
+  normalization_bridge:
+    dataset_stats_path: data/processed_strict_holdout/hydrostatic/bathymetry_holdout_trench/normalization_stats.json
+    model_stats_path: data/processed/hydrostatic/normalization_stats.json

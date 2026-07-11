@@ -15,6 +15,7 @@
 #   DEVICE=cuda bash scripts/run_strict_holdout_evals.sh
 #   DEVICE=cuda bash scripts/run_strict_holdout_evals.sh --no-physics
 #   DEVICE=cuda bash scripts/run_strict_holdout_evals.sh --no-perframe
+#   DEVICE=cuda bash scripts/run_strict_holdout_evals.sh --full-model-only
 #   bash scripts/run_strict_holdout_evals.sh --summary-only
 
 set -euo pipefail
@@ -27,6 +28,7 @@ RUN_ACCURACY=1
 RUN_PERFRAME=1
 RUN_PHYSICS=1
 CLEAN=1
+FULL_MODEL_ONLY=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -45,8 +47,13 @@ while [ "$#" -gt 0 ]; do
     --no-clean)
       CLEAN=0
       ;;
+    --full-model-only)
+      FULL_MODEL_ONLY=1
+      RUN_PERFRAME=0
+      RUN_PHYSICS=0
+      ;;
     -h|--help)
-      sed -n '1,18p' "$0"
+      sed -n '1,19p' "$0"
       exit 0
       ;;
     *)
@@ -137,12 +144,18 @@ require_file "$FULL_CHECKPOINT"
 
 if [ "$CLEAN" = 1 ]; then
   echo "########## CLEAN STRICT-HOLDOUT EVAL OUTPUTS ##########"
-  for d in "${EVAL_DIRS[@]}"; do
-    rm -f "$d/metrics.json" \
-          "$d/perframe.json" \
-          "$d/physics_diagnostics.json" \
-          "$d/physics_diagnostics_per_sample.csv"
-  done
+  if [ "$FULL_MODEL_ONLY" = 1 ]; then
+    for i in "${!LABELS[@]}"; do
+      rm -f "experiments/fno_full_on_holdout/${LABELS[$i]}/eval_heldout/metrics.json"
+    done
+  else
+    for d in "${EVAL_DIRS[@]}"; do
+      rm -f "$d/metrics.json" \
+            "$d/perframe.json" \
+            "$d/physics_diagnostics.json" \
+            "$d/physics_diagnostics_per_sample.csv"
+    done
+  fi
   rm -f "$RESULTS_DIR/strict_holdout_summary.json" \
         "$RESULTS_DIR/strict_holdout_summary.csv"
 fi
@@ -152,14 +165,16 @@ if [ "$RUN_ACCURACY" = 1 ]; then
   for i in "${!LABELS[@]}"; do
     label="${LABELS[$i]}"
     checkpoint="${CHECKPOINTS[$i]}"
-    run "$PY" scripts/eval_accuracy.py \
-      --config "${ID_CONFIGS[$i]}" \
-      --checkpoint "$checkpoint" \
-      --device "$DEVICE"
-    run "$PY" scripts/eval_accuracy.py \
-      --config "${HELDOUT_CONFIGS[$i]}" \
-      --checkpoint "$checkpoint" \
-      --device "$DEVICE"
+    if [ "$FULL_MODEL_ONLY" = 0 ]; then
+      run "$PY" scripts/eval_accuracy.py \
+        --config "${ID_CONFIGS[$i]}" \
+        --checkpoint "$checkpoint" \
+        --device "$DEVICE"
+      run "$PY" scripts/eval_accuracy.py \
+        --config "${HELDOUT_CONFIGS[$i]}" \
+        --checkpoint "$checkpoint" \
+        --device "$DEVICE"
+    fi
     run "$PY" scripts/eval_accuracy.py \
       --config "${FULL_CONFIGS[$i]}" \
       --checkpoint "$FULL_CHECKPOINT" \

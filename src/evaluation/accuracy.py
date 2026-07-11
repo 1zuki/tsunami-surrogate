@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 import torch
 
@@ -25,6 +25,9 @@ def evaluate_accuracy(
     loader,
     device,
     target_denorm: Optional[Tuple[float, float]] = None,
+    batch_transform: Optional[
+        Callable[[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]
+    ] = None,
 ) -> Dict[str, float]:
     model.eval()
     metrics_acc = MetricAccumulator()
@@ -32,6 +35,8 @@ def evaluate_accuracy(
     for batch in loader:
         x = batch["x"].to(device)
         y = batch["y"].to(device)
+        if batch_transform is not None:
+            x, y = batch_transform(x, y)
 
         pred = _model_output(model, x)
         pred_eval = apply_target_denorm(pred, target_denorm)

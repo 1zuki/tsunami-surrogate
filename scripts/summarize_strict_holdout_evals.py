@@ -172,6 +172,14 @@ def _build_row(
     full_metrics = (
         _read_json(full_metrics_path) if full_metrics_path.is_file() else None
     )
+    if full_metrics is not None:
+        bridge = full_metrics.get("normalization_bridge")
+        if not isinstance(bridge, dict) or not bool(bridge.get("enabled", False)):
+            raise ValueError(
+                "Full-model strict-holdout metrics are missing normalization-bridge "
+                f"provenance: {full_metrics_path}. Rerun with "
+                "scripts/run_strict_holdout_evals.sh --full-model-only."
+            )
     for path, data in [
         (heldout_metrics_path, heldout_metrics),
         (id_metrics_path, id_metrics),
@@ -379,6 +387,11 @@ def main() -> None:
 
     output = {
         "summary_type": "strict_holdout_fno",
+        "cross_model_comparison_metric": "rel_l2_physical",
+        "cross_model_comparison_reason": (
+            "Checkpoints use different target standardizations; cross-model values "
+            "must be compared after denormalization."
+        ),
         "num_holdouts": len(rows),
         "expected_holdouts": len(HOLDOUTS),
         "missing_outputs": missing,
