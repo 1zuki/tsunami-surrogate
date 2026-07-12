@@ -4,7 +4,7 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 import torch
@@ -18,6 +18,18 @@ class StandardizationSpec:
     inputs: dict[str, tuple[float, float]]
     target: tuple[float, float]
     target_variable: str
+
+
+RAW_INPUT_CHANNEL_ALIASES: dict[str, tuple[str, ...]] = {
+    "bathymetry": ("bathymetry",),
+    "source": ("source", "source_field"),
+    "source_field": ("source_field", "source"),
+    "initial_depth": ("initial_depth", "h0"),
+    "h0": ("h0", "initial_depth"),
+    "initial_surface": ("initial_surface", "free_surface0", "eta0"),
+    "free_surface0": ("free_surface0", "initial_surface", "eta0"),
+    "eta0": ("eta0", "free_surface0", "initial_surface"),
+}
 
 
 def _finite_offset_scale(spec: Mapping[str, Any], label: str) -> tuple[float, float]:
@@ -87,6 +99,57 @@ def load_input_order(dataset_path: str | Path) -> list[str]:
     if not order or any(not name for name in order) or len(set(order)) != len(order):
         raise ValueError(f"Invalid input_order in {npz_path}: {order}")
     return order
+
+
+def resolve_raw_input_channel(
+    raw_inputs: Mapping[str, Any],
+    channel_name: str,
+) -> np.ndarray:
+    name = str(channel_name).strip()
+    if not name:
+        raise ValueError("channel_name must be non-empty")
+
+    aliases = RAW_INPUT_CHANNEL_ALIASES.get(name, (name,))
+    for alias in aliases:
+        if alias in raw_inputs:
+            return np.asarray(raw_inputs[alias], dtype=np.float32)
+
+    available = sorted(str(key) for key in raw_inputs.keys())
+    raise KeyError(
+        f"Could not resolve raw input channel {name!r}. "
+        f"Tried aliases {aliases!r}; available keys are {available!r}."
+    )
+
+
+def normalize_raw_inputs_for_model(
+    raw_inputs: Mapping[str, Any],
+    *,
+    input_order: Sequence[str],
+    model_stats: StandardizationSpec,
+) -> np.ndarray:
+    channels: list[np.ndarray] = []
+    for name in input_order:
+        values = resolve_raw_input_channel(raw_inputs, str(name))
+        stats = model_stats.inputs.get(str(name))
+        if stats is not None:
+            offset, scale = stats
+            values = (values - float(offset)) / float(scale)
+        channels.append(np.asarray(values, dtype=np.float32))
+
+    if not channels:
+        raise ValueError("input_order must contain at least one channel")
+    return np.stack(channels, axis=0).astype(np.float32, copy=False)
+
+
+def denormalize_model_target(
+    values: torch.Tensor | np.ndarray,
+    target_stats: StandardizationSpec | tuple[float, float],
+) -> torch.Tensor | np.ndarray:
+    if isinstance(target_stats, StandardizationSpec):
+        offset, scale = target_stats.target
+    else:
+        offset, scale = target_stats
+    return values * float(scale) + float(offset)
 
 
 class EvaluationNormalizationBridge:

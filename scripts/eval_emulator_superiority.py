@@ -3,187 +3,72 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Mapping
 
+import numpy as np
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.data.dataset import create_dataloaders
-from src.evaluation.accuracy import evaluate_accuracy
-from src.evaluation.target_scaling import load_target_denorm, resolve_dataset_npz, signatures_match, target_signature
+from src.evaluation.aligned_comparison import (
+    MODE_COMMON_TIME,
+    build_processed_input_lookup,
+    build_emulator_superiority_metric_row,
+    align_positive_time_series,
+    evaluate_emulator_superiority_metric_rows,
+    iter_paired_raw_reference_samples,
+    load_model_input_order,
+    prediction_positive_timestamps,
+    resolve_suite_contract,
+    validate_common_time_solver_comparison_artifact,
+    verify_common_raw_identity,
+    verify_reconstructed_input_match,
+    write_jsonl,
+)
+from src.evaluation.alignment import align_elevation_series
+from src.evaluation.cli_progress import ScenarioProgressLogger, resolve_progress_every
+from src.evaluation.normalization_bridge import (
+    denormalize_model_target,
+    load_standardization_spec,
+    normalize_raw_inputs_for_model,
+)
 from src.models import build_model
 from src.training.checkpointing import load_checkpoint
-from src.training.metrics import MetricAccumulator
 from src.utils.config import load_config
 from src.utils.device import resolve_device
-from src.utils.io import save_json
-from src.utils.model_io import validate_model_io_channels
+from src.utils.io import get_git_commit, save_json
 from src.utils.seed import seed_everything
 
 
-def _dataset_num_samples(loader: Any) -> int:
-    ds = getattr(loader, "dataset", None)
-    if ds is None:
-        return -1
-    try:
-        return int(len(ds))
-    except Exception:
-        return -1
+def _ensure_mapping(value: Any, *, label: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{label} must be a mapping")
+    return {str(key): item for key, item in value.items()}
 
 
-def _solver_metric_mean(payload: Dict[str, Any], metric: str) -> float:
-    agg = payload.get("aggregate_metrics", {})
-    if metric not in agg:
-        raise KeyError(f"Metric '{metric}' not found in solver comparison aggregate_metrics")
-    row = agg[metric]
-    if not isinstance(row, dict) or "mean" not in row:
-        raise KeyError(f"Metric '{metric}' in solver comparison has no 'mean'")
-    return float(row["mean"])
+def _load_json_mapping(path: str | Path) -> dict[str, Any]:
+    with Path(path).open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    return _ensure_mapping(payload, label=str(path))
 
 
-def _checkpoint_train_path(ckpt: Dict[str, Any]) -> str | None:
+def _checkpoint_train_path(ckpt: Mapping[str, Any]) -> str | None:
     raw_cfg = ckpt.get("config", {})
-    if not isinstance(raw_cfg, dict):
+    if not isinstance(raw_cfg, Mapping):
         return None
     data_cfg = raw_cfg.get("data", raw_cfg.get("dataset", {}))
-    if not isinstance(data_cfg, dict):
+    if not isinstance(data_cfg, Mapping):
         return None
-
     train_path = data_cfg.get("train_path")
     if train_path:
         return str(train_path)
-
-    fallback_path = data_cfg.get("path")
-    if fallback_path:
-        return str(fallback_path)
+    fallback = data_cfg.get("path")
+    if fallback:
+        return str(fallback)
     return None
-
-
-def _input_norm_signature(dataset_path: str | Path) -> Dict[str, Any] | None:
-    npz_path = resolve_dataset_npz(dataset_path)
-    split_dir = npz_path.parent
-    if split_dir.name == "shards":
-        split_dir = split_dir.parent
-    processed_root = split_dir.parent
-    stats_path = processed_root / "normalization_stats.json"
-    manifest_path = split_dir / "eval_manifest.json"
-
-    input_order: list[str] = []
-    if manifest_path.exists():
-        try:
-            with manifest_path.open("r", encoding="utf-8") as f:
-                manifest_payload = json.load(f)
-            order = manifest_payload.get("input_order", [])
-            if isinstance(order, list):
-                input_order = [str(x) for x in order]
-        except Exception:
-            input_order = []
-
-    channels: Dict[str, Dict[str, float]] = {}
-    if stats_path.exists():
-        try:
-            with stats_path.open("r", encoding="utf-8") as f:
-                payload = json.load(f)
-            inputs_raw = payload.get("inputs", {})
-            if isinstance(inputs_raw, dict):
-                for name, stats in inputs_raw.items():
-                    if not isinstance(stats, dict):
-                        continue
-                    if "offset" not in stats or "scale" not in stats:
-                        continue
-                    channels[str(name)] = {
-                        "offset": float(stats["offset"]),
-                        "scale": float(stats["scale"]),
-                    }
-        except Exception:
-            channels = {}
-
-    if not channels and not input_order:
-        return None
-
-    return {
-        "dataset_path": str(npz_path),
-        "normalization_stats_path": str(stats_path),
-        "input_order": input_order,
-        "channels": channels,
-    }
-
-
-def _compare_input_signatures(
-    prediction_sig: Dict[str, Any] | None,
-    eval_sig: Dict[str, Any] | None,
-    tol: float,
-) -> Dict[str, Any]:
-    if prediction_sig is None or eval_sig is None:
-        return {
-            "checked": False,
-            "compatible": False,
-            "reason": "missing_input_signature",
-            "shared_channels": [],
-            "mismatch_channels": [],
-            "unscaled_shared_channels": [],
-            "mixed_scaled_channels": [],
-        }
-
-    pred_channels = dict(prediction_sig.get("channels", {}))
-    eval_channels = dict(eval_sig.get("channels", {}))
-    pred_order = [str(x) for x in prediction_sig.get("input_order", [])]
-    eval_order = [str(x) for x in eval_sig.get("input_order", [])]
-    shared_order = sorted(set(pred_order) & set(eval_order))
-    shared = sorted(set(pred_channels.keys()) & set(eval_channels.keys()))
-
-    if not shared:
-        if shared_order and all((ch not in pred_channels and ch not in eval_channels) for ch in shared_order):
-            return {
-                "checked": True,
-                "compatible": True,
-                "reason": "shared_channels_unscaled",
-                "shared_channels": [],
-                "mismatch_channels": [],
-                "unscaled_shared_channels": shared_order,
-                "mixed_scaled_channels": [],
-            }
-        return {
-            "checked": False,
-            "compatible": False,
-            "reason": "no_shared_channels",
-            "shared_channels": [],
-            "mismatch_channels": [],
-            "unscaled_shared_channels": [],
-            "mixed_scaled_channels": [],
-        }
-
-    mismatches: list[str] = []
-    for ch in shared:
-        pa = pred_channels[ch]
-        ea = eval_channels[ch]
-        if (
-            abs(float(pa["offset"]) - float(ea["offset"])) > tol
-            or abs(float(pa["scale"]) - float(ea["scale"])) > tol
-        ):
-            mismatches.append(ch)
-
-    unscaled_shared = [ch for ch in shared_order if ch not in pred_channels and ch not in eval_channels]
-    mixed_scaled = [ch for ch in shared_order if (ch in pred_channels) ^ (ch in eval_channels)]
-
-    if mixed_scaled:
-        mismatches.extend([f"{ch}(scaled-vs-unscaled)" for ch in mixed_scaled])
-
-    mismatches = sorted(set(mismatches))
-
-    return {
-        "checked": True,
-        "compatible": len(mismatches) == 0,
-        "reason": "ok" if len(mismatches) == 0 else "channel_mismatch",
-        "shared_channels": shared,
-        "mismatch_channels": mismatches,
-        "unscaled_shared_channels": unscaled_shared,
-        "mixed_scaled_channels": mixed_scaled,
-    }
 
 
 def _model_output(model: torch.nn.Module, x: torch.Tensor) -> torch.Tensor:
@@ -195,267 +80,382 @@ def _model_output(model: torch.nn.Module, x: torch.Tensor) -> torch.Tensor:
     return out
 
 
-@torch.no_grad()
-def _evaluate_metrics(
-    model: torch.nn.Module,
-    loader: Any,
-    device: torch.device,
-    pred_denorm: tuple[float, float] | None = None,
-    target_denorm: tuple[float, float] | None = None,
-) -> Dict[str, float]:
-    model.eval()
-    metrics_acc = MetricAccumulator()
-
-    for batch in loader:
-        x = batch["x"].to(device)
-        y = batch["y"].to(device)
-
-        pred = _model_output(model, x)
-        pred_eval = pred
-        y_eval = y
-
-        if pred_denorm is not None:
-            pred_eval = pred_eval * float(pred_denorm[1]) + float(pred_denorm[0])
-        if target_denorm is not None:
-            y_eval = y_eval * float(target_denorm[1]) + float(target_denorm[0])
-
-        metrics_acc.update(pred_eval, y_eval)
-
-    return metrics_acc.compute()
+def _direction_cfg(cfg: Mapping[str, Any]) -> dict[str, Any]:
+    direction = cfg.get("direction")
+    if direction is None:
+        raise KeyError("config requires a direction mapping")
+    return _ensure_mapping(direction, label="direction")
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(description="Compute emulator-superiority ratio against solver-vs-solver error.")
-    p.add_argument("--config", required=True, help="YAML config for ratio evaluation")
-    p.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None)
-    args = p.parse_args()
+def _alignment_contract_cfg(cfg: Mapping[str, Any]) -> dict[str, Any]:
+    section = cfg.get("alignment_contract")
+    if section is None:
+        raise KeyError("config requires an alignment_contract mapping")
+    return _ensure_mapping(section, label="alignment_contract")
+
+
+def _resolve_output_path(cfg: Mapping[str, Any], direction_name: str) -> Path:
+    configured = str(cfg.get("output_path", "")).strip()
+    if configured:
+        return Path(configured)
+    return (
+        ROOT
+        / "results"
+        / "common_time_validation"
+        / "emulator_superiority"
+        / f"{direction_name}.json"
+    )
+
+
+def _resolve_direction_runtime_paths(
+    direction_cfg: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> dict[str, dict[str, str]]:
+    configured_paths = {
+        "checkpoint": str(direction_cfg.get("checkpoint", "")).strip(),
+        "model_raw_root": str(direction_cfg.get("model_raw_root", "")).strip(),
+        "benchmark_raw_root": str(direction_cfg.get("benchmark_raw_root", "")).strip(),
+        "model_processed_test_path": str(
+            direction_cfg.get("model_processed_test_path", "")
+        ).strip(),
+        "model_normalization_stats_path": str(
+            direction_cfg.get("model_normalization_stats_path", "")
+        ).strip(),
+    }
+    override_values = {
+        "checkpoint": args.checkpoint,
+        "model_raw_root": args.model_raw_root,
+        "benchmark_raw_root": args.benchmark_raw_root,
+        "model_processed_test_path": args.processed_test_path,
+        "model_normalization_stats_path": args.normalization_stats_path,
+    }
+    cli_overrides = {
+        key: str(value).strip()
+        for key, value in override_values.items()
+        if value is not None and str(value).strip()
+    }
+    effective_paths = {
+        key: cli_overrides.get(key, configured_paths[key]) for key in configured_paths
+    }
+    return {
+        "configured_paths": configured_paths,
+        "effective_paths": effective_paths,
+        "cli_overrides": cli_overrides,
+    }
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Evaluate benchmark-specific emulator superiority with raw model-A inputs, "
+            "model-A normalization, and independent common-time alignment."
+        )
+    )
+    parser.add_argument("--config", required=True, help="YAML config for the direction")
+    parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None)
+    parser.add_argument("--model-raw-root", default=None)
+    parser.add_argument("--benchmark-raw-root", default=None)
+    parser.add_argument("--processed-test-path", default=None)
+    parser.add_argument("--normalization-stats-path", default=None)
+    parser.add_argument("--checkpoint", default=None)
+    parser.add_argument(
+        "--progress-every",
+        type=int,
+        default=None,
+        help="Log deterministic progress every N evaluated scenarios. Defaults by suite.",
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress start/progress messages while keeping final artifact output.",
+    )
+    args = parser.parse_args(argv)
 
     cfg = load_config(args.config)
-    model_cfg_path = str(cfg.get("model_config", "")).strip()
-    checkpoint_path = str(cfg.get("checkpoint", "")).strip()
-    solver_compare_path = Path(str(cfg.get("solver_compare_path", "")).strip())
-    eval_cfg = dict(cfg.get("evaluation", {}))
-    ratio_cfg = dict(cfg.get("ratio", {}))
-    norm_cfg = dict(cfg.get("normalization", {}))
+    direction_cfg = _direction_cfg(cfg)
+    contract_cfg = _alignment_contract_cfg(cfg)
+    eval_cfg = _ensure_mapping(cfg.get("evaluation", {}), label="evaluation")
+    runtime_paths = _resolve_direction_runtime_paths(direction_cfg, args)
 
-    if not model_cfg_path:
-        raise KeyError("config requires model_config")
-    if not checkpoint_path:
-        raise KeyError("config requires checkpoint")
-    if not solver_compare_path:
-        raise KeyError("config requires solver_compare_path")
-    if not solver_compare_path.exists():
-        raise FileNotFoundError(solver_compare_path)
+    model_config_path = str(direction_cfg.get("model_config", "")).strip()
+    checkpoint_path = runtime_paths["effective_paths"]["checkpoint"]
+    direction_name = str(direction_cfg.get("name", "")).strip()
+    model_solver = str(direction_cfg.get("model_solver", "")).strip()
+    benchmark_solver = str(direction_cfg.get("benchmark_solver", "")).strip()
+    model_raw_root = runtime_paths["effective_paths"]["model_raw_root"]
+    benchmark_raw_root = runtime_paths["effective_paths"]["benchmark_raw_root"]
+    model_processed_test_path = runtime_paths["effective_paths"][
+        "model_processed_test_path"
+    ]
+    model_normalization_stats_path = runtime_paths["effective_paths"][
+        "model_normalization_stats_path"
+    ]
+    if not model_config_path or not checkpoint_path:
+        raise KeyError("direction.model_config and direction.checkpoint are required")
+    if not direction_name or not model_solver or not benchmark_solver:
+        raise KeyError(
+            "direction.name, direction.model_solver, and direction.benchmark_solver are required"
+        )
+    if not model_raw_root or not benchmark_raw_root:
+        raise KeyError(
+            "direction.model_raw_root and direction.benchmark_raw_root are required"
+        )
+    if not model_processed_test_path or not model_normalization_stats_path:
+        raise KeyError(
+            "direction.model_processed_test_path and direction.model_normalization_stats_path are required"
+        )
 
-    dataset_path = str(eval_cfg.get("dataset_path", "")).strip()
-    if not dataset_path:
-        raise KeyError("config requires evaluation.dataset_path")
+    alignment_config_path = str(contract_cfg.get("config_path", "")).strip()
+    if not alignment_config_path:
+        raise KeyError("alignment_contract.config_path is required")
+    alignment_config = load_config(alignment_config_path)
+    alignment_cfg = _ensure_mapping(
+        alignment_config.get("alignment"), label="alignment"
+    )
+
+    contract = resolve_suite_contract(
+        alignment_cfg=alignment_cfg,
+        audit_artifact_path=str(contract_cfg.get("audit_artifact_path", "")).strip(),
+        scenario_selection_path=str(
+            contract_cfg.get("scenario_selection_path", "")
+        ).strip()
+        or None,
+        suite_name=str(contract_cfg.get("suite", "")).strip(),
+        dense_validation_decision_path=str(
+            contract_cfg.get("dense_validation_decision_path", "")
+        ).strip()
+        or None,
+        require_full_suite_dense_decision=bool(
+            contract_cfg.get("require_full_suite_dense_decision", True)
+        ),
+        dense_fallback_policy=str(
+            contract_cfg.get("dense_fallback_policy", "unsupported")
+        ),
+    )
+    progress_every = resolve_progress_every(contract.suite_name, args.progress_every)
+    progress_logger = ScenarioProgressLogger(
+        label="emulator-superiority",
+        progress_every=progress_every,
+        quiet=args.quiet,
+    )
+
+    deprecated_solver_compare_path = str(
+        contract_cfg.get(
+            "reference_solver_comparison_path",
+            contract_cfg.get("solver_compare_path", ""),
+        )
+    ).strip()
+    if deprecated_solver_compare_path:
+        validate_common_time_solver_comparison_artifact(
+            _load_json_mapping(deprecated_solver_compare_path),
+            contract=contract,
+        )
+
+    output_path = _resolve_output_path(cfg, direction_name)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     batch_size = int(eval_cfg.get("batch_size", 8))
-    report_physical = bool(eval_cfg.get("report_physical_metrics", True))
-    numerator_metric = str(ratio_cfg.get("numerator_metric", "rmse_physical_separate_denorm"))
-    denominator_metric = str(ratio_cfg.get("denominator_metric", "rmse"))
-    output_path = Path(str(cfg.get("output_path", "results/emulator_superiority.json")))
+    reconstruction_atol = float(eval_cfg.get("reconstruction_atol", 1.0e-6))
+    bootstrap_seed = int(eval_cfg.get("bootstrap_seed", 20260711))
+    num_resamples = int(eval_cfg.get("num_resamples", 10000))
+    confidence_level = float(eval_cfg.get("confidence_level", 0.95))
 
-    if (not report_physical) and ("physical" in numerator_metric):
-        raise ValueError(
-            "ratio.numerator_metric requests physical-space metrics, but evaluation.report_physical_metrics=false."
-        )
-    mismatch_action = str(norm_cfg.get("on_signature_mismatch", "fail")).strip().lower()
-    if mismatch_action not in {"warn", "fail"}:
-        raise ValueError("normalization.on_signature_mismatch must be one of: warn, fail")
-    
-    input_mismatch_action = str(norm_cfg.get("on_input_stats_mismatch", mismatch_action)).strip().lower()
-    if input_mismatch_action not in {"warn", "fail"}:
-        raise ValueError("normalization.on_input_stats_mismatch must be one of: warn, fail")
-    
-    check_input_stats = bool(norm_cfg.get("check_input_stats", True))
-    signature_tol = float(norm_cfg.get("tol", 1e-6))
-
-    model_cfg = load_config(model_cfg_path)
+    model_cfg = load_config(model_config_path)
     if args.device is not None:
         model_cfg["device"] = args.device
     seed_everything(int(model_cfg.get("seed", cfg.get("seed", 42))))
-    data_cfg = dict(model_cfg.get("data", {}))
-    data_cfg["test_path"] = dataset_path
-    data_cfg["batch_size"] = batch_size
-    model_cfg["data"] = data_cfg
-
     device = resolve_device(model_cfg.get("device", "auto"))
-    loaders = create_dataloaders(model_cfg)
-    test_loader = loaders.get("test")
-    if test_loader is None:
-        raise KeyError("Could not create test loader for evaluation.dataset_path")
-
-    validate_model_io_channels(model_cfg, loaders, preferred_splits=("test",))
+    if not args.quiet:
+        print(
+            f"[emulator-superiority] start direction={direction_name} "
+            f"suite={contract.suite_name} device={device} batch_size={batch_size} "
+            f"progress_every={progress_every}"
+        )
 
     model = build_model(model_cfg).to(device)
     checkpoint_payload = load_checkpoint(checkpoint_path, model, map_location=device)
-    metrics = evaluate_accuracy(model, test_loader, device)
-    metrics = {k: float(v) for k, v in metrics.items()}
-    metrics["num_samples"] = float(_dataset_num_samples(test_loader))
-    metrics["dataset_path"] = str(dataset_path)
-
-    target_denorm_path = str(norm_cfg.get("target_denorm_path", "")).strip() or dataset_path
     checkpoint_train_path = _checkpoint_train_path(checkpoint_payload)
-    prediction_denorm_path = str(norm_cfg.get("prediction_denorm_path", "")).strip() or checkpoint_train_path
+    checkpoint_train_order_path = None
+    if checkpoint_train_path:
+        candidate = Path(checkpoint_train_path)
+        if candidate.exists():
+            checkpoint_train_order_path = candidate
 
-    eval_signature = target_signature(dataset_path)
-    prediction_signature = None
-    if prediction_denorm_path:
-        try:
-            prediction_signature = target_signature(prediction_denorm_path)
-        except FileNotFoundError as e:
-            msg = (
-                f"prediction_denorm_path not found: {prediction_denorm_path}. "
-                "Set normalization.prediction_denorm_path to an existing train/eval dataset archive."
-            )
-            if mismatch_action == "fail":
-                raise FileNotFoundError(msg) from e
-            print(f"[eval_emulator_superiority][warn] {msg}")
-
-    signature_mismatch = (
-        prediction_signature is not None
-        and not signatures_match(prediction_signature, eval_signature, tol=signature_tol)
+    model_input_order = load_model_input_order(
+        processed_test_path=model_processed_test_path,
+        checkpoint_train_path=checkpoint_train_order_path,
     )
-    prediction_input_signature = _input_norm_signature(prediction_denorm_path) if prediction_denorm_path else None
-    eval_input_signature = _input_norm_signature(dataset_path)
-    input_check = _compare_input_signatures(prediction_input_signature, eval_input_signature, tol=signature_tol)
-
-    if check_input_stats and (not input_check["checked"] or not input_check["compatible"]):
-        msg = (
-            "Cross-solver input normalization stats are not verified compatible. "
-            f"check={input_check}, prediction_input_signature={prediction_input_signature}, "
-            f"eval_input_signature={eval_input_signature}."
-        )
-        if input_mismatch_action == "fail":
-            raise ValueError(msg)
-        print(f"[eval_emulator_superiority][warn] {msg}")
-
-    target_denorm = None
-    prediction_denorm = None
-    if report_physical:
-        try:
-            target_denorm = load_target_denorm(target_denorm_path)
-        except FileNotFoundError as e:
-            raise FileNotFoundError(
-                f"target_denorm_path not found: {target_denorm_path}. "
-                "Set normalization.target_denorm_path to an existing eval dataset archive."
-            ) from e
-        if prediction_denorm_path:
-            try:
-                prediction_denorm = load_target_denorm(prediction_denorm_path)
-            except FileNotFoundError as e:
-                msg = (
-                    f"prediction_denorm_path not found: {prediction_denorm_path}. "
-                    "Set normalization.prediction_denorm_path to an existing train/eval dataset archive."
-                )
-                if mismatch_action == "fail":
-                    raise FileNotFoundError(msg) from e
-                print(f"[eval_emulator_superiority][warn] {msg}")
-                
-    if target_denorm is not None:
-        phys = evaluate_accuracy(model, test_loader, device, target_denorm=target_denorm)
-        for k, v in phys.items():
-            metrics[f"{k}_physical"] = float(v)
-        metrics["target_offset"] = float(target_denorm[0])
-        metrics["target_scale"] = float(target_denorm[1])
-
-    if report_physical and prediction_denorm is not None and target_denorm is not None:
-        separate = _evaluate_metrics(
-            model,
-            test_loader,
-            device,
-            pred_denorm=prediction_denorm,
-            target_denorm=target_denorm,
-        )
-        for k, v in separate.items():
-            metrics[f"{k}_physical_separate_denorm"] = float(v)
-        metrics["prediction_offset"] = float(prediction_denorm[0])
-        metrics["prediction_scale"] = float(prediction_denorm[1])
-
-    unsafe_metrics = {
-        "mae",
-        "rmse",
-        "rel_l2",
-        "max_error",
-        "mae_physical",
-        "rmse_physical",
-        "rel_l2_physical",
-        "max_error_physical",
-    }
-    if prediction_signature is None and numerator_metric in unsafe_metrics:
-        msg = (
-            "Could not verify prediction-side normalization signature. "
-            "Set normalization.prediction_denorm_path or keep numerator_metric on *_physical_separate_denorm."
-        )
-        if mismatch_action == "fail":
-            raise ValueError(msg)
-        print(f"[eval_emulator_superiority][warn] {msg}")
-
-    if signature_mismatch:
-        msg = (
-            "Cross-solver normalization mismatch detected between checkpoint-train signature "
-            f"{prediction_signature} and eval-target signature {eval_signature}. "
-            "Use dedicated cross-solver processed datasets or use *_physical_separate_denorm metrics."
-        )
-        if numerator_metric in unsafe_metrics:
-            if mismatch_action == "fail":
-                raise ValueError(msg)
-            print(f"[eval_emulator_superiority][warn] {msg}")
-
-    if numerator_metric.endswith("_physical_separate_denorm") and numerator_metric not in metrics:
+    processed_lookup = build_processed_input_lookup(model_processed_test_path)
+    if tuple(processed_lookup.input_order) != tuple(model_input_order):
         raise ValueError(
-            f"Requested numerator_metric '{numerator_metric}' requires both prediction and target denormalization stats. "
-            "Check normalization.prediction_denorm_path / normalization.target_denorm_path and ensure eval_dataset.npz "
-            "contains target_mean + target_std."
+            "Processed lookup input_order does not match the model input_order control: "
+            f"{processed_lookup.input_order!r} != {model_input_order!r}"
         )
+    model_stats = load_standardization_spec(model_normalization_stats_path)
 
-    with solver_compare_path.open("r", encoding="utf-8") as f:
-        solver_payload = json.load(f)
+    scenario_metric_rows: list[dict[str, Any]] = []
+    reconstruction_checked = 0
+    reconstruction_max_abs_diff = 0.0
+    identity_verified = 0
+    batch_inputs: list[np.ndarray] = []
+    batch_rows: list[dict[str, Any]] = []
 
-    solver_mean = _solver_metric_mean(solver_payload, denominator_metric)
+    def _consume_pending_batch() -> None:
+        if not batch_inputs:
+            return
+        x_batch = torch.from_numpy(np.stack(batch_inputs, axis=0)).to(device)
+        pred_batch = _model_output(model, x_batch).detach().cpu().numpy()
+        for batch_index, batch_row in enumerate(batch_rows):
+            pred_model = np.asarray(pred_batch[batch_index], dtype=np.float64)
+            pred_physical = np.asarray(
+                denormalize_model_target(pred_model, model_stats),
+                dtype=np.float64,
+            )
+            pred_ts = prediction_positive_timestamps(
+                batch_row["left"]["timestamps"],
+                expected_output_channels=pred_physical.shape[0],
+            )
+            pred_aligned = align_positive_time_series(
+                pred_physical,
+                pred_ts,
+                common_time_grid=contract.common_time_grid,
+                endpoint_tolerance=contract.endpoint_tolerance,
+            )
+            ref_a_aligned = align_elevation_series(
+                batch_row["left"]["trajectory_eta"],
+                batch_row["left"]["timestamps"],
+                mode=MODE_COMMON_TIME,
+                common_time_grid=contract.common_time_grid,
+                endpoint_tolerance=contract.endpoint_tolerance,
+            )
+            ref_b_aligned = align_elevation_series(
+                batch_row["right"]["trajectory_eta"],
+                batch_row["right"]["timestamps"],
+                mode=MODE_COMMON_TIME,
+                common_time_grid=contract.common_time_grid,
+                endpoint_tolerance=contract.endpoint_tolerance,
+            )
+            scenario_metric_rows.append(
+                build_emulator_superiority_metric_row(
+                    scenario_id=str(batch_row["scenario_id"]),
+                    bathymetry_type=str(batch_row["bathymetry_type"]),
+                    source_type=str(batch_row["source_type"]),
+                    source_strength=float(batch_row["source_strength"]),
+                    pred_aligned=pred_aligned,
+                    ref_a_aligned=ref_a_aligned,
+                    ref_b_aligned=ref_b_aligned,
+                )
+            )
+            progress_logger(
+                len(scenario_metric_rows),
+                len(contract.ordered_scenario_ids),
+                str(batch_row["scenario_id"]),
+            )
+        batch_inputs.clear()
+        batch_rows.clear()
 
-    if numerator_metric not in metrics:
-        raise KeyError(
-            f"numerator_metric '{numerator_metric}' not found in model metrics. "
-            f"Available={sorted(metrics.keys())}"
-        )
-    numerator = float(metrics[numerator_metric])
-    ratio = float(numerator / solver_mean) if abs(solver_mean) > 0 else float("inf")
+    model.eval()
+    with torch.no_grad():
+        for paired in iter_paired_raw_reference_samples(
+            contract=contract,
+            left_root=model_raw_root,
+            right_root=benchmark_raw_root,
+        ):
+            verify_common_raw_identity(
+                scenario_id=str(paired["scenario_id"]),
+                left_sample=paired["left"],
+                right_sample=paired["right"],
+            )
+            identity_verified += 1
+            raw_inputs = {
+                "bathymetry": paired["left"]["bathymetry"],
+                "source_field": paired["left"]["source_field"],
+                "source": paired["left"]["source_field"],
+                "initial_depth": paired["left"]["initial_depth"],
+                "eta0": paired["left"]["eta0"],
+                "free_surface0": paired["left"]["free_surface0"],
+                "initial_surface": paired["left"]["free_surface0"],
+            }
+            reconstructed = normalize_raw_inputs_for_model(
+                raw_inputs,
+                input_order=model_input_order,
+                model_stats=model_stats,
+            )
+            reconstruction = verify_reconstructed_input_match(
+                scenario_id=str(paired["scenario_id"]),
+                reconstructed_input=reconstructed,
+                lookup=processed_lookup,
+                atol=reconstruction_atol,
+            )
+            reconstruction_checked += 1
+            reconstruction_max_abs_diff = max(
+                reconstruction_max_abs_diff,
+                float(reconstruction["max_abs_diff"]),
+            )
 
-    out = {
-        "evaluation_type": "emulator_superiority_ratio",
-        "model_config": model_cfg_path,
+            batch_inputs.append(reconstructed)
+            batch_rows.append(paired)
+            if len(batch_inputs) < batch_size:
+                continue
+            _consume_pending_batch()
+
+        _consume_pending_batch()
+
+    result = evaluate_emulator_superiority_metric_rows(
+        contract=contract,
+        direction_name=direction_name,
+        model_solver_name=model_solver,
+        benchmark_solver_name=benchmark_solver,
+        scenario_metric_rows=scenario_metric_rows,
+        bootstrap_seed=bootstrap_seed,
+        num_resamples=num_resamples,
+        confidence_level=confidence_level,
+        git_commit=get_git_commit(),
+        script_path=str(Path(__file__).resolve()),
+    )
+    scenario_metrics = result.pop("scenario_metrics")
+    scenario_metrics_path = output_path.with_name(
+        f"{output_path.stem}_scenario_metrics.jsonl"
+    )
+    write_jsonl(scenario_metrics, scenario_metrics_path)
+    result["model"] = {
+        "model_config": model_config_path,
         "checkpoint": checkpoint_path,
-        "model_metrics": metrics,
-        "solver_compare_path": str(solver_compare_path),
-        "solver_denominator_metric": denominator_metric,
-        "solver_denominator_mean": solver_mean,
-        "emulator_numerator_metric": numerator_metric,
-        "emulator_numerator_value": numerator,
-        "ratio": ratio,
-        "normalization": {
-            "dataset_signature": eval_signature,
-            "prediction_signature": prediction_signature,
-            "signature_mismatch": bool(signature_mismatch),
-            "prediction_denorm_path": prediction_denorm_path,
-            "target_denorm_path": target_denorm_path,
-            "checkpoint_train_path": checkpoint_train_path,
-            "tolerance": signature_tol,
-            "on_signature_mismatch": mismatch_action,
-            "check_input_stats": bool(check_input_stats),
-            "on_input_stats_mismatch": input_mismatch_action,
-            "prediction_input_signature": prediction_input_signature,
-            "eval_input_signature": eval_input_signature,
-            "input_check": input_check,
-        },
-        "interpretation": "ratio < 1 means emulator error is lower than solver-A vs solver-B disagreement.",
+        "model_input_order": list(model_input_order),
+        "model_processed_test_path": str(model_processed_test_path),
+        "model_normalization_stats_path": str(model_normalization_stats_path),
+        "model_raw_root": str(model_raw_root),
+        "benchmark_raw_root": str(benchmark_raw_root),
+        "checkpoint_train_path": checkpoint_train_path,
+        "prediction_channel_timestamp_assignment": "reference_a_positive_timestamps",
+        "configured_paths": runtime_paths["configured_paths"],
+        "effective_paths": runtime_paths["effective_paths"],
     }
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    save_json(out, output_path)
-    print(out)
+    result["provenance"]["cli_overrides"] = runtime_paths["cli_overrides"]
+    result["reconstruction_control"] = {
+        "status": "pass",
+        "checked_scenario_count": int(reconstruction_checked),
+        "checked_channel_count": int(reconstruction_checked * len(model_input_order)),
+        "max_abs_diff": float(reconstruction_max_abs_diff),
+        "atol": float(reconstruction_atol),
+    }
+    result["raw_identity_control"] = {
+        "status": "pass",
+        "verified_scenario_count": int(identity_verified),
+        "shared_fields": ["bathymetry", "source_field", "initial_depth"],
+    }
+    result["artifacts_written"] = {
+        "summary_json": str(output_path),
+        "scenario_metrics_jsonl": str(scenario_metrics_path),
+    }
+    save_json(result, output_path)
+    print(
+        f"[emulator-superiority] direction={direction_name} "
+        f"suite={contract.suite_name} "
+        f"classification={result['benchmark_specific_superiority']['classification']} "
+        f"rho={result['metrics']['rho']:.6g}"
+    )
+    print(f"[emulator-superiority] artifacts={output_path}")
 
 
 if __name__ == "__main__":

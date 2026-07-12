@@ -9,7 +9,11 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.evaluation.normalization_bridge import (
+    denormalize_model_target,
     load_evaluation_normalization_bridge,
+    load_standardization_spec,
+    normalize_raw_inputs_for_model,
+    resolve_raw_input_channel,
 )
 
 
@@ -116,3 +120,81 @@ def test_bridge_fails_loudly_when_stats_are_missing(tmp_path):
             tmp_path / "missing_dataset_stats.json",
             tmp_path / "missing_model_stats.json",
         )
+
+
+def test_normalize_raw_inputs_for_model_uses_model_a_stats_not_target_b_stats(tmp_path):
+    model_a_stats_path = tmp_path / "model_a_stats.json"
+    model_b_stats_path = tmp_path / "model_b_stats.json"
+    _write_stats(
+        model_a_stats_path,
+        bathymetry=(10.0, 2.0),
+        source=(-2.0, 4.0),
+        target=(0.0, 1.0),
+    )
+    _write_stats(
+        model_b_stats_path,
+        bathymetry=(100.0, 5.0),
+        source=(3.0, 10.0),
+        target=(0.0, 1.0),
+    )
+    raw_inputs = {
+        "bathymetry": np.asarray([[14.0]], dtype=np.float32),
+        "source_field": np.asarray([[2.0]], dtype=np.float32),
+        "initial_depth": np.asarray([[7.0]], dtype=np.float32),
+    }
+
+    normalized_a = normalize_raw_inputs_for_model(
+        raw_inputs,
+        input_order=["bathymetry", "source", "initial_depth"],
+        model_stats=load_standardization_spec(model_a_stats_path),
+    )
+    normalized_b = normalize_raw_inputs_for_model(
+        raw_inputs,
+        input_order=["bathymetry", "source", "initial_depth"],
+        model_stats=load_standardization_spec(model_b_stats_path),
+    )
+
+    np.testing.assert_allclose(
+        normalized_a,
+        np.asarray([[[2.0]], [[1.0]], [[7.0]]], dtype=np.float32),
+        atol=0.0,
+        rtol=0.0,
+    )
+    assert not np.allclose(normalized_a, normalized_b)
+
+
+def test_resolve_raw_input_channel_supports_preprocessing_aliases() -> None:
+    raw_inputs = {
+        "source_field": np.asarray([[3.0]], dtype=np.float32),
+        "free_surface0": np.asarray([[1.5]], dtype=np.float32),
+    }
+
+    np.testing.assert_allclose(
+        resolve_raw_input_channel(raw_inputs, "source"),
+        np.asarray([[3.0]], dtype=np.float32),
+        atol=0.0,
+        rtol=0.0,
+    )
+    np.testing.assert_allclose(
+        resolve_raw_input_channel(raw_inputs, "initial_surface"),
+        np.asarray([[1.5]], dtype=np.float32),
+        atol=0.0,
+        rtol=0.0,
+    )
+
+
+def test_denormalize_model_target_handles_numpy_and_torch(tmp_path) -> None:
+    stats_path = tmp_path / "model_stats.json"
+    _write_stats(
+        stats_path,
+        bathymetry=(0.0, 1.0),
+        source=(0.0, 1.0),
+        target=(2.0, 3.0),
+    )
+    stats = load_standardization_spec(stats_path)
+
+    denorm_np = denormalize_model_target(np.asarray([[1.0]], dtype=np.float32), stats)
+    denorm_torch = denormalize_model_target(torch.tensor([[1.0]]), stats)
+
+    np.testing.assert_allclose(denorm_np, np.asarray([[5.0]], dtype=np.float32))
+    assert torch.allclose(denorm_torch, torch.tensor([[5.0]]))
