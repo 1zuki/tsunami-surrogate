@@ -158,20 +158,20 @@ The FNO degrades gracefully across most families: five of the six sit in a narro
 
 We additionally evaluate three named shift suites for the hydrostatic FNO: the \texttt{multi-gauss} subset, the \texttt{trench} subset, and the high source-strength tail ($s \ge 0.82$). These give per-sample-mean relative $L_2$ of $0.232$ and $0.267$ for the first two; within the high source-strength tail the per-family error spans $0.247$--$0.345$, with the \emph{rough} family again the worst ($0.345$) and the others between $0.247$ and $0.280$. As in the same-solver breakdown, rough sources are the hardest case and sit above the in-distribution band, while the remaining families stay within or just above it. We stress that these suites are carved from the in-distribution test pool by metadata filtering, not held out from training; following the distinction in Section~\ref{subsec:generalization-protocol} they are therefore \emph{difficult-subgroup} tests, not \emph{held-out-family} tests, and are evidence of robustness within the training distribution rather than of generalization to an unseen family.
 
-Table~\ref{tab:strict-holdout} reports the stricter held-out-family stress tests. In each row the named family is removed before preprocessing, normalization statistics are refit from the filtered training split only, and the trained FNO is evaluated both on the in-distribution remainder and on the excluded family. The result is mixed rather than solved OOD. Holding out \texttt{trench} is mild ($1.08 \times$ degradation over the filtered in-distribution test), \texttt{continental} and \texttt{okada-like} are moderate ($1.47 \times$ and $1.30 \times$), and \texttt{rough} sources are the clear failure mode ($2.43 \times$). The full-distribution model is included as a reference on the same held-out subset; it is usually better than the strict model on source holdouts, confirming that seeing the family during training matters.
+Table~\ref{tab:strict-holdout} reports the stricter held-out-family stress tests. In each row the named family is removed before preprocessing, normalization statistics are refit from the filtered training split only, and the trained FNO is evaluated both on the in-distribution remainder and on the excluded family. For cross-model comparability, all values in this table are relative $L_2$ errors after reversing each checkpoint's own target standardization. The full-distribution checkpoint receives the same physical held-out inputs rebased from the filtered statistics to its original full-training input statistics before inference. Holding out \texttt{trench} is mild ($1.07 \times$ degradation over the filtered in-distribution test), \texttt{continental} and \texttt{okada-like} are moderate ($1.48 \times$ and $1.31 \times$), and \texttt{rough} sources are the clear failure mode ($2.54 \times$). The full-distribution model is more accurate than the strict model on all four held-out subsets, consistent with a benefit from having seen each family during training; this is a single-run reference comparison rather than a causal estimate of the value of one family.
 
 \begin{table}[H]
 \centering
-\caption{Strict held-out-family hydrostatic FNO stress tests. ID is the filtered in-distribution test remainder for the model trained without the named family; held-out is the excluded family; full model is the main FNO evaluated on the same held-out subset. Relative $L_2$ values are dimensionless.}
+\caption{Strict held-out-family hydrostatic FNO stress tests. ID is the filtered in-distribution test remainder for the model trained without the named family; held-out is the excluded family; full model is the main FNO evaluated on the same physical held-out subset after rebasing inputs to the main model's training normalization. Relative $L_2$ values are dimensionless and computed after target denormalization so the two checkpoints are compared in one benchmark-scale space. Ratio is held-out/ID for the strict model.}
 \label{tab:strict-holdout}
 \begin{tabular}{lcccc}
     \toprule
     Held-out family & ID rel-$L_2$ & Held-out rel-$L_2$ & Full model rel-$L_2$ & Ratio \\
     \midrule
-    \texttt{trench} bathymetry      & $0.255$ & $0.274$ & $0.268$ & $1.08$ \\
-    \texttt{continental} bathymetry & $0.234$ & $0.346$ & $0.259$ & $1.47$ \\
-    \texttt{rough} source           & $0.236$ & $0.571$ & $0.453$ & $2.43$ \\
-    \texttt{okada-like} source      & $0.236$ & $0.308$ & $0.247$ & $1.30$ \\
+    \texttt{trench} bathymetry      & $0.253$ & $0.272$ & $0.240$ & $1.07$ \\
+    \texttt{continental} bathymetry & $0.233$ & $0.344$ & $0.257$ & $1.48$ \\
+    \texttt{rough} source           & $0.233$ & $0.592$ & $0.365$ & $2.54$ \\
+    \texttt{okada-like} source      & $0.234$ & $0.306$ & $0.220$ & $1.31$ \\
     \bottomrule
 \end{tabular}
 \end{table}

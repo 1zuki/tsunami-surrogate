@@ -1,0 +1,76 @@
+schema_id: tsunami-surrogate.alignment.v1
+
+alignment:
+  mode: common-time
+  field: trajectory_eta
+  elevation_semantics: sea_level_offset_relative_surface_elevation
+  time_semantics: solver_benchmark_time
+  initial_frame_treatment: require_saved_zero_frame_but_exclude_zero_from_common_grid
+  aggregation:
+    per_scenario_metrics:
+      - mae
+      - rmse
+      - relative_l2
+      - max_error
+    global_metric: equal_scenario_weight_field_rmse
+    bootstrap:
+      seed: 20260711
+      num_resamples: 10000
+      confidence_level: 0.95
+  common_time_grid:
+    benchmark_time_units: solver_benchmark_time
+    endpoint_tolerance: 1.0e-6
+    values:
+      - 0.004
+      - 0.008
+      - 0.012
+      - 0.016
+      - 0.020
+      - 0.024
+      - 0.028
+      - 0.032
+      - 0.036
+      - 0.040
+      - 0.044
+      - 0.048
+      - 0.052
+      - 0.056
+      - 0.060
+      - 0.064
+      - 0.068
+      - 0.072
+      - 0.076
+      - 0.080
+
+audit:
+  expected_scenario_count: 2500
+  processed_test_roots:
+    hydrostatic: data/processed/hydrostatic/test
+    muscl_hr: data/processed/muscl_hr/test
+    boussinesq: data/processed/boussinesq/test
+  raw_test_solver_roots: {}
+  scenario_manifest_path:
+  results_dir: results/common_time_validation/audit
+  equality:
+    array_atol: 1.0e-6
+    scalar_atol: 1.0e-12
+  timestamp:
+    initial_zero_tolerance: 1.0e-7
+  clipping:
+    block_true_pre_clipping: true
+    roundoff_residual_atol: 1.0e-6
+  reconstruction_control:
+    enabled: true
+    processed_dataset_path: data/processed/hydrostatic/test
+    normalization_stats_path: data/processed/hydrostatic/normalization_stats.json
+    float32_atol: 1.0e-6
+
+selection:
+  seed: 20260711
+  output_path: configs/eval/common_time_validation_scenarios.json
+  dense_validation:
+    policy: primary-4-per-family-cell
+    reduced_policy: reduced-2-per-family-cell
+  smoke:
+    count: 12
+    label: implementation_only_smoke

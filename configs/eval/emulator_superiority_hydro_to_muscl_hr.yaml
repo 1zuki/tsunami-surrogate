@@ -1,23 +1,28 @@
-model_config: configs/model/fno.yaml
-checkpoint: experiments/fno/best.pt
+alignment_contract:
+  config_path: configs/eval/common_time_alignment.yaml
+  suite: full
+  audit_artifact_path: results/common_time_validation/audit/paired_reference_audit.json
+  scenario_selection_path: configs/eval/common_time_validation_scenarios.json
+  dense_validation_decision_path: results/common_time_validation/dense_reference_validation/dense_validation/decision.json
+  require_full_suite_dense_decision: true
+  dense_fallback_policy: unsupported
+
+direction:
+  name: hydro_to_muscl_hr
+  model_solver: hydrostatic
+  benchmark_solver: muscl_hr
+  model_config: configs/model/fno.yaml
+  checkpoint: experiments/fno/best.pt
+  model_raw_root: data/raw/hydrostatic/samples
+  benchmark_raw_root: data/raw/muscl_hr/samples
+  model_processed_test_path: data/processed/hydrostatic/test/eval_dataset.npz
+  model_normalization_stats_path: data/processed/hydrostatic/normalization_stats.json
 
 evaluation:
-  dataset_path: data/processed/muscl_hr/test/eval_dataset.npz
   batch_size: 8
-  report_physical_metrics: true
+  bootstrap_seed: 20260711
+  num_resamples: 10000
+  confidence_level: 0.95
+  reconstruction_atol: 1.0e-6
 
-# should come from:
-# python scripts/compare_solvers_physical.py --solver-a-dir data/raw/hydrostatic/samples --solver-b-dir data/raw/muscl_hr/samples ...
-solver_compare_path: results/solver_compare_hydro_vs_muscl_hr.json
-
-ratio:
-  numerator_metric: rmse_physical_separate_denorm
-  denominator_metric: rmse
-
-normalization:
-  on_signature_mismatch: warn
-  # prediction_denorm_path defaults to checkpoint train_path.
-  # target_denorm_path defaults to evaluation.dataset_path.
-  tol: 1e-6
-
-output_path: results/emulator_superiority_hydro_to_muscl_hr.json
+output_path: results/common_time_validation/emulator_superiority/hydro_to_muscl_hr.json

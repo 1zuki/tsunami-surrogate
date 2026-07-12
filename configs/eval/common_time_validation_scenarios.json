@@ -1,0 +1,1151 @@
+{
+  "schema_id": "tsunami-surrogate.alignment.v1",
+  "artifact_kind": "common-time-validation-scenarios",
+  "audit_hash": "57a76514ba66f3bbe0d665418cd4c35873942feb251411e68af51985748bcef4",
+  "seed": 20260711,
+  "selection_policy": {
+    "name": "primary-4-per-family-cell",
+    "required_per_family_cell": 4,
+    "automatic_fallback": false,
+    "label": "primary"
+  },
+  "observed_bathymetry_types": [
+    "canyon",
+    "continental",
+    "island",
+    "seamounts",
+    "trench"
+  ],
+  "observed_source_types": [
+    "dipole",
+    "fault",
+    "gaussian",
+    "multi-gauss",
+    "okada-like",
+    "rough"
+  ],
+  "family_cells": [
+    {
+      "bathymetry_type": "canyon",
+      "source_type": "dipole",
+      "eligible_count": 80,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "canyon",
+      "source_type": "fault",
+      "eligible_count": 76,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "canyon",
+      "source_type": "gaussian",
+      "eligible_count": 78,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "canyon",
+      "source_type": "multi-gauss",
+      "eligible_count": 94,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "canyon",
+      "source_type": "okada-like",
+      "eligible_count": 81,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "canyon",
+      "source_type": "rough",
+      "eligible_count": 71,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "continental",
+      "source_type": "dipole",
+      "eligible_count": 93,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "continental",
+      "source_type": "fault",
+      "eligible_count": 81,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "continental",
+      "source_type": "gaussian",
+      "eligible_count": 86,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "continental",
+      "source_type": "multi-gauss",
+      "eligible_count": 83,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "continental",
+      "source_type": "okada-like",
+      "eligible_count": 82,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "continental",
+      "source_type": "rough",
+      "eligible_count": 90,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "island",
+      "source_type": "dipole",
+      "eligible_count": 83,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "island",
+      "source_type": "fault",
+      "eligible_count": 88,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "island",
+      "source_type": "gaussian",
+      "eligible_count": 88,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "island",
+      "source_type": "multi-gauss",
+      "eligible_count": 84,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "island",
+      "source_type": "okada-like",
+      "eligible_count": 85,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "island",
+      "source_type": "rough",
+      "eligible_count": 88,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "seamounts",
+      "source_type": "dipole",
+      "eligible_count": 80,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "seamounts",
+      "source_type": "fault",
+      "eligible_count": 74,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "seamounts",
+      "source_type": "gaussian",
+      "eligible_count": 93,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "seamounts",
+      "source_type": "multi-gauss",
+      "eligible_count": 74,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "seamounts",
+      "source_type": "okada-like",
+      "eligible_count": 100,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "seamounts",
+      "source_type": "rough",
+      "eligible_count": 87,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "trench",
+      "source_type": "dipole",
+      "eligible_count": 72,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "trench",
+      "source_type": "fault",
+      "eligible_count": 83,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "trench",
+      "source_type": "gaussian",
+      "eligible_count": 81,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "trench",
+      "source_type": "multi-gauss",
+      "eligible_count": 79,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "trench",
+      "source_type": "okada-like",
+      "eligible_count": 99,
+      "selected_count": 4
+    },
+    {
+      "bathymetry_type": "trench",
+      "source_type": "rough",
+      "eligible_count": 67,
+      "selected_count": 4
+    }
+  ],
+  "dense_validation": {
+    "count": 120,
+    "ordered_scenarios": [
+      {
+        "scenario_id": "scenario_000447",
+        "bathymetry_type": "canyon",
+        "source_type": "dipole",
+        "source_strength": 0.8194392919540405
+      },
+      {
+        "scenario_id": "scenario_001406",
+        "bathymetry_type": "canyon",
+        "source_type": "dipole",
+        "source_strength": 0.7812066078186035
+      },
+      {
+        "scenario_id": "scenario_000795",
+        "bathymetry_type": "canyon",
+        "source_type": "dipole",
+        "source_strength": 0.7707977890968323
+      },
+      {
+        "scenario_id": "scenario_001964",
+        "bathymetry_type": "canyon",
+        "source_type": "dipole",
+        "source_strength": 0.622460126876831
+      },
+      {
+        "scenario_id": "scenario_000028",
+        "bathymetry_type": "canyon",
+        "source_type": "fault",
+        "source_strength": 0.7496196031570435
+      },
+      {
+        "scenario_id": "scenario_000430",
+        "bathymetry_type": "canyon",
+        "source_type": "fault",
+        "source_strength": 0.5723957419395447
+      },
+      {
+        "scenario_id": "scenario_002354",
+        "bathymetry_type": "canyon",
+        "source_type": "fault",
+        "source_strength": 0.7617165446281433
+      },
+      {
+        "scenario_id": "scenario_002016",
+        "bathymetry_type": "canyon",
+        "source_type": "fault",
+        "source_strength": 0.5796110033988953
+      },
+      {
+        "scenario_id": "scenario_000956",
+        "bathymetry_type": "canyon",
+        "source_type": "gaussian",
+        "source_strength": 0.7932712435722351
+      },
+      {
+        "scenario_id": "scenario_001139",
+        "bathymetry_type": "canyon",
+        "source_type": "gaussian",
+        "source_strength": 0.49180975556373596
+      },
+      {
+        "scenario_id": "scenario_001619",
+        "bathymetry_type": "canyon",
+        "source_type": "gaussian",
+        "source_strength": 0.47543013095855713
+      },
+      {
+        "scenario_id": "scenario_000366",
+        "bathymetry_type": "canyon",
+        "source_type": "gaussian",
+        "source_strength": 0.7165679931640625
+      },
+      {
+        "scenario_id": "scenario_001675",
+        "bathymetry_type": "canyon",
+        "source_type": "multi-gauss",
+        "source_strength": 0.7063437104225159
+      },
+      {
+        "scenario_id": "scenario_001195",
+        "bathymetry_type": "canyon",
+        "source_type": "multi-gauss",
+        "source_strength": 0.5397519469261169
+      },
+      {
+        "scenario_id": "scenario_002477",
+        "bathymetry_type": "canyon",
+        "source_type": "multi-gauss",
+        "source_strength": 0.7577955722808838
+      },
+      {
+        "scenario_id": "scenario_002229",
+        "bathymetry_type": "canyon",
+        "source_type": "multi-gauss",
+        "source_strength": 0.7951833009719849
+      },
+      {
+        "scenario_id": "scenario_000302",
+        "bathymetry_type": "canyon",
+        "source_type": "okada-like",
+        "source_strength": 0.6951524615287781
+      },
+      {
+        "scenario_id": "scenario_002152",
+        "bathymetry_type": "canyon",
+        "source_type": "okada-like",
+        "source_strength": 0.5367850661277771
+      },
+      {
+        "scenario_id": "scenario_000468",
+        "bathymetry_type": "canyon",
+        "source_type": "okada-like",
+        "source_strength": 0.49992796778678894
+      },
+      {
+        "scenario_id": "scenario_000971",
+        "bathymetry_type": "canyon",
+        "source_type": "okada-like",
+        "source_strength": 0.5253334045410156
+      },
+      {
+        "scenario_id": "scenario_002098",
+        "bathymetry_type": "canyon",
+        "source_type": "rough",
+        "source_strength": 0.7488059401512146
+      },
+      {
+        "scenario_id": "scenario_001172",
+        "bathymetry_type": "canyon",
+        "source_type": "rough",
+        "source_strength": 0.6669120192527771
+      },
+      {
+        "scenario_id": "scenario_002161",
+        "bathymetry_type": "canyon",
+        "source_type": "rough",
+        "source_strength": 0.6017630696296692
+      },
+      {
+        "scenario_id": "scenario_001446",
+        "bathymetry_type": "canyon",
+        "source_type": "rough",
+        "source_strength": 0.7214695811271667
+      },
+      {
+        "scenario_id": "scenario_000791",
+        "bathymetry_type": "continental",
+        "source_type": "dipole",
+        "source_strength": 0.5256229043006897
+      },
+      {
+        "scenario_id": "scenario_002085",
+        "bathymetry_type": "continental",
+        "source_type": "dipole",
+        "source_strength": 0.7142466902732849
+      },
+      {
+        "scenario_id": "scenario_002282",
+        "bathymetry_type": "continental",
+        "source_type": "dipole",
+        "source_strength": 0.569679319858551
+      },
+      {
+        "scenario_id": "scenario_001766",
+        "bathymetry_type": "continental",
+        "source_type": "dipole",
+        "source_strength": 0.4514547884464264
+      },
+      {
+        "scenario_id": "scenario_001596",
+        "bathymetry_type": "continental",
+        "source_type": "fault",
+        "source_strength": 0.8189888000488281
+      },
+      {
+        "scenario_id": "scenario_000584",
+        "bathymetry_type": "continental",
+        "source_type": "fault",
+        "source_strength": 0.6750390529632568
+      },
+      {
+        "scenario_id": "scenario_000782",
+        "bathymetry_type": "continental",
+        "source_type": "fault",
+        "source_strength": 0.5860297679901123
+      },
+      {
+        "scenario_id": "scenario_000560",
+        "bathymetry_type": "continental",
+        "source_type": "fault",
+        "source_strength": 0.6122177243232727
+      },
+      {
+        "scenario_id": "scenario_001320",
+        "bathymetry_type": "continental",
+        "source_type": "gaussian",
+        "source_strength": 0.5182838439941406
+      },
+      {
+        "scenario_id": "scenario_000297",
+        "bathymetry_type": "continental",
+        "source_type": "gaussian",
+        "source_strength": 0.7139743566513062
+      },
+      {
+        "scenario_id": "scenario_001957",
+        "bathymetry_type": "continental",
+        "source_type": "gaussian",
+        "source_strength": 0.7388452291488647
+      },
+      {
+        "scenario_id": "scenario_001933",
+        "bathymetry_type": "continental",
+        "source_type": "gaussian",
+        "source_strength": 0.5685126185417175
+      },
+      {
+        "scenario_id": "scenario_001041",
+        "bathymetry_type": "continental",
+        "source_type": "multi-gauss",
+        "source_strength": 0.7803767323493958
+      },
+      {
+        "scenario_id": "scenario_002293",
+        "bathymetry_type": "continental",
+        "source_type": "multi-gauss",
+        "source_strength": 0.7299898862838745
+      },
+      {
+        "scenario_id": "scenario_000115",
+        "bathymetry_type": "continental",
+        "source_type": "multi-gauss",
+        "source_strength": 0.8166196346282959
+      },
+      {
+        "scenario_id": "scenario_001736",
+        "bathymetry_type": "continental",
+        "source_type": "multi-gauss",
+        "source_strength": 0.6123756170272827
+      },
+      {
+        "scenario_id": "scenario_001519",
+        "bathymetry_type": "continental",
+        "source_type": "okada-like",
+        "source_strength": 0.7058507800102234
+      },
+      {
+        "scenario_id": "scenario_002111",
+        "bathymetry_type": "continental",
+        "source_type": "okada-like",
+        "source_strength": 0.8028870820999146
+      },
+      {
+        "scenario_id": "scenario_002221",
+        "bathymetry_type": "continental",
+        "source_type": "okada-like",
+        "source_strength": 0.607132613658905
+      },
+      {
+        "scenario_id": "scenario_001297",
+        "bathymetry_type": "continental",
+        "source_type": "okada-like",
+        "source_strength": 0.7221803665161133
+      },
+      {
+        "scenario_id": "scenario_000606",
+        "bathymetry_type": "continental",
+        "source_type": "rough",
+        "source_strength": 0.6965641379356384
+      },
+      {
+        "scenario_id": "scenario_000219",
+        "bathymetry_type": "continental",
+        "source_type": "rough",
+        "source_strength": 0.70767742395401
+      },
+      {
+        "scenario_id": "scenario_001213",
+        "bathymetry_type": "continental",
+        "source_type": "rough",
+        "source_strength": 0.5243775248527527
+      },
+      {
+        "scenario_id": "scenario_001086",
+        "bathymetry_type": "continental",
+        "source_type": "rough",
+        "source_strength": 0.5774766206741333
+      },
+      {
+        "scenario_id": "scenario_001650",
+        "bathymetry_type": "island",
+        "source_type": "dipole",
+        "source_strength": 0.5443281531333923
+      },
+      {
+        "scenario_id": "scenario_002065",
+        "bathymetry_type": "island",
+        "source_type": "dipole",
+        "source_strength": 0.7270113825798035
+      },
+      {
+        "scenario_id": "scenario_002132",
+        "bathymetry_type": "island",
+        "source_type": "dipole",
+        "source_strength": 0.5650428533554077
+      },
+      {
+        "scenario_id": "scenario_000675",
+        "bathymetry_type": "island",
+        "source_type": "dipole",
+        "source_strength": 0.7683696746826172
+      },
+      {
+        "scenario_id": "scenario_001801",
+        "bathymetry_type": "island",
+        "source_type": "fault",
+        "source_strength": 0.5536482930183411
+      },
+      {
+        "scenario_id": "scenario_001341",
+        "bathymetry_type": "island",
+        "source_type": "fault",
+        "source_strength": 0.4832025468349457
+      },
+      {
+        "scenario_id": "scenario_001686",
+        "bathymetry_type": "island",
+        "source_type": "fault",
+        "source_strength": 0.6650455594062805
+      },
+      {
+        "scenario_id": "scenario_001456",
+        "bathymetry_type": "island",
+        "source_type": "fault",
+        "source_strength": 0.556431233882904
+      },
+      {
+        "scenario_id": "scenario_000080",
+        "bathymetry_type": "island",
+        "source_type": "gaussian",
+        "source_strength": 0.6148601770401001
+      },
+      {
+        "scenario_id": "scenario_000336",
+        "bathymetry_type": "island",
+        "source_type": "gaussian",
+        "source_strength": 0.6666677594184875
+      },
+      {
+        "scenario_id": "scenario_000089",
+        "bathymetry_type": "island",
+        "source_type": "gaussian",
+        "source_strength": 0.7145795226097107
+      },
+      {
+        "scenario_id": "scenario_002081",
+        "bathymetry_type": "island",
+        "source_type": "gaussian",
+        "source_strength": 0.816205620765686
+      },
+      {
+        "scenario_id": "scenario_000803",
+        "bathymetry_type": "island",
+        "source_type": "multi-gauss",
+        "source_strength": 0.6662951707839966
+      },
+      {
+        "scenario_id": "scenario_002079",
+        "bathymetry_type": "island",
+        "source_type": "multi-gauss",
+        "source_strength": 0.48765140771865845
+      },
+      {
+        "scenario_id": "scenario_002107",
+        "bathymetry_type": "island",
+        "source_type": "multi-gauss",
+        "source_strength": 0.8286561369895935
+      },
+      {
+        "scenario_id": "scenario_000312",
+        "bathymetry_type": "island",
+        "source_type": "multi-gauss",
+        "source_strength": 0.8304559588432312
+      },
+      {
+        "scenario_id": "scenario_001716",
+        "bathymetry_type": "island",
+        "source_type": "okada-like",
+        "source_strength": 0.5465263724327087
+      },
+      {
+        "scenario_id": "scenario_001799",
+        "bathymetry_type": "island",
+        "source_type": "okada-like",
+        "source_strength": 0.4700344502925873
+      },
+      {
+        "scenario_id": "scenario_000258",
+        "bathymetry_type": "island",
+        "source_type": "okada-like",
+        "source_strength": 0.7993652820587158
+      },
+      {
+        "scenario_id": "scenario_002456",
+        "bathymetry_type": "island",
+        "source_type": "okada-like",
+        "source_strength": 0.6084662079811096
+      },
+      {
+        "scenario_id": "scenario_001013",
+        "bathymetry_type": "island",
+        "source_type": "rough",
+        "source_strength": 0.5510416626930237
+      },
+      {
+        "scenario_id": "scenario_000501",
+        "bathymetry_type": "island",
+        "source_type": "rough",
+        "source_strength": 0.5899336338043213
+      },
+      {
+        "scenario_id": "scenario_000014",
+        "bathymetry_type": "island",
+        "source_type": "rough",
+        "source_strength": 0.5361863374710083
+      },
+      {
+        "scenario_id": "scenario_002244",
+        "bathymetry_type": "island",
+        "source_type": "rough",
+        "source_strength": 0.4585895538330078
+      },
+      {
+        "scenario_id": "scenario_000194",
+        "bathymetry_type": "seamounts",
+        "source_type": "dipole",
+        "source_strength": 0.4998820424079895
+      },
+      {
+        "scenario_id": "scenario_001914",
+        "bathymetry_type": "seamounts",
+        "source_type": "dipole",
+        "source_strength": 0.5904294848442078
+      },
+      {
+        "scenario_id": "scenario_000912",
+        "bathymetry_type": "seamounts",
+        "source_type": "dipole",
+        "source_strength": 0.6802785992622375
+      },
+      {
+        "scenario_id": "scenario_000810",
+        "bathymetry_type": "seamounts",
+        "source_type": "dipole",
+        "source_strength": 0.7256106734275818
+      },
+      {
+        "scenario_id": "scenario_000943",
+        "bathymetry_type": "seamounts",
+        "source_type": "fault",
+        "source_strength": 0.6903882622718811
+      },
+      {
+        "scenario_id": "scenario_001889",
+        "bathymetry_type": "seamounts",
+        "source_type": "fault",
+        "source_strength": 0.7034353613853455
+      },
+      {
+        "scenario_id": "scenario_000682",
+        "bathymetry_type": "seamounts",
+        "source_type": "fault",
+        "source_strength": 0.7569076418876648
+      },
+      {
+        "scenario_id": "scenario_001647",
+        "bathymetry_type": "seamounts",
+        "source_type": "fault",
+        "source_strength": 0.8389306664466858
+      },
+      {
+        "scenario_id": "scenario_001252",
+        "bathymetry_type": "seamounts",
+        "source_type": "gaussian",
+        "source_strength": 0.7746552228927612
+      },
+      {
+        "scenario_id": "scenario_001782",
+        "bathymetry_type": "seamounts",
+        "source_type": "gaussian",
+        "source_strength": 0.6125684380531311
+      },
+      {
+        "scenario_id": "scenario_002094",
+        "bathymetry_type": "seamounts",
+        "source_type": "gaussian",
+        "source_strength": 0.702225387096405
+      },
+      {
+        "scenario_id": "scenario_000371",
+        "bathymetry_type": "seamounts",
+        "source_type": "gaussian",
+        "source_strength": 0.7527515292167664
+      },
+      {
+        "scenario_id": "scenario_002497",
+        "bathymetry_type": "seamounts",
+        "source_type": "multi-gauss",
+        "source_strength": 0.5491436123847961
+      },
+      {
+        "scenario_id": "scenario_002120",
+        "bathymetry_type": "seamounts",
+        "source_type": "multi-gauss",
+        "source_strength": 0.535343587398529
+      },
+      {
+        "scenario_id": "scenario_002150",
+        "bathymetry_type": "seamounts",
+        "source_type": "multi-gauss",
+        "source_strength": 0.79868084192276
+      },
+      {
+        "scenario_id": "scenario_000342",
+        "bathymetry_type": "seamounts",
+        "source_type": "multi-gauss",
+        "source_strength": 0.6403937935829163
+      },
+      {
+        "scenario_id": "scenario_001286",
+        "bathymetry_type": "seamounts",
+        "source_type": "okada-like",
+        "source_strength": 0.6690039038658142
+      },
+      {
+        "scenario_id": "scenario_001339",
+        "bathymetry_type": "seamounts",
+        "source_type": "okada-like",
+        "source_strength": 0.8242372274398804
+      },
+      {
+        "scenario_id": "scenario_001214",
+        "bathymetry_type": "seamounts",
+        "source_type": "okada-like",
+        "source_strength": 0.7937836050987244
+      },
+      {
+        "scenario_id": "scenario_001600",
+        "bathymetry_type": "seamounts",
+        "source_type": "okada-like",
+        "source_strength": 0.7066537141799927
+      },
+      {
+        "scenario_id": "scenario_001413",
+        "bathymetry_type": "seamounts",
+        "source_type": "rough",
+        "source_strength": 0.5876310467720032
+      },
+      {
+        "scenario_id": "scenario_001368",
+        "bathymetry_type": "seamounts",
+        "source_type": "rough",
+        "source_strength": 0.7623691558837891
+      },
+      {
+        "scenario_id": "scenario_002202",
+        "bathymetry_type": "seamounts",
+        "source_type": "rough",
+        "source_strength": 0.7237217426300049
+      },
+      {
+        "scenario_id": "scenario_001552",
+        "bathymetry_type": "seamounts",
+        "source_type": "rough",
+        "source_strength": 0.6986684203147888
+      },
+      {
+        "scenario_id": "scenario_002012",
+        "bathymetry_type": "trench",
+        "source_type": "dipole",
+        "source_strength": 0.8274938464164734
+      },
+      {
+        "scenario_id": "scenario_001198",
+        "bathymetry_type": "trench",
+        "source_type": "dipole",
+        "source_strength": 0.5589932799339294
+      },
+      {
+        "scenario_id": "scenario_001753",
+        "bathymetry_type": "trench",
+        "source_type": "dipole",
+        "source_strength": 0.5849263072013855
+      },
+      {
+        "scenario_id": "scenario_000779",
+        "bathymetry_type": "trench",
+        "source_type": "dipole",
+        "source_strength": 0.7573758363723755
+      },
+      {
+        "scenario_id": "scenario_001470",
+        "bathymetry_type": "trench",
+        "source_type": "fault",
+        "source_strength": 0.7053031921386719
+      },
+      {
+        "scenario_id": "scenario_000122",
+        "bathymetry_type": "trench",
+        "source_type": "fault",
+        "source_strength": 0.5845884680747986
+      },
+      {
+        "scenario_id": "scenario_000132",
+        "bathymetry_type": "trench",
+        "source_type": "fault",
+        "source_strength": 0.4816659688949585
+      },
+      {
+        "scenario_id": "scenario_000291",
+        "bathymetry_type": "trench",
+        "source_type": "fault",
+        "source_strength": 0.7662197947502136
+      },
+      {
+        "scenario_id": "scenario_001776",
+        "bathymetry_type": "trench",
+        "source_type": "gaussian",
+        "source_strength": 0.5896270275115967
+      },
+      {
+        "scenario_id": "scenario_000621",
+        "bathymetry_type": "trench",
+        "source_type": "gaussian",
+        "source_strength": 0.616667628288269
+      },
+      {
+        "scenario_id": "scenario_000758",
+        "bathymetry_type": "trench",
+        "source_type": "gaussian",
+        "source_strength": 0.6439388990402222
+      },
+      {
+        "scenario_id": "scenario_000402",
+        "bathymetry_type": "trench",
+        "source_type": "gaussian",
+        "source_strength": 0.7182762622833252
+      },
+      {
+        "scenario_id": "scenario_001664",
+        "bathymetry_type": "trench",
+        "source_type": "multi-gauss",
+        "source_strength": 0.8113034963607788
+      },
+      {
+        "scenario_id": "scenario_001401",
+        "bathymetry_type": "trench",
+        "source_type": "multi-gauss",
+        "source_strength": 0.8003249764442444
+      },
+      {
+        "scenario_id": "scenario_001264",
+        "bathymetry_type": "trench",
+        "source_type": "multi-gauss",
+        "source_strength": 0.5264440178871155
+      },
+      {
+        "scenario_id": "scenario_001820",
+        "bathymetry_type": "trench",
+        "source_type": "multi-gauss",
+        "source_strength": 0.7129001617431641
+      },
+      {
+        "scenario_id": "scenario_000092",
+        "bathymetry_type": "trench",
+        "source_type": "okada-like",
+        "source_strength": 0.738595187664032
+      },
+      {
+        "scenario_id": "scenario_001178",
+        "bathymetry_type": "trench",
+        "source_type": "okada-like",
+        "source_strength": 0.6769481301307678
+      },
+      {
+        "scenario_id": "scenario_001300",
+        "bathymetry_type": "trench",
+        "source_type": "okada-like",
+        "source_strength": 0.7451044321060181
+      },
+      {
+        "scenario_id": "scenario_002234",
+        "bathymetry_type": "trench",
+        "source_type": "okada-like",
+        "source_strength": 0.8255649209022522
+      },
+      {
+        "scenario_id": "scenario_000998",
+        "bathymetry_type": "trench",
+        "source_type": "rough",
+        "source_strength": 0.7069530487060547
+      },
+      {
+        "scenario_id": "scenario_000572",
+        "bathymetry_type": "trench",
+        "source_type": "rough",
+        "source_strength": 0.5684954524040222
+      },
+      {
+        "scenario_id": "scenario_000989",
+        "bathymetry_type": "trench",
+        "source_type": "rough",
+        "source_strength": 0.5993632674217224
+      },
+      {
+        "scenario_id": "scenario_001603",
+        "bathymetry_type": "trench",
+        "source_type": "rough",
+        "source_strength": 0.8125898838043213
+      }
+    ],
+    "ordered_scenario_ids": [
+      "scenario_000447",
+      "scenario_001406",
+      "scenario_000795",
+      "scenario_001964",
+      "scenario_000028",
+      "scenario_000430",
+      "scenario_002354",
+      "scenario_002016",
+      "scenario_000956",
+      "scenario_001139",
+      "scenario_001619",
+      "scenario_000366",
+      "scenario_001675",
+      "scenario_001195",
+      "scenario_002477",
+      "scenario_002229",
+      "scenario_000302",
+      "scenario_002152",
+      "scenario_000468",
+      "scenario_000971",
+      "scenario_002098",
+      "scenario_001172",
+      "scenario_002161",
+      "scenario_001446",
+      "scenario_000791",
+      "scenario_002085",
+      "scenario_002282",
+      "scenario_001766",
+      "scenario_001596",
+      "scenario_000584",
+      "scenario_000782",
+      "scenario_000560",
+      "scenario_001320",
+      "scenario_000297",
+      "scenario_001957",
+      "scenario_001933",
+      "scenario_001041",
+      "scenario_002293",
+      "scenario_000115",
+      "scenario_001736",
+      "scenario_001519",
+      "scenario_002111",
+      "scenario_002221",
+      "scenario_001297",
+      "scenario_000606",
+      "scenario_000219",
+      "scenario_001213",
+      "scenario_001086",
+      "scenario_001650",
+      "scenario_002065",
+      "scenario_002132",
+      "scenario_000675",
+      "scenario_001801",
+      "scenario_001341",
+      "scenario_001686",
+      "scenario_001456",
+      "scenario_000080",
+      "scenario_000336",
+      "scenario_000089",
+      "scenario_002081",
+      "scenario_000803",
+      "scenario_002079",
+      "scenario_002107",
+      "scenario_000312",
+      "scenario_001716",
+      "scenario_001799",
+      "scenario_000258",
+      "scenario_002456",
+      "scenario_001013",
+      "scenario_000501",
+      "scenario_000014",
+      "scenario_002244",
+      "scenario_000194",
+      "scenario_001914",
+      "scenario_000912",
+      "scenario_000810",
+      "scenario_000943",
+      "scenario_001889",
+      "scenario_000682",
+      "scenario_001647",
+      "scenario_001252",
+      "scenario_001782",
+      "scenario_002094",
+      "scenario_000371",
+      "scenario_002497",
+      "scenario_002120",
+      "scenario_002150",
+      "scenario_000342",
+      "scenario_001286",
+      "scenario_001339",
+      "scenario_001214",
+      "scenario_001600",
+      "scenario_001413",
+      "scenario_001368",
+      "scenario_002202",
+      "scenario_001552",
+      "scenario_002012",
+      "scenario_001198",
+      "scenario_001753",
+      "scenario_000779",
+      "scenario_001470",
+      "scenario_000122",
+      "scenario_000132",
+      "scenario_000291",
+      "scenario_001776",
+      "scenario_000621",
+      "scenario_000758",
+      "scenario_000402",
+      "scenario_001664",
+      "scenario_001401",
+      "scenario_001264",
+      "scenario_001820",
+      "scenario_000092",
+      "scenario_001178",
+      "scenario_001300",
+      "scenario_002234",
+      "scenario_000998",
+      "scenario_000572",
+      "scenario_000989",
+      "scenario_001603"
+    ],
+    "list_hash": "f295867508e01a6d9c577d8177ee396e274628ca368f089f2d75ece022dbc460"
+  },
+  "smoke": {
+    "label": "implementation_only_smoke",
+    "count": 12,
+    "ordered_scenarios": [
+      {
+        "scenario_id": "scenario_001753",
+        "bathymetry_type": "trench",
+        "source_type": "dipole",
+        "source_strength": 0.5849263072013855
+      },
+      {
+        "scenario_id": "scenario_001736",
+        "bathymetry_type": "continental",
+        "source_type": "multi-gauss",
+        "source_strength": 0.6123756170272827
+      },
+      {
+        "scenario_id": "scenario_002094",
+        "bathymetry_type": "seamounts",
+        "source_type": "gaussian",
+        "source_strength": 0.702225387096405
+      },
+      {
+        "scenario_id": "scenario_001799",
+        "bathymetry_type": "island",
+        "source_type": "okada-like",
+        "source_strength": 0.4700344502925873
+      },
+      {
+        "scenario_id": "scenario_002016",
+        "bathymetry_type": "canyon",
+        "source_type": "fault",
+        "source_strength": 0.5796110033988953
+      },
+      {
+        "scenario_id": "scenario_000501",
+        "bathymetry_type": "island",
+        "source_type": "rough",
+        "source_strength": 0.5899336338043213
+      },
+      {
+        "scenario_id": "scenario_001456",
+        "bathymetry_type": "island",
+        "source_type": "fault",
+        "source_strength": 0.556431233882904
+      },
+      {
+        "scenario_id": "scenario_000675",
+        "bathymetry_type": "island",
+        "source_type": "dipole",
+        "source_strength": 0.7683696746826172
+      },
+      {
+        "scenario_id": "scenario_000758",
+        "bathymetry_type": "trench",
+        "source_type": "gaussian",
+        "source_strength": 0.6439388990402222
+      },
+      {
+        "scenario_id": "scenario_001297",
+        "bathymetry_type": "continental",
+        "source_type": "okada-like",
+        "source_strength": 0.7221803665161133
+      },
+      {
+        "scenario_id": "scenario_000779",
+        "bathymetry_type": "trench",
+        "source_type": "dipole",
+        "source_strength": 0.7573758363723755
+      },
+      {
+        "scenario_id": "scenario_001341",
+        "bathymetry_type": "island",
+        "source_type": "fault",
+        "source_strength": 0.4832025468349457
+      }
+    ],
+    "ordered_scenario_ids": [
+      "scenario_001753",
+      "scenario_001736",
+      "scenario_002094",
+      "scenario_001799",
+      "scenario_002016",
+      "scenario_000501",
+      "scenario_001456",
+      "scenario_000675",
+      "scenario_000758",
+      "scenario_001297",
+      "scenario_000779",
+      "scenario_001341"
+    ],
+    "list_hash": "5b8b8f4b2809371158d18086da31577be85d7112fa860594de47fe7ee89ca71a"
+  },
+  "source_audit_artifact": "results/common_time_validation/audit/paired_reference_audit.json"
+}
