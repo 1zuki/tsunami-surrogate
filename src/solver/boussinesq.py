@@ -145,6 +145,11 @@ class BoussinesqSolver:
         self.last_step_cg_failed_count = 0
         self.last_step_cg_max_iterations = 0
         self.last_step_cg_max_residual_ratio = 0.0
+        self.last_step_cg_solve_converged = (True, True)
+        self.last_step_cg_solve_iterations = (0, 0)
+        self.last_step_cg_solve_initial_residual = (0.0, 0.0)
+        self.last_step_cg_solve_final_residual = (0.0, 0.0)
+        self.last_step_cg_solve_residual_ratio = (0.0, 0.0)
         if self.use_sponge:
             self._init_sponge_layer(width=self.sponge_width, min_factor=self.sponge_min_factor)
 
@@ -422,18 +427,33 @@ class BoussinesqSolver:
         a0 = self.solve_acceleration(self.eta)
         cg0_converged = bool(self.last_cg_converged)
         cg0_iterations = int(self.last_cg_iterations)
-        cg0_ratio = self.last_cg_final_residual / max(self.last_cg_initial_residual, 1e-30)
+        cg0_initial_residual = float(self.last_cg_initial_residual)
+        cg0_final_residual = float(self.last_cg_final_residual)
+        cg0_ratio = cg0_final_residual / max(cg0_initial_residual, 1e-30)
         eta_next = self.eta + dt * self.eta_t + 0.5 * dt * dt * a0
         a1 = self.solve_acceleration(eta_next)
         cg1_converged = bool(self.last_cg_converged)
         cg1_iterations = int(self.last_cg_iterations)
-        cg1_ratio = self.last_cg_final_residual / max(self.last_cg_initial_residual, 1e-30)
+        cg1_initial_residual = float(self.last_cg_initial_residual)
+        cg1_final_residual = float(self.last_cg_final_residual)
+        cg1_ratio = cg1_final_residual / max(cg1_initial_residual, 1e-30)
         eta_t_next = self.eta_t + 0.5 * dt * (a0 + a1)
 
         self.last_step_cg_converged = cg0_converged and cg1_converged
         self.last_step_cg_failed_count = int(not cg0_converged) + int(not cg1_converged)
         self.last_step_cg_max_iterations = max(cg0_iterations, cg1_iterations)
         self.last_step_cg_max_residual_ratio = float(max(cg0_ratio, cg1_ratio))
+        self.last_step_cg_solve_converged = (cg0_converged, cg1_converged)
+        self.last_step_cg_solve_iterations = (cg0_iterations, cg1_iterations)
+        self.last_step_cg_solve_initial_residual = (
+            cg0_initial_residual,
+            cg1_initial_residual,
+        )
+        self.last_step_cg_solve_final_residual = (
+            cg0_final_residual,
+            cg1_final_residual,
+        )
+        self.last_step_cg_solve_residual_ratio = (float(cg0_ratio), float(cg1_ratio))
 
         self.eta = eta_next
         self.eta_t = eta_t_next

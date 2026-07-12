@@ -52,7 +52,19 @@ FDE_OUTPUT_DIRNAME = {
     "boussinesq": "boussinesq",
 }
 
-COMMON_SOLVER_KEYS = {"nx", "ny", "dx", "dy", "dt", "g", "cfl", "boundary", "use_sponge", "sponge_width", "sponge_min_factor"}
+COMMON_SOLVER_KEYS = {
+    "nx",
+    "ny",
+    "dx",
+    "dy",
+    "dt",
+    "g",
+    "cfl",
+    "boundary",
+    "use_sponge",
+    "sponge_width",
+    "sponge_min_factor",
+}
 SWE_SOLVER_KEYS = COMMON_SOLVER_KEYS | {"dry_tolerance", "max_velocity"}
 BOUSSINESQ_SOLVER_KEYS = COMMON_SOLVER_KEYS | {
     "alpha",
@@ -66,6 +78,7 @@ BOUSSINESQ_SOLVER_KEYS = COMMON_SOLVER_KEYS | {
     "check_finite",
 }
 
+
 @dataclass
 class QualityPolicy:
     on_violation: str
@@ -75,6 +88,7 @@ class QualityPolicy:
     max_velocity_limit: float | None
     max_eta_over_depth: float | None
     require_cg_converged: bool
+
 
 @dataclass
 class DatasetConfig:
@@ -99,6 +113,7 @@ class DatasetConfig:
     primary_fde: str
     quality_policy: QualityPolicy
 
+
 @dataclass
 class RolloutResult:
     trajectory: np.ndarray
@@ -107,6 +122,7 @@ class RolloutResult:
     dt_history: np.ndarray
     diagnostics: Dict[str, np.ndarray] | None = None
 
+
 def _sample_output_complete(sample_dir: Path) -> bool:
     required_files = ("sample.npz", "rollout.npz", "trajectory_eta.npy", "meta.json")
     if not sample_dir.is_dir():
@@ -114,10 +130,13 @@ def _sample_output_complete(sample_dir: Path) -> bool:
     for name in required_files:
         if not (sample_dir / name).is_file():
             return False
-        
+
     return True
 
-def _load_existing_solver_record(sample_dir: Path, sample_idx: int, fallback_solver_name: str) -> Dict[str, Any]:
+
+def _load_existing_solver_record(
+    sample_dir: Path, sample_idx: int, fallback_solver_name: str
+) -> Dict[str, Any]:
     meta_path = sample_dir / "meta.json"
     with meta_path.open("r", encoding="utf-8") as f:
         meta = json.load(f)
@@ -151,6 +170,7 @@ def _load_existing_solver_record(sample_dir: Path, sample_idx: int, fallback_sol
         "quality_violations": list(meta.get("quality_violations", [])),
         "reused_existing": True,
     }
+
 
 def _compute_rollout_health(
     fde_name: str,
@@ -193,12 +213,20 @@ def _compute_rollout_health(
     diagnostics = rollout.diagnostics or {}
     cg_failed = np.asarray(diagnostics.get("cg_failed_count", []), dtype=np.int32)
     cg_iterations = np.asarray(diagnostics.get("cg_max_iterations", []), dtype=np.int32)
-    cg_residual_ratio = np.asarray(diagnostics.get("cg_max_residual_ratio", []), dtype=np.float32)
+    cg_residual_ratio = np.asarray(
+        diagnostics.get("cg_max_residual_ratio", []), dtype=np.float32
+    )
     has_cg_diagnostics = bool(cg_failed.size > 0)
     cg_failed_count = int(np.sum(cg_failed)) if has_cg_diagnostics else None
-    cg_converged_fraction = float(np.mean(cg_failed == 0)) if has_cg_diagnostics else float("nan")
+    cg_converged_fraction = (
+        float(np.mean(cg_failed == 0)) if has_cg_diagnostics else float("nan")
+    )
     max_cg_iterations = int(np.max(cg_iterations)) if cg_iterations.size > 0 else None
-    max_cg_residual_ratio = float(np.nanmax(cg_residual_ratio)) if cg_residual_ratio.size > 0 else float("nan")
+    max_cg_residual_ratio = (
+        float(np.nanmax(cg_residual_ratio))
+        if cg_residual_ratio.size > 0
+        else float("nan")
+    )
 
     return {
         "fde_name": fde_name,
@@ -217,7 +245,10 @@ def _compute_rollout_health(
         "dt_max": dt_max,
     }
 
-def _quality_violations_for_health(health: Dict[str, Any], policy: QualityPolicy) -> list[str]:
+
+def _quality_violations_for_health(
+    health: Dict[str, Any], policy: QualityPolicy
+) -> list[str]:
     violations: list[str] = []
     nan_count = int(health.get("nan_count", 0))
     inf_count = int(health.get("inf_count", 0))
@@ -229,15 +260,29 @@ def _quality_violations_for_health(health: Dict[str, Any], policy: QualityPolicy
     if policy.reject_nonfinite and (nan_count > 0 or inf_count > 0):
         violations.append(f"nonfinite(nan_count={nan_count}, inf_count={inf_count})")
 
-    if policy.min_h_tolerance is not None and np.isfinite(min_h) and min_h < float(policy.min_h_tolerance):
-        violations.append(f"min_h({min_h:.6g}) < min_h_tolerance({float(policy.min_h_tolerance):.6g})")
+    if (
+        policy.min_h_tolerance is not None
+        and np.isfinite(min_h)
+        and min_h < float(policy.min_h_tolerance)
+    ):
+        violations.append(
+            f"min_h({min_h:.6g}) < min_h_tolerance({float(policy.min_h_tolerance):.6g})"
+        )
 
-    if policy.max_abs_eta_limit is not None and np.isfinite(max_abs_eta) and max_abs_eta > float(policy.max_abs_eta_limit):
+    if (
+        policy.max_abs_eta_limit is not None
+        and np.isfinite(max_abs_eta)
+        and max_abs_eta > float(policy.max_abs_eta_limit)
+    ):
         violations.append(
             f"max_abs_eta({max_abs_eta:.6g}) > max_abs_eta_limit({float(policy.max_abs_eta_limit):.6g})"
         )
 
-    if policy.max_velocity_limit is not None and np.isfinite(max_abs_velocity) and max_abs_velocity > float(policy.max_velocity_limit):
+    if (
+        policy.max_velocity_limit is not None
+        and np.isfinite(max_abs_velocity)
+        and max_abs_velocity > float(policy.max_velocity_limit)
+    ):
         violations.append(
             "max_abs_velocity"
             f"({max_abs_velocity:.6g}) > max_velocity_limit({float(policy.max_velocity_limit):.6g})"
@@ -253,7 +298,10 @@ def _quality_violations_for_health(health: Dict[str, Any], policy: QualityPolicy
             f"({max_abs_eta_over_depth:.6g}) > max_eta_over_depth({float(policy.max_eta_over_depth):.6g})"
         )
 
-    if policy.require_cg_converged and str(health.get("fde_name", "")).strip().lower() == "boussinesq":
+    if (
+        policy.require_cg_converged
+        and str(health.get("fde_name", "")).strip().lower() == "boussinesq"
+    ):
         if not bool(health.get("has_cg_diagnostics", False)):
             violations.append("cg_convergence_diagnostics_missing")
         else:
@@ -263,29 +311,38 @@ def _quality_violations_for_health(health: Dict[str, Any], policy: QualityPolicy
 
     return violations
 
+
 def _fde_dirname(fde_name: str) -> str:
     if fde_name in FDE_OUTPUT_DIRNAME:
         return FDE_OUTPUT_DIRNAME[fde_name]
     return str(fde_name).replace("swe_", "")
 
+
 def _canonical_fde_name(name: str) -> str:
     raw = str(name).strip()
     return FDE_ALIASES.get(raw, raw)
+
 
 def _seed_for_sample(run_seed: int, sample_idx: int) -> int:
     # sample_idx is 1-based; keep derivation stable across workers/runs.
     return int(run_seed + sample_idx * 10007)
 
+
 def _bathymetry_file_path(bathymetry_dir: str | Path, sample_idx: int) -> Path:
     return Path(bathymetry_dir) / f"sample_{sample_idx:06d}.npz"
+
 
 def _source_file_path(source_dir: str | Path, sample_idx: int) -> Path:
     return Path(source_dir) / f"sample_{sample_idx:06d}.npz"
 
+
 def _filter_solver_cfg(sv: Dict[str, Any], allowed: set[str]) -> Dict[str, Any]:
     return {key: sv[key] for key in allowed if key in sv}
 
-def _make_hydrostatic_solver_from_cfg(sv: Dict[str, Any]) -> HydrostaticShallowWaterSolver:
+
+def _make_hydrostatic_solver_from_cfg(
+    sv: Dict[str, Any],
+) -> HydrostaticShallowWaterSolver:
     cfg = _filter_solver_cfg(sv, SWE_SOLVER_KEYS)
     boundary = cfg.get("boundary", "open")
     return HydrostaticShallowWaterSolver(
@@ -324,6 +381,7 @@ def _make_muscl_solver_from_cfg(sv: Dict[str, Any]) -> MUSCLHRShallowWaterSolver
         max_velocity=float(cfg.get("max_velocity", 50.0)),
     )
 
+
 def _make_boussinesq_solver_from_cfg(sv: Dict[str, Any]) -> BoussinesqSolver:
     cfg = _filter_solver_cfg(sv, BOUSSINESQ_SOLVER_KEYS)
     return BoussinesqSolver(
@@ -349,6 +407,365 @@ def _make_boussinesq_solver_from_cfg(sv: Dict[str, Any]) -> BoussinesqSolver:
         check_finite=bool(cfg.get("check_finite", True)),
     )
 
+
+def _require_solver_cfl_diagnostics(solver: Any) -> None:
+    if not hasattr(solver, "compute_cfl"):
+        raise RuntimeError(
+            f"Dense diagnostics require compute_cfl(dt=...) support, missing on {type(solver).__name__}"
+        )
+
+
+def _is_swe_solver(solver: Any) -> bool:
+    return all(
+        hasattr(solver, name)
+        for name in ("h", "hu", "hv", "dry_tolerance", "compute_velocity")
+    )
+
+
+def _is_boussinesq_solver(solver: Any) -> bool:
+    return hasattr(solver, "eta") and hasattr(solver, "eta_t")
+
+
+def _append_dense_value(buffers: Dict[str, list[Any]], key: str, value: Any) -> None:
+    buffers.setdefault(key, []).append(value)
+
+
+def _collect_swe_dense_health(solver: Any) -> dict[str, Any]:
+    h = np.asarray(solver.h, dtype=np.float64)
+    u, v = solver.compute_velocity()
+    speed = np.sqrt(
+        np.asarray(u, dtype=np.float64) ** 2 + np.asarray(v, dtype=np.float64) ** 2
+    )
+    return {
+        "swe_min_depth": float(np.min(h)),
+        "swe_max_speed": float(np.max(speed)),
+        "swe_dry_cell_count": int(np.count_nonzero(h <= float(solver.dry_tolerance))),
+    }
+
+
+def _collect_boussinesq_dense_health(solver: Any) -> dict[str, Any]:
+    required = (
+        "last_step_cg_solve_converged",
+        "last_step_cg_solve_iterations",
+        "last_step_cg_solve_initial_residual",
+        "last_step_cg_solve_final_residual",
+        "last_step_cg_solve_residual_ratio",
+    )
+    if any(not hasattr(solver, name) for name in required):
+        missing = [name for name in required if not hasattr(solver, name)]
+        raise RuntimeError(
+            "Dense diagnostics require separate Boussinesq acceleration-solve records; "
+            f"missing {missing} on {type(solver).__name__}"
+        )
+
+    converged = tuple(
+        bool(value) for value in getattr(solver, "last_step_cg_solve_converged")
+    )
+    iterations = tuple(
+        int(value) for value in getattr(solver, "last_step_cg_solve_iterations")
+    )
+    initial_residual = tuple(
+        float(value) for value in getattr(solver, "last_step_cg_solve_initial_residual")
+    )
+    final_residual = tuple(
+        float(value) for value in getattr(solver, "last_step_cg_solve_final_residual")
+    )
+    residual_ratio = tuple(
+        float(value) for value in getattr(solver, "last_step_cg_solve_residual_ratio")
+    )
+    if not (
+        len(converged)
+        == len(iterations)
+        == len(initial_residual)
+        == len(final_residual)
+        == len(residual_ratio)
+        == 2
+    ):
+        raise RuntimeError(
+            "Dense diagnostics require exactly two Boussinesq acceleration-solve records per step"
+        )
+
+    return {
+        "cg_solve0_converged": converged[0],
+        "cg_solve0_iterations": iterations[0],
+        "cg_solve0_initial_residual": initial_residual[0],
+        "cg_solve0_final_residual": final_residual[0],
+        "cg_solve0_residual_ratio": residual_ratio[0],
+        "cg_solve1_converged": converged[1],
+        "cg_solve1_iterations": iterations[1],
+        "cg_solve1_initial_residual": initial_residual[1],
+        "cg_solve1_final_residual": final_residual[1],
+        "cg_solve1_residual_ratio": residual_ratio[1],
+    }
+
+
+def _finalize_dense_diagnostics(buffers: Dict[str, list[Any]]) -> Dict[str, np.ndarray]:
+    bool_keys = {
+        "finite_state_flag",
+        "cg_step_converged",
+        "cg_solve0_converged",
+        "cg_solve1_converged",
+    }
+    int_keys = {
+        "cg_failed_count",
+        "cg_max_iterations",
+        "swe_dry_cell_count",
+        "cg_solve0_iterations",
+        "cg_solve1_iterations",
+    }
+    diagnostics: Dict[str, np.ndarray] = {}
+    for key, values in buffers.items():
+        if key in bool_keys:
+            diagnostics[key] = np.asarray(values, dtype=np.bool_)
+        elif key in int_keys:
+            diagnostics[key] = np.asarray(values, dtype=np.int32)
+        else:
+            diagnostics[key] = np.asarray(values, dtype=np.float32)
+    return diagnostics
+
+
+def _extract_requested_states_from_bracket(
+    *,
+    left_state: np.ndarray,
+    right_state: np.ndarray,
+    left_time: float,
+    right_time: float,
+    requested_times: np.ndarray,
+    right_natural_step_index: int,
+) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+    left = np.asarray(left_state)
+    right = np.asarray(right_state)
+    if left.shape != right.shape:
+        raise ValueError(
+            "Left and right natural states must have identical shapes: "
+            f"{left.shape} != {right.shape}"
+        )
+    if left.size == 0:
+        raise ValueError("Natural states must be non-empty")
+    if not np.isfinite(left).all() or not np.isfinite(right).all():
+        raise ValueError("Natural states must be finite")
+
+    left_t = float(left_time)
+    right_t = float(right_time)
+    if not np.isfinite(left_t) or not np.isfinite(right_t):
+        raise ValueError("Natural bracket timestamps must be finite")
+    if right_t <= left_t:
+        raise ValueError("Natural bracket timestamps must be strictly increasing")
+    if isinstance(right_natural_step_index, (bool, np.bool_)) or not isinstance(
+        right_natural_step_index, (int, np.integer)
+    ):
+        raise TypeError("right_natural_step_index must be an integer")
+    right_step = int(right_natural_step_index)
+    if right_step < 1:
+        raise ValueError("right_natural_step_index must be at least 1")
+
+    queries = np.asarray(requested_times, dtype=np.float64)
+    if queries.ndim != 1 or queries.size == 0:
+        raise ValueError("requested_times must be a non-empty 1-D array")
+    if not np.isfinite(queries).all():
+        raise ValueError("requested_times must be finite")
+    if np.any(np.diff(queries) <= 0.0):
+        raise ValueError("requested_times must be strictly increasing")
+    if np.any(queries < left_t) or np.any(queries > right_t):
+        raise ValueError(
+            "requested_times extend beyond the adjacent natural-state bracket"
+        )
+
+    output_shape = (int(queries.size),) + left.shape
+    extracted = np.empty(output_shape, dtype=np.float32)
+    left_times = np.full(queries.shape, left_t, dtype=np.float64)
+    right_times = np.full(queries.shape, right_t, dtype=np.float64)
+    widths = np.full(queries.shape, right_t - left_t, dtype=np.float64)
+    weights = (queries - left_t) / (right_t - left_t)
+    exact_knot = np.zeros(queries.shape, dtype=np.bool_)
+    step_indices = np.full(queries.shape, right_step, dtype=np.int64)
+
+    left64 = np.asarray(left, dtype=np.float64)
+    right64 = np.asarray(right, dtype=np.float64)
+    for query_idx, query in enumerate(queries):
+        if query == left_t:
+            extracted[query_idx] = np.asarray(left, dtype=np.float32)
+            left_times[query_idx] = query
+            right_times[query_idx] = query
+            weights[query_idx] = 0.0
+            widths[query_idx] = 0.0
+            exact_knot[query_idx] = True
+            step_indices[query_idx] = right_step - 1
+        elif query == right_t:
+            extracted[query_idx] = np.asarray(right, dtype=np.float32)
+            left_times[query_idx] = query
+            right_times[query_idx] = query
+            weights[query_idx] = 0.0
+            widths[query_idx] = 0.0
+            exact_knot[query_idx] = True
+        else:
+            weight = float(weights[query_idx])
+            extracted[query_idx] = np.asarray(
+                left64 * (1.0 - weight) + right64 * weight,
+                dtype=np.float32,
+            )
+
+    provenance = {
+        "requested_timestamps": queries.copy(),
+        "left_natural_timestamps": left_times,
+        "right_natural_timestamps": right_times,
+        "interpolation_weights": np.asarray(weights, dtype=np.float64),
+        "bracket_widths": widths,
+        "exact_knot": exact_knot,
+        "natural_step_indices": step_indices,
+    }
+    return extracted, provenance
+
+
+def _simulate_requested_times_local(
+    solver: Any,
+    *,
+    auto_dt: bool,
+    target_cfl: float,
+    requested_times: np.ndarray,
+    max_natural_steps: int | None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict[str, np.ndarray]]:
+    queries = np.asarray(requested_times, dtype=np.float64)
+    if queries.ndim != 1 or queries.size == 0:
+        raise ValueError("requested_times must be a non-empty 1-D array")
+    if not np.isfinite(queries).all():
+        raise ValueError("requested_times must be finite")
+    if np.any(queries <= 0.0):
+        raise ValueError("requested_times must be strictly positive")
+    if np.any(np.diff(queries) <= 0.0):
+        raise ValueError("requested_times must be strictly increasing")
+    if isinstance(max_natural_steps, (bool, np.bool_)) or not isinstance(
+        max_natural_steps, (int, np.integer)
+    ):
+        raise ValueError("max_natural_steps must be an explicit positive integer")
+    step_cap = int(max_natural_steps)
+    if step_cap <= 0:
+        raise ValueError("max_natural_steps must be an explicit positive integer")
+
+    left_state = np.asarray(solver.get_state()).copy()
+    if left_state.size == 0 or not np.isfinite(left_state).all():
+        raise ValueError("Initial solver state must be finite and non-empty")
+
+    extracted_chunks: list[np.ndarray] = []
+    provenance_chunks: Dict[str, list[np.ndarray]] = {
+        "requested_timestamps": [],
+        "left_natural_timestamps": [],
+        "right_natural_timestamps": [],
+        "interpolation_weights": [],
+        "bracket_widths": [],
+        "exact_knot": [],
+        "natural_step_indices": [],
+    }
+    natural_dt_history: list[float] = []
+    cg_failed_count: list[int] = []
+    cg_max_iterations: list[int] = []
+    cg_max_residual_ratio: list[float] = []
+    current_time = 0.0
+    next_request = 0
+
+    for right_step in range(1, step_cap + 1):
+        left_time = current_time
+        if auto_dt:
+            dt = solver.suggest_dt(target_cfl=target_cfl)
+            solver.dt = dt
+        else:
+            dt = solver.dt
+        natural_dt = float(dt)
+        if not np.isfinite(natural_dt) or natural_dt <= 0.0:
+            raise RuntimeError(
+                f"Natural timestep must be finite and positive, got {natural_dt!r}"
+            )
+
+        solver.step(dt=dt, auto_dt=False)
+        current_time = left_time + natural_dt
+        if not np.isfinite(current_time) or current_time <= left_time:
+            raise RuntimeError(
+                "Natural solver time failed to advance strictly after "
+                f"step {right_step}: left={left_time!r}, right={current_time!r}"
+            )
+        natural_dt_history.append(natural_dt)
+
+        if hasattr(solver, "last_step_cg_converged"):
+            cg_failed_count.append(int(getattr(solver, "last_step_cg_failed_count", 0)))
+            cg_max_iterations.append(
+                int(getattr(solver, "last_step_cg_max_iterations", 0))
+            )
+            cg_max_residual_ratio.append(
+                float(getattr(solver, "last_step_cg_max_residual_ratio", 0.0))
+            )
+
+        right_state = np.asarray(solver.get_state()).copy()
+        if right_state.shape != left_state.shape:
+            raise RuntimeError(
+                "Solver state shape changed during requested-time rollout: "
+                f"{left_state.shape} != {right_state.shape}"
+            )
+        if not np.isfinite(right_state).all():
+            raise RuntimeError(
+                f"Solver produced a non-finite state at natural step {right_step}"
+            )
+        if queries[next_request] < left_time:
+            raise RuntimeError(
+                "Next requested time fell behind the current natural bracket: "
+                f"request={queries[next_request]!r}, left={left_time!r}"
+            )
+
+        bracket_end = next_request
+        while bracket_end < queries.size and queries[bracket_end] <= current_time:
+            bracket_end += 1
+        if bracket_end > next_request:
+            states, provenance = _extract_requested_states_from_bracket(
+                left_state=left_state,
+                right_state=right_state,
+                left_time=left_time,
+                right_time=current_time,
+                requested_times=queries[next_request:bracket_end],
+                right_natural_step_index=right_step,
+            )
+            extracted_chunks.append(states)
+            for key, values in provenance.items():
+                provenance_chunks[key].append(values)
+            next_request = bracket_end
+            if next_request == queries.size:
+                diagnostics = {
+                    key: np.concatenate(chunks, axis=0)
+                    for key, chunks in provenance_chunks.items()
+                }
+                natural_history = np.asarray(natural_dt_history, dtype=np.float64)
+                diagnostics["total_natural_steps"] = np.asarray(
+                    [right_step], dtype=np.int64
+                )
+                diagnostics["natural_dt_history"] = natural_history.copy()
+                if cg_failed_count:
+                    diagnostics["cg_failed_count"] = np.asarray(
+                        cg_failed_count, dtype=np.int32
+                    )
+                    diagnostics["cg_max_iterations"] = np.asarray(
+                        cg_max_iterations, dtype=np.int32
+                    )
+                    diagnostics["cg_max_residual_ratio"] = np.asarray(
+                        cg_max_residual_ratio, dtype=np.float32
+                    )
+                return (
+                    np.concatenate(extracted_chunks, axis=0).astype(
+                        np.float32, copy=False
+                    ),
+                    queries.copy(),
+                    natural_history,
+                    diagnostics,
+                )
+
+        left_state = right_state
+
+    next_missing = float(queries[next_request])
+    raise RuntimeError(
+        "Requested-time rollout exhausted max_natural_steps before full coverage: "
+        f"emitted={next_request}/{queries.size}, "
+        f"last_natural_time={current_time:.17g}, "
+        f"next_missing_requested_time={next_missing:.17g}, cap={step_cap}"
+    )
+
+
 def _simulate_one_local(
     solver: Any,
     n_steps: int,
@@ -356,13 +773,39 @@ def _simulate_one_local(
     auto_dt: bool,
     target_cfl: float,
     include_initial_state: bool,
+    *,
+    record_every_step: bool = False,
+    dense_diagnostics: bool = False,
+    requested_times: np.ndarray | None = None,
+    max_natural_steps: int | None = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict[str, np.ndarray]]:
+    if requested_times is not None:
+        if record_every_step or dense_diagnostics:
+            raise ValueError(
+                "requested_times mode does not yet support "
+                "record_every_step or dense_diagnostics"
+            )
+        return _simulate_requested_times_local(
+            solver,
+            auto_dt=auto_dt,
+            target_cfl=target_cfl,
+            requested_times=requested_times,
+            max_natural_steps=max_natural_steps,
+        )
+
+    if max_natural_steps is not None:
+        raise ValueError("max_natural_steps requires requested_times")
+
+    if dense_diagnostics and not record_every_step:
+        raise ValueError("dense_diagnostics=True requires record_every_step=True")
+
     frames: list[np.ndarray] = []
     timestamps: list[float] = []
     dt_hist: list[float] = []
     cg_failed_count: list[int] = []
     cg_max_iterations: list[int] = []
     cg_max_residual_ratio: list[float] = []
+    dense_buffers: Dict[str, list[Any]] = {}
     current_time = 0.0
 
     if include_initial_state:
@@ -377,14 +820,60 @@ def _simulate_one_local(
         else:
             dt = solver.dt
 
+        if dense_diagnostics:
+            _require_solver_cfl_diagnostics(solver)
+            _append_dense_value(dense_buffers, "proposed_dt", float(dt))
+            _append_dense_value(
+                dense_buffers, "pre_step_cfl", float(solver.compute_cfl(dt=dt))
+            )
+
         solver.step(dt=dt, auto_dt=False)
         if hasattr(solver, "last_step_cg_converged"):
             cg_failed_count.append(int(getattr(solver, "last_step_cg_failed_count", 0)))
-            cg_max_iterations.append(int(getattr(solver, "last_step_cg_max_iterations", 0)))
-            cg_max_residual_ratio.append(float(getattr(solver, "last_step_cg_max_residual_ratio", 0.0)))
+            cg_max_iterations.append(
+                int(getattr(solver, "last_step_cg_max_iterations", 0))
+            )
+            cg_max_residual_ratio.append(
+                float(getattr(solver, "last_step_cg_max_residual_ratio", 0.0))
+            )
         current_time += float(dt)
 
-        if (step_idx + 1) % save_every == 0:
+        if dense_diagnostics:
+            _append_dense_value(
+                dense_buffers, "post_step_cfl", float(solver.compute_cfl(dt=dt))
+            )
+            _append_dense_value(dense_buffers, "elapsed_benchmark_time", current_time)
+            finite_state = bool(np.isfinite(solver.get_state()).all())
+            _append_dense_value(dense_buffers, "finite_state_flag", finite_state)
+            if _is_swe_solver(solver):
+                for key, value in _collect_swe_dense_health(solver).items():
+                    _append_dense_value(dense_buffers, key, value)
+            if hasattr(solver, "last_step_cg_converged"):
+                _append_dense_value(
+                    dense_buffers,
+                    "cg_step_converged",
+                    bool(getattr(solver, "last_step_cg_converged")),
+                )
+                _append_dense_value(
+                    dense_buffers,
+                    "cg_failed_count",
+                    int(getattr(solver, "last_step_cg_failed_count", 0)),
+                )
+                _append_dense_value(
+                    dense_buffers,
+                    "cg_max_iterations",
+                    int(getattr(solver, "last_step_cg_max_iterations", 0)),
+                )
+                _append_dense_value(
+                    dense_buffers,
+                    "cg_max_residual_ratio",
+                    float(getattr(solver, "last_step_cg_max_residual_ratio", 0.0)),
+                )
+            if _is_boussinesq_solver(solver):
+                for key, value in _collect_boussinesq_dense_health(solver).items():
+                    _append_dense_value(dense_buffers, key, value)
+
+        if record_every_step or (step_idx + 1) % save_every == 0:
             frames.append(solver.get_state().astype(np.float32))
             timestamps.append(current_time)
             dt_hist.append(float(dt))
@@ -398,7 +887,11 @@ def _simulate_one_local(
     if cg_failed_count:
         diagnostics["cg_failed_count"] = np.asarray(cg_failed_count, dtype=np.int32)
         diagnostics["cg_max_iterations"] = np.asarray(cg_max_iterations, dtype=np.int32)
-        diagnostics["cg_max_residual_ratio"] = np.asarray(cg_max_residual_ratio, dtype=np.float32)
+        diagnostics["cg_max_residual_ratio"] = np.asarray(
+            cg_max_residual_ratio, dtype=np.float32
+        )
+    if dense_diagnostics:
+        diagnostics.update(_finalize_dense_diagnostics(dense_buffers))
 
     return (
         np.stack(frames, axis=0),
@@ -407,6 +900,7 @@ def _simulate_one_local(
         diagnostics,
     )
 
+
 def _run_fde_rollout(
     fde_name: str,
     solver_cfg: Dict[str, Any],
@@ -414,6 +908,9 @@ def _run_fde_rollout(
     bathymetry: np.ndarray,
     eta0: np.ndarray,
     h0: np.ndarray,
+    *,
+    requested_times: np.ndarray | None = None,
+    max_natural_steps: int | None = None,
 ) -> RolloutResult:
 
     if fde_name == "swe_hydrostatic":
@@ -428,9 +925,13 @@ def _run_fde_rollout(
             auto_dt=dataset.auto_dt,
             target_cfl=dataset.target_cfl,
             include_initial_state=dataset.include_initial_state,
+            requested_times=requested_times,
+            max_natural_steps=max_natural_steps,
         )
         trajectory_eta = trajectory[:, 0] + bathymetry[None, ...]
-        return RolloutResult(trajectory, trajectory_eta, timestamps, dt_hist, diagnostics)
+        return RolloutResult(
+            trajectory, trajectory_eta, timestamps, dt_hist, diagnostics
+        )
 
     if fde_name == "swe_muscl_hr":
         solver = _make_muscl_solver_from_cfg(solver_cfg)
@@ -444,9 +945,13 @@ def _run_fde_rollout(
             auto_dt=dataset.auto_dt,
             target_cfl=dataset.target_cfl,
             include_initial_state=dataset.include_initial_state,
+            requested_times=requested_times,
+            max_natural_steps=max_natural_steps,
         )
         trajectory_eta = trajectory[:, 0] + bathymetry[None, ...]
-        return RolloutResult(trajectory, trajectory_eta, timestamps, dt_hist, diagnostics)
+        return RolloutResult(
+            trajectory, trajectory_eta, timestamps, dt_hist, diagnostics
+        )
 
     if fde_name == "boussinesq":
         solver = _make_boussinesq_solver_from_cfg(solver_cfg)
@@ -460,11 +965,16 @@ def _run_fde_rollout(
             auto_dt=dataset.auto_dt,
             target_cfl=dataset.target_cfl,
             include_initial_state=dataset.include_initial_state,
+            requested_times=requested_times,
+            max_natural_steps=max_natural_steps,
         )
         trajectory_eta = trajectory[:, 0]
-        return RolloutResult(trajectory, trajectory_eta, timestamps, dt_hist, diagnostics)
+        return RolloutResult(
+            trajectory, trajectory_eta, timestamps, dt_hist, diagnostics
+        )
 
     raise NotImplementedError(f"FDE '{fde_name}' is not implemented yet")
+
 
 def _generate_bathymetry_worker(
     sample_idx: int,
@@ -493,6 +1003,7 @@ def _generate_bathymetry_worker(
         "bathymetry_type": str(bathy_type),
         "bathymetry_path": str(out_path),
     }
+
 
 def _generate_source_worker(
     sample_idx: int,
@@ -526,6 +1037,7 @@ def _generate_source_worker(
         "source_path": str(out_path),
     }
 
+
 def _generate_sample_worker(
     sample_idx: int,
     run_seed: int,
@@ -543,10 +1055,14 @@ def _generate_sample_worker(
     source_path = _source_file_path(source_dir, sample_idx)
 
     if not bathy_path.exists():
-        raise FileNotFoundError(f"Missing bathymetry cache for sample {sample_idx}: {bathy_path}")
+        raise FileNotFoundError(
+            f"Missing bathymetry cache for sample {sample_idx}: {bathy_path}"
+        )
 
     if not source_path.exists():
-        raise FileNotFoundError(f"Missing source cache for sample {sample_idx}: {source_path}")
+        raise FileNotFoundError(
+            f"Missing source cache for sample {sample_idx}: {source_path}"
+        )
 
     with np.load(bathy_path) as bathy_npz:
         bathymetry = np.asarray(bathy_npz["bathymetry"], dtype=np.float32)
@@ -563,7 +1079,9 @@ def _generate_sample_worker(
     free_surface0 = h0 + bathymetry
 
     runnable_fdes = [name for name in dataset.enabled_fdes if name in IMPLEMENTED_FDES]
-    skipped_unimplemented = [name for name in dataset.enabled_fdes if name not in IMPLEMENTED_FDES]
+    skipped_unimplemented = [
+        name for name in dataset.enabled_fdes if name not in IMPLEMENTED_FDES
+    ]
 
     if not runnable_fdes:
         raise RuntimeError(
@@ -620,7 +1138,9 @@ def _generate_sample_worker(
             rest_depth=rest_depth,
             effective_depth=effective_depth,
         )
-        quality_violations = _quality_violations_for_health(health=health, policy=dataset.quality_policy)
+        quality_violations = _quality_violations_for_health(
+            health=health, policy=dataset.quality_policy
+        )
         quality_status = "ok"
         if quality_violations:
             quality_status = dataset.quality_policy.on_violation
@@ -644,9 +1164,13 @@ def _generate_sample_worker(
             "fde_name": np.array([fde_name], dtype="U64"),
         }
         if rollout.diagnostics:
-            rollout_payload.update({key: value for key, value in rollout.diagnostics.items()})
+            rollout_payload.update(
+                {key: value for key, value in rollout.diagnostics.items()}
+            )
         np.savez_compressed(sample_dir / "rollout.npz", **rollout_payload)
-        np.save(sample_dir / "trajectory_eta.npy", rollout.trajectory_eta.astype(np.float32))
+        np.save(
+            sample_dir / "trajectory_eta.npy", rollout.trajectory_eta.astype(np.float32)
+        )
 
         # keep sample.npz backward compatible for downstream preprocess/training
         np.savez_compressed(
@@ -719,7 +1243,13 @@ def _generate_sample_worker(
             }
         )
 
-    fdes_run_actual = sorted({str(rec.get("solver_name", "")) for rec in solver_records if rec.get("solver_name")})
+    fdes_run_actual = sorted(
+        {
+            str(rec.get("solver_name", ""))
+            for rec in solver_records
+            if rec.get("solver_name")
+        }
+    )
     scenario_record = {
         "sample_index": sample_idx,
         "scenario_id": scenario_id,
@@ -740,13 +1270,16 @@ def _generate_sample_worker(
         "solver_records": solver_records,
     }
 
+
 class TsunamiDatasetBuilder:
     """Generate raw tsunami surrogate samples."""
 
     def __init__(self, config_path: str) -> None:
         self.config_path = Path(config_path)
         if not self.config_path.exists():
-            raise FileNotFoundError(f"Could not find {config_path}, is the path correct")
+            raise FileNotFoundError(
+                f"Could not find {config_path}, is the path correct"
+            )
 
         with self.config_path.open("r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
@@ -771,7 +1304,9 @@ class TsunamiDatasetBuilder:
                 continue
             folder_name = _fde_dirname(fde_name)
             self.fde_samples_dirs[fde_name] = self.output_dir / folder_name / "samples"
-            self.fde_manifest_paths[fde_name] = self.scenario_manifest_path.parent / f"{folder_name}_manifest.jsonl"
+            self.fde_manifest_paths[fde_name] = (
+                self.scenario_manifest_path.parent / f"{folder_name}_manifest.jsonl"
+            )
 
         if self.dataset.primary_fde in self.fde_samples_dirs:
             self.samples_dir = self.fde_samples_dirs[self.dataset.primary_fde]
@@ -792,7 +1327,11 @@ class TsunamiDatasetBuilder:
         self.bathy_generator = BathymetryGenerator(str(self.bathy_cfg_path))
         self.source_generator = SourceGenerator(str(self.source_cfg_path))
 
-        self.run_seed = int(np.random.SeedSequence().entropy) if self.dataset.seed is None else int(self.dataset.seed)
+        self.run_seed = (
+            int(np.random.SeedSequence().entropy)
+            if self.dataset.seed is None
+            else int(self.dataset.seed)
+        )
 
         solver_nx = int(self.solver_cfg["nx"])
         solver_ny = int(self.solver_cfg["ny"])
@@ -803,7 +1342,10 @@ class TsunamiDatasetBuilder:
                 f"must match solver grid ({solver_nx}, {solver_ny})"
             )
 
-        if self.source_generator.nx != solver_nx or self.source_generator.ny != solver_ny:
+        if (
+            self.source_generator.nx != solver_nx
+            or self.source_generator.ny != solver_ny
+        ):
             raise ValueError(
                 f"Source grid ({self.source_generator.nx}, {self.source_generator.ny}) "
                 f"must match solver grid ({solver_nx}, {solver_ny})"
@@ -841,14 +1383,20 @@ class TsunamiDatasetBuilder:
         if not isinstance(enabled_fdes_raw, list) or not enabled_fdes_raw:
             raise ValueError("fdes.enabled must be a non-empty list")
 
-        enabled_fdes: list[str] = list(dict.fromkeys(_canonical_fde_name(str(name).strip()) for name in enabled_fdes_raw))
+        enabled_fdes: list[str] = list(
+            dict.fromkeys(
+                _canonical_fde_name(str(name).strip()) for name in enabled_fdes_raw
+            )
+        )
         for name in enabled_fdes:
             if name not in KNOWN_FDES:
                 raise ValueError(
                     f"Unknown FDE '{name}'. Supported names: {sorted(KNOWN_FDES)}"
                 )
 
-        primary_fde = _canonical_fde_name(str(fdes.get("primary", enabled_fdes[0])).strip())
+        primary_fde = _canonical_fde_name(
+            str(fdes.get("primary", enabled_fdes[0])).strip()
+        )
         if primary_fde not in enabled_fdes:
             raise ValueError("fdes.primary must be one of fdes.enabled")
 
@@ -874,13 +1422,17 @@ class TsunamiDatasetBuilder:
         output_dir = Path(ds.get("output_dir", "data/raw"))
         bathymetry_dir = Path(ds.get("bathymetry_dir", "data/bathymetry"))
         source_dir = Path(ds.get("source_dir", "data/sources"))
-        manifest_path = Path(ds.get("manifest_path", "data/synthetic/scenario_manifest.jsonl"))
+        manifest_path = Path(
+            ds.get("manifest_path", "data/synthetic/scenario_manifest.jsonl")
+        )
         copy_configs = bool(ds.get("copy_configs", True))
         quality_cfg = cfg.get("quality", {})
         if not isinstance(quality_cfg, dict):
             quality_cfg = {}
 
-        quality_on_violation = str(quality_cfg.get("on_violation", "warn")).strip().lower()
+        quality_on_violation = (
+            str(quality_cfg.get("on_violation", "warn")).strip().lower()
+        )
         if quality_on_violation not in {"warn", "fail"}:
             raise ValueError("quality.on_violation must be one of: warn, fail")
 
@@ -895,14 +1447,25 @@ class TsunamiDatasetBuilder:
         quality_policy = QualityPolicy(
             on_violation=quality_on_violation,
             reject_nonfinite=bool(quality_cfg.get("reject_nonfinite", True)),
-            min_h_tolerance=_optional_float(quality_cfg.get("min_h_tolerance", None), "min_h_tolerance"),
-            max_abs_eta_limit=_optional_float(quality_cfg.get("max_abs_eta_limit", None), "max_abs_eta_limit"),
-            max_velocity_limit=_optional_float(quality_cfg.get("max_velocity_limit", None), "max_velocity_limit"),
-            max_eta_over_depth=_optional_float(quality_cfg.get("max_eta_over_depth", None), "max_eta_over_depth"),
+            min_h_tolerance=_optional_float(
+                quality_cfg.get("min_h_tolerance", None), "min_h_tolerance"
+            ),
+            max_abs_eta_limit=_optional_float(
+                quality_cfg.get("max_abs_eta_limit", None), "max_abs_eta_limit"
+            ),
+            max_velocity_limit=_optional_float(
+                quality_cfg.get("max_velocity_limit", None), "max_velocity_limit"
+            ),
+            max_eta_over_depth=_optional_float(
+                quality_cfg.get("max_eta_over_depth", None), "max_eta_over_depth"
+            ),
             require_cg_converged=bool(quality_cfg.get("require_cg_converged", True)),
         )
 
-        if quality_policy.max_eta_over_depth is not None and quality_policy.max_eta_over_depth <= 0:
+        if (
+            quality_policy.max_eta_over_depth is not None
+            and quality_policy.max_eta_over_depth <= 0
+        ):
             raise ValueError("quality.max_eta_over_depth must be positive when set")
 
         if num_samples <= 0:
@@ -1065,7 +1628,9 @@ class TsunamiDatasetBuilder:
     def rebuild_manifests_from_existing_outputs(self) -> None:
         patt = re.compile(r"^sample_(\d{6})$")
         scenario_rows: dict[int, Dict[str, Any]] = {}
-        solver_rows: dict[str, list[Dict[str, Any]]] = {name: [] for name in self.fde_manifest_paths.keys()}
+        solver_rows: dict[str, list[Dict[str, Any]]] = {
+            name: [] for name in self.fde_manifest_paths.keys()
+        }
 
         for fde_name, samples_dir in self.fde_samples_dirs.items():
             if not samples_dir.exists():
@@ -1096,7 +1661,9 @@ class TsunamiDatasetBuilder:
                 except Exception:
                     source_strength = float(np.nan)
 
-                solver_name = _canonical_fde_name(str(meta.get("solver_name", fde_name)))
+                solver_name = _canonical_fde_name(
+                    str(meta.get("solver_name", fde_name))
+                )
                 if solver_name not in self.fde_manifest_paths:
                     solver_name = fde_name
 
@@ -1107,11 +1674,17 @@ class TsunamiDatasetBuilder:
                         "bathymetry_type": str(meta.get("bathymetry_type", "unknown")),
                         "source_type": str(meta.get("source_type", "unknown")),
                         "source_strength": source_strength,
-                        "bathymetry_cache_path": str(meta.get("bathymetry_cache_path", "")),
+                        "bathymetry_cache_path": str(
+                            meta.get("bathymetry_cache_path", "")
+                        ),
                         "source_cache_path": str(meta.get("source_cache_path", "")),
-                        "fdes_requested": list(meta.get("fdes_requested", self.dataset.enabled_fdes)),
+                        "fdes_requested": list(
+                            meta.get("fdes_requested", self.dataset.enabled_fdes)
+                        ),
                         "fdes_run": list(meta.get("fdes_run", [solver_name])),
-                        "fdes_skipped_unimplemented": list(meta.get("fdes_skipped_unimplemented", [])),
+                        "fdes_skipped_unimplemented": list(
+                            meta.get("fdes_skipped_unimplemented", [])
+                        ),
                     }
                 else:
                     existing_run = set(scenario_rows[sample_idx].get("fdes_run", []))
@@ -1127,7 +1700,9 @@ class TsunamiDatasetBuilder:
                     "source_type": str(meta.get("source_type", "unknown")),
                     "source_strength": source_strength,
                     "fdes_run": list(meta.get("fdes_run", [solver_name])),
-                    "fdes_skipped_unimplemented": list(meta.get("fdes_skipped_unimplemented", [])),
+                    "fdes_skipped_unimplemented": list(
+                        meta.get("fdes_skipped_unimplemented", [])
+                    ),
                 }
                 if "num_frames" in meta:
                     srec["num_frames"] = int(meta["num_frames"])
@@ -1135,7 +1710,15 @@ class TsunamiDatasetBuilder:
                     srec["trajectory_shape"] = meta["trajectory_shape"]
                 if "trajectory_eta_shape" in meta:
                     srec["trajectory_eta_shape"] = meta["trajectory_eta_shape"]
-                for key in ("nan_count", "inf_count", "min_h", "max_abs_eta", "max_abs_velocity", "dt_min", "dt_max"):
+                for key in (
+                    "nan_count",
+                    "inf_count",
+                    "min_h",
+                    "max_abs_eta",
+                    "max_abs_velocity",
+                    "dt_min",
+                    "dt_max",
+                ):
                     if key in meta:
                         srec[key] = meta[key]
                 if "quality_status" in meta:
@@ -1168,15 +1751,25 @@ class TsunamiDatasetBuilder:
         print(
             f"[dataset] rebuilt manifests from existing outputs: "
             f"scenarios={len(scenario_rows)}, "
-            + ", ".join(f"{name}={len(rows)}" for name, rows in sorted(solver_rows.items()))
+            + ", ".join(
+                f"{name}={len(rows)}" for name, rows in sorted(solver_rows.items())
+            )
         )
 
-    def _phase_generate_bathymetry(self, indices: list[int], allow_override: bool = False) -> None:
+    def _phase_generate_bathymetry(
+        self, indices: list[int], allow_override: bool = False
+    ) -> None:
         existing = self._existing_bathymetry_indices()
-        pending = indices if allow_override else [idx for idx in indices if idx not in existing]
+        pending = (
+            indices
+            if allow_override
+            else [idx for idx in indices if idx not in existing]
+        )
 
         if not pending:
-            print("[dataset] phase 1/3 bathymetry cache already complete for this range")
+            print(
+                "[dataset] phase 1/3 bathymetry cache already complete for this range"
+            )
             return
 
         print(
@@ -1223,9 +1816,15 @@ class TsunamiDatasetBuilder:
                     f"sample={rec['sample_index']:06d} type={rec['bathymetry_type']:<11}"
                 )
 
-    def _phase_generate_sources(self, indices: list[int], allow_override: bool = False) -> None:
+    def _phase_generate_sources(
+        self, indices: list[int], allow_override: bool = False
+    ) -> None:
         existing = self._existing_source_indices()
-        pending = indices if allow_override else [idx for idx in indices if idx not in existing]
+        pending = (
+            indices
+            if allow_override
+            else [idx for idx in indices if idx not in existing]
+        )
 
         if not pending:
             print("[dataset] phase 2/3 source cache already complete for this range")
@@ -1277,7 +1876,9 @@ class TsunamiDatasetBuilder:
                     f"sample={rec['sample_index']:06d} type={rec['source_type']:<11} amp={rec['source_strength']:.4f}"
                 )
 
-    def _phase_generate_rollouts(self, indices: list[int], allow_override: bool = False) -> list[Dict[str, Any]]:
+    def _phase_generate_rollouts(
+        self, indices: list[int], allow_override: bool = False
+    ) -> list[Dict[str, Any]]:
         print(
             f"[dataset] phase 3/3 run FDEs={list(self.dataset.enabled_fdes)} "
             f"on samples={len(indices)}"
@@ -1297,12 +1898,17 @@ class TsunamiDatasetBuilder:
                     bathy_cfg_path=str(self.bathy_cfg_path),
                     bathymetry_dir=str(self.bathymetry_dir),
                     source_dir=str(self.source_dir),
-                    fde_samples_dirs={k: str(v) for k, v in self.fde_samples_dirs.items()},
+                    fde_samples_dirs={
+                        k: str(v) for k, v in self.fde_samples_dirs.items()
+                    },
                     allow_override=allow_override,
                 )
                 records.append(rec)
                 done += 1
-                solver_names = [str(s.get("solver_name", "unknown")) for s in rec.get("solver_records", [])]
+                solver_names = [
+                    str(s.get("solver_name", "unknown"))
+                    for s in rec.get("solver_records", [])
+                ]
                 print(
                     f"[{done:06d}/{len(indices):06d}] sample={idx:06d} "
                     f"scenario={rec['scenario_id']} solvers={solver_names}"
@@ -1335,7 +1941,10 @@ class TsunamiDatasetBuilder:
                 rec = fut.result()
                 records.append(rec)
                 done += 1
-                solver_names = [str(s.get("solver_name", "unknown")) for s in rec.get("solver_records", [])]
+                solver_names = [
+                    str(s.get("solver_name", "unknown"))
+                    for s in rec.get("solver_records", [])
+                ]
                 print(
                     f"[{done:06d}/{len(indices):06d}] sample={rec['sample_index']:06d} "
                     f"scenario={rec['scenario_id']} solvers={solver_names}"
@@ -1369,7 +1978,7 @@ class TsunamiDatasetBuilder:
         else:
             start_idx = 1
 
-        clean_run = (start_idx == 1 and not continue_from_last and start_at is None)
+        clean_run = start_idx == 1 and not continue_from_last and start_at is None
         if clean_run and any_existing_indices and not allow_override:
             raise RuntimeError(
                 "Existing sample outputs found. Use --continue, --allow-override, or --rebuild-manifests "
@@ -1379,20 +1988,30 @@ class TsunamiDatasetBuilder:
             print(f"[dataset] resume mode: start_at={start_idx}")
 
         if start_idx > total:
-            print(f"[dataset] nothing to do: start_at={start_idx} > num_samples={total}")
+            print(
+                f"[dataset] nothing to do: start_at={start_idx} > num_samples={total}"
+            )
             return
 
         planned_indices = list(range(start_idx, total + 1))
         if allow_override:
             to_generate = planned_indices
-            existing_in_range = len([idx for idx in planned_indices if idx in existing_indices])
+            existing_in_range = len(
+                [idx for idx in planned_indices if idx in existing_indices]
+            )
             if existing_in_range > 0:
-                print(f"[dataset] allow-override: regenerating {existing_in_range} existing samples in range")
+                print(
+                    f"[dataset] allow-override: regenerating {existing_in_range} existing samples in range"
+                )
         else:
-            to_generate = [idx for idx in planned_indices if idx not in existing_indices]
+            to_generate = [
+                idx for idx in planned_indices if idx not in existing_indices
+            ]
             skipped = len(planned_indices) - len(to_generate)
             if skipped > 0:
-                print(f"[dataset] skipping {skipped} existing samples (already present on disk)")
+                print(
+                    f"[dataset] skipping {skipped} existing samples (already present on disk)"
+                )
 
         if not to_generate:
             print("[dataset] nothing new to generate.")
@@ -1412,7 +2031,9 @@ class TsunamiDatasetBuilder:
 
         self._phase_generate_bathymetry(to_generate, allow_override=allow_override)
         self._phase_generate_sources(to_generate, allow_override=allow_override)
-        records = self._phase_generate_rollouts(to_generate, allow_override=allow_override)
+        records = self._phase_generate_rollouts(
+            to_generate, allow_override=allow_override
+        )
 
         records.sort(key=lambda r: int(r["sample_index"]))
         if allow_override or not clean_run:
@@ -1428,8 +2049,11 @@ class TsunamiDatasetBuilder:
                 if solver_name in self.fde_manifest_paths:
                     self._append_manifest(self.fde_manifest_paths[solver_name], srec)
 
+
 def _build_argparser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="generate raw tsunami surrogate samples")
+    parser = argparse.ArgumentParser(
+        description="generate raw tsunami surrogate samples"
+    )
     parser.add_argument(
         "--config",
         type=str,
@@ -1463,6 +2087,7 @@ def _build_argparser() -> argparse.ArgumentParser:
     )
     return parser
 
+
 def main() -> None:
     args = _build_argparser().parse_args()
     builder = TsunamiDatasetBuilder(args.config)
@@ -1472,6 +2097,7 @@ def main() -> None:
         allow_override=bool(args.allow_override),
         rebuild_manifests=bool(args.rebuild_manifests),
     )
+
 
 if __name__ == "__main__":
     main()
