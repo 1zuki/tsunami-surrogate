@@ -21,12 +21,22 @@ from src.evaluation.common_time_v2_level_a import (
     _task_directory_name,
     _write_checksums,
     _bootstrap_canary_aggregates,
+    _boundary_metrics,
     _decision_from_gates,
+    _derived_replay_equal,
     _group_speed_gate,
+    _invariant_metrics,
+    _operator_discrepancy_metrics,
+    _packet,
     _preflight_canaries,
+    _recomputed_rows_equal,
+    _run_float64_conservation,
     _select_canaries,
+    _solver,
+    _stable_sum,
     _temporal_refinement_gate,
     _universal_health_gate,
+    _validate_boundary_packet_spec,
     preregister_level_a,
     validate_checksums,
 )
@@ -87,6 +97,15 @@ def test_preregistration_is_content_addressed_and_refuses_overwrite(
     )
     assert root.name == payload["contract_hash"]
     assert payload["thresholds_frozen_before_execution"] is True
+    task_plan = json.loads((root / "task_plan.json").read_text(encoding="utf-8"))
+    assert len(task_plan) == 71
+    assert len(payload["task_blueprint"]) == 71
+    assert payload["worker_policy"]["requested_workers"] == 2
+    assert payload["worker_policy"]["requested_max_in_flight"] == 2
+    assert payload["worker_policy"]["process_start_method"] == "spawn"
+    assert set(payload["execution_environment"]["thread_environment"].values()) == {
+        "1"
+    }
     with pytest.raises(FileExistsError):
         preregister_level_a(
             repo_root=repo,
@@ -234,11 +253,186 @@ def test_universal_health_gate_fails_missing_or_replaced_diagnostics() -> None:
     assert result["failure_count"] == 1
 
 
-def _fixture_tasks() -> list[dict[str, object]]:
-    specs = [
+@pytest.mark.parametrize(
+    "solver_name", ["swe_hydrostatic", "swe_muscl_hr", "boussinesq"]
+)
+def test_x_only_sponge_preserves_quasi_1d_interior(solver_name: str) -> None:
+    x_only = _solver(
+        solver_name,
+        nx=128,
+        ny=4,
+        cfl=0.2,
+        boundary="open",
+        use_sponge=True,
+        sponge_mode="elapsed_time_consistent",
+        sponge_axes="x",
+    )
+    assert x_only.sponge_axes == "x"
+    assert not np.all(x_only.sponge_mask < 1.0)
+    assert np.all(x_only.sponge_mask[16:-16] == 1.0)
+    assert np.all(x_only.sponge_mask[:, 0] == x_only.sponge_mask[:, -1])
+
+    production_default = _solver(
+        solver_name,
+        nx=128,
+        ny=4,
+        cfl=0.2,
+        boundary="open",
+        use_sponge=True,
+        sponge_mode="elapsed_time_consistent",
+    )
+    assert production_default.sponge_axes == "xy"
+    assert np.all(production_default.sponge_mask < 1.0)
+
+
+def test_boundary_packet_windows_exclude_initial_packet_and_sponge() -> None:
+    repo = Path(__file__).resolve().parents[1]
+    config = __import__("yaml").safe_load(
+        (repo / "configs/eval/common_time_v2_level_a.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    boundary = config["boundary_packet"]
+    for spec in boundary["solvers"].values():
+        _validate_boundary_packet_spec(spec, nx=128, sponge_width=16)
+
+    invalid = dict(boundary["solvers"]["swe_hydrostatic"])
+    invalid["incident_window"] = [0.70, 0.90]
+    invalid["reflected_window"] = [0.45, 0.55]
+    with pytest.raises(ValueError, match="outside the reflected window"):
+        _validate_boundary_packet_spec(invalid, nx=128, sponge_width=16)
+
+
+def test_boundary_metrics_require_arrival_and_use_incident_window() -> None:
+    nx, ny = 128, 4
+    initial = _packet(nx, ny, center=0.5, sigma=0.04, zero_mean=False)
+    baseline = np.zeros((50, nx, ny), dtype=np.float64)
+    damped = np.zeros_like(baseline)
+    reflected = (np.arange(nx) / nx <= 0.20)
+    baseline[-1, reflected] = 0.1 * np.max(initial)
+    damped[-1, reflected] = 0.01 * np.max(initial)
+    spec = {
+        "incident_window": [0.40, 0.60],
+        "reflected_window": [0.00, 0.20],
+        "interior_window": [0.25, 0.40],
+        "expected_boundary_arrival_time": 0.1597,
+        "evaluation_time": 0.175,
+        "minimum_arrival_energy_ratio": 1.0e-4,
+    }
+    metrics = _boundary_metrics(
+        baseline=baseline,
+        damped=damped,
+        initial_packet=initial,
+        spec=spec,
+    )
+    assert metrics["arrival_observed"] is True
+    assert metrics["incident_energy"] < float(np.sum(initial**2))
+    assert metrics["reflected_amplitude_ratio"] == pytest.approx(0.01)
+
+    baseline[-1] = 0.0
+    no_arrival = _boundary_metrics(
+        baseline=baseline,
+        damped=damped,
+        initial_packet=initial,
+        spec=spec,
+    )
+    assert no_arrival["arrival_observed"] is False
+
+
+def test_float32_requested_state_contaminates_conservation_measurement() -> None:
+    eta0 = _packet(64, 4, center=0.5, sigma=0.06)
+    h0 = 1.0 + eta0
+    exact_initial = _stable_sum(h0)
+    internal = _invariant_metrics(
+        [exact_initial, _stable_sum(h0.copy())],
+        normalization_scale=exact_initial,
+        roundoff_floor_absolute=0.0,
+    )
+    serialized = _invariant_metrics(
+        [exact_initial, _stable_sum(h0.astype(np.float32))],
+        normalization_scale=exact_initial,
+        roundoff_floor_absolute=0.0,
+    )
+    assert internal["normalized_drift"] == 0.0
+    assert serialized["normalized_drift"] > 1.0e-10
+
+
+def test_float64_natural_state_conservation_reports_precision_floor() -> None:
+    row = _run_float64_conservation(
+        "swe_hydrostatic",
+        nx=16,
+        ny=4,
+        cfl=0.45,
+        boundary="periodic",
+        safety_factor=8.0,
+    )
+    assert row["measurement_dtype"] == "float64"
+    assert row["measurement_grid"] == "internal_natural_states"
+    assert row["invariant_name"] == "total_water_depth"
+    assert row["roundoff_floor_absolute"] > 0.0
+    assert row["normalized_drift"] <= max(
+        1.0e-10, row["roundoff_floor_normalized"]
+    )
+
+
+def test_operator_metrics_isolate_sponge_and_interior_regions() -> None:
+    reference = np.ones((3, 16, 2), dtype=np.float64)
+    changed = reference.copy()
+    sponge = np.zeros(16, dtype=bool)
+    sponge[:2] = True
+    sponge[-2:] = True
+    interior = ~sponge
+    changed[:, sponge] *= 0.9
+    metrics = _operator_discrepancy_metrics(
+        changed,
+        reference,
+        sponge_region=sponge,
+        interior_region=interior,
+    )
+    assert metrics["trajectory_relative_l2"] > 0.0
+    assert metrics["sponge_trajectory_relative_l2"] > 0.0
+    assert metrics["interior_trajectory_relative_l2"] == 0.0
+    assert metrics["interior_final_time_relative_l2"] == 0.0
+
+
+def test_derived_replay_tolerates_only_machine_scale_reduction_noise() -> None:
+    stored = {
+        "component": "operator_sensitivity_summary",
+        "elapsed_no_filter_cfl_relative_l2": 8.534534241662949e-5,
+        "legacy_cfl_relative_l2": 0.5933710254981277,
+    }
+    recomputed = {
+        **stored,
+        "elapsed_no_filter_cfl_relative_l2": 8.534534241662957e-5,
+        "legacy_cfl_relative_l2": 0.5933710254981279,
+    }
+    assert _derived_replay_equal(stored, recomputed)
+    materially_changed = dict(recomputed)
+    materially_changed["legacy_cfl_relative_l2"] += 1.0e-10
+    assert not _derived_replay_equal(stored, materially_changed)
+    assert _recomputed_rows_equal([stored], [recomputed])
+
+    direct_stored = {"component": "conservation_health", "value": 1.0}
+    direct_changed = {
+        "component": "conservation_health",
+        "value": float(np.nextafter(1.0, 2.0)),
+    }
+    assert not _recomputed_rows_equal([direct_stored], [direct_changed])
+
+
+def _fixture_tasks(count: int = 3) -> list[dict[str, object]]:
+    base_specs = [
         {"name": "slow", "value": 1.0, "delay_s": 0.05},
         {"name": "fast", "value": 2.0, "delay_s": 0.0},
         {"name": "middle", "value": 3.0, "delay_s": 0.01},
+    ]
+    specs = [
+        (
+            dict(base_specs[index])
+            if index < len(base_specs)
+            else {"name": f"extra-{index}", "value": float(index + 1)}
+        )
+        for index in range(count)
     ]
     return [
         _make_level_a_task(
@@ -344,7 +538,10 @@ def test_task_execution_is_serial_parallel_scientifically_equivalent(
         tasks, tasks_root=tmp_path / "serial", workers=1
     )
     parallel, parallel_provenance = _execute_level_a_task_plan(
-        tasks, tasks_root=tmp_path / "parallel", workers=2
+        tasks,
+        tasks_root=tmp_path / "parallel",
+        workers=2,
+        max_in_flight=2,
     )
     assert [row["task"]["task_id"] for row in serial] == [
         "fixture/slow",
@@ -362,6 +559,9 @@ def test_task_execution_is_serial_parallel_scientifically_equivalent(
     assert _scientific_digest(serial) == _scientific_digest(parallel)
     assert serial_provenance["requested_workers"] == 1
     assert parallel_provenance["requested_workers"] == 2
+    assert parallel_provenance["requested_max_in_flight"] == 2
+    assert parallel_provenance["effective_max_in_flight"] == 2
+    assert parallel_provenance["peak_in_flight_futures"] == 2
     assert parallel_provenance["process_start_method"] == "spawn"
     assert set(parallel_provenance["thread_environment"]) == {
         "OMP_NUM_THREADS",
@@ -371,6 +571,53 @@ def test_task_execution_is_serial_parallel_scientifically_equivalent(
         "BLIS_NUM_THREADS",
         "VECLIB_MAXIMUM_THREADS",
     }
+
+
+def test_task_execution_uses_default_bounded_window(tmp_path: Path) -> None:
+    tasks = _fixture_tasks(7)
+    serial, _ = _execute_level_a_task_plan(
+        tasks, tasks_root=tmp_path / "serial-default", workers=1
+    )
+    parallel, provenance = _execute_level_a_task_plan(
+        tasks, tasks_root=tmp_path / "parallel-default", workers=2
+    )
+    assert [payload["task"]["task_id"] for payload in parallel] == [
+        task["task_id"] for task in tasks
+    ]
+    assert _scientific_digest(serial) == _scientific_digest(parallel)
+    assert provenance["requested_max_in_flight"] is None
+    assert provenance["effective_max_in_flight"] == 4
+    assert 0 < provenance["peak_in_flight_futures"] <= 4
+
+
+@pytest.mark.parametrize("max_in_flight", [0, -1])
+def test_task_execution_rejects_nonpositive_in_flight_before_artifacts(
+    tmp_path: Path, max_in_flight: int
+) -> None:
+    root = tmp_path / f"invalid-{max_in_flight}"
+    with pytest.raises(ValueError, match="max_in_flight must be positive"):
+        _execute_level_a_task_plan(
+            _fixture_tasks(),
+            tasks_root=root,
+            workers=2,
+            max_in_flight=max_in_flight,
+        )
+    assert not root.exists()
+
+
+def test_task_execution_rejects_window_below_effective_workers_before_artifacts(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "below-workers"
+    with pytest.raises(ValueError, match="effective worker count"):
+        _execute_level_a_task_plan(
+            _fixture_tasks(),
+            tasks_root=root,
+            workers=2,
+            max_in_flight=1,
+        )
+    assert root.is_dir()
+    assert not any(root.iterdir())
 
 
 def test_task_failure_preserves_completed_artifacts_and_resumes_missing(
@@ -441,9 +688,36 @@ def test_parallel_worker_failure_preserves_completed_siblings(tmp_path: Path) ->
     )
     root = tmp_path / "parallel-failure"
     with pytest.raises(RuntimeError, match="fixture/fail"):
-        _execute_level_a_task_plan(tasks, tasks_root=root, workers=2)
-    assert (root / f"000-{tasks[0]['task_spec_hash'][:16]}").is_dir()
+        _execute_level_a_task_plan(
+            tasks, tasks_root=root, workers=2, max_in_flight=2
+        )
+    first_root = root / f"000-{tasks[0]['task_spec_hash'][:16]}"
+    assert first_root.is_dir()
     assert not (root / f"001-{tasks[1]['task_spec_hash'][:16]}").exists()
+    completed_state = _task_file_state(first_root)
+    tasks[1] = _make_level_a_task(
+        ordinal=1,
+        task_id="fixture/fail",
+        kind="fixture",
+        spec={"name": "fail", "value": 2.0},
+        contract_hash="fixture-contract",
+        code_state_hash="fixture-code",
+    )
+    resumed, provenance = _execute_level_a_task_plan(
+        tasks,
+        tasks_root=root,
+        workers=2,
+        max_in_flight=2,
+        resume=True,
+    )
+    assert [payload["task"]["task_id"] for payload in resumed] == [
+        "fixture/first",
+        "fixture/fail",
+        "fixture/last",
+    ]
+    assert provenance["effective_workers"] == 1
+    assert provenance["effective_max_in_flight"] == 1
+    assert _task_file_state(first_root) == completed_state
 
 
 def test_task_resume_rejects_raw_and_semantic_corruption(tmp_path: Path) -> None:
@@ -523,13 +797,20 @@ def test_task_completed_resume_is_noop_and_extra_artifacts_fail(tmp_path: Path) 
     _execute_level_a_task_plan(tasks, tasks_root=root, workers=1)
     before = _task_file_state(root)
     resumed, provenance = _execute_level_a_task_plan(
-        tasks, tasks_root=root, workers=2, resume=True
+        tasks,
+        tasks_root=root,
+        workers=2,
+        max_in_flight=2,
+        resume=True,
     )
     assert _task_file_state(root) == before
     assert [payload["task"]["task_id"] for payload in resumed] == [
         task["task_id"] for task in tasks
     ]
     assert provenance["effective_workers"] == 0
+    assert provenance["requested_max_in_flight"] == 2
+    assert provenance["effective_max_in_flight"] == 0
+    assert provenance["peak_in_flight_futures"] == 0
     with pytest.raises(FileExistsError):
         _execute_level_a_task_plan(tasks, tasks_root=root, workers=1)
     (root / "unexpected").mkdir()
@@ -542,14 +823,22 @@ def test_scientific_digest_excludes_only_operational_fields() -> None:
         "rows": [{"value": 1.0, "runtime_s": 1.0}],
         "elapsed_s": 2.0,
         "operational_provenance": _operational_provenance(
-            requested_workers=1, effective_workers=1
+            requested_workers=1,
+            effective_workers=1,
+            requested_max_in_flight=2,
+            effective_max_in_flight=0,
+            peak_in_flight_futures=0,
         ),
     }
     second = {
         "rows": [{"value": 1.0, "runtime_s": 9.0}],
         "elapsed_s": 10.0,
         "operational_provenance": _operational_provenance(
-            requested_workers=2, effective_workers=2
+            requested_workers=2,
+            effective_workers=2,
+            requested_max_in_flight=4,
+            effective_max_in_flight=4,
+            peak_in_flight_futures=3,
         ),
     }
     assert _scientific_digest(first) == _scientific_digest(second)

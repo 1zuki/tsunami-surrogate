@@ -37,6 +37,17 @@ production:
     depth_scale: 1.0
     cg_failure_mode: strict_v2
     primary_filter_time_mode: disabled
+execution:
+  requested_workers: 2
+  requested_max_in_flight: 2
+  process_start_method: spawn
+  thread_environment:
+    OMP_NUM_THREADS: "1"
+    OPENBLAS_NUM_THREADS: "1"
+    MKL_NUM_THREADS: "1"
+    NUMEXPR_NUM_THREADS: "1"
+    BLIS_NUM_THREADS: "1"
+    VECLIB_MAXIMUM_THREADS: "1"
 operators:
   sponge:
     candidate_time_mode: elapsed_time_consistent
@@ -50,11 +61,36 @@ operators:
     sponge_time_mode: legacy_per_step
     filter_time_mode: legacy_per_step
 boundary_packet:
-  center_x: 0.25
-  sigma: 0.04
-  incident_window: [0.55, 0.85]
-  reflected_window: [0.05, 0.35]
-  interior_window: [0.35, 0.65]
+  grid: 128
+  transverse_cells: 4
+  solvers:
+    swe_hydrostatic: &swe_boundary_packet
+      center_x: 0.50
+      sigma: 0.04
+      direction: left
+      arrival_model: linear-shallow-water-speed
+      incident_window: [0.40, 0.60]
+      reflected_window: [0.00, 0.20]
+      interior_window: [0.25, 0.40]
+      expected_boundary_arrival_time: 0.1597
+      evaluation_time: 0.175
+      maximum_initial_reflected_ratio: 1.0e-8
+      minimum_initial_incident_energy_fraction: 0.98
+      minimum_arrival_energy_ratio: 1.0e-4
+    swe_muscl_hr: *swe_boundary_packet
+    boussinesq:
+      center_x: 0.50
+      sigma: 0.04
+      direction: left
+      arrival_model: long-wave-front-earliest-bound
+      incident_window: [0.40, 0.60]
+      reflected_window: [0.00, 0.20]
+      interior_window: [0.25, 0.40]
+      expected_boundary_arrival_time: 0.1597
+      evaluation_time: 0.175
+      maximum_initial_reflected_ratio: 1.0e-8
+      minimum_initial_incident_energy_fraction: 0.98
+      minimum_arrival_energy_ratio: 1.0e-4
 canaries:
   split: train
   count: 6
@@ -91,8 +127,12 @@ thresholds:
     reflected_energy_ratio: 0.02
     interior_relative_l2: 0.10
   conservation:
-    mass_relative_drift: 1.0e-10
-    mean_integral_relative_drift: 1.0e-10
+    measurement_grid: internal_natural_states
+    measurement_dtype: float64
+    precision_floor_method: float64_gamma_n_l1
+    threshold_status: retained_preexisting_normalized_limit
+    normalized_drift: 1.0e-10
+    precision_floor_safety_factor: 8.0
   canary:
     amplitude_growth: 2.0
     eta_over_depth: 1.0
@@ -107,3 +147,9 @@ historical_context:
   stage_c_thresholds_inherited: false
   boussinesq_depth_scale_0_02_status: historical_undocumented_sensitivity_only
   fallback_horizon_0_0800: forbidden
+  muscl_grid256_diagnostic:
+    source_contract: 500dd9e3fcf89946617ab1b5ecbe0b0d3b207469d23b739c474a13adf4d6b76f
+    sha256: 76f3f6ab9f3a985d6deadd235831e16c2b3fc4eadf72328dfd46b24343ecad2b
+    classification: unresolved
+    decision_role: non_decisional_background_only
+    included_in_level_a_task_plan: false

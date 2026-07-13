@@ -1,0 +1,131 @@
+schema_id: tsunami-surrogate.minimum-established-solver-validation.v1
+artifact_kind: minimum-established-solver-validation-candidate
+
+prerequisites:
+  require_level_a_pass: true
+  require_unchanged_code_state: true
+
+external_comparator:
+  implementation: GeoClaw
+  package: Clawpack
+  version: 5.14.0
+  release_tag: v5.14.0
+  swe_mode: standard_single_level_cartesian_swe
+  dispersive_mode: serre_green_naghdi
+  dispersive_equation_id: 2
+  amr_levels: 1
+  friction: disabled
+  coriolis: disabled
+  fixed_grid_registration: cell_centers
+  output_time_policy: exact_requested_physical_times
+  boundary_mapping:
+    periodic: periodic
+    open: extrapolation
+
+requested_times:
+  start: 0.0035
+  step: 0.0035
+  count: 50
+  horizon: 0.175
+
+inhouse:
+  gravity: 9.81
+  cfl:
+    swe_hydrostatic: 0.45
+    swe_muscl_hr: 0.45
+    boussinesq: 0.35
+  use_sponge: false
+  boussinesq_filter: disabled
+
+gauges:
+  fractional_cell_locations:
+    - [0.15, 0.50]
+    - [0.30, 0.50]
+    - [0.50, 0.50]
+    - [0.70, 0.50]
+    - [0.85, 0.50]
+  arrival_fraction_of_external_peak: 0.10
+  inactive_external_peak_floor: 1.0e-8
+
+cases:
+  - case_id: flat_linear_packet
+    category: flat_analytical
+    generator: flat_linear_packet
+    grids: [32, 64, 128]
+    transverse_cells: 4
+    depth: 1.0
+    amplitude: 1.0e-5
+    center_x: 0.25
+    sigma: 0.06
+    boundary: periodic
+    pairings:
+      - [swe_hydrostatic, geoclaw_swe]
+      - [swe_muscl_hr, geoclaw_swe]
+      - [boussinesq, geoclaw_sgn]
+
+  - case_id: smooth_periodic_bathymetry
+    category: smooth_variable_bathymetry
+    generator: smooth_periodic_bathymetry
+    grids: [32, 64, 128]
+    transverse_cells: 4
+    depth: 1.0
+    bathymetry_amplitude: 0.10
+    amplitude: 1.0e-5
+    boundary: periodic
+    pairings:
+      - [swe_hydrostatic, geoclaw_swe]
+      - [swe_muscl_hr, geoclaw_swe]
+      - [boussinesq, geoclaw_sgn]
+
+  - case_id: production_input_canaries
+    category: production_input
+    generator: level_a_canaries
+    count: 3
+    grids: [64]
+    boundary: open
+    pairings:
+      - [swe_hydrostatic, geoclaw_swe]
+      - [swe_muscl_hr, geoclaw_swe]
+
+thresholds:
+  flat_analytical:
+    trajectory_relative_l2: 0.20
+    per_time_relative_l2_p95: 0.20
+    gauge_nrmse_max: 0.15
+    arrival_time_abs_max: 0.0070
+    peak_relative_error_max: 0.15
+    time_to_peak_abs_max: 0.0070
+    waveform_lag_steps_max: 2
+  smooth_variable_bathymetry:
+    trajectory_relative_l2: 0.25
+    per_time_relative_l2_p95: 0.25
+    gauge_nrmse_max: 0.20
+    arrival_time_abs_max: 0.0105
+    peak_relative_error_max: 0.20
+    time_to_peak_abs_max: 0.0105
+    waveform_lag_steps_max: 3
+  production_input:
+    trajectory_relative_l2: 0.35
+    per_time_relative_l2_p95: 0.35
+    gauge_nrmse_max: 0.30
+    arrival_time_abs_max: 0.0140
+    peak_relative_error_max: 0.30
+    time_to_peak_abs_max: 0.0140
+    waveform_lag_steps_max: 4
+  refinement:
+    finest_to_coarsest_error_ratio_max: 1.05
+    gated_pairings:
+      - swe_hydrostatic__geoclaw_swe
+      - swe_muscl_hr__geoclaw_swe
+
+aggregation:
+  require_every_comparison: true
+  require_every_gated_refinement: true
+  missing_or_invalid_external_result: fail
+  threshold_changes_after_external_results: forbidden
+
+interpretation:
+  external_solver_is_truth: false
+  boussinesq_scope: small_amplitude_flat_or_smooth_fully_wet_regime
+  production_case_scope: shared_input_swe_comparison_without_sponge
+  threshold_rationale: conservative pre-result engineering limits on the normalized unit-domain benchmark; any revision creates a new candidate contract

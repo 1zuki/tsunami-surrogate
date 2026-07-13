@@ -312,6 +312,7 @@ def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
         use_sponge=bool(kwargs.get("use_sponge", True)),
         sponge_width=int(kwargs.get("sponge_width", 20)),
         sponge_min_factor=float(kwargs.get("sponge_min_factor", 0.9)),
+        sponge_axes=str(kwargs.get("sponge_axes", "xy")),
         max_velocity=float(kwargs.get("max_velocity", 50.0)),
     )
     solver.set_bathymetry(bathymetry)

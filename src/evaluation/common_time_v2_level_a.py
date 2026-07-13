@@ -10,7 +10,7 @@ import platform
 import shutil
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -59,6 +59,14 @@ _VOLATILE_SCIENTIFIC_KEYS = {
     "worker_metadata",
 }
 _DROP_SCIENTIFIC_VALUE = object()
+DERIVED_REPLAY_REL_TOL = 2.0e-15
+DERIVED_REPLAY_ABS_TOL = 1.0e-18
+_DERIVED_ROW_COMPONENTS = {
+    "boundary_sponge",
+    "canary_bootstrap_descriptive",
+    "operator_factor_identity",
+    "operator_sensitivity_summary",
+}
 
 
 def _json_safe(value: Any) -> Any:
@@ -185,6 +193,37 @@ def _validate_source_contract(config: Mapping[str, Any]) -> None:
         "pass_to_H1",
     ]:
         raise ValueError("Level A decision precedence is not frozen as required")
+    boundary = config.get("boundary_packet", {})
+    solver_specs = boundary.get("solvers", {})
+    if set(solver_specs) != set(SOLVERS):
+        raise ValueError("Level A boundary_packet must define every solver")
+    for solver in SOLVERS:
+        _validate_boundary_packet_spec(
+            solver_specs[solver],
+            nx=int(boundary.get("grid", 128)),
+            sponge_width=max(1, int(boundary.get("grid", 128)) // 8),
+        )
+    conservation = config.get("thresholds", {}).get("conservation", {})
+    required_conservation_contract = {
+        "measurement_grid": "internal_natural_states",
+        "measurement_dtype": "float64",
+        "precision_floor_method": "float64_gamma_n_l1",
+        "threshold_status": "retained_preexisting_normalized_limit",
+    }
+    for key, expected in required_conservation_contract.items():
+        if conservation.get(key) != expected:
+            raise ValueError(
+                f"Level A conservation {key} must be frozen as {expected!r}"
+            )
+    execution = config.get("execution", {})
+    expected_execution = {
+        "requested_workers": 2,
+        "requested_max_in_flight": 2,
+        "process_start_method": "spawn",
+        "thread_environment": {key: "1" for key in THREAD_ENV_KEYS},
+    }
+    if execution != expected_execution:
+        raise ValueError("Level A execution policy is not frozen as required")
 
 
 def _select_canaries(
@@ -263,6 +302,28 @@ def preregister_level_a(
     inventory = _read_jsonl(inventory_path)
     canaries = _select_canaries(inventory, int(config["canaries"]["count"]))
     source_code = code_state(repo_root)
+    execution_environment = _execution_environment_snapshot()
+    expected_threads = config["execution"]["thread_environment"]
+    if execution_environment["thread_environment"] != expected_threads:
+        raise RuntimeError(
+            "Level A preregistration environment does not match the frozen "
+            "numerical-library thread policy"
+        )
+    blueprint_tasks = _build_level_a_task_plan(
+        config,
+        canaries,
+        contract_hash="pending-contract-hash",
+        code_state_hash=str(source_code["code_state_hash"]),
+    )
+    task_blueprint = [
+        {
+            "ordinal": task["ordinal"],
+            "task_id": task["task_id"],
+            "kind": task["kind"],
+            "spec": task["spec"],
+        }
+        for task in blueprint_tasks
+    ]
     payload = {
         "schema_id": LEVEL_A_SCHEMA_ID,
         "artifact_kind": "common-time-v2-level-a-preregistered-contract",
@@ -273,6 +334,9 @@ def preregister_level_a(
         "h0_inventory_sha256": sha256_file(inventory_path),
         "canaries": canaries,
         "code_state": source_code,
+        "task_blueprint": task_blueprint,
+        "worker_policy": _json_safe(config["execution"]),
+        "execution_environment": execution_environment,
         "thresholds_frozen_before_execution": True,
     }
     contract_hash = stable_hash_payload(
@@ -281,6 +345,12 @@ def preregister_level_a(
         schema_id=LEVEL_A_SCHEMA_ID,
     )
     payload["contract_hash"] = contract_hash
+    task_plan = _build_level_a_task_plan(
+        config,
+        canaries,
+        contract_hash=contract_hash,
+        code_state_hash=str(source_code["code_state_hash"]),
+    )
     base = output_root or (repo_root / "artifacts/common_time_v2/level_a")
     final = base / contract_hash
     if final.exists():
@@ -292,6 +362,7 @@ def preregister_level_a(
     _write_json(staging / "preregistered_contract.json", payload)
     _write_json(staging / "resolved_configs.json", config)
     _write_json(staging / "canary_selection.json", canaries)
+    _write_json(staging / "task_plan.json", task_plan)
     report = f"""# Common-time-v2 Level A preregistration
 
 - Contract hash: `{contract_hash}`
@@ -299,6 +370,8 @@ def preregister_level_a(
 - Code-state hash: `{source_code["code_state_hash"]}`
 - H0 inventory records: {len(inventory)}
 - Training canaries: {len(canaries)}
+- Frozen task count: {len(task_plan)}
+- Worker policy: {config["execution"]["requested_workers"]} workers, {config["execution"]["requested_max_in_flight"]} maximum in-flight tasks, `{config["execution"]["process_start_method"]}` start method
 - Thresholds frozen before execution: yes
 
 Stage C thresholds are historical context only and were not inherited. `depth_scale=1.0` is the sole v2 production interpretation in this contract. The current `open` implementation is labelled zero-gradient edge padding, not radiative. A Level A pass permits only progression to H1; it does not accept the production contract.
@@ -321,6 +394,7 @@ def _solver(
     sponge_mode: str = "legacy_per_step",
     filter_mode: str = "disabled",
     filter_strength: float = 0.0,
+    sponge_axes: str = "xy",
 ) -> Any:
     common = dict(
         nx=nx,
@@ -338,6 +412,7 @@ def _solver(
         sponge_reference_dt=0.0035
         if sponge_mode == "elapsed_time_consistent"
         else None,
+        sponge_axes=sponge_axes,
     )
     if name == "swe_hydrostatic":
         return HydrostaticShallowWaterSolver(
@@ -433,7 +508,7 @@ def _run_mode(
     measured_omega = -slope
     amplitude_ratio = float(abs(coeff[-1]) / max(abs(coeff[0]), 1e-30))
     diff = eta - exact
-    field_l2 = float(np.linalg.norm(diff) / max(np.linalg.norm(exact), 1e-30))
+    field_l2 = _relative_l2(eta, exact)
     widths = np.asarray(diagnostics["bracket_widths"], dtype=float)
     left_times = np.asarray(diagnostics["left_natural_timestamps"], dtype=float)
     right_times = np.asarray(diagnostics["right_natural_timestamps"], dtype=float)
@@ -502,7 +577,7 @@ def _trajectory_rms_difference(a: np.ndarray, b: np.ndarray) -> float:
     bb = np.asarray(b, dtype=np.float64)
     if aa.shape != bb.shape:
         raise ValueError(f"Trajectory shapes differ: {aa.shape} != {bb.shape}")
-    return float(np.sqrt(np.mean((aa - bb) ** 2)))
+    return float(_stable_l2_norm(aa - bb) / math.sqrt(aa.size))
 
 
 def _temporal_refinement_gate(
@@ -701,19 +776,84 @@ def _scientific_digest(value: Any) -> str:
     )
 
 
+def _derived_replay_equal(stored: Any, recomputed: Any) -> bool:
+    first = _scientific_normalize(stored)
+    second = _scientific_normalize(recomputed)
+
+    def equal(left: Any, right: Any) -> bool:
+        if isinstance(left, Mapping) and isinstance(right, Mapping):
+            return set(left) == set(right) and all(
+                equal(left[key], right[key]) for key in left
+            )
+        if isinstance(left, list) and isinstance(right, list):
+            return len(left) == len(right) and all(
+                equal(a, b) for a, b in zip(left, right)
+            )
+        if isinstance(left, bool) or isinstance(right, bool):
+            return left is right
+        if isinstance(left, (float, np.floating)) and isinstance(
+            right, (float, np.floating)
+        ):
+            return math.isclose(
+                float(left),
+                float(right),
+                rel_tol=DERIVED_REPLAY_REL_TOL,
+                abs_tol=DERIVED_REPLAY_ABS_TOL,
+            )
+        return left == right
+
+    return equal(first, second)
+
+
+def _recomputed_rows_equal(
+    stored: Sequence[Mapping[str, Any]],
+    recomputed: Sequence[Mapping[str, Any]],
+) -> bool:
+    if len(stored) != len(recomputed):
+        return False
+    for first, second in zip(stored, recomputed):
+        if first.get("component") != second.get("component"):
+            return False
+        if first.get("component") in _DERIVED_ROW_COMPONENTS:
+            if not _derived_replay_equal(first, second):
+                return False
+        elif _scientific_normalize(first) != _scientific_normalize(second):
+            return False
+    return True
+
+
 def _thread_settings() -> dict[str, str | None]:
     return {key: os.environ.get(key) for key in THREAD_ENV_KEYS}
+
+
+def _execution_environment_snapshot() -> dict[str, Any]:
+    return {
+        "python_version": platform.python_version(),
+        "numpy_version": np.__version__,
+        "platform": platform.platform(),
+        "processor": platform.processor(),
+        "logical_cpu_count": os.cpu_count(),
+        "thread_environment": _thread_settings(),
+    }
 
 
 def _operational_provenance(
     *,
     requested_workers: int,
     effective_workers: int,
+    requested_max_in_flight: int | None = None,
+    effective_max_in_flight: int = 0,
+    peak_in_flight_futures: int = 0,
     process_start_method: str | None = None,
 ) -> dict[str, Any]:
     return {
         "requested_workers": int(requested_workers),
         "effective_workers": int(effective_workers),
+        "requested_max_in_flight": (
+            None if requested_max_in_flight is None else int(requested_max_in_flight)
+        ),
+        "effective_max_in_flight": int(effective_max_in_flight),
+        "peak_in_flight_futures": int(peak_in_flight_futures),
         "process_start_method": (
             process_start_method
             if process_start_method is not None
@@ -721,12 +861,7 @@ def _operational_provenance(
             if effective_workers > 1
             else "serial"
         ),
-        "python_version": platform.python_version(),
-        "numpy_version": np.__version__,
-        "platform": platform.platform(),
-        "processor": platform.processor(),
-        "logical_cpu_count": os.cpu_count(),
-        "thread_environment": _thread_settings(),
+        **_execution_environment_snapshot(),
     }
 
 
@@ -852,11 +987,15 @@ def _build_level_a_task_plan(
                         "cfl": cfl,
                         "nx": 64,
                         "ny": 4,
+                        "sponge_axes": "x",
                     },
                 )
 
-    boundary_spec = _json_safe(config["boundary_packet"])
+    boundary_config = config["boundary_packet"]
+    boundary_grid = int(boundary_config["grid"])
+    boundary_ny = int(boundary_config["transverse_cells"])
     for solver in SOLVERS:
+        boundary_spec = _json_safe(boundary_config["solvers"][solver])
         for variant, use_sponge in (("baseline", False), ("damped", True)):
             add(
                 f"boundary/{solver}/{variant}",
@@ -866,8 +1005,9 @@ def _build_level_a_task_plan(
                     "variant": variant,
                     "use_sponge": use_sponge,
                     "cfl": float(config["production"]["cfl"][solver][0]),
-                    "nx": 128,
-                    "ny": 4,
+                    "nx": boundary_grid,
+                    "ny": boundary_ny,
+                    "sponge_axes": "x",
                     "packet": boundary_spec,
                 },
             )
@@ -883,6 +1023,11 @@ def _build_level_a_task_plan(
                     "cfl": float(config["production"]["cfl"][solver][0]),
                     "nx": 64,
                     "ny": 4,
+                    "precision_floor_safety_factor": float(
+                        config["thresholds"]["conservation"][
+                            "precision_floor_safety_factor"
+                        ]
+                    ),
                 },
             )
 
@@ -996,6 +1141,7 @@ def _compute_level_a_task(
             filter_mode=str(spec["filter_mode"]),
             filter_strength=float(spec["filter_strength"]),
             eta0=eta0,
+            sponge_axes=str(spec["sponge_axes"]),
         )
         row = {
             "component": "operator_sensitivity",
@@ -1011,17 +1157,20 @@ def _compute_level_a_task(
                 np.sum(np.asarray(diagnostics.get("cg_failed_count", []), dtype=int))
             ),
             "finite": bool(np.isfinite(eta).all()),
+            "sponge_axes": str(spec["sponge_axes"]),
+            "whole_domain_sponge": bool(np.all(solver.sponge_mask < 1.0)),
             "operator": solver.get_operator_diagnostics(),
         }
         return row, eta
     if kind == "boundary":
         packet_spec = spec["packet"]
-        eta0 = _packet(
-            int(spec["nx"]),
-            int(spec["ny"]),
-            center=float(packet_spec["center_x"]),
-            sigma=float(packet_spec["sigma"]),
+        initial = _boundary_initial_conditions(
+            str(spec["solver"]),
+            nx=int(spec["nx"]),
+            ny=int(spec["ny"]),
+            spec=packet_spec,
         )
+        eta0 = np.asarray(initial["eta0"])
         use_sponge = bool(spec["use_sponge"])
         eta, _, diagnostics, solver = _trajectory_eta(
             str(spec["solver"]),
@@ -1032,11 +1181,30 @@ def _compute_level_a_task(
             use_sponge=use_sponge,
             sponge_mode="elapsed_time_consistent" if use_sponge else "legacy_per_step",
             eta0=eta0,
+            h0=(
+                None
+                if initial.get("h0") is None
+                else np.asarray(initial["h0"])
+            ),
+            hu0=(
+                None
+                if initial.get("hu0") is None
+                else np.asarray(initial["hu0"])
+            ),
+            eta_t0=(
+                None
+                if initial.get("eta_t0") is None
+                else np.asarray(initial["eta_t0"])
+            ),
+            sponge_axes=str(spec["sponge_axes"]),
         )
         return {
             "component": "boundary_trajectory",
             "solver": str(spec["solver"]),
             "variant": str(spec["variant"]),
+            "characteristic_speed": float(initial["characteristic_speed"]),
+            "sponge_axes": str(spec["sponge_axes"]),
+            "whole_domain_sponge": bool(np.all(solver.sponge_mask < 1.0)),
             "finite": bool(np.isfinite(eta).all()),
             "cg_failure_count": int(
                 np.sum(np.asarray(diagnostics.get("cg_failed_count", []), dtype=int))
@@ -1044,43 +1212,14 @@ def _compute_level_a_task(
             "operator": solver.get_operator_diagnostics(),
         }, eta
     if kind == "conservation":
-        nx, ny = int(spec["nx"]), int(spec["ny"])
-        eta0 = _packet(nx, ny, center=0.5, sigma=0.06)
-        solver_name = str(spec["solver"])
-        eta, _, diagnostics, solver = _trajectory_eta(
-            solver_name,
-            nx=nx,
-            ny=ny,
+        return _run_float64_conservation(
+            str(spec["solver"]),
+            nx=int(spec["nx"]),
+            ny=int(spec["ny"]),
             cfl=float(spec["cfl"]),
             boundary=str(spec["boundary"]),
-            use_sponge=False,
-            sponge_mode="legacy_per_step",
-            eta0=eta0,
-        )
-        mean0 = float(np.sum(eta0))
-        mean_drift = float(np.max(np.abs(np.sum(eta, axis=(1, 2)) - mean0))) / max(
-            float(np.sum(np.abs(eta0))), 1e-30
-        )
-        mass_drift = None
-        if solver_name != "boussinesq":
-            mass0 = float(np.sum(1.0 + eta0))
-            mass_drift = float(
-                np.max(np.abs(np.sum(1.0 + eta, axis=(1, 2)) - mass0))
-                / max(abs(mass0), 1e-30)
-            )
-        cg_failures = int(
-            np.sum(np.asarray(diagnostics.get("cg_failed_count", []), dtype=int))
-        )
-        return {
-            "component": "conservation_health",
-            "solver": solver_name,
-            "boundary": str(spec["boundary"]),
-            "mass_relative_drift": mass_drift,
-            "mean_integral_relative_drift": mean_drift,
-            "cg_failure_count": cg_failures,
-            "finite": bool(np.isfinite(eta).all()),
-            "operator": solver.get_operator_diagnostics(),
-        }, None
+            safety_factor=float(spec["precision_floor_safety_factor"]),
+        ), None
     if kind == "canary":
         canary = spec["canary"]
         bathymetry, _source, _strength_array, _strength, arrays = _load_canary_arrays(
@@ -1213,18 +1352,22 @@ def _validate_task_result_semantics(
             "solver": str(spec["solver"]),
             "variant": str(spec["variant"]),
             "cfl": float(spec["cfl"]),
+            "sponge_axes": str(spec["sponge_axes"]),
         }
     elif kind == "boundary":
         expected = {
             "component": "boundary_trajectory",
             "solver": str(spec["solver"]),
             "variant": str(spec["variant"]),
+            "sponge_axes": str(spec["sponge_axes"]),
         }
     elif kind == "conservation":
         expected = {
             "component": "conservation_health",
             "solver": str(spec["solver"]),
             "boundary": str(spec["boundary"]),
+            "measurement_dtype": "float64",
+            "measurement_grid": "internal_natural_states",
         }
     elif kind == "canary":
         expected = {
@@ -1385,10 +1528,13 @@ def _execute_level_a_task_plan(
     *,
     tasks_root: Path,
     workers: int = 1,
+    max_in_flight: int | None = None,
     resume: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if workers <= 0:
         raise ValueError("workers must be positive")
+    if max_in_flight is not None and max_in_flight <= 0:
+        raise ValueError("max_in_flight must be positive")
     _validate_task_plan(tasks)
     tasks_root.mkdir(parents=True, exist_ok=True)
     if resume:
@@ -1397,6 +1543,25 @@ def _execute_level_a_task_plan(
     if loaded and not resume:
         raise FileExistsError(f"Level A task artifacts already exist: {tasks_root}")
     effective = min(int(workers), max(1, len(missing))) if missing else 0
+    if (
+        missing
+        and effective > 1
+        and max_in_flight is not None
+        and max_in_flight < effective
+    ):
+        raise ValueError(
+            "max_in_flight must be at least the effective worker count "
+            f"({effective})"
+        )
+    effective_max_in_flight = (
+        min(
+            len(missing),
+            int(max_in_flight) if max_in_flight is not None else 2 * effective,
+        )
+        if missing and workers > 1
+        else 0
+    )
+    peak_in_flight_futures = 0
     if missing and workers > 1:
         _require_single_thread_backends()
     if missing and workers == 1:
@@ -1407,29 +1572,59 @@ def _execute_level_a_task_plan(
                 raise RuntimeError(f"Level A task failed: {task['task_id']}") from exc
             if returned != task["task_id"]:
                 raise RuntimeError(
-                    f"Level A worker returned wrong task identity: {returned}"
+                    "Level A worker returned wrong task identity for "
+                    f"{task['task_id']}: {returned}"
                 )
     elif missing:
         context = multiprocessing.get_context("spawn")
-        with ProcessPoolExecutor(max_workers=effective, mp_context=context) as pool:
-            futures = {
-                pool.submit(_run_level_a_task_worker, task, str(tasks_root)): task
-                for task in missing
-            }
-            for future in as_completed(futures):
-                task = futures[future]
+        task_iter = iter(missing)
+        in_flight: dict[Any, Mapping[str, Any]] = {}
+        pool = ProcessPoolExecutor(max_workers=effective, mp_context=context)
+
+        def submit_until_full() -> None:
+            nonlocal peak_in_flight_futures
+            while len(in_flight) < effective_max_in_flight:
                 try:
-                    returned = future.result()
-                except Exception as exc:
-                    for pending in futures:
-                        pending.cancel()
-                    raise RuntimeError(
-                        f"Level A task failed: {task['task_id']}"
-                    ) from exc
-                if returned != task["task_id"]:
-                    raise RuntimeError(
-                        f"Level A worker returned wrong task identity: {returned}"
-                    )
+                    task = next(task_iter)
+                except StopIteration:
+                    break
+                future = pool.submit(
+                    _run_level_a_task_worker, task, str(tasks_root)
+                )
+                in_flight[future] = task
+            peak_in_flight_futures = max(
+                peak_in_flight_futures, len(in_flight)
+            )
+
+        try:
+            submit_until_full()
+            while in_flight:
+                completed, _ = wait(
+                    tuple(in_flight), return_when=FIRST_COMPLETED
+                )
+                completed_tasks = sorted(
+                    ((in_flight.pop(future), future) for future in completed),
+                    key=lambda pair: int(pair[0]["ordinal"]),
+                )
+                for task, future in completed_tasks:
+                    try:
+                        returned = future.result()
+                    except Exception as exc:
+                        for pending in in_flight:
+                            pending.cancel()
+                        raise RuntimeError(
+                            f"Level A task failed: {task['task_id']}"
+                        ) from exc
+                    if returned != task["task_id"]:
+                        for pending in in_flight:
+                            pending.cancel()
+                        raise RuntimeError(
+                            "Level A worker returned wrong task identity for "
+                            f"{task['task_id']}: {returned}"
+                        )
+                submit_until_full()
+        finally:
+            pool.shutdown(wait=True, cancel_futures=True)
     loaded, remaining = _scan_task_artifacts(tasks, tasks_root)
     if remaining:
         raise RuntimeError(
@@ -1451,6 +1646,9 @@ def _execute_level_a_task_plan(
     provenance = _operational_provenance(
         requested_workers=int(workers),
         effective_workers=effective,
+        requested_max_in_flight=max_in_flight,
+        effective_max_in_flight=effective_max_in_flight,
+        peak_in_flight_futures=peak_in_flight_futures,
         process_start_method=("spawn" if missing and workers > 1 else "serial"),
     )
     provenance["task_worker_history"] = worker_history
@@ -1471,7 +1669,10 @@ def _trajectory_eta(
     bathymetry: np.ndarray | None = None,
     eta0: np.ndarray | None = None,
     h0: np.ndarray | None = None,
+    hu0: np.ndarray | None = None,
+    hv0: np.ndarray | None = None,
     eta_t0: np.ndarray | None = None,
+    sponge_axes: str = "xy",
 ) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray], Any]:
     solver = _solver(
         name,
@@ -1483,6 +1684,7 @@ def _trajectory_eta(
         sponge_mode=sponge_mode,
         filter_mode=filter_mode,
         filter_strength=filter_strength,
+        sponge_axes=sponge_axes,
     )
     bathy = (
         -np.ones((nx, ny), dtype=float)
@@ -1511,7 +1713,17 @@ def _trajectory_eta(
             else np.asarray(h0, dtype=float)
         )
         solver.set_initial_condition(
-            initial_h, hu0=np.zeros_like(initial_h), hv0=np.zeros_like(initial_h)
+            initial_h,
+            hu0=(
+                np.zeros_like(initial_h)
+                if hu0 is None
+                else np.asarray(hu0, dtype=float)
+            ),
+            hv0=(
+                np.zeros_like(initial_h)
+                if hv0 is None
+                else np.asarray(hv0, dtype=float)
+            ),
         )
     states, _, dt_history, diagnostics = _simulate_one_local(
         solver,
@@ -1528,19 +1740,353 @@ def _trajectory_eta(
     return eta, dt_history, diagnostics, solver
 
 
+def _stable_sum(values: np.ndarray) -> float:
+    return float(math.fsum(np.asarray(values, dtype=np.float64).ravel()))
+
+
+def _stable_l2_norm(values: np.ndarray) -> float:
+    flat = np.asarray(values, dtype=np.float64).ravel()
+    return float(math.sqrt(math.fsum(float(value) * float(value) for value in flat)))
+
+
+def _stable_mean(values: np.ndarray) -> float:
+    flat = np.asarray(values, dtype=np.float64).ravel()
+    if flat.size == 0:
+        raise ValueError("stable mean requires at least one value")
+    return _stable_sum(flat) / flat.size
+
+
 def _relative_l2(a: np.ndarray, b: np.ndarray) -> float:
     aa = np.asarray(a, dtype=float)
     bb = np.asarray(b, dtype=float)
-    return float(np.linalg.norm(aa - bb) / max(np.linalg.norm(bb), 1e-30))
+    return float(_stable_l2_norm(aa - bb) / max(_stable_l2_norm(bb), 1e-30))
 
 
 def _packet(
-    nx: int, ny: int, *, center: float = 0.25, sigma: float = 0.04
+    nx: int,
+    ny: int,
+    *,
+    center: float = 0.25,
+    sigma: float = 0.04,
+    zero_mean: bool = True,
 ) -> np.ndarray:
     x = np.arange(nx, dtype=float)[:, None] / nx
     eta = np.exp(-0.5 * ((x - center) / sigma) ** 2)
-    eta -= float(np.mean(eta))
+    if zero_mean:
+        eta -= float(np.mean(eta))
     return 1.0e-5 * eta * np.ones((1, ny), dtype=float)
+
+
+def _window_mask(nx: int, window: Sequence[float]) -> np.ndarray:
+    if len(window) != 2:
+        raise ValueError("boundary window must contain exactly two values")
+    lower, upper = (float(value) for value in window)
+    if not (0.0 <= lower < upper <= 1.0):
+        raise ValueError("boundary window must satisfy 0 <= lower < upper <= 1")
+    x = np.arange(nx, dtype=np.float64) / nx
+    mask = (x >= lower) & (x <= upper)
+    if not np.any(mask):
+        raise ValueError("boundary window selects no grid cells")
+    return mask
+
+
+def _x_sponge_region(nx: int, width: int) -> np.ndarray:
+    effective = min(max(0, int(width)), max(1, nx // 2))
+    mask = np.zeros(nx, dtype=bool)
+    if effective:
+        mask[:effective] = True
+        mask[-effective:] = True
+    return mask
+
+
+def _validate_boundary_packet_spec(
+    spec: Mapping[str, Any], *, nx: int, sponge_width: int
+) -> None:
+    center = float(spec["center_x"])
+    sigma = float(spec["sigma"])
+    if not (0.0 < center < 1.0) or sigma <= 0.0:
+        raise ValueError("boundary packet center and sigma must be positive and in-domain")
+    incident = _window_mask(nx, spec["incident_window"])
+    reflected = _window_mask(nx, spec["reflected_window"])
+    interior = _window_mask(nx, spec["interior_window"])
+    if np.any(incident & reflected):
+        raise ValueError("incident and reflected windows must not overlap")
+    if np.any(interior & _x_sponge_region(nx, sponge_width)):
+        raise ValueError("boundary interior window overlaps the x-only sponge")
+    packet = _packet(nx, 1, center=center, sigma=sigma, zero_mean=False)[:, 0]
+    initial_amp = max(float(np.max(np.abs(packet))), 1e-30)
+    initial_reflected_ratio = float(np.max(np.abs(packet[reflected]))) / initial_amp
+    if initial_reflected_ratio > float(spec["maximum_initial_reflected_ratio"]):
+        raise ValueError("initial packet is not outside the reflected window")
+    incident_energy_fraction = float(np.sum(packet[incident] ** 2)) / max(
+        float(np.sum(packet**2)), 1e-30
+    )
+    if incident_energy_fraction < float(spec["minimum_initial_incident_energy_fraction"]):
+        raise ValueError("incident window does not contain enough initial packet energy")
+    arrival = float(spec["expected_boundary_arrival_time"])
+    evaluation = float(spec["evaluation_time"])
+    times = candidate_requested_times()
+    if arrival <= 0.0 or evaluation <= arrival:
+        raise ValueError("boundary evaluation must occur after expected arrival")
+    if not np.any(np.isclose(times, evaluation, rtol=0.0, atol=1e-15)):
+        raise ValueError("boundary evaluation_time must be a requested timestamp")
+
+
+def _boundary_initial_conditions(
+    solver_name: str, *, nx: int, ny: int, spec: Mapping[str, Any]
+) -> dict[str, np.ndarray | float]:
+    eta0 = _packet(
+        nx,
+        ny,
+        center=float(spec["center_x"]),
+        sigma=float(spec["sigma"]),
+        zero_mean=False,
+    )
+    direction = str(spec.get("direction", "left"))
+    if direction not in ("left", "right"):
+        raise ValueError("boundary packet direction must be left or right")
+    sign = -1.0 if direction == "left" else 1.0
+    if solver_name == "boussinesq":
+        dominant_wavenumber = 1.0 / float(spec["sigma"])
+        phase_speed = math.sqrt(9.81) / math.sqrt(
+            1.0 + dominant_wavenumber * dominant_wavenumber / 3.0
+        )
+        derivative = np.gradient(eta0, 1.0 / nx, axis=0, edge_order=2)
+        eta_t0 = -sign * phase_speed * derivative
+        return {
+            "eta0": eta0,
+            "eta_t0": eta_t0,
+            "characteristic_speed": phase_speed,
+        }
+    phase_speed = math.sqrt(9.81)
+    return {
+        "eta0": eta0,
+        "h0": 1.0 + eta0,
+        "hu0": sign * phase_speed * eta0,
+        "characteristic_speed": phase_speed,
+    }
+
+
+def _operator_discrepancy_metrics(
+    production: np.ndarray,
+    half_cfl: np.ndarray,
+    *,
+    sponge_region: np.ndarray,
+    interior_region: np.ndarray,
+) -> dict[str, float]:
+    first = np.asarray(production)
+    second = np.asarray(half_cfl)
+    if first.shape != second.shape or first.ndim != 3:
+        raise ValueError("operator trajectories must have equal [time, x, y] shape")
+    if sponge_region.shape != (first.shape[1],) or interior_region.shape != (
+        first.shape[1],
+    ):
+        raise ValueError("operator region masks do not match the x dimension")
+    if not np.any(sponge_region) or not np.any(interior_region):
+        raise ValueError("operator regions must both be non-empty")
+    return {
+        "trajectory_relative_l2": _relative_l2(first, second),
+        "final_time_relative_l2": _relative_l2(first[-1], second[-1]),
+        "sponge_trajectory_relative_l2": _relative_l2(
+            first[:, sponge_region, :], second[:, sponge_region, :]
+        ),
+        "sponge_final_time_relative_l2": _relative_l2(
+            first[-1, sponge_region, :], second[-1, sponge_region, :]
+        ),
+        "interior_trajectory_relative_l2": _relative_l2(
+            first[:, interior_region, :], second[:, interior_region, :]
+        ),
+        "interior_final_time_relative_l2": _relative_l2(
+            first[-1, interior_region, :], second[-1, interior_region, :]
+        ),
+    }
+
+
+def _boundary_metrics(
+    *,
+    baseline: np.ndarray,
+    damped: np.ndarray,
+    initial_packet: np.ndarray,
+    spec: Mapping[str, Any],
+) -> dict[str, Any]:
+    if baseline.shape != damped.shape or baseline.ndim != 3:
+        raise ValueError("boundary trajectories must have equal [time, x, y] shape")
+    nx = int(baseline.shape[1])
+    incident = _window_mask(nx, spec["incident_window"])
+    reflected = _window_mask(nx, spec["reflected_window"])
+    interior = _window_mask(nx, spec["interior_window"])
+    times = candidate_requested_times()
+    evaluation_matches = np.flatnonzero(
+        np.isclose(times, float(spec["evaluation_time"]), rtol=0.0, atol=1e-15)
+    )
+    if evaluation_matches.size != 1:
+        raise ValueError("boundary evaluation time is not unique")
+    evaluation_index = int(evaluation_matches[0])
+    arrival_index = int(
+        np.searchsorted(
+            times, float(spec["expected_boundary_arrival_time"]), side="left"
+        )
+    )
+    if arrival_index > evaluation_index:
+        raise ValueError("boundary evaluation precedes expected arrival")
+    incident_amplitude = max(
+        float(np.max(np.abs(initial_packet[incident]))), 1e-30
+    )
+    incident_energy = max(
+        float(np.sum(initial_packet[incident] ** 2)), 1e-30
+    )
+    baseline_post_arrival = baseline[arrival_index : evaluation_index + 1, reflected]
+    arrival_energy_ratio = float(np.max(np.sum(baseline_post_arrival**2, axis=(1, 2)))) / (
+        incident_energy
+    )
+    reflected_frame = damped[evaluation_index, reflected]
+    return {
+        "evaluation_time": float(times[evaluation_index]),
+        "expected_boundary_arrival_time": float(
+            spec["expected_boundary_arrival_time"]
+        ),
+        "arrival_energy_ratio": arrival_energy_ratio,
+        "arrival_observed": arrival_energy_ratio
+        >= float(spec["minimum_arrival_energy_ratio"]),
+        "incident_amplitude": incident_amplitude,
+        "incident_energy": incident_energy,
+        "reflected_amplitude_ratio": float(np.max(np.abs(reflected_frame)))
+        / incident_amplitude,
+        "reflected_energy_ratio": float(np.sum(reflected_frame**2))
+        / incident_energy,
+        "interior_relative_l2": _relative_l2(
+            damped[evaluation_index, interior], baseline[evaluation_index, interior]
+        ),
+    }
+
+
+def _summation_roundoff_floor(
+    values: np.ndarray, *, safety_factor: float
+) -> float:
+    flat = np.asarray(values, dtype=np.float64).ravel()
+    n = max(1, int(flat.size))
+    eps = np.finfo(np.float64).eps
+    gamma = (n * eps) / max(1.0 - n * eps, eps)
+    return float(safety_factor * gamma * math.fsum(abs(float(v)) for v in flat))
+
+
+def _invariant_metrics(
+    values: Sequence[float],
+    *,
+    normalization_scale: float,
+    roundoff_floor_absolute: float,
+) -> dict[str, float]:
+    observed = np.asarray(values, dtype=np.float64)
+    if observed.ndim != 1 or observed.size < 2 or not np.isfinite(observed).all():
+        raise ValueError("invariant history must contain at least two finite values")
+    initial = float(observed[0])
+    final = float(observed[-1])
+    absolute_drift = abs(final - initial)
+    max_absolute_drift = float(np.max(np.abs(observed - initial)))
+    scale = max(abs(float(normalization_scale)), 1e-30)
+    return {
+        "initial_value": initial,
+        "final_value": final,
+        "absolute_drift": absolute_drift,
+        "max_absolute_drift": max_absolute_drift,
+        "normalization_scale": scale,
+        "normalized_drift": max_absolute_drift / scale,
+        "roundoff_floor_absolute": float(roundoff_floor_absolute),
+        "roundoff_floor_normalized": float(roundoff_floor_absolute) / scale,
+    }
+
+
+def _run_float64_conservation(
+    solver_name: str,
+    *,
+    nx: int,
+    ny: int,
+    cfl: float,
+    boundary: str,
+    safety_factor: float,
+) -> dict[str, Any]:
+    eta0 = _packet(nx, ny, center=0.5, sigma=0.06)
+    solver = _solver(
+        solver_name,
+        nx=nx,
+        ny=ny,
+        cfl=cfl,
+        boundary=boundary,
+        use_sponge=False,
+    )
+    bathymetry = -np.ones((nx, ny), dtype=np.float64)
+    solver.set_bathymetry(bathymetry)
+    if solver_name == "boussinesq":
+        solver.set_initial_condition(eta0, eta_t0=np.zeros_like(eta0))
+        invariant_name = "free_surface_integral"
+        invariant_array = np.asarray(solver.eta, dtype=np.float64)
+        normalization_scale = math.fsum(
+            abs(float(value)) for value in invariant_array.ravel()
+        )
+
+        def invariant() -> float:
+            return _stable_sum(solver.eta)
+
+    else:
+        solver.set_initial_condition(
+            1.0 + eta0,
+            hu0=np.zeros_like(eta0),
+            hv0=np.zeros_like(eta0),
+        )
+        invariant_name = "total_water_depth"
+        invariant_array = np.asarray(solver.h, dtype=np.float64)
+        normalization_scale = abs(_stable_sum(invariant_array))
+
+        def invariant() -> float:
+            return _stable_sum(solver.h)
+
+    if invariant_array.dtype != np.float64:
+        raise RuntimeError("Level A conservation must observe float64 solver state")
+    roundoff_floor = _summation_roundoff_floor(
+        invariant_array, safety_factor=safety_factor
+    )
+    history = [invariant()]
+    horizon = float(candidate_requested_times()[-1])
+    current_time = 0.0
+    natural_steps = 0
+    cg_failures = 0
+    while current_time < horizon:
+        proposed = float(solver.suggest_dt(target_cfl=cfl))
+        dt = min(proposed, horizon - current_time)
+        if not np.isfinite(dt) or dt <= 0.0:
+            raise RuntimeError("invalid natural conservation timestep")
+        solver.dt = dt
+        solver.step(dt=dt, auto_dt=False)
+        current_time += dt
+        natural_steps += 1
+        if natural_steps > 20000:
+            raise RuntimeError("natural conservation rollout exceeded step cap")
+        cg_failures += int(getattr(solver, "last_step_cg_failed_count", 0))
+        state = np.asarray(solver.get_state())
+        if state.dtype != np.float64 or not np.isfinite(state).all():
+            raise RuntimeError("conservation state lost float64 finite semantics")
+        history.append(invariant())
+    metrics = _invariant_metrics(
+        history,
+        normalization_scale=normalization_scale,
+        roundoff_floor_absolute=roundoff_floor,
+    )
+    return {
+        "component": "conservation_health",
+        "solver": solver_name,
+        "boundary": boundary,
+        "invariant_name": invariant_name,
+        **metrics,
+        "measurement_dtype": "float64",
+        "measurement_grid": "internal_natural_states",
+        "precision_floor_method": "float64_gamma_n_l1",
+        "precision_floor_safety_factor": float(safety_factor),
+        "natural_steps": natural_steps,
+        "final_time": current_time,
+        "cg_failure_count": cg_failures,
+        "finite": True,
+        "operator": solver.get_operator_diagnostics(),
+    }
 
 
 def _high_frequency_fraction(trajectory: np.ndarray) -> float:
@@ -1967,7 +2513,10 @@ def _bootstrap_canary_aggregates(
         for metric in ("amplitude_growth", "max_eta_over_depth", "runtime_s"):
             values = np.asarray([row[metric] for row in ordered], dtype=np.float64)
             draws = rng.integers(0, values.size, size=(resamples, values.size))
-            means = np.mean(values[draws], axis=1)
+            means = np.asarray(
+                [_stable_mean(values[indices]) for indices in draws],
+                dtype=np.float64,
+            )
             summaries.append(
                 {
                     "component": "canary_bootstrap_descriptive",
@@ -1976,7 +2525,7 @@ def _bootstrap_canary_aggregates(
                     "scenario_count": int(values.size),
                     "resamples": int(resamples),
                     "seed": int(seed),
-                    "mean": float(np.mean(values)),
+                    "mean": _stable_mean(values),
                     "mean_ci95_low": float(np.quantile(means, 0.025)),
                     "mean_ci95_high": float(np.quantile(means, 0.975)),
                     "decision_role": "descriptive_only",
@@ -2189,6 +2738,9 @@ def _aggregate_level_a_tasks(
     operator_threshold = float(
         thresholds["operator"]["elapsed_candidate_cfl_relative_l2"]
     )
+    operator_nx = 64
+    operator_sponge = _x_sponge_region(operator_nx, max(1, operator_nx // 8))
+    operator_interior = ~operator_sponge
     for name in SOLVERS:
         selected = [
             payload
@@ -2207,13 +2759,22 @@ def _aggregate_level_a_tasks(
         production, half = [
             float(value) for value in config["production"]["cfl"][name][:2]
         ]
-        legacy_diff = _relative_l2(
+        legacy_metrics = _operator_discrepancy_metrics(
             by_variant["legacy_per_step"][production],
             by_variant["legacy_per_step"][half],
+            sponge_region=operator_sponge,
+            interior_region=operator_interior,
         )
-        elapsed_diff = _relative_l2(
+        elapsed_metrics = _operator_discrepancy_metrics(
             by_variant["elapsed_no_filter"][production],
             by_variant["elapsed_no_filter"][half],
+            sponge_region=operator_sponge,
+            interior_region=operator_interior,
+        )
+        legacy_diff = legacy_metrics["trajectory_relative_l2"]
+        elapsed_diff = elapsed_metrics["trajectory_relative_l2"]
+        whole_domain_sponge = any(
+            bool(row.get("whole_domain_sponge", True)) for row in solver_rows
         )
         rows.append(
             {
@@ -2221,16 +2782,31 @@ def _aggregate_level_a_tasks(
                 "solver": name,
                 "legacy_cfl_relative_l2": legacy_diff,
                 "elapsed_no_filter_cfl_relative_l2": elapsed_diff,
+                "legacy_metrics": legacy_metrics,
+                "elapsed_no_filter_metrics": elapsed_metrics,
+                "sponge_axes": "x",
+                "whole_domain_sponge": whole_domain_sponge,
             }
         )
         gates.append(
             {
                 "gate": f"elapsed_operator_consistency_{name}",
                 "category": "blocked_operator_semantics",
-                "passed": elapsed_diff <= operator_threshold
+                "passed": not whole_domain_sponge
+                and elapsed_diff <= operator_threshold
                 and elapsed_diff <= legacy_diff,
                 "legacy_relative_l2": legacy_diff,
                 "elapsed_relative_l2": elapsed_diff,
+                "elapsed_final_time_relative_l2": elapsed_metrics[
+                    "final_time_relative_l2"
+                ],
+                "elapsed_sponge_relative_l2": elapsed_metrics[
+                    "sponge_trajectory_relative_l2"
+                ],
+                "elapsed_interior_relative_l2": elapsed_metrics[
+                    "interior_trajectory_relative_l2"
+                ],
+                "whole_domain_sponge": whole_domain_sponge,
             }
         )
         if name == "boussinesq":
@@ -2332,21 +2908,21 @@ def _aggregate_level_a_tasks(
     boundary_payloads = [
         payload for payload in task_results if payload["task"]["kind"] == "boundary"
     ]
-    packet_spec = config["boundary_packet"]
-    x = np.arange(128, dtype=float) / 128
-    reflected = (x >= float(packet_spec["reflected_window"][0])) & (
-        x <= float(packet_spec["reflected_window"][1])
-    )
-    interior = (x >= float(packet_spec["interior_window"][0])) & (
-        x <= float(packet_spec["interior_window"][1])
-    )
-    initial_packet = _packet(
-        128,
-        4,
-        center=float(packet_spec["center_x"]),
-        sigma=float(packet_spec["sigma"]),
-    )
+    boundary_config = config["boundary_packet"]
+    boundary_nx = int(boundary_config["grid"])
+    boundary_ny = int(boundary_config["transverse_cells"])
     for name in SOLVERS:
+        packet_spec = boundary_config["solvers"][name]
+        _validate_boundary_packet_spec(
+            packet_spec,
+            nx=boundary_nx,
+            sponge_width=max(1, boundary_nx // 8),
+        )
+        initial_packet = np.asarray(
+            _boundary_initial_conditions(
+                name, nx=boundary_nx, ny=boundary_ny, spec=packet_spec
+            )["eta0"]
+        )
         selected = [
             payload
             for payload in boundary_payloads
@@ -2360,19 +2936,27 @@ def _aggregate_level_a_tasks(
             raise RuntimeError(f"Incomplete boundary tasks for {name}")
         baseline = trajectories["baseline"]
         damped = trajectories["damped"]
-        initial_amp = max(float(np.max(np.abs(initial_packet))), 1e-30)
-        reflected_amp = float(np.max(np.abs(damped[-1, reflected]))) / initial_amp
-        reflected_energy = float(np.sum(damped[-1, reflected] ** 2)) / max(
-            float(np.sum(initial_packet**2)), 1e-30
+        metrics = _boundary_metrics(
+            baseline=baseline,
+            damped=damped,
+            initial_packet=initial_packet,
+            spec=packet_spec,
         )
-        interior_l2 = _relative_l2(damped[-1, interior], baseline[-1, interior])
+        whole_domain_sponge = any(
+            bool(payload["row"].get("whole_domain_sponge", True))
+            for payload in selected
+            if payload["task"]["spec"]["use_sponge"]
+        )
         boundary_row = {
             "component": "boundary_sponge",
             "solver": name,
             "boundary_implementation": "zero_gradient_edge_padding",
-            "reflected_amplitude_ratio": reflected_amp,
-            "reflected_energy_ratio": reflected_energy,
-            "interior_relative_l2": interior_l2,
+            **metrics,
+            "incident_window": _json_safe(packet_spec["incident_window"]),
+            "reflected_window": _json_safe(packet_spec["reflected_window"]),
+            "interior_window": _json_safe(packet_spec["interior_window"]),
+            "sponge_axes": "x",
+            "whole_domain_sponge": whole_domain_sponge,
             "finite": all(bool(payload["row"]["finite"]) for payload in selected),
             "cg_failure_count": sum(
                 int(payload["row"]["cg_failure_count"]) for payload in selected
@@ -2412,11 +2996,17 @@ def _aggregate_level_a_tasks(
                 "category": "blocked_boundary_behavior",
                 "passed": boundary_row["finite"]
                 and boundary_row["cg_failure_count"] == 0
-                and reflected_amp
+                and not whole_domain_sponge
+                and bool(metrics["arrival_observed"])
+                and metrics["reflected_amplitude_ratio"]
                 <= float(boundary_thresholds["reflected_amplitude_ratio"])
-                and reflected_energy
+                and metrics["reflected_energy_ratio"]
                 <= float(boundary_thresholds["reflected_energy_ratio"])
-                and interior_l2 <= float(boundary_thresholds["interior_relative_l2"]),
+                and metrics["interior_relative_l2"]
+                <= float(boundary_thresholds["interior_relative_l2"]),
+                "arrival_observed": bool(metrics["arrival_observed"]),
+                "arrival_energy_ratio": float(metrics["arrival_energy_ratio"]),
+                "whole_domain_sponge": whole_domain_sponge,
             }
         )
 
@@ -2427,20 +3017,22 @@ def _aggregate_level_a_tasks(
     for payload in conservation_payloads:
         row = dict(payload["row"])
         rows.append(row)
-        mass_drift = row["mass_relative_drift"]
+        allowed_drift = max(
+            float(conservation_thresholds["normalized_drift"]),
+            float(row["roundoff_floor_normalized"]),
+        )
         gates.append(
             {
                 "gate": f"conservation_{row['boundary']}_{row['solver']}",
                 "category": "blocked_convergence",
                 "passed": row["finite"]
                 and row["cg_failure_count"] == 0
-                and row["mean_integral_relative_drift"]
-                <= float(conservation_thresholds["mean_integral_relative_drift"])
-                and (
-                    mass_drift is None
-                    or mass_drift
-                    <= float(conservation_thresholds["mass_relative_drift"])
-                ),
+                and row["measurement_dtype"] == "float64"
+                and row["measurement_grid"] == "internal_natural_states"
+                and row["normalized_drift"] <= allowed_drift,
+                "normalized_drift": row["normalized_drift"],
+                "allowed_normalized_drift": allowed_drift,
+                "roundoff_floor_normalized": row["roundoff_floor_normalized"],
             }
         )
 
@@ -2672,13 +3264,11 @@ def _validate_completed_execution(
         raise RuntimeError("Completed Level A execution contract mismatch")
     if int(summary.get("rows", -1)) != len(public_rows):
         raise RuntimeError("Completed Level A row count mismatch")
-    if _scientific_normalize(public_rows) != _scientific_normalize(derived_rows):
+    if not _recomputed_rows_equal(public_rows, derived_rows):
         raise RuntimeError("Completed Level A rows contradict task evidence")
-    if _scientific_normalize(aggregate.get("gates")) != _scientific_normalize(
-        derived_gates
-    ):
+    if not _derived_replay_equal(aggregate.get("gates"), derived_gates):
         raise RuntimeError("Completed Level A gates contradict task evidence")
-    if _scientific_normalize(decision) != _scientific_normalize(derived_decision):
+    if not _derived_replay_equal(decision, derived_decision):
         raise RuntimeError("Completed Level A decision contradicts task evidence")
     digest_decision = dict(decision)
     recorded_digest = digest_decision.pop("scientific_digest", None)
@@ -2729,10 +3319,13 @@ def execute_level_a(
     repo_root: Path,
     contract_root: Path,
     workers: int = 1,
+    max_in_flight: int | None = None,
     resume: bool = False,
 ) -> Path:
     if workers <= 0:
         raise ValueError("workers must be positive")
+    if max_in_flight is not None and max_in_flight <= 0:
+        raise ValueError("max_in_flight must be positive")
     started = time.monotonic()
     repo_root = repo_root.resolve()
     contract_root = contract_root.resolve()
@@ -2756,6 +3349,15 @@ def execute_level_a(
         or contract_root.name != expected_contract_hash
     ):
         raise RuntimeError("Level A content-addressed contract hash mismatch")
+    worker_policy = contract.get("worker_policy", {})
+    if workers != int(worker_policy.get("requested_workers", -1)):
+        raise RuntimeError("Level A worker count differs from the frozen policy")
+    if max_in_flight != worker_policy.get("requested_max_in_flight"):
+        raise RuntimeError("Level A in-flight limit differs from the frozen policy")
+    if worker_policy.get("process_start_method") != "spawn":
+        raise RuntimeError("Level A process start method is not frozen as spawn")
+    if _execution_environment_snapshot() != contract.get("execution_environment"):
+        raise RuntimeError("Level A execution environment differs from preregistration")
     current_code = code_state(repo_root)
     config = contract["source_config"]
     tasks = _build_level_a_task_plan(
@@ -2764,6 +3366,19 @@ def execute_level_a(
         contract_hash=str(contract["contract_hash"]),
         code_state_hash=str(contract["code_state"]["code_state_hash"]),
     )
+    task_blueprint = [
+        {
+            "ordinal": task["ordinal"],
+            "task_id": task["task_id"],
+            "kind": task["kind"],
+            "spec": task["spec"],
+        }
+        for task in tasks
+    ]
+    if task_blueprint != contract.get("task_blueprint"):
+        raise RuntimeError("Level A task blueprint differs from preregistration")
+    if tasks != _read_json(contract_root / "task_plan.json"):
+        raise RuntimeError("Level A realized task plan differs from preregistration")
     execution = contract_root / "execution"
     if execution.exists():
         if not resume:
@@ -2830,6 +3445,7 @@ def execute_level_a(
                 tasks,
                 tasks_root=tasks_root,
                 workers=workers,
+                max_in_flight=max_in_flight,
                 resume=resume,
             )
             public_rows, gates, decision = _aggregate_level_a_tasks(

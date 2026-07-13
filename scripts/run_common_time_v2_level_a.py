@@ -41,10 +41,13 @@ def main() -> None:
     )
     parser.add_argument("--contract-root", type=Path, required=True)
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--max-in-flight", type=int)
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
     if args.workers <= 0:
         parser.error("--workers must be positive")
+    if args.max_in_flight is not None and args.max_in_flight <= 0:
+        parser.error("--max-in-flight must be positive")
     _configure_worker_threads(args.workers)
 
     sys.path.insert(0, str(ROOT))
@@ -54,6 +57,7 @@ def main() -> None:
         repo_root=ROOT,
         contract_root=args.contract_root,
         workers=args.workers,
+        max_in_flight=args.max_in_flight,
         resume=args.resume,
     )
     print(path)

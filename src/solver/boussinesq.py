@@ -88,6 +88,7 @@ class BoussinesqSolver:
         filter_time_mode: str = "legacy_per_step",
         filter_reference_dt: float | None = None,
         cg_failure_mode: str = "legacy_posthoc",
+        sponge_axes: str = "xy",
     ) -> None:
         if nx <= 1 or ny <= 1:
             raise ValueError("nx and ny must be greater than 1")
@@ -109,6 +110,8 @@ class BoussinesqSolver:
             raise ValueError("sponge_width must be non-negative")
         if not (0.0 < sponge_min_factor <= 1.0):
             raise ValueError("sponge_min_factor must be in (0, 1]")
+        if sponge_axes not in ("xy", "x"):
+            raise ValueError("sponge_axes must be 'xy' or 'x'")
         if filter_strength < 0:
             raise ValueError("filter_strength must be non-negative")
         if linear_solver_tol <= 0:
@@ -161,6 +164,7 @@ class BoussinesqSolver:
             self.use_sponge = bool(use_sponge)
         self.sponge_width = int(sponge_width)
         self.sponge_min_factor = float(sponge_min_factor)
+        self.sponge_axes = str(sponge_axes)
         self.sponge_mask = np.ones((self.nx, self.ny), dtype=float)
         self.last_cg_iterations = 0
         self.last_cg_initial_residual = 0.0
@@ -391,7 +395,11 @@ class BoussinesqSolver:
         if width == 0:
             return
 
-        max_width = max(1, min(self.nx, self.ny) // 2)
+        max_width = (
+            max(1, min(self.nx, self.ny) // 2)
+            if self.sponge_axes == "xy"
+            else max(1, self.nx // 2)
+        )
         width = min(width, max_width)
 
         for d in range(width):
@@ -400,8 +408,9 @@ class BoussinesqSolver:
 
             self.sponge_mask[d, :] = np.minimum(self.sponge_mask[d, :], val)
             self.sponge_mask[-(d + 1), :] = np.minimum(self.sponge_mask[-(d + 1), :], val)
-            self.sponge_mask[:, d] = np.minimum(self.sponge_mask[:, d], val)
-            self.sponge_mask[:, -(d + 1)] = np.minimum(self.sponge_mask[:, -(d + 1)], val)
+            if self.sponge_axes == "xy":
+                self.sponge_mask[:, d] = np.minimum(self.sponge_mask[:, d], val)
+                self.sponge_mask[:, -(d + 1)] = np.minimum(self.sponge_mask[:, -(d + 1)], val)
 
     def reset_operator_diagnostics(self) -> None:
         if self.sponge_reference_dt is None:
@@ -418,6 +427,7 @@ class BoussinesqSolver:
         )
         self.operator_diagnostics = {
             "sponge_time_mode": self.sponge_time_mode,
+            "sponge_axes": self.sponge_axes,
             "sponge_reference_dt": self.sponge_reference_dt,
             "sponge_reference_decay_rate_min": reference_rate_min,
             "sponge_reference_decay_rate_max": reference_rate_max,
@@ -795,6 +805,7 @@ def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
         use_sponge=bool(use_sponge) if use_sponge is not None else None,
         sponge_width=int(kwargs.get("sponge_width", 20)),
         sponge_min_factor=float(kwargs.get("sponge_min_factor", 0.9)),
+        sponge_axes=str(kwargs.get("sponge_axes", "xy")),
         filter_strength=float(kwargs.get("filter_strength", 0.0)),
         linear_solver_tol=float(kwargs.get("linear_solver_tol", 1e-8)),
         linear_solver_max_iter=int(kwargs.get("linear_solver_max_iter", 80)),
