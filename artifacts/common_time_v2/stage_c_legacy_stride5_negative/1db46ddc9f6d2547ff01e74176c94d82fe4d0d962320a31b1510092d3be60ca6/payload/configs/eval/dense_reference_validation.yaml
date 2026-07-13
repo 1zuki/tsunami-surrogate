@@ -1,0 +1,45 @@
+defaults:
+  - common_time_alignment.yaml
+
+schema_id: tsunami-surrogate.alignment.v1
+
+dense_reference_validation:
+  audit_artifact: results/common_time_validation/audit/paired_reference_audit.json
+  scenario_selection_path: configs/eval/common_time_validation_scenarios.json
+  results_root: results/common_time_validation/dense_reference_validation
+
+  expected_natural_steps: 250
+  legacy_knot_stride: 5
+  replay_control:
+    n_steps: 250
+    save_every: 5
+    auto_dt: true
+    target_cfl: 0.45
+    include_initial_state: true
+
+  common_time_grid:
+    endpoint_tolerance: 1.0e-6
+
+  tolerances:
+    timestamp_abs: 5.0e-8
+    eta_max_abs: 1.0e-6
+    reproduction_relative_rmse: 1.0e-6
+    interpolation_horizon: 0.08
+
+  criteria:
+    aggregate_ratio_max: 0.10
+    scenario_ratio_median_max: 0.10
+    scenario_ratio_p95_max: 0.25
+    family_cell_median_max: 0.10
+    family_cell_fraction_above_p95_max: 0.5
+    interp_to_rms_aggregate_max: 0.01
+    interp_to_rms_median_max: 0.01
+    interp_to_rms_p95_max: 0.025
+
+  bootstrap:
+    seed: 20260712
+    num_resamples: 10000
+    confidence_level: 0.95
+
+  processed_test_roots: {}
+  raw_test_solver_roots: {}

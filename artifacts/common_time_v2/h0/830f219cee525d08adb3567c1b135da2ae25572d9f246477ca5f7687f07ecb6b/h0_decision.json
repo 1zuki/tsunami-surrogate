@@ -1,0 +1,11 @@
+{
+  "artifact_kind": "common-time-v2-h0-decision",
+  "audit_completed": true,
+  "audit_passed": true,
+  "blocking_issue_count": 0,
+  "boussinesq_long_horizon_status": "unproven",
+  "candidate_horizon": 0.175,
+  "candidate_horizon_precommitted": true,
+  "schema_id": "tsunami-surrogate.common-time-v2.h0.v1",
+  "three_reference_contract_accepted": false
+}

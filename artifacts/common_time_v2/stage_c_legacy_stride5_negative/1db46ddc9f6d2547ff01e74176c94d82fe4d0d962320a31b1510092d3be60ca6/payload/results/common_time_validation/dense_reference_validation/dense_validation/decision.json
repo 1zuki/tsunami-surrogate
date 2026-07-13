@@ -1,0 +1,58 @@
+{
+  "schema_id": "tsunami-surrogate.alignment.v1",
+  "artifact_kind": "dense-reference-validation-decision",
+  "suite": {
+    "name": "dense_validation",
+    "label": "dense_reference_validation",
+    "purpose": "dense_reference_validation",
+    "manuscript_claims_allowed": true
+  },
+  "decision_scope": "scientific_interpolation",
+  "status": "fail",
+  "criteria": {
+    "zero_extrapolation": {
+      "observed": 0,
+      "required": 0,
+      "pass": true,
+      "gating": true
+    },
+    "all_legacy_reproduction_pass": {
+      "observed": 0,
+      "required": 0,
+      "pass": true,
+      "gating": true
+    },
+    "aggregate_interp_rmse_over_smallest_aggregate_solver_gap": {
+      "observed": 0.13643331231106923,
+      "threshold_max": 0.1,
+      "pass": false,
+      "gating": true
+    },
+    "scenario_ratio_distribution": {
+      "observed_median": 0.11755733546443095,
+      "observed_p95": 0.35369582630319435,
+      "threshold_median_max": 0.1,
+      "threshold_p95_max": 0.25,
+      "pass": false,
+      "gating": true
+    },
+    "family_cell_ratio_guardrail": {
+      "observed_max_median": 0.35667381431231243,
+      "observed_max_fraction_above_p95_threshold": 1.0,
+      "threshold_median_max": 0.1,
+      "threshold_fraction_above_p95_threshold_max": 0.5,
+      "pass": false,
+      "gating": true
+    },
+    "interp_rmse_over_trajectory_rms": {
+      "observed_aggregate": 0.02097231654653789,
+      "observed_median": 0.020447336924666173,
+      "observed_p95": 0.06641349921754738,
+      "threshold_aggregate_max": 0.01,
+      "threshold_median_max": 0.01,
+      "threshold_p95_max": 0.025,
+      "pass": false,
+      "gating": true
+    }
+  }
+}

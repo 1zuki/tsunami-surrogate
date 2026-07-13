@@ -1,0 +1,12 @@
+payload/configs/eval/common_time_alignment.yaml
+payload/configs/eval/common_time_validation_scenarios.json
+payload/configs/eval/dense_reference_validation.yaml
+payload/results/common_time_validation/audit/paired_reference_audit.json
+payload/results/common_time_validation/dense_reference_validation/dense_validation/decision.json
+payload/results/common_time_validation/dense_reference_validation/dense_validation/scenario_metrics.jsonl
+payload/results/common_time_validation/dense_reference_validation/dense_validation/summary.json
+payload/results/common_time_validation/dense_reference_validation/smoke/decision.json
+payload/results/common_time_validation/dense_reference_validation/smoke/scenario_metrics.jsonl
+payload/results/common_time_validation/dense_reference_validation/smoke/summary.json
+manifest.json
+README.md

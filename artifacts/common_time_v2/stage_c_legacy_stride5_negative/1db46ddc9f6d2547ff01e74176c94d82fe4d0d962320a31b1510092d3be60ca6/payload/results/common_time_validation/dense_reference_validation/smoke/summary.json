@@ -1,0 +1,317 @@
+{
+  "schema_id": "tsunami-surrogate.alignment.v1",
+  "artifact_kind": "dense-reference-validation",
+  "status": "pass",
+  "created_at_utc": "2026-07-11T22:30:11.529395+00:00",
+  "suite": {
+    "name": "smoke",
+    "label": "implementation_only_smoke",
+    "purpose": "implementation_only_smoke",
+    "manuscript_claims_allowed": false,
+    "count": 12
+  },
+  "provenance": {
+    "script": "/home/izu/Projects/tsunami-surrogate/src/evaluation/dense_reference_validation.py",
+    "config_path": "/home/izu/Projects/tsunami-surrogate/configs/eval/dense_reference_validation.yaml",
+    "git_commit": "2badf8e153f419475ce3c49bb238d5ca7f61b77b"
+  },
+  "inputs": {
+    "audit_artifact_path": "/home/izu/Projects/tsunami-surrogate/results/common_time_validation/audit/paired_reference_audit.json",
+    "scenario_selection_path": "/home/izu/Projects/tsunami-surrogate/configs/eval/common_time_validation_scenarios.json",
+    "audit_hash": "57a76514ba66f3bbe0d665418cd4c35873942feb251411e68af51985748bcef4",
+    "selection_audit_hash": "57a76514ba66f3bbe0d665418cd4c35873942feb251411e68af51985748bcef4",
+    "selection_audit_hash_match": true,
+    "scenario_list_hash": "5b8b8f4b2809371158d18086da31577be85d7112fa860594de47fe7ee89ca71a",
+    "processed_test_roots": {
+      "hydrostatic": "/home/izu/Projects/tsunami-surrogate/data/processed/hydrostatic/test",
+      "muscl_hr": "/home/izu/Projects/tsunami-surrogate/data/processed/muscl_hr/test",
+      "boussinesq": "/home/izu/Projects/tsunami-surrogate/data/processed/boussinesq/test"
+    },
+    "raw_test_solver_roots": {
+      "hydrostatic": "/mnt/Windows/Users/Izu/tsunami-surrogate/data/test/raw/hydrostatic/samples",
+      "muscl_hr": "/mnt/Windows/Users/Izu/tsunami-surrogate/data/test/raw/muscl_hr/samples",
+      "boussinesq": "/mnt/Windows/Users/Izu/tsunami-surrogate/data/test/raw/boussinesq/samples"
+    }
+  },
+  "alignment": {
+    "mode": "common-time",
+    "common_time_grid": [
+      0.004,
+      0.008,
+      0.012,
+      0.016,
+      0.02,
+      0.024,
+      0.028,
+      0.032,
+      0.036,
+      0.04,
+      0.044,
+      0.048,
+      0.052,
+      0.056,
+      0.06,
+      0.064,
+      0.068,
+      0.072,
+      0.076,
+      0.08
+    ],
+    "common_time_horizon": 0.08,
+    "endpoint_tolerance": 1e-06,
+    "field": "trajectory_eta",
+    "elevation_semantics": "sea_level_offset_relative_surface_elevation",
+    "time_semantics": "solver_benchmark_time",
+    "initial_frame_treatment": "exclude_zero_from_common_grid",
+    "aggregation": {
+      "global_metric": "equal_scenario_weight_field_rmse"
+    }
+  },
+  "legacy_rollout_contract": {
+    "expected_natural_steps": 250,
+    "expected_dense_frame_count": 251,
+    "legacy_knot_stride": 5,
+    "expected_legacy_frame_count": 51,
+    "interpolation_horizon": 0.08
+  },
+  "tolerances": {
+    "timestamp_abs": 5e-08,
+    "eta_max_abs": 1e-06,
+    "reproduction_relative_rmse": 1e-06
+  },
+  "criteria_thresholds": {
+    "aggregate_ratio_max": 0.1,
+    "scenario_ratio_median_max": 0.1,
+    "scenario_ratio_p95_max": 0.25,
+    "family_cell_median_max": 0.1,
+    "family_cell_fraction_above_p95_max": 0.5,
+    "interp_to_rms_aggregate_max": 0.01,
+    "interp_to_rms_median_max": 0.01,
+    "interp_to_rms_p95_max": 0.025
+  },
+  "scenario_order": {
+    "ordered_scenario_ids": [
+      "scenario_001753",
+      "scenario_001736",
+      "scenario_002094",
+      "scenario_001799",
+      "scenario_002016",
+      "scenario_000501",
+      "scenario_001456",
+      "scenario_000675",
+      "scenario_000758",
+      "scenario_001297",
+      "scenario_000779",
+      "scenario_001341"
+    ],
+    "ordered_scenario_hash": "5b8b8f4b2809371158d18086da31577be85d7112fa860594de47fe7ee89ca71a"
+  },
+  "counts": {
+    "scenario_count": 12,
+    "eligible_for_interpolation_count": 12,
+    "reproduction_failure_count": 0,
+    "zero_extrapolation_failure_count": 0
+  },
+  "pairwise_dense_solver_gap_aggregate": {
+    "rmse_by_pair": {
+      "hydrostatic__vs__boussinesq": 0.01923119179192084,
+      "hydrostatic__vs__muscl_hr": 0.0026151862966413597,
+      "muscl_hr__vs__boussinesq": 0.020562059372404167
+    },
+    "smallest_pair_rmse": 0.0026151862966413597
+  },
+  "aggregate_metrics": {
+    "interp_rmse": 0.0003563358929023187,
+    "trajectory_rms": 0.014600762457426848,
+    "interp_rmse_over_smallest_gap": 0.13625640871549188,
+    "interp_rmse_over_trajectory_rms": 0.024405293486646946,
+    "scenario_ratio_median": 0.09807076728829683,
+    "scenario_ratio_p95": 0.34534262839800534,
+    "scenario_rms_ratio_median": 0.015546288682494896,
+    "scenario_rms_ratio_p95": 0.06267818568153681
+  },
+  "family_summaries": [
+    {
+      "bathymetry_type": "canyon",
+      "source_type": "fault",
+      "scenario_count": 1,
+      "scenario_ratio_median": 0.05685473995804472,
+      "scenario_ratio_p95": 0.05685473995804472,
+      "scenario_ratio_fraction_above_p95_threshold": 0.0,
+      "interp_rmse_over_trajectory_rms_median": 0.013939246323111708,
+      "interp_rmse_over_trajectory_rms_p95": 0.013939246323111708
+    },
+    {
+      "bathymetry_type": "continental",
+      "source_type": "multi-gauss",
+      "scenario_count": 1,
+      "scenario_ratio_median": 0.17403606059592616,
+      "scenario_ratio_p95": 0.17403606059592616,
+      "scenario_ratio_fraction_above_p95_threshold": 0.0,
+      "interp_rmse_over_trajectory_rms_median": 0.030404485430865925,
+      "interp_rmse_over_trajectory_rms_p95": 0.030404485430865925
+    },
+    {
+      "bathymetry_type": "continental",
+      "source_type": "okada-like",
+      "scenario_count": 1,
+      "scenario_ratio_median": 0.08820136016882106,
+      "scenario_ratio_p95": 0.08820136016882106,
+      "scenario_ratio_fraction_above_p95_threshold": 0.0,
+      "interp_rmse_over_trajectory_rms_median": 0.00898716240923558,
+      "interp_rmse_over_trajectory_rms_p95": 0.00898716240923558
+    },
+    {
+      "bathymetry_type": "island",
+      "source_type": "dipole",
+      "scenario_count": 1,
+      "scenario_ratio_median": 0.2908542931024108,
+      "scenario_ratio_p95": 0.2908542931024108,
+      "scenario_ratio_fraction_above_p95_threshold": 1.0,
+      "interp_rmse_over_trajectory_rms_median": 0.0473389877319558,
+      "interp_rmse_over_trajectory_rms_p95": 0.0473389877319558
+    },
+    {
+      "bathymetry_type": "island",
+      "source_type": "fault",
+      "scenario_count": 2,
+      "scenario_ratio_median": 0.11912738400629605,
+      "scenario_ratio_p95": 0.12919587264496715,
+      "scenario_ratio_fraction_above_p95_threshold": 0.0,
+      "interp_rmse_over_trajectory_rms_median": 0.018578273116157083,
+      "interp_rmse_over_trajectory_rms_p95": 0.01986072098300818
+    },
+    {
+      "bathymetry_type": "island",
+      "source_type": "okada-like",
+      "scenario_count": 1,
+      "scenario_ratio_median": 0.07302575150615219,
+      "scenario_ratio_p95": 0.07302575150615219,
+      "scenario_ratio_fraction_above_p95_threshold": 0.0,
+      "interp_rmse_over_trajectory_rms_median": 0.013038179342840345,
+      "interp_rmse_over_trajectory_rms_p95": 0.013038179342840345
+    },
+    {
+      "bathymetry_type": "island",
+      "source_type": "rough",
+      "scenario_count": 1,
+      "scenario_ratio_median": 0.3573907574924828,
+      "scenario_ratio_p95": 0.3573907574924828,
+      "scenario_ratio_fraction_above_p95_threshold": 1.0,
+      "interp_rmse_over_trajectory_rms_median": 0.06565514633899076,
+      "interp_rmse_over_trajectory_rms_p95": 0.06565514633899076
+    },
+    {
+      "bathymetry_type": "seamounts",
+      "source_type": "gaussian",
+      "scenario_count": 1,
+      "scenario_ratio_median": 0.3354850682297965,
+      "scenario_ratio_p95": 0.3354850682297965,
+      "scenario_ratio_fraction_above_p95_threshold": 1.0,
+      "interp_rmse_over_trajectory_rms_median": 0.06024249059816541,
+      "interp_rmse_over_trajectory_rms_p95": 0.06024249059816541
+    },
+    {
+      "bathymetry_type": "trench",
+      "source_type": "dipole",
+      "scenario_count": 2,
+      "scenario_ratio_median": 0.03688681944782929,
+      "scenario_ratio_p95": 0.04495353714618892,
+      "scenario_ratio_fraction_above_p95_threshold": 0.0,
+      "interp_rmse_over_trajectory_rms_median": 0.007758462957717942,
+      "interp_rmse_over_trajectory_rms_p95": 0.008855953915876907
+    },
+    {
+      "bathymetry_type": "trench",
+      "source_type": "gaussian",
+      "scenario_count": 1,
+      "scenario_ratio_median": 0.011267801258438528,
+      "scenario_ratio_p95": 0.011267801258438528,
+      "scenario_ratio_fraction_above_p95_threshold": 0.0,
+      "interp_rmse_over_trajectory_rms_median": 0.0018931245455771544,
+      "interp_rmse_over_trajectory_rms_p95": 0.0018931245455771544
+    }
+  ],
+  "bootstrap_summaries": {
+    "num_scenarios": 12,
+    "num_resamples": 10000,
+    "confidence_level": 0.95,
+    "metrics": {
+      "scenario_interp_rmse_over_smallest_gap": {
+        "point_estimate": 0.14159535326836029,
+        "bootstrap_mean": 0.14210956852563109,
+        "bootstrap_std": 0.03358244349103675,
+        "ci_lower": 0.07993983840047504,
+        "ci_upper": 0.21080070598036454
+      },
+      "scenario_interp_rmse_over_trajectory_rms": {
+        "point_estimate": 0.02451435790570773,
+        "bootstrap_mean": 0.024617775963720168,
+        "bootstrap_std": 0.0059782083861553495,
+        "ci_lower": 0.01381890832229984,
+        "ci_upper": 0.037088673459187926
+      }
+    }
+  },
+  "solver_health_summaries": {
+    "hydrostatic": {
+      "scenario_count": 12,
+      "diagnostic_row_count": 3000,
+      "finite_state_failure_count": 0,
+      "dt_min": 0.0006974085117690265,
+      "dt_max": 0.0007100523798726499,
+      "pre_step_cfl_max": 0.44999998807907104,
+      "post_step_cfl_max": 0.45068156719207764,
+      "benchmark_time_final_max": 0.177469402551651,
+      "benchmark_time_dense_timestamp_mismatch_count": 0,
+      "benchmark_time_cumulative_dt_mismatch_count": 0,
+      "benchmark_time_to_dense_timestamps_max_abs_diff": 0.0,
+      "benchmark_time_to_cumulative_dt_max_abs_diff": 8.207280188798904e-09,
+      "swe_min_depth_min": 0.6758736371994019,
+      "swe_max_speed_max": 0.3405517339706421,
+      "swe_dry_cell_count_max": 0
+    },
+    "muscl_hr": {
+      "scenario_count": 12,
+      "diagnostic_row_count": 3000,
+      "finite_state_failure_count": 0,
+      "dt_min": 0.0006965145003050566,
+      "dt_max": 0.0007099930080585182,
+      "pre_step_cfl_max": 0.44999998807907104,
+      "post_step_cfl_max": 0.45109301805496216,
+      "benchmark_time_final_max": 0.17746929824352264,
+      "benchmark_time_dense_timestamp_mismatch_count": 0,
+      "benchmark_time_cumulative_dt_mismatch_count": 0,
+      "benchmark_time_to_dense_timestamps_max_abs_diff": 0.0,
+      "benchmark_time_to_cumulative_dt_max_abs_diff": 7.799826562404633e-09,
+      "swe_min_depth_min": 0.6245650053024292,
+      "swe_max_speed_max": 0.42783012986183167,
+      "swe_dry_cell_count_max": 0
+    },
+    "boussinesq": {
+      "scenario_count": 12,
+      "diagnostic_row_count": 3000,
+      "finite_state_failure_count": 0,
+      "dt_min": 0.0003549506946001202,
+      "dt_max": 0.0003549506946001202,
+      "pre_step_cfl_max": 0.44999998807907104,
+      "post_step_cfl_max": 0.44999998807907104,
+      "benchmark_time_final_max": 0.08873767405748367,
+      "benchmark_time_dense_timestamp_mismatch_count": 0,
+      "benchmark_time_cumulative_dt_mismatch_count": 0,
+      "benchmark_time_to_dense_timestamps_max_abs_diff": 0.0,
+      "benchmark_time_to_cumulative_dt_max_abs_diff": 5.6461431086063385e-09,
+      "cg_failed_step_count": 0,
+      "cg_failed_solve_count": 0,
+      "cg_max_iterations": 401,
+      "cg_max_residual_ratio": 9.999891972256592e-07
+    }
+  },
+  "artifacts_written": {
+    "suite_output_dir": "/home/izu/Projects/tsunami-surrogate/results/common_time_validation/dense_reference_validation/smoke",
+    "scenario_metrics_jsonl": "/home/izu/Projects/tsunami-surrogate/results/common_time_validation/dense_reference_validation/smoke/scenario_metrics.jsonl",
+    "decision_json": "/home/izu/Projects/tsunami-surrogate/results/common_time_validation/dense_reference_validation/smoke/decision.json",
+    "dense_rollout_arrays_written": false,
+    "summary_json": "/home/izu/Projects/tsunami-surrogate/results/common_time_validation/dense_reference_validation/smoke/summary.json"
+  }
+}

@@ -1,0 +1,43 @@
+[
+  {
+    "authority": "materialized-manifest-cache-and-three-raw-reference-identity",
+    "materialized_count": 10000,
+    "mismatches": [],
+    "snapshots": [
+      {
+        "advertised_num_samples": 10000,
+        "path": "/mnt/Windows/Users/Izu/tsunami-surrogate/data/train/raw/dataset_config.snapshot.yaml"
+      }
+    ],
+    "split": "train"
+  },
+  {
+    "authority": "materialized-manifest-cache-and-three-raw-reference-identity",
+    "materialized_count": 1000,
+    "mismatches": [
+      {
+        "advertised_num_samples": 10000,
+        "path": "/mnt/Windows/Users/Izu/tsunami-surrogate/data/eval/raw/dataset_config.snapshot.yaml"
+      }
+    ],
+    "snapshots": [
+      {
+        "advertised_num_samples": 10000,
+        "path": "/mnt/Windows/Users/Izu/tsunami-surrogate/data/eval/raw/dataset_config.snapshot.yaml"
+      }
+    ],
+    "split": "eval"
+  },
+  {
+    "authority": "materialized-manifest-cache-and-three-raw-reference-identity",
+    "materialized_count": 2500,
+    "mismatches": [],
+    "snapshots": [
+      {
+        "advertised_num_samples": 2500,
+        "path": "/mnt/Windows/Users/Izu/tsunami-surrogate/data/test/raw/dataset_config.snapshot.yaml"
+      }
+    ],
+    "split": "test"
+  }
+]

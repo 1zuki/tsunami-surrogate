@@ -1,0 +1,90 @@
+{
+  "archive_code_state": {
+    "code_state_hash": "8c38154ed98f47e13ac99d5f6dd9e38f09603efce5c9415b2ae0dcf58a9ae453",
+    "dirty": true,
+    "git_commit": "3d95609a717abd014ae17341eba84381c100be72",
+    "status_sha256": "fa17fc1dad6b04af4a6cb911025447f2a4fc4369d18246e4900e73ab1c133266",
+    "tracked_diff_sha256": "1141e95ede581ad08e960efb38e1e66977e218dd55a71e8dcd41d6324eed2f6a"
+  },
+  "artifact_kind": "stage-c-legacy-stride5-negative-source-inventory",
+  "bundle_hash": "1db46ddc9f6d2547ff01e74176c94d82fe4d0d962320a31b1510092d3be60ca6",
+  "embedded_provenance": {
+    "configs/eval/common_time_validation_scenarios.json:artifact_kind": "common-time-validation-scenarios",
+    "configs/eval/common_time_validation_scenarios.json:schema_id": "tsunami-surrogate.alignment.v1",
+    "results/common_time_validation/audit/paired_reference_audit.json:artifact_kind": "paired-reference-audit",
+    "results/common_time_validation/audit/paired_reference_audit.json:schema_id": "tsunami-surrogate.alignment.v1",
+    "results/common_time_validation/dense_reference_validation/dense_validation/decision.json:artifact_kind": "dense-reference-validation-decision",
+    "results/common_time_validation/dense_reference_validation/dense_validation/decision.json:schema_id": "tsunami-surrogate.alignment.v1",
+    "results/common_time_validation/dense_reference_validation/dense_validation/summary.json:artifact_kind": "dense-reference-validation",
+    "results/common_time_validation/dense_reference_validation/dense_validation/summary.json:schema_id": "tsunami-surrogate.alignment.v1",
+    "results/common_time_validation/dense_reference_validation/smoke/decision.json:artifact_kind": "dense-reference-validation-decision",
+    "results/common_time_validation/dense_reference_validation/smoke/decision.json:schema_id": "tsunami-surrogate.alignment.v1",
+    "results/common_time_validation/dense_reference_validation/smoke/summary.json:artifact_kind": "dense-reference-validation",
+    "results/common_time_validation/dense_reference_validation/smoke/summary.json:schema_id": "tsunami-surrogate.alignment.v1"
+  },
+  "files": [
+    {
+      "archive_relative_path": "payload/results/common_time_validation/audit/paired_reference_audit.json",
+      "sha256": "818d110776b5ca96b7e037e08db98556a120b6fd4610f47343e33acac876956e",
+      "size_bytes": 819875,
+      "source_relative_path": "results/common_time_validation/audit/paired_reference_audit.json"
+    },
+    {
+      "archive_relative_path": "payload/results/common_time_validation/dense_reference_validation/smoke/summary.json",
+      "sha256": "8209a62d54f98b90f2b2ca5e3b5315571ff8de803f61e02c04aca2a03eac5576",
+      "size_bytes": 12255,
+      "source_relative_path": "results/common_time_validation/dense_reference_validation/smoke/summary.json"
+    },
+    {
+      "archive_relative_path": "payload/results/common_time_validation/dense_reference_validation/smoke/decision.json",
+      "sha256": "8e74206bb54c8830adde3fe5d61be8d92b2d4b58329437321b09651f2bec718b",
+      "size_bytes": 1653,
+      "source_relative_path": "results/common_time_validation/dense_reference_validation/smoke/decision.json"
+    },
+    {
+      "archive_relative_path": "payload/results/common_time_validation/dense_reference_validation/smoke/scenario_metrics.jsonl",
+      "sha256": "6b142c5f180d81c7e4be5ff84baab3354ec0a2022198b810558c5d7059feb8e7",
+      "size_bytes": 220922,
+      "source_relative_path": "results/common_time_validation/dense_reference_validation/smoke/scenario_metrics.jsonl"
+    },
+    {
+      "archive_relative_path": "payload/results/common_time_validation/dense_reference_validation/dense_validation/summary.json",
+      "sha256": "447958b9366dd90e5660638ff8ad2cb03bba9dea965834502a57efc3fed9b9d6",
+      "size_bytes": 23091,
+      "source_relative_path": "results/common_time_validation/dense_reference_validation/dense_validation/summary.json"
+    },
+    {
+      "archive_relative_path": "payload/results/common_time_validation/dense_reference_validation/dense_validation/decision.json",
+      "sha256": "0ee0b3d8a18635d105a5bf7f0b9c21fcb55bc91e44b2fdb2e4d95e99edf2c6bc",
+      "size_bytes": 1666,
+      "source_relative_path": "results/common_time_validation/dense_reference_validation/dense_validation/decision.json"
+    },
+    {
+      "archive_relative_path": "payload/results/common_time_validation/dense_reference_validation/dense_validation/scenario_metrics.jsonl",
+      "sha256": "5d344dad7e07b39067c4ceebf5f0f34dc2eb434ee2f267001a64bb986c4df494",
+      "size_bytes": 2210022,
+      "source_relative_path": "results/common_time_validation/dense_reference_validation/dense_validation/scenario_metrics.jsonl"
+    },
+    {
+      "archive_relative_path": "payload/configs/eval/common_time_alignment.yaml",
+      "sha256": "8a731fbc2de5458313b016a43296b1557978d94f3697e0935a152fc0efdfe806",
+      "size_bytes": 1898,
+      "source_relative_path": "configs/eval/common_time_alignment.yaml"
+    },
+    {
+      "archive_relative_path": "payload/configs/eval/dense_reference_validation.yaml",
+      "sha256": "3d855e2d7e7575bf588405b98b31823daae20cb5560b50f8ffcd36da01d359a9",
+      "size_bytes": 1151,
+      "source_relative_path": "configs/eval/dense_reference_validation.yaml"
+    },
+    {
+      "archive_relative_path": "payload/configs/eval/common_time_validation_scenarios.json",
+      "sha256": "e6c39f8cfc0224d5ddfe4c04aaf15be5c7489a26b912f10c8382f8abf0777961",
+      "size_bytes": 32032,
+      "source_relative_path": "configs/eval/common_time_validation_scenarios.json"
+    }
+  ],
+  "negative_scientific_decision": true,
+  "schema_id": "tsunami-surrogate.common-time-v2.stage-c-archive.v1",
+  "source_files_unchanged": true
+}

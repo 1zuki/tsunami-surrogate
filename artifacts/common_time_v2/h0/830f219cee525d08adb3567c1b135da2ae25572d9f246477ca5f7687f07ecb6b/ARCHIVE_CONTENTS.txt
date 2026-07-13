@@ -1,0 +1,8 @@
+REPORT.md
+candidate_contract.json
+h0_decision.json
+h0_endpoint_summary.json
+h0_input_inventory.jsonl
+h0_issues.jsonl
+h0_snapshot_reconciliation.json
+h0_summary.json
