@@ -16,7 +16,7 @@ where $W$ is the pointwise (local) path and $\mathcal{K}$ is the spectral (globa
 
 In the main configuration we use $L = 6$ Fourier blocks, width $d = 48$, and $m_1 = m_2 = 14$ retained modes in each spatial direction, with a padding of $6$ cells. The same architecture is trained separately on the hydrostatic, MUSCL-HR, and Boussinesq labels; only the output channel count would change if the forecast horizon were changed. We also train two hydrostatic mode-count ablations, FNO-modes8 and FNO-modes20, that keep the rest of the configuration fixed while changing the retained Fourier modes to $8$ and $20$ per axis.
 
-\begin{figure}[H]
+\begin{figure}[pos=htbp]
 \centering
 \begin{tikzpicture}[
     font=\small,

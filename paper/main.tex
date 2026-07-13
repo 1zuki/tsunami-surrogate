@@ -1,46 +1,59 @@
-\documentclass[11pt]{article}
+\documentclass[a4paper,fleqn]{cas-sc}
 
-\usepackage[margin=1in]{geometry}
-\usepackage{amsmath,amssymb,amsfonts}
-\usepackage{booktabs}
-\usepackage{graphicx}
-\usepackage{multirow}
+\usepackage[numbers]{natbib}
 \usepackage{enumitem}
 \usepackage{xurl}
-\usepackage{hyperref}
-\usepackage{indentfirst}
-\usepackage[numbers]{natbib}
-\usepackage{xcolor}
-\usepackage{titlesec}
-\usepackage{float}
 \usepackage{tikz}
+\usepackage{float}
 \usetikzlibrary{arrows.meta, positioning, calc, fit}
 
-\titlelabel{\thetitle.\quad}
-
-\hypersetup{
-  colorlinks=true,
-  linkcolor=blue,
-  citecolor=blue,
-  urlcolor=blue
-}
-
-\title{Tsunami-Surrogate: A Controlled Multi-Reference Benchmark for Neural-Operator Emulation of Tsunami-Like Wave Propagation}
-
-\author{
-  Nguyen Tho Binh An \and
-  Le Minh Nhut Tan \and
-  Mai Tien Dung\,\thanks{Corresponding author: \texttt{dungmt@uit.edu.vn}} \\[8pt]
-  \normalsize Faculty of Computer Science, University of Information Technology - VNUHCM \\
-  \normalsize Ho Chi Minh City, Viet Nam \\
-  \normalsize \texttt{Emails: \texttt{25520020@gm.uit.edu.vn}, \texttt{25521650@gm.uit.edu.vn}}
-}
-\date{\today}
-
 \begin{document}
-\maketitle
+\let\WriteBookmarks\relax
+\def\floatpagepagefraction{1}
+\def\textpagefraction{.001}
+\emergencystretch=2em
+\Urlmuskip=0mu plus 2mu
+
+\shorttitle{Multi-reference tsunami-surrogate benchmark}
+\shortauthors{Nguyen et~al.}
+
+\title[mode=title]{Tsunami-Surrogate: A Controlled Multi-Reference Benchmark for Neural-Operator Emulation of Tsunami-Like Wave Propagation}
+
+\author[1]{Nguyen Tho Binh An}
+\ead{25520020@gm.uit.edu.vn}
+
+\author[1]{Le Minh Nhut Tan}
+\ead{25521650@gm.uit.edu.vn}
+
+\author[1]{Mai Tien Dung}
+\cormark[1]
+\ead{dungmt@uit.edu.vn}
+
+\affiliation[1]{
+  organization={Faculty of Computer Science,
+                VNUHCM - University of Information Technology},
+  addressline={Quarter 34, Linh Xuan Ward},
+  city={Ho Chi Minh City},
+  country={Viet Nam}
+}
+
+\cortext[1]{Corresponding author}
 
 \input{sections/abstract}
+
+\begin{highlights}
+\item A common-time benchmark separates surrogate error from reference-solver effects.
+\item Three numerical references are evaluated on identical synthetic scenarios.
+\item Replicated neural surrogates are compared under matched training protocols.
+\item Solver and distribution-shift diagnostics support robust evaluation.
+\end{highlights}
+
+\begin{keywords}
+tsunami surrogate modeling \sep neural operators \sep Fourier neural operator \sep shallow-water equations \sep benchmark datasets
+\end{keywords}
+
+\maketitle
+
 \input{sections/introduction}
 \input{sections/related_work}
 \input{sections/data_gen}
@@ -59,7 +72,7 @@
 \input{sections/appendix}
 
 \clearpage
-\bibliographystyle{plainnat}
+\bibliographystyle{cas-model2-names}
 \bibliography{sections/references}
 
 \end{document}
