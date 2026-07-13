@@ -1,0 +1,109 @@
+schema_id: tsunami-surrogate.common-time-v2.level-a.v1
+artifact_kind: common-time-v2-level-a-preregistered-contract
+candidate_grid:
+  start: 0.0035
+  step: 0.0035
+  count: 50
+  horizon: 0.175
+  initial_state_in_target: false
+  extraction: adjacent-natural-step-linear
+  interpolation_feedback: forbidden
+seeds:
+  case: 20260712
+  selection: 20260712
+  bootstrap: 20260712
+  bootstrap_resamples: 2000
+analytical:
+  amplitude: 1.0e-5
+  depth: 1.0
+  gravity: 9.81
+  modes: [1, 2, 4]
+  packet_modes: [1, 2, 3, 4]
+  grids: [32, 64, 128]
+  transverse_cells: 4
+  spatial_refinement_cfl:
+    swe_hydrostatic: 0.1125
+    swe_muscl_hr: 0.1125
+    boussinesq: 0.0875
+production:
+  grid: 64
+  boundary_implementation: zero_gradient_edge_padding
+  cfl:
+    swe_hydrostatic: [0.45, 0.225, 0.1125]
+    swe_muscl_hr: [0.45, 0.225, 0.1125]
+    boussinesq: [0.35, 0.175, 0.0875]
+  boussinesq:
+    alpha: 0.3333333333333333
+    depth_scale: 1.0
+    cg_failure_mode: strict_v2
+    primary_filter_time_mode: disabled
+operators:
+  sponge:
+    candidate_time_mode: elapsed_time_consistent
+    reference_dt: 0.0035
+    reference_min_factor: 0.9
+  boussinesq_filter_fallback:
+    time_mode: elapsed_time_consistent
+    reference_dt: 0.0035
+    reference_strength: 0.01
+  legacy_comparator:
+    sponge_time_mode: legacy_per_step
+    filter_time_mode: legacy_per_step
+boundary_packet:
+  center_x: 0.25
+  sigma: 0.04
+  incident_window: [0.55, 0.85]
+  reflected_window: [0.05, 0.35]
+  interior_window: [0.35, 0.65]
+canaries:
+  split: train
+  count: 6
+  selector: deterministic-source-family-cover-then-bathymetry-cover-lexicographic
+  h0_inventory: artifacts/common_time_v2/h0/830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b/h0_input_inventory.jsonl
+thresholds:
+  universal:
+    exact_output_count: 50
+    cg_failure_count: 0
+    nan_to_num_replacement_count: 0
+    require_finite: true
+    require_complete_hashes: true
+  analytical:
+    swe_hydrostatic: {phase_speed_relative_error: 0.03, amplitude_drift: 0.15, field_relative_l2: 0.20}
+    swe_muscl_hr: {phase_speed_relative_error: 0.015, amplitude_drift: 0.08, field_relative_l2: 0.10}
+    boussinesq: {phase_speed_relative_error: 0.02, group_speed_relative_error: 0.02, amplitude_drift: 0.05, field_relative_l2: 0.10}
+  spatial_order_minimum:
+    swe_hydrostatic: 0.7
+    swe_muscl_hr: 1.5
+    boussinesq: 1.5
+  temporal_order_minimum:
+    swe_hydrostatic: 0.7
+    swe_muscl_hr: 1.5
+    boussinesq: 1.5
+  temporal_roundoff_floor: 1.0e-6
+  operator:
+    accumulated_factor_relative_error: 1.0e-12
+    elapsed_candidate_cfl_relative_l2: 0.05
+  boussinesq_no_filter:
+    amplitude_growth: 1.25
+    high_frequency_fraction_absolute: 0.05
+  boundary:
+    reflected_amplitude_ratio: 0.10
+    reflected_energy_ratio: 0.02
+    interior_relative_l2: 0.10
+  conservation:
+    mass_relative_drift: 1.0e-10
+    mean_integral_relative_drift: 1.0e-10
+  canary:
+    amplitude_growth: 2.0
+    eta_over_depth: 1.0
+decision_precedence:
+  - implementation_failure
+  - blocked_boussinesq_health
+  - blocked_boundary_behavior
+  - blocked_convergence
+  - blocked_operator_semantics
+  - pass_to_H1
+historical_context:
+  stage_c_thresholds_inherited: false
+  boussinesq_depth_scale_0_02_status: historical_undocumented_sensitivity_only
+  fallback_horizon_0_0800: forbidden

@@ -21,6 +21,11 @@ except ImportError:
         resolve_boundary_modes,
     )
 
+try:
+    from src.solver.operator_time import sponge_factor, validate_sponge_time_mode
+except ImportError:
+    from operator_time import sponge_factor, validate_sponge_time_mode
+
 class SolverInfo(NamedTuple):
     """ metadata bundle for logging / experiment tracking"""
     nx: int
@@ -38,7 +43,9 @@ class ShallowWaterSolver:
     def __init__(self, nx: int, ny: int, dx: float, dy: float, dt: float, g: float = 9.81, cfl: float = 0.45,
                  dry_tolerance: float = 1e-6, boundary: Union[BoundaryMode, Tuple[BoundaryMode, BoundaryMode]] = "open",
                  use_sponge: bool = True, sponge_width = 20, sponge_min_factor: float = 0.9,
-                 eps: float = 1e-9, max_velocity: float = 50.0) -> None:
+                 eps: float = 1e-9, max_velocity: float = 50.0,
+                 sponge_time_mode: str = "legacy_per_step",
+                 sponge_reference_dt: float | None = None) -> None:
         if nx <= 1 or ny <= 1:
             raise ValueError("nx and ny must be greater than 1")
         if dx <= 0 or dy <= 0:
@@ -79,6 +86,13 @@ class ShallowWaterSolver:
         self.use_sponge = bool(use_sponge)
         self.sponge_width = int(sponge_width)
         self.sponge_min_factor = float(sponge_min_factor)
+        self.sponge_time_mode = validate_sponge_time_mode(
+            sponge_time_mode, sponge_reference_dt
+        )
+        self.sponge_reference_dt = (
+            None if sponge_reference_dt is None else float(sponge_reference_dt)
+        )
+        self.operator_diagnostics: dict[str, float | int | bool | str | None] = {}
 
         self._db_dx: Optional[np.ndarray] = None
         self._db_dy: Optional[np.ndarray] = None
@@ -86,6 +100,7 @@ class ShallowWaterSolver:
         self.sponge_mask = np.ones((self.nx, self.ny), dtype=float)
         if self.use_sponge:
             self._init_sponge_layer(width=self.sponge_width, min_factor=self.sponge_min_factor)
+        self.reset_operator_diagnostics()
 
 
     def _check_shape(self, arr: np.ndarray, name: str) -> np.ndarray:
@@ -353,20 +368,85 @@ class ShallowWaterSolver:
             self.sponge_mask[:, d] = np.minimum(self.sponge_mask[:, d], val)
             self.sponge_mask[:, -(d + 1)] = np.minimum(self.sponge_mask[:, -(d + 1)], val)
 
-    def apply_sponge_layer(self) -> None:
-        """ gently dampens momentum and wave elevation inside the sponge zone """
+    def reset_operator_diagnostics(self) -> None:
+        if self.sponge_reference_dt is None:
+            reference_rate_min = None
+            reference_rate_max = None
+        else:
+            reference_rates = -np.log(self.sponge_mask) / self.sponge_reference_dt
+            reference_rate_min = float(np.min(reference_rates))
+            reference_rate_max = float(np.max(reference_rates))
+        self.operator_diagnostics = {
+            "sponge_time_mode": self.sponge_time_mode,
+            "sponge_reference_dt": self.sponge_reference_dt,
+            "sponge_reference_decay_rate_min": reference_rate_min,
+            "sponge_reference_decay_rate_max": reference_rate_max,
+            "sponge_applications": 0,
+            "sponge_elapsed_time": 0.0,
+            "sponge_accumulated_exponent": 0.0,
+            "sponge_effective_factor_min": 1.0,
+            "sponge_effective_factor_max": 1.0,
+            "positivity_projection_count": 0,
+            "dry_projection_count": 0,
+            "nan_to_num_replacement_count": 0,
+            "nan_to_num_replacement_occurred": False,
+        }
+
+    def get_operator_diagnostics(self) -> dict[str, float | int | bool | str | None]:
+        return dict(self.operator_diagnostics)
+
+    def _nan_to_num_with_diagnostics(self, values: np.ndarray) -> np.ndarray:
+        replacements = int(np.count_nonzero(~np.isfinite(values)))
+        self.operator_diagnostics["nan_to_num_replacement_count"] = int(
+            self.operator_diagnostics["nan_to_num_replacement_count"]
+        ) + replacements
+        self.operator_diagnostics["nan_to_num_replacement_occurred"] = bool(
+            self.operator_diagnostics["nan_to_num_replacement_occurred"]
+        ) or replacements > 0
+        return np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
+
+    def apply_sponge_layer(self, dt: float | None = None) -> None:
+        """Gently damp momentum and wave elevation inside the sponge zone."""
         if not self.use_sponge:
             return
-        
-        if not hasattr(self, 'sponge_mask'):
+        if not hasattr(self, "sponge_mask"):
             return
-
-        self.hu *= self.sponge_mask
-        self.hv *= self.sponge_mask
+        if dt is None:
+            dt = self.dt
+        factor = sponge_factor(
+            self.sponge_mask,
+            dt=float(dt),
+            mode=self.sponge_time_mode,
+            reference_dt=self.sponge_reference_dt,
+        )
+        self.hu *= factor
+        self.hv *= factor
 
         h_rest = np.maximum(-self.b, 0.0)
         elevation = self.h - h_rest
-        self.h = h_rest + (elevation * self.sponge_mask)
+        self.h = h_rest + (elevation * factor)
+        exponent = (
+            1.0
+            if self.sponge_time_mode == "legacy_per_step"
+            else float(dt) / float(self.sponge_reference_dt)
+        )
+        self.operator_diagnostics["sponge_applications"] = int(
+            self.operator_diagnostics["sponge_applications"]
+        ) + 1
+        self.operator_diagnostics["sponge_elapsed_time"] = float(
+            self.operator_diagnostics["sponge_elapsed_time"]
+        ) + float(dt)
+        self.operator_diagnostics["sponge_accumulated_exponent"] = float(
+            self.operator_diagnostics["sponge_accumulated_exponent"]
+        ) + exponent
+        self.operator_diagnostics["sponge_effective_factor_min"] = min(
+            float(self.operator_diagnostics["sponge_effective_factor_min"]),
+            float(np.min(factor)),
+        )
+        self.operator_diagnostics["sponge_effective_factor_max"] = max(
+            float(self.operator_diagnostics["sponge_effective_factor_max"]),
+            float(np.max(factor)),
+        )
 
     def _pad_state(self, U: np.ndarray) -> np.ndarray:
         """ pad a stacked state array with one ghost cell on every side """
@@ -470,7 +550,7 @@ class ShallowWaterSolver:
         wave_speed = wave_speed[None, :, :]
 
         flux = 0.5 * (F_L + F_R) - 0.5 * wave_speed * (U_Rs - U_Ls)
-        return np.nan_to_num(flux, nan=0.0, posinf=0.0, neginf=0.0)
+        return self._nan_to_num_with_diagnostics(flux)
 
     def _flux_divergence_x(self, U: np.ndarray) -> np.ndarray:
         """ return dF/dx on the physical domain """
@@ -482,7 +562,7 @@ class ShallowWaterSolver:
 
         F_half = self._rusanov_flux(U_L, U_R, axis="x")
         div = (F_half[:, 1 : self.nx + 1, 1:-1] - F_half[:, 0:self.nx, 1:-1]) / self.dx
-        return np.nan_to_num(div, nan=0.0, posinf=0.0, neginf=0.0)
+        return self._nan_to_num_with_diagnostics(div)
 
     def _flux_divergence_y(self, U: np.ndarray) -> np.ndarray:
         """ return dG/dy on the physical domain """
@@ -494,7 +574,7 @@ class ShallowWaterSolver:
 
         G_half = self._rusanov_flux(U_L, U_R, axis="y")
         div = (G_half[:, 1:-1, 1 : self.ny + 1] - G_half[:, 1:-1, 0:self.ny]) / self.dy
-        return np.nan_to_num(div, nan=0.0, posinf=0.0, neginf=0.0)
+        return self._nan_to_num_with_diagnostics(div)
 
     # time step
     def _zero_momentum_in_dry_cells(self) -> None:
@@ -618,8 +698,14 @@ class ShallowWaterSolver:
                 hv_new[i, j] = (hv_old[i, j] - (dt / self.dx) * (FxR[2] - FxL[2]) - (dt / self.dy) * (FyT[2] - FyB[2]))
 
         # dry-cell safety
+        self.operator_diagnostics["positivity_projection_count"] = int(
+            self.operator_diagnostics["positivity_projection_count"]
+        ) + int(np.count_nonzero(h_new < 0.0))
         h_new = np.maximum(h_new, 0.0)
         dry = h_new <= self.dry_tolerance
+        self.operator_diagnostics["dry_projection_count"] = int(
+            self.operator_diagnostics["dry_projection_count"]
+        ) + int(np.count_nonzero(dry))
         hu_new[dry] = 0.0
         hv_new[dry] = 0.0
 
@@ -647,7 +733,7 @@ class ShallowWaterSolver:
 
         self.update(dt=dt)
         self.apply_boundary_conditions()
-        self.apply_sponge_layer()
+        self.apply_sponge_layer(dt=dt)
 
     def run(self, n_steps: int, record_every: int = 1, auto_dt: bool = False, return_history: bool = False) -> Optional[list[np.ndarray]]:
         """

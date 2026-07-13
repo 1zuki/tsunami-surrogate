@@ -18,11 +18,34 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
     reconstruction at interfaces for a better bathymetry-balanced update
     """
 
-    @staticmethod
-    def _minmod(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-        same = np.sign(a) == np.sign(b)
+    def reset_operator_diagnostics(self) -> None:
+        super().reset_operator_diagnostics()
+        self.operator_diagnostics.update(
+            {
+                "muscl_cell_velocity_clip_count": 0,
+                "muscl_face_velocity_clip_count": 0,
+                "muscl_limiter_total_count": 0,
+                "muscl_limiter_zeroed_count": 0,
+                "muscl_limiter_limited_count": 0,
+            }
+        )
 
-        return np.where(same, np.sign(a) * np.minimum(np.abs(a), np.abs(b)), 0.0)
+    def _minmod(self, a: np.ndarray, b: np.ndarray) -> np.ndarray:
+        same = np.sign(a) == np.sign(b)
+        result = np.where(
+            same, np.sign(a) * np.minimum(np.abs(a), np.abs(b)), 0.0
+        )
+        self.operator_diagnostics["muscl_limiter_total_count"] = int(
+            self.operator_diagnostics["muscl_limiter_total_count"]
+        ) + int(result.size)
+        self.operator_diagnostics["muscl_limiter_zeroed_count"] = int(
+            self.operator_diagnostics["muscl_limiter_zeroed_count"]
+        ) + int(np.count_nonzero(result == 0.0))
+        unlimited = 0.5 * (a + b)
+        self.operator_diagnostics["muscl_limiter_limited_count"] = int(
+            self.operator_diagnostics["muscl_limiter_limited_count"]
+        ) + int(np.count_nonzero(result != unlimited))
+        return result
 
     def _slope_x(self, field: np.ndarray) -> np.ndarray:
         slope = np.zeros_like(field)
@@ -61,6 +84,12 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
         v = np.zeros_like(h)
         u[wet] = hu[wet] / h_safe[wet]
         v[wet] = hv[wet] / h_safe[wet]
+        self.operator_diagnostics["muscl_cell_velocity_clip_count"] = int(
+            self.operator_diagnostics["muscl_cell_velocity_clip_count"]
+        ) + int(
+            np.count_nonzero(np.abs(u) > self.max_velocity)
+            + np.count_nonzero(np.abs(v) > self.max_velocity)
+        )
         u = np.clip(u, -self.max_velocity, self.max_velocity)
         v = np.clip(v, -self.max_velocity, self.max_velocity)
         eta = h + b
@@ -85,6 +114,12 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
         b_s = eta_s - h_s
         b_n = eta_n - h_n
 
+        face_values = (u_w, u_e, u_s, u_n, v_w, v_e, v_s, v_n)
+        self.operator_diagnostics["muscl_face_velocity_clip_count"] = int(
+            self.operator_diagnostics["muscl_face_velocity_clip_count"]
+        ) + int(
+            sum(np.count_nonzero(np.abs(value) > self.max_velocity) for value in face_values)
+        )
         u_w = np.clip(u_w, -self.max_velocity, self.max_velocity)
         u_e = np.clip(u_e, -self.max_velocity, self.max_velocity)
         u_s = np.clip(u_s, -self.max_velocity, self.max_velocity)
@@ -177,14 +212,19 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
                 hu_new[i, j] += dt * S_hu
                 hv_new[i, j] += dt * S_hv
 
+        self.operator_diagnostics["positivity_projection_count"] = int(
+            self.operator_diagnostics["positivity_projection_count"]
+        ) + int(np.count_nonzero(h_new < 0.0))
         h_new = np.maximum(h_new, 0.0)
         dry = h_new <= self.dry_tolerance
+        self.operator_diagnostics["dry_projection_count"] = int(
+            self.operator_diagnostics["dry_projection_count"]
+        ) + int(np.count_nonzero(dry))
         hu_new[dry] = 0.0
         hv_new[dry] = 0.0
 
         U_new = np.stack([h_new, hu_new, hv_new], axis=0)
-
-        return np.nan_to_num(U_new, nan=0.0, posinf=0.0, neginf=0.0)
+        return self._nan_to_num_with_diagnostics(U_new)
 
     def update(self, dt: float) -> None:
         if dt <= 0:
@@ -195,7 +235,10 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
         U2 = self._euler_step_from_state(U1, dt)
 
         U_new = 0.5 * (U0 + U2)
-        U_new = np.nan_to_num(U_new, nan=0.0, posinf=0.0, neginf=0.0)
+        U_new = self._nan_to_num_with_diagnostics(U_new)
+        self.operator_diagnostics["positivity_projection_count"] = int(
+            self.operator_diagnostics["positivity_projection_count"]
+        ) + int(np.count_nonzero(U_new[0] < 0.0))
         U_new[0] = np.maximum(U_new[0], 0.0)
 
         self.set_state(U_new)

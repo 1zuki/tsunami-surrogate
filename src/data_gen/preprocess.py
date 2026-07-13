@@ -260,35 +260,78 @@ class TsunamiPreprocessor:
         load one raw sample:
         - bathymetry
         - source_field
-        - trajectory
+        - trajectory or eta-primary requested target
         - timestamps
         - meta.json
         """
         sample_dir = pathlib.Path(sample_dir)
         npz_path = sample_dir / "sample.npz"
         meta_path = sample_dir / "meta.json"
+        publication_path = sample_dir / "publication.json"
 
         if not npz_path.is_file():
             raise FileNotFoundError(f"missing {npz_path}")
 
-        data = dict(np.load(npz_path))
-
-        for k, v in data.items():
-            arr = np.asarray(v)
-            if np.issubdtype(arr.dtype, np.number):
-                data[k] = arr.astype(np.float32)
-            else:
-                data[k] = arr
-
         meta: Dict[str, Any] = {}
-
         if meta_path.is_file():
             with meta_path.open("r", encoding="utf-8") as f:
                 meta = json.load(f)
 
+        if publication_path.is_file():
+            try:
+                from src.data_gen.common_time_v2 import (
+                    CONTRACT_SCHEMA_ID,
+                    ETA_SAMPLE_SCHEMA_ID,
+                    validate_candidate_times,
+                    validate_publication,
+                )
+            except ImportError:
+                from common_time_v2 import (  # type: ignore
+                    CONTRACT_SCHEMA_ID,
+                    ETA_SAMPLE_SCHEMA_ID,
+                    validate_candidate_times,
+                    validate_publication,
+                )
+
+            publication = validate_publication(
+                sample_dir,
+                expected_contract_hash=meta.get("contract_hash"),
+                expected_config_hash=meta.get("resolved_config_hash"),
+                expected_code_state_hash=meta.get("code_state_hash"),
+                expected_input_fingerprint=meta.get("input_fingerprint"),
+            )
+            if meta.get("schema_id") != ETA_SAMPLE_SCHEMA_ID:
+                raise RuntimeError("Unsupported common-time-v2 sample schema")
+            if publication.get("contract_hash") != meta.get("contract_hash"):
+                raise RuntimeError("Publication/meta contract hash mismatch")
+            with np.load(npz_path, allow_pickle=False) as payload:
+                if "timestamps" not in payload:
+                    raise RuntimeError("common-time-v2 sample is missing timestamps")
+                validate_candidate_times(payload["timestamps"])
+                schema_values = np.asarray(payload.get("schema_id", [])).reshape(-1)
+                if not schema_values or str(schema_values[0]) != ETA_SAMPLE_SCHEMA_ID:
+                    raise RuntimeError("sample.npz common-time-v2 schema mismatch")
+                contract_values = np.asarray(payload.get("contract_hash", [])).reshape(-1)
+                if not contract_values or str(contract_values[0]) != meta.get(
+                    "contract_hash"
+                ):
+                    raise RuntimeError("sample.npz common-time-v2 contract mismatch")
+            meta.setdefault("contract_schema_id", CONTRACT_SCHEMA_ID)
+
+        data = dict(np.load(npz_path, allow_pickle=False))
+        for k, v in data.items():
+            arr = np.asarray(v)
+            if np.issubdtype(arr.dtype, np.number):
+                data[k] = (
+                    arr.astype(np.float64)
+                    if k in {"timestamps", "source_strength"}
+                    else arr.astype(np.float32)
+                )
+            else:
+                data[k] = arr
+
         data["meta"] = meta
         data["sample_dir"] = str(sample_dir)
-
         return data
 
     def build_example(self, raw_sample: Dict[str, Any]) -> Tuple[Dict[str, np.ndarray], np.ndarray]:
@@ -364,31 +407,31 @@ class TsunamiPreprocessor:
         - multi-step rollout
         - final-state forecast
         """
-        traj: np.ndarray = sample["trajectory"]
-        traj = np.asarray(traj, dtype=np.float32)
-
-        if traj.ndim not in (3, 4):
-            raise ValueError(f"trajectory must have shape [T,H,W] or [T,C,H,W], got {traj.shape}")
-
         variable = self.cfg.target_variable
-        if variable == "state":
-            target_source = traj
+        if variable == "eta" and "trajectory_eta" in sample:
+            target_source = np.asarray(sample["trajectory_eta"], dtype=np.float32)
+            if target_source.ndim != 3:
+                raise ValueError(
+                    f"trajectory_eta must have shape [T,H,W], got {target_source.shape}"
+                )
         else:
-            if variable == "eta" and "trajectory_eta" in sample:
-                target_source = np.asarray(sample["trajectory_eta"], dtype=np.float32)
-                if target_source.ndim != 3:
-                    raise ValueError(
-                        f"trajectory_eta must have shape [T,H,W], got {target_source.shape}"
-                    )
-            else:
-                if traj.ndim == 4:
-                    depth_frames = traj[:, 0]
-                else:
-                    depth_frames = traj
+            if "trajectory" not in sample:
+                raise KeyError(
+                    f"trajectory is required for target.variable={variable!r}"
+                )
+            traj = np.asarray(sample["trajectory"], dtype=np.float32)
+            if traj.ndim not in (3, 4):
+                raise ValueError(
+                    f"trajectory must have shape [T,H,W] or [T,C,H,W], got {traj.shape}"
+                )
 
+            if variable == "state":
+                target_source = traj
+            else:
+                depth_frames = traj[:, 0] if traj.ndim == 4 else traj
                 if variable == "depth":
                     target_source = depth_frames
-                else:  # eta
+                else:
                     if "bathymetry" not in sample:
                         raise KeyError("bathymetry is required to build eta targets")
                     bathy = np.asarray(sample["bathymetry"], dtype=np.float32)
@@ -402,9 +445,13 @@ class TsunamiPreprocessor:
             return selected
 
         if self.cfg.target_mode == "multi_step":
+            if sample.get("meta", {}).get("schema_id") == (
+                "tsunami-surrogate.common-time-v2.eta-sample.v1"
+            ):
+                end = self.cfg.forecast_steps * self.cfg.stride
+                return target_source[0:end:self.cfg.stride]
             end = 1 + self.cfg.forecast_steps * self.cfg.stride
-
-            return target_source[1: end: self.cfg.stride]
+            return target_source[1:end:self.cfg.stride]
 
         if self.cfg.target_mode == "final_state":
             selected = target_source[-1]
@@ -814,14 +861,23 @@ class TsunamiPreprocessor:
         Ys: List[np.ndarray] = []
         metas: List[Dict[str, Any]] = []
         sample_ids: List[str] = []
+        v2_contract_hashes: Set[str] = set()
 
         for rec in records:
             X, Y, merged_meta, sample_id = self._record_to_example(rec)
+            contract_hash = merged_meta.get("contract_hash")
+            if contract_hash:
+                v2_contract_hashes.add(str(contract_hash))
             Xs.append(X)
             Ys.append(Y)
             sample_ids.append(sample_id)
             metas.append(merged_meta)
 
+        if len(v2_contract_hashes) > 1:
+            raise RuntimeError(
+                "Refusing to preprocess mixed common-time-v2 contracts: "
+                f"{sorted(v2_contract_hashes)}"
+            )
         return Xs, Ys, metas, sample_ids
 
     def _normalize_and_save(

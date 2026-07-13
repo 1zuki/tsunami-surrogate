@@ -9,6 +9,13 @@ from src.solver.boundary_conditions import (
     pad_scalar_field,
     resolve_boundary_modes,
 )
+from src.solver.operator_time import (
+    filter_coefficient,
+    sponge_factor,
+    validate_cg_failure_mode,
+    validate_filter_time_mode,
+    validate_sponge_time_mode,
+)
 
 BoussinesqMode = Literal[
     "linear_constant_depth",
@@ -76,6 +83,11 @@ class BoussinesqSolver:
         linear_solver_tol: float = 1e-8,
         linear_solver_max_iter: int = 80,
         check_finite: bool = True,
+        sponge_time_mode: str = "legacy_per_step",
+        sponge_reference_dt: float | None = None,
+        filter_time_mode: str = "legacy_per_step",
+        filter_reference_dt: float | None = None,
+        cg_failure_mode: str = "legacy_posthoc",
     ) -> None:
         if nx <= 1 or ny <= 1:
             raise ValueError("nx and ny must be greater than 1")
@@ -120,6 +132,19 @@ class BoussinesqSolver:
         self.linear_solver_tol = float(linear_solver_tol)
         self.linear_solver_max_iter = int(linear_solver_max_iter)
         self.check_finite = bool(check_finite)
+        self.sponge_time_mode = validate_sponge_time_mode(
+            sponge_time_mode, sponge_reference_dt
+        )
+        self.sponge_reference_dt = (
+            None if sponge_reference_dt is None else float(sponge_reference_dt)
+        )
+        self.filter_time_mode = validate_filter_time_mode(
+            filter_time_mode, filter_reference_dt
+        )
+        self.filter_reference_dt = (
+            None if filter_reference_dt is None else float(filter_reference_dt)
+        )
+        self.cg_failure_mode = validate_cg_failure_mode(cg_failure_mode)
 
         self.boundary_x, self.boundary_y = resolve_boundary_modes(boundary)
         self._validate_mode(self.mode)
@@ -150,8 +175,10 @@ class BoussinesqSolver:
         self.last_step_cg_solve_initial_residual = (0.0, 0.0)
         self.last_step_cg_solve_final_residual = (0.0, 0.0)
         self.last_step_cg_solve_residual_ratio = (0.0, 0.0)
+        self.operator_diagnostics: dict[str, float | int | bool | str | None] = {}
         if self.use_sponge:
             self._init_sponge_layer(width=self.sponge_width, min_factor=self.sponge_min_factor)
+        self.reset_operator_diagnostics()
 
     @staticmethod
     def _validate_mode(mode: BoussinesqMode) -> None:
@@ -376,21 +403,155 @@ class BoussinesqSolver:
             self.sponge_mask[:, d] = np.minimum(self.sponge_mask[:, d], val)
             self.sponge_mask[:, -(d + 1)] = np.minimum(self.sponge_mask[:, -(d + 1)], val)
 
-    def apply_sponge_layer(self) -> None:
+    def reset_operator_diagnostics(self) -> None:
+        if self.sponge_reference_dt is None:
+            reference_rate_min = None
+            reference_rate_max = None
+        else:
+            reference_rates = -np.log(self.sponge_mask) / self.sponge_reference_dt
+            reference_rate_min = float(np.min(reference_rates))
+            reference_rate_max = float(np.max(reference_rates))
+        filter_reference_rate = (
+            None
+            if self.filter_reference_dt is None
+            else self.filter_strength / self.filter_reference_dt
+        )
+        self.operator_diagnostics = {
+            "sponge_time_mode": self.sponge_time_mode,
+            "sponge_reference_dt": self.sponge_reference_dt,
+            "sponge_reference_decay_rate_min": reference_rate_min,
+            "sponge_reference_decay_rate_max": reference_rate_max,
+            "sponge_applications": 0,
+            "sponge_elapsed_time": 0.0,
+            "sponge_accumulated_exponent": 0.0,
+            "sponge_effective_factor_min": 1.0,
+            "sponge_effective_factor_max": 1.0,
+            "filter_time_mode": self.filter_time_mode,
+            "filter_reference_dt": self.filter_reference_dt,
+            "filter_reference_coefficient_rate": filter_reference_rate,
+            "filter_applications": 0,
+            "filter_effective_coefficient_last": 0.0,
+            "filter_effective_coefficient_max": 0.0,
+            "cg_failure_mode": self.cg_failure_mode,
+            "cg_solve_count": 0,
+            "cg_failure_count": 0,
+            "cg_iterations_sum": 0,
+            "cg_iterations_max": 0,
+            "cg_initial_residual_min": None,
+            "cg_initial_residual_max": 0.0,
+            "cg_final_residual_min": None,
+            "cg_final_residual_max": 0.0,
+            "cg_residual_ratio_max": 0.0,
+            "nan_to_num_replacement_count": 0,
+            "nan_to_num_replacement_occurred": False,
+        }
+
+    def get_operator_diagnostics(self) -> dict[str, float | int | bool | str | None]:
+        return dict(self.operator_diagnostics)
+
+    def _record_cg_diagnostic(self) -> None:
+        ratio = float(self.last_cg_final_residual) / max(
+            float(self.last_cg_initial_residual), 1e-30
+        )
+        self.operator_diagnostics["cg_solve_count"] = int(
+            self.operator_diagnostics["cg_solve_count"]
+        ) + 1
+        self.operator_diagnostics["cg_failure_count"] = int(
+            self.operator_diagnostics["cg_failure_count"]
+        ) + int(not self.last_cg_converged)
+        self.operator_diagnostics["cg_iterations_sum"] = int(
+            self.operator_diagnostics["cg_iterations_sum"]
+        ) + int(self.last_cg_iterations)
+        self.operator_diagnostics["cg_iterations_max"] = max(
+            int(self.operator_diagnostics["cg_iterations_max"]),
+            int(self.last_cg_iterations),
+        )
+        initial_residual = float(self.last_cg_initial_residual)
+        final_residual = float(self.last_cg_final_residual)
+        initial_min = self.operator_diagnostics["cg_initial_residual_min"]
+        final_min = self.operator_diagnostics["cg_final_residual_min"]
+        self.operator_diagnostics["cg_initial_residual_min"] = (
+            initial_residual
+            if initial_min is None
+            else min(float(initial_min), initial_residual)
+        )
+        self.operator_diagnostics["cg_initial_residual_max"] = max(
+            float(self.operator_diagnostics["cg_initial_residual_max"]),
+            initial_residual,
+        )
+        self.operator_diagnostics["cg_final_residual_min"] = (
+            final_residual
+            if final_min is None
+            else min(float(final_min), final_residual)
+        )
+        self.operator_diagnostics["cg_final_residual_max"] = max(
+            float(self.operator_diagnostics["cg_final_residual_max"]),
+            final_residual,
+        )
+        self.operator_diagnostics["cg_residual_ratio_max"] = max(
+            float(self.operator_diagnostics["cg_residual_ratio_max"]), ratio
+        )
+
+    def apply_sponge_layer(self, dt: float | None = None) -> None:
         """Damp eta and eta_t near boundaries."""
         if not self.use_sponge:
             return
-        self.eta *= self.sponge_mask
-        self.eta_t *= self.sponge_mask
+        if dt is None:
+            dt = self.dt
+        factor = sponge_factor(
+            self.sponge_mask,
+            dt=float(dt),
+            mode=self.sponge_time_mode,
+            reference_dt=self.sponge_reference_dt,
+        )
+        self.eta *= factor
+        self.eta_t *= factor
+        exponent = (
+            1.0
+            if self.sponge_time_mode == "legacy_per_step"
+            else float(dt) / float(self.sponge_reference_dt)
+        )
+        self.operator_diagnostics["sponge_applications"] = int(
+            self.operator_diagnostics["sponge_applications"]
+        ) + 1
+        self.operator_diagnostics["sponge_elapsed_time"] = float(
+            self.operator_diagnostics["sponge_elapsed_time"]
+        ) + float(dt)
+        self.operator_diagnostics["sponge_accumulated_exponent"] = float(
+            self.operator_diagnostics["sponge_accumulated_exponent"]
+        ) + exponent
+        self.operator_diagnostics["sponge_effective_factor_min"] = min(
+            float(self.operator_diagnostics["sponge_effective_factor_min"]),
+            float(np.min(factor)),
+        )
+        self.operator_diagnostics["sponge_effective_factor_max"] = max(
+            float(self.operator_diagnostics["sponge_effective_factor_max"]),
+            float(np.max(factor)),
+        )
 
-    def apply_filter(self) -> None:
-        """Optional light Laplacian smoothing for high-frequency cleanup."""
-        if self.filter_strength <= 0.0:
+    def apply_filter(self, dt: float | None = None) -> None:
+        """Optional Laplacian smoothing with explicit time semantics."""
+        if dt is None:
+            dt = self.dt
+        strength = filter_coefficient(
+            self.filter_strength,
+            dt=float(dt),
+            mode=self.filter_time_mode,
+            reference_dt=self.filter_reference_dt,
+        )
+        if strength <= 0.0:
             return
 
-        strength = min(self.filter_strength, 0.25)
         self.eta = self.eta + strength * min(self.dx, self.dy) ** 2 * self.laplacian(self.eta)
         self.eta_t = self.eta_t + strength * min(self.dx, self.dy) ** 2 * self.laplacian(self.eta_t)
+        self.operator_diagnostics["filter_applications"] = int(
+            self.operator_diagnostics["filter_applications"]
+        ) + 1
+        self.operator_diagnostics["filter_effective_coefficient_last"] = strength
+        self.operator_diagnostics["filter_effective_coefficient_max"] = max(
+            float(self.operator_diagnostics["filter_effective_coefficient_max"]),
+            strength,
+        )
 
     def suggest_dt(self, target_cfl: Optional[float] = None) -> float:
         """Suggest a conservative explicit step based on shallow long-wave speed."""
@@ -425,18 +586,24 @@ class BoussinesqSolver:
             raise ValueError("dt must be positive")
 
         a0 = self.solve_acceleration(self.eta)
+        self._record_cg_diagnostic()
         cg0_converged = bool(self.last_cg_converged)
         cg0_iterations = int(self.last_cg_iterations)
         cg0_initial_residual = float(self.last_cg_initial_residual)
         cg0_final_residual = float(self.last_cg_final_residual)
         cg0_ratio = cg0_final_residual / max(cg0_initial_residual, 1e-30)
+        if self.cg_failure_mode == "strict_v2" and not cg0_converged:
+            raise RuntimeError("Boussinesq CG solve 0 failed in strict_v2 mode")
         eta_next = self.eta + dt * self.eta_t + 0.5 * dt * dt * a0
         a1 = self.solve_acceleration(eta_next)
+        self._record_cg_diagnostic()
         cg1_converged = bool(self.last_cg_converged)
         cg1_iterations = int(self.last_cg_iterations)
         cg1_initial_residual = float(self.last_cg_initial_residual)
         cg1_final_residual = float(self.last_cg_final_residual)
         cg1_ratio = cg1_final_residual / max(cg1_initial_residual, 1e-30)
+        if self.cg_failure_mode == "strict_v2" and not cg1_converged:
+            raise RuntimeError("Boussinesq CG solve 1 failed in strict_v2 mode")
         eta_t_next = self.eta_t + 0.5 * dt * (a0 + a1)
 
         self.last_step_cg_converged = cg0_converged and cg1_converged
@@ -457,8 +624,8 @@ class BoussinesqSolver:
 
         self.eta = eta_next
         self.eta_t = eta_t_next
-        self.apply_filter()
-        self.apply_sponge_layer()
+        self.apply_filter(dt=dt)
+        self.apply_sponge_layer(dt=dt)
 
         if self.check_finite:
             state = self.get_state()

@@ -1,0 +1,2859 @@
+from __future__ import annotations
+
+import csv
+import io
+import json
+import math
+import multiprocessing
+import os
+import platform
+import shutil
+import sys
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+import numpy as np
+import yaml
+
+from src.data_gen.common_time_v2 import (
+    authoritative_input_fingerprint,
+    candidate_requested_times,
+    code_state,
+    hash_array,
+    sha256_file,
+    stable_hash_payload,
+)
+from src.data_gen.simulate_dataset import _simulate_one_local
+from src.solver.boussinesq import BoussinesqSolver
+from src.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
+from src.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
+
+
+LEVEL_A_SCHEMA_ID = "tsunami-surrogate.common-time-v2.level-a.v1"
+DECISIONS = {
+    "pass_to_H1",
+    "blocked_operator_semantics",
+    "blocked_boussinesq_health",
+    "blocked_boundary_behavior",
+    "blocked_convergence",
+    "implementation_failure",
+}
+SOLVERS = ("swe_hydrostatic", "swe_muscl_hr", "boussinesq")
+TASK_SCHEMA_ID = "tsunami-surrogate.common-time-v2.level-a-task.v1"
+TASK_ARTIFACT_SCHEMA_ID = "tsunami-surrogate.common-time-v2.level-a-task-artifact.v1"
+TASK_RESULT_SCHEMA_ID = "tsunami-surrogate.common-time-v2.level-a-task-result.v1"
+THREAD_ENV_KEYS = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "BLIS_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+)
+_VOLATILE_SCIENTIFIC_KEYS = {
+    "elapsed_s",
+    "runtime_s",
+    "operational_provenance",
+    "worker_metadata",
+}
+_DROP_SCIENTIFIC_VALUE = object()
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
+
+
+def _write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(_json_safe(payload), handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
+def _read_json(path: Path) -> Any:
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                rows.append(json.loads(line))
+    return rows
+
+
+def _write_jsonl(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(_json_safe(row), sort_keys=True) + "\n")
+
+
+def _csv_text(rows: Sequence[Mapping[str, Any]]) -> str:
+    fields = sorted({str(key) for row in rows for key in row})
+    if not fields:
+        return ""
+    handle = io.StringIO(newline="")
+    writer = csv.DictWriter(handle, fieldnames=fields)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({key: _json_safe(row.get(key)) for key in fields})
+    return handle.getvalue()
+
+
+def _write_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_csv_text(rows), encoding="utf-8", newline="")
+
+
+def _write_checksums(root: Path) -> None:
+    rows = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.name == "SHA256SUMS.txt":
+            continue
+        rows.append(f"{sha256_file(path)}  {path.relative_to(root).as_posix()}")
+    (root / "SHA256SUMS.txt").write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+
+def validate_checksums(
+    root: Path, *, allow_unlisted_prefixes: Sequence[str] = ()
+) -> None:
+    manifest = root / "SHA256SUMS.txt"
+    if not manifest.is_file():
+        raise RuntimeError(f"Missing checksum manifest: {manifest}")
+    listed: set[str] = set()
+    for line in manifest.read_text(encoding="utf-8").splitlines():
+        digest, relative = line.split("  ", 1)
+        if relative in listed:
+            raise RuntimeError(f"Duplicate Level A checksum entry: {relative}")
+        listed.add(relative)
+        path = root / relative
+        if not path.is_file() or sha256_file(path) != digest:
+            raise RuntimeError(f"Level A checksum mismatch: {relative}")
+    actual: set[str] = set()
+    for path in root.rglob("*"):
+        if not path.is_file() or path.name == "SHA256SUMS.txt":
+            continue
+        relative = path.relative_to(root).as_posix()
+        if any(relative.startswith(prefix) for prefix in allow_unlisted_prefixes):
+            continue
+        actual.add(relative)
+    covered_listed = {
+        relative
+        for relative in listed
+        if not any(relative.startswith(prefix) for prefix in allow_unlisted_prefixes)
+    }
+    if covered_listed != actual:
+        missing = sorted(actual - covered_listed)
+        extra = sorted(covered_listed - actual)
+        raise RuntimeError(
+            f"Level A checksum coverage mismatch: missing={missing}, extra={extra}"
+        )
+
+
+def _validate_source_contract(config: Mapping[str, Any]) -> None:
+    if config.get("schema_id") != LEVEL_A_SCHEMA_ID:
+        raise ValueError("Level A schema mismatch")
+    grid = config.get("candidate_grid", {})
+    expected = candidate_requested_times()
+    derived = float(grid["step"]) * np.arange(1, int(grid["count"]) + 1)
+    derived[-1] = float(grid["horizon"])
+    if not np.array_equal(derived.astype(np.float64), expected):
+        raise ValueError("Level A requested grid does not match common-time-v2")
+    if list(config.get("decision_precedence", [])) != [
+        "implementation_failure",
+        "blocked_boussinesq_health",
+        "blocked_boundary_behavior",
+        "blocked_convergence",
+        "blocked_operator_semantics",
+        "pass_to_H1",
+    ]:
+        raise ValueError("Level A decision precedence is not frozen as required")
+
+
+def _select_canaries(
+    inventory: Sequence[Mapping[str, Any]], count: int
+) -> list[dict[str, Any]]:
+    train = sorted(
+        (dict(row) for row in inventory if row.get("split") == "train"),
+        key=lambda row: (str(row["qualified_id"]), str(row["input_fingerprint"])),
+    )
+    source_families = sorted({str(row["source_type"]) for row in train})
+    selected: list[dict[str, Any]] = []
+    used_ids: set[str] = set()
+    used_bathymetry: set[str] = set()
+    for source in source_families:
+        candidates = [row for row in train if str(row["source_type"]) == source]
+        candidates.sort(
+            key=lambda row: (
+                str(row["bathymetry_type"]) in used_bathymetry,
+                str(row["qualified_id"]),
+            )
+        )
+        if candidates and len(selected) < count:
+            row = candidates[0]
+            selected.append(row)
+            used_ids.add(str(row["qualified_id"]))
+            used_bathymetry.add(str(row["bathymetry_type"]))
+    if len(selected) < count:
+        remaining = [row for row in train if str(row["qualified_id"]) not in used_ids]
+        remaining.sort(
+            key=lambda row: (
+                str(row["bathymetry_type"]) in used_bathymetry,
+                str(row["qualified_id"]),
+            )
+        )
+        selected.extend(remaining[: count - len(selected)])
+    if len(selected) != count:
+        raise RuntimeError(f"Could not select {count} training canaries")
+    keep = {
+        "split",
+        "qualified_id",
+        "scenario_id",
+        "sample_index",
+        "bathymetry_type",
+        "source_type",
+        "source_strength",
+        "input_fingerprint",
+        "bathymetry_cache_path",
+        "source_cache_path",
+        "raw_sample_paths",
+        "array_hashes",
+    }
+    return [{key: row[key] for key in keep if key in row} for row in selected]
+
+
+def preregister_level_a(
+    *,
+    repo_root: Path,
+    config_path: Path,
+    output_root: Path | None = None,
+) -> Path:
+    repo_root = repo_root.resolve()
+    config_path = config_path.resolve()
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    if not isinstance(config, Mapping):
+        raise ValueError("Level A YAML must contain a mapping")
+    _validate_source_contract(config)
+
+    h0_dir = (
+        repo_root
+        / "artifacts/common_time_v2/h0/830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b"
+    )
+    h0_decision = _read_json(h0_dir / "h0_decision.json")
+    if not h0_decision.get("audit_passed"):
+        raise RuntimeError("H0 must pass before Level A preregistration")
+    inventory_path = h0_dir / "h0_input_inventory.jsonl"
+    inventory = _read_jsonl(inventory_path)
+    canaries = _select_canaries(inventory, int(config["canaries"]["count"]))
+    source_code = code_state(repo_root)
+    payload = {
+        "schema_id": LEVEL_A_SCHEMA_ID,
+        "artifact_kind": "common-time-v2-level-a-preregistered-contract",
+        "source_config": _json_safe(config),
+        "source_config_sha256": sha256_file(config_path),
+        "candidate_times": candidate_requested_times().tolist(),
+        "h0_decision_sha256": sha256_file(h0_dir / "h0_decision.json"),
+        "h0_inventory_sha256": sha256_file(inventory_path),
+        "canaries": canaries,
+        "code_state": source_code,
+        "thresholds_frozen_before_execution": True,
+    }
+    contract_hash = stable_hash_payload(
+        artifact_kind="common-time-v2-level-a-contract",
+        payload=payload,
+        schema_id=LEVEL_A_SCHEMA_ID,
+    )
+    payload["contract_hash"] = contract_hash
+    base = output_root or (repo_root / "artifacts/common_time_v2/level_a")
+    final = base / contract_hash
+    if final.exists():
+        raise FileExistsError(f"Refusing to overwrite Level A root: {final}")
+    staging = base / f".{contract_hash}.preregister-staging"
+    if staging.exists():
+        raise FileExistsError(staging)
+    staging.mkdir(parents=True, exist_ok=False)
+    _write_json(staging / "preregistered_contract.json", payload)
+    _write_json(staging / "resolved_configs.json", config)
+    _write_json(staging / "canary_selection.json", canaries)
+    report = f"""# Common-time-v2 Level A preregistration
+
+- Contract hash: `{contract_hash}`
+- Candidate grid: 50 positive outputs through `0.1750`
+- Code-state hash: `{source_code["code_state_hash"]}`
+- H0 inventory records: {len(inventory)}
+- Training canaries: {len(canaries)}
+- Thresholds frozen before execution: yes
+
+Stage C thresholds are historical context only and were not inherited. `depth_scale=1.0` is the sole v2 production interpretation in this contract. The current `open` implementation is labelled zero-gradient edge padding, not radiative. A Level A pass permits only progression to H1; it does not accept the production contract.
+"""
+    (staging / "PREREGISTRATION.md").write_text(report, encoding="utf-8")
+    _write_checksums(staging)
+    base.mkdir(parents=True, exist_ok=True)
+    os.replace(staging, final)
+    return final
+
+
+def _solver(
+    name: str,
+    *,
+    nx: int,
+    ny: int,
+    cfl: float,
+    boundary: str,
+    use_sponge: bool,
+    sponge_mode: str = "legacy_per_step",
+    filter_mode: str = "disabled",
+    filter_strength: float = 0.0,
+) -> Any:
+    common = dict(
+        nx=nx,
+        ny=ny,
+        dx=1.0 / nx,
+        dy=1.0 / ny,
+        dt=1.0e-4,
+        g=9.81,
+        cfl=cfl,
+        boundary=boundary,
+        use_sponge=use_sponge,
+        sponge_width=max(1, nx // 8),
+        sponge_min_factor=0.9,
+        sponge_time_mode=sponge_mode,
+        sponge_reference_dt=0.0035
+        if sponge_mode == "elapsed_time_consistent"
+        else None,
+    )
+    if name == "swe_hydrostatic":
+        return HydrostaticShallowWaterSolver(
+            **common, dry_tolerance=1e-6, max_velocity=30.0
+        )
+    if name == "swe_muscl_hr":
+        return MUSCLHRShallowWaterSolver(
+            **common, dry_tolerance=1e-6, max_velocity=30.0
+        )
+    return BoussinesqSolver(
+        **common,
+        alpha=1.0 / 3.0,
+        min_depth=1e-4,
+        depth_scale=1.0,
+        mode="linear_constant_depth",
+        filter_strength=filter_strength,
+        filter_time_mode=filter_mode,
+        filter_reference_dt=(
+            0.0035 if filter_mode == "elapsed_time_consistent" else None
+        ),
+        cg_failure_mode="strict_v2",
+        linear_solver_tol=1e-10,
+        linear_solver_max_iter=500,
+        check_finite=True,
+    )
+
+
+def _mode_exact(
+    name: str,
+    *,
+    nx: int,
+    ny: int,
+    mode: int,
+    amplitude: float,
+    times: np.ndarray,
+) -> tuple[np.ndarray, float, float]:
+    x = np.arange(nx, dtype=float)[:, None] / nx
+    k = 2.0 * math.pi * mode
+    if name == "boussinesq":
+        kd = 2.0 * math.sin(0.5 * k / nx) * nx
+        omega = math.sqrt(9.81 * kd * kd / (1.0 + kd * kd / 3.0))
+        group = math.sqrt(9.81) * math.cos(0.5 * k / nx) / (1.0 + kd * kd / 3.0) ** 1.5
+    else:
+        omega = math.sqrt(9.81) * k
+        group = math.sqrt(9.81)
+    exact = np.stack(
+        [
+            amplitude * np.cos(k * x - omega * float(t)) * np.ones((1, ny), dtype=float)
+            for t in times
+        ],
+        axis=0,
+    )
+    return exact, omega, group
+
+
+def _run_mode(
+    name: str, *, nx: int, ny: int, mode: int, cfl: float, amplitude: float
+) -> dict[str, Any]:
+    times = candidate_requested_times()
+    exact, omega, group = _mode_exact(
+        name, nx=nx, ny=ny, mode=mode, amplitude=amplitude, times=times
+    )
+    solver = _solver(name, nx=nx, ny=ny, cfl=cfl, boundary="periodic", use_sponge=False)
+    bathymetry = -np.ones((nx, ny), dtype=float)
+    x = np.arange(nx, dtype=float)[:, None] / nx
+    k = 2.0 * math.pi * mode
+    eta0 = amplitude * np.cos(k * x) * np.ones((1, ny), dtype=float)
+    if name == "boussinesq":
+        eta_t0 = amplitude * omega * np.sin(k * x) * np.ones((1, ny))
+        solver.set_bathymetry(bathymetry)
+        solver.set_initial_condition(eta0, eta_t0=eta_t0)
+    else:
+        h0 = 1.0 + eta0
+        hu0 = math.sqrt(9.81) * eta0
+        solver.set_bathymetry(bathymetry)
+        solver.set_initial_condition(h0, hu0=hu0, hv0=np.zeros_like(h0))
+    states, emitted, dt_history, diagnostics = _simulate_one_local(
+        solver,
+        n_steps=1,
+        save_every=1,
+        auto_dt=True,
+        target_cfl=cfl,
+        include_initial_state=False,
+        requested_times=times,
+        max_natural_steps=10000,
+        collect_natural_step_health=True,
+    )
+    eta = states[:, 0] if name == "boussinesq" else states[:, 0] + bathymetry
+    basis = np.exp(-1j * k * np.arange(nx) / nx)[:, None]
+    coeff = np.asarray([np.mean(frame * basis) for frame in eta])
+    phase = np.unwrap(np.angle(coeff))
+    slope = float(np.polyfit(emitted, phase, 1)[0])
+    measured_omega = -slope
+    amplitude_ratio = float(abs(coeff[-1]) / max(abs(coeff[0]), 1e-30))
+    diff = eta - exact
+    field_l2 = float(np.linalg.norm(diff) / max(np.linalg.norm(exact), 1e-30))
+    widths = np.asarray(diagnostics["bracket_widths"], dtype=float)
+    left_times = np.asarray(diagnostics["left_natural_timestamps"], dtype=float)
+    right_times = np.asarray(diagnostics["right_natural_timestamps"], dtype=float)
+    weights = np.asarray(diagnostics["interpolation_weights"], dtype=float)
+    left_exact, _, _ = _mode_exact(
+        name, nx=nx, ny=ny, mode=mode, amplitude=amplitude, times=left_times
+    )
+    right_exact, _, _ = _mode_exact(
+        name, nx=nx, ny=ny, mode=mode, amplitude=amplitude, times=right_times
+    )
+    interpolated_exact = (
+        left_exact * (1.0 - weights[:, None, None])
+        + right_exact * weights[:, None, None]
+    )
+    interpolation_error = float(np.max(np.abs(interpolated_exact - exact)))
+    interpolation_bound = float(amplitude * omega * omega * np.max(widths) ** 2 / 8.0)
+    operator = solver.get_operator_diagnostics()
+    return {
+        "component": "analytical_mode",
+        "solver": name,
+        "grid": nx,
+        "mode": mode,
+        "wavenumber": k,
+        "cfl": cfl,
+        "measured_omega": measured_omega,
+        "expected_omega": omega,
+        "phase_speed_relative_error": abs(measured_omega - omega) / omega,
+        "group_speed_expected": group,
+        "amplitude_drift": abs(amplitude_ratio - 1.0),
+        "field_relative_l2": field_l2,
+        "interpolation_actual_max_abs_error": interpolation_error,
+        "interpolation_absolute_bound": interpolation_bound,
+        "interpolation_bound_floating_tolerance": float(
+            32.0 * np.finfo(np.float64).eps * max(amplitude, 1.0)
+        ),
+        "output_count": int(emitted.size),
+        "requested_times_exact": bool(
+            np.array_equal(emitted, candidate_requested_times())
+        ),
+        "natural_steps": int(dt_history.size),
+        "max_bracket_width": float(np.max(widths)),
+        "finite": bool(np.isfinite(states).all()),
+        "cg_failure_count": int(
+            np.sum(np.asarray(diagnostics.get("cg_failed_count", []), dtype=int))
+        ),
+        "nan_to_num_replacement_count": int(
+            operator.get("nan_to_num_replacement_count", 0)
+        ),
+        "positivity_projection_count": int(
+            operator.get("positivity_projection_count", 0)
+        ),
+        "dry_projection_count": int(operator.get("dry_projection_count", 0)),
+        "operator": operator,
+        "_trajectory_eta": eta,
+    }
+
+
+def _observed_order(coarse: float, fine: float) -> float | None:
+    if coarse <= 0.0 or fine <= 0.0:
+        return None
+    return float(math.log(coarse / fine, 2.0))
+
+
+def _trajectory_rms_difference(a: np.ndarray, b: np.ndarray) -> float:
+    aa = np.asarray(a, dtype=np.float64)
+    bb = np.asarray(b, dtype=np.float64)
+    if aa.shape != bb.shape:
+        raise ValueError(f"Trajectory shapes differ: {aa.shape} != {bb.shape}")
+    return float(np.sqrt(np.mean((aa - bb) ** 2)))
+
+
+def _temporal_refinement_gate(
+    trajectories: Sequence[np.ndarray], *, minimum_order: float, floor: float
+) -> dict[str, Any]:
+    if len(trajectories) != 3:
+        raise ValueError(
+            "Temporal refinement requires production, half, and quarter trajectories"
+        )
+    production_to_half = _trajectory_rms_difference(trajectories[0], trajectories[1])
+    half_to_quarter = _trajectory_rms_difference(trajectories[1], trajectories[2])
+    below_floor = production_to_half <= floor and half_to_quarter <= floor
+    order = (
+        None
+        if below_floor or half_to_quarter <= 0.0
+        else _observed_order(production_to_half, half_to_quarter)
+    )
+    passed = below_floor or (
+        production_to_half > half_to_quarter
+        and order is not None
+        and order >= minimum_order
+    )
+    return {
+        "production_to_half_trajectory_rms": production_to_half,
+        "half_to_quarter_trajectory_rms": half_to_quarter,
+        "roundoff_floor": floor,
+        "both_below_floor": below_floor,
+        "observed_order": order,
+        "passed": passed,
+    }
+
+
+def _group_speed_gate(
+    rows: Sequence[Mapping[str, Any]], *, relative_error_limit: float
+) -> dict[str, Any]:
+    ordered = sorted(rows, key=lambda row: float(row["wavenumber"]))
+    if len(ordered) < 2:
+        raise ValueError("Group-speed measurement requires at least two Fourier modes")
+    wavenumbers = np.asarray([row["wavenumber"] for row in ordered], dtype=float)
+    measured = np.asarray([row["measured_omega"] for row in ordered], dtype=float)
+    expected = np.asarray([row["expected_omega"] for row in ordered], dtype=float)
+    measured_group = float(np.polyfit(wavenumbers, measured, 1)[0])
+    expected_group = float(np.polyfit(wavenumbers, expected, 1)[0])
+    relative_error = abs(measured_group - expected_group) / max(
+        abs(expected_group), 1e-30
+    )
+    return {
+        "measured_group_speed": measured_group,
+        "expected_group_speed": expected_group,
+        "group_speed_relative_error": relative_error,
+        "passed": relative_error <= relative_error_limit,
+    }
+
+
+def _public_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        str(key): value for key, value in row.items() if not str(key).startswith("_")
+    }
+
+
+def _load_canary_arrays(
+    row: Mapping[str, Any],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, dict[str, np.ndarray]]:
+    qualified_id = str(row.get("qualified_id", "unknown"))
+    with np.load(
+        Path(str(row["bathymetry_cache_path"])), allow_pickle=False
+    ) as payload:
+        missing = {"bathymetry", "bathymetry_type"} - set(payload.files)
+        if missing:
+            raise RuntimeError(
+                f"Canary {qualified_id} bathymetry cache missing {sorted(missing)}"
+            )
+        bathymetry = np.asarray(payload["bathymetry"])
+        bathymetry_type = str(np.asarray(payload["bathymetry_type"]).reshape(-1)[0])
+    with np.load(Path(str(row["source_cache_path"])), allow_pickle=False) as payload:
+        missing = {"source_field", "source_strength", "source_type"} - set(
+            payload.files
+        )
+        if missing:
+            raise RuntimeError(
+                f"Canary {qualified_id} source cache missing {sorted(missing)}"
+            )
+        source = np.asarray(payload["source_field"])
+        strength_array = np.asarray(payload["source_strength"])
+        source_type = str(np.asarray(payload["source_type"]).reshape(-1)[0])
+    if bathymetry_type != str(row["bathymetry_type"]):
+        raise RuntimeError(f"Canary {qualified_id} bathymetry_type mismatch")
+    if source_type != str(row["source_type"]):
+        raise RuntimeError(f"Canary {qualified_id} source_type mismatch")
+    strength = float(strength_array.reshape(-1)[0])
+    if not np.isfinite(strength) or np.float32(strength) != np.float32(
+        row["source_strength"]
+    ):
+        raise RuntimeError(f"Canary {qualified_id} source_strength mismatch")
+    if not np.isfinite(bathymetry).all() or not np.isfinite(source).all():
+        raise RuntimeError(
+            f"Canary {qualified_id} contains nonfinite authoritative inputs"
+        )
+
+    expected_hashes = row.get("array_hashes")
+    if not isinstance(expected_hashes, Mapping):
+        raise RuntimeError(f"Canary {qualified_id} array_hashes are missing")
+    primary = {"bathymetry": bathymetry, "source_field": source}
+    for name, values in primary.items():
+        if hash_array(values) != expected_hashes.get(name):
+            raise RuntimeError(f"Canary {qualified_id} {name} hash mismatch")
+
+    rest = np.maximum(-bathymetry, 0.0).astype(bathymetry.dtype, copy=False)
+    eta0 = np.asarray(
+        strength * source, dtype=np.dtype(expected_hashes["eta0"]["dtype"])
+    )
+    h0 = np.maximum(rest + eta0, 0.0).astype(
+        np.dtype(expected_hashes["initial_depth"]["dtype"]), copy=False
+    )
+    free = (h0 + bathymetry).astype(
+        np.dtype(expected_hashes["free_surface0"]["dtype"]), copy=False
+    )
+    arrays = {
+        "bathymetry": bathymetry,
+        "source_field": source,
+        "rest_depth": rest,
+        "eta0": eta0,
+        "initial_depth": h0,
+        "free_surface0": free,
+    }
+    for name, values in arrays.items():
+        if hash_array(values) != expected_hashes.get(name):
+            raise RuntimeError(f"Canary {qualified_id} derived {name} hash mismatch")
+    fingerprint = authoritative_input_fingerprint(
+        split=str(row["split"]),
+        sample_index=int(row["sample_index"]),
+        scenario_id=str(row["scenario_id"]),
+        bathymetry_type=bathymetry_type,
+        source_type=source_type,
+        source_strength=strength_array,
+        arrays=arrays,
+    )
+    if fingerprint != row["input_fingerprint"]:
+        raise RuntimeError(f"Canary fingerprint mismatch: {qualified_id}")
+    return bathymetry, source, strength_array, strength, arrays
+
+
+def _preflight_canaries(canaries: Sequence[Mapping[str, Any]]) -> list[str]:
+    issues: list[str] = []
+    for row in canaries:
+        missing = False
+        for key in ("bathymetry_cache_path", "source_cache_path"):
+            path = Path(str(row.get(key, "")))
+            if not path.is_file():
+                issues.append(f"missing {key} for {row.get('qualified_id')}: {path}")
+                missing = True
+        if missing:
+            continue
+        try:
+            _load_canary_arrays(row)
+        except Exception as exc:
+            issues.append(
+                f"invalid authoritative inputs for {row.get('qualified_id')}: "
+                f"{type(exc).__name__}: {exc}"
+            )
+    return issues
+
+
+def _scientific_normalize(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        if (
+            value.get("component") == "canary_bootstrap_descriptive"
+            and value.get("metric") == "runtime_s"
+        ):
+            return _DROP_SCIENTIFIC_VALUE
+        normalized_mapping: dict[str, Any] = {}
+        for key, item in sorted(value.items(), key=lambda pair: str(pair[0])):
+            if str(key) in _VOLATILE_SCIENTIFIC_KEYS:
+                continue
+            normalized = _scientific_normalize(item)
+            if normalized is not _DROP_SCIENTIFIC_VALUE:
+                normalized_mapping[str(key)] = normalized
+        return normalized_mapping
+    if isinstance(value, (list, tuple)):
+        normalized = [_scientific_normalize(item) for item in value]
+        return [item for item in normalized if item is not _DROP_SCIENTIFIC_VALUE]
+    if isinstance(value, np.ndarray):
+        return {"array_hash": hash_array(value)}
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, Path):
+        return str(value)
+    return value
+
+
+def _scientific_digest(value: Any) -> str:
+    return stable_hash_payload(
+        artifact_kind="common-time-v2-level-a-scientific-result",
+        payload=_scientific_normalize(value),
+        schema_id=LEVEL_A_SCHEMA_ID,
+    )
+
+
+def _thread_settings() -> dict[str, str | None]:
+    return {key: os.environ.get(key) for key in THREAD_ENV_KEYS}
+
+
+def _operational_provenance(
+    *,
+    requested_workers: int,
+    effective_workers: int,
+    process_start_method: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "requested_workers": int(requested_workers),
+        "effective_workers": int(effective_workers),
+        "process_start_method": (
+            process_start_method
+            if process_start_method is not None
+            else "spawn"
+            if effective_workers > 1
+            else "serial"
+        ),
+        "python_version": platform.python_version(),
+        "numpy_version": np.__version__,
+        "platform": platform.platform(),
+        "processor": platform.processor(),
+        "logical_cpu_count": os.cpu_count(),
+        "thread_environment": _thread_settings(),
+    }
+
+
+def _make_level_a_task(
+    *,
+    ordinal: int,
+    task_id: str,
+    kind: str,
+    spec: Mapping[str, Any],
+    contract_hash: str,
+    code_state_hash: str,
+) -> dict[str, Any]:
+    identity = {
+        "schema_id": TASK_SCHEMA_ID,
+        "contract_hash": str(contract_hash),
+        "code_state_hash": str(code_state_hash),
+        "ordinal": int(ordinal),
+        "task_id": str(task_id),
+        "kind": str(kind),
+        "spec": _json_safe(spec),
+    }
+    identity["task_spec_hash"] = stable_hash_payload(
+        artifact_kind="common-time-v2-level-a-task",
+        payload=identity,
+        schema_id=TASK_SCHEMA_ID,
+    )
+    return identity
+
+
+def _build_level_a_task_plan(
+    config: Mapping[str, Any],
+    canaries: Sequence[Mapping[str, Any]],
+    *,
+    contract_hash: str,
+    code_state_hash: str,
+) -> list[dict[str, Any]]:
+    tasks: list[dict[str, Any]] = []
+
+    def add(task_id: str, kind: str, spec: Mapping[str, Any]) -> None:
+        tasks.append(
+            _make_level_a_task(
+                ordinal=len(tasks),
+                task_id=task_id,
+                kind=kind,
+                spec=spec,
+                contract_hash=contract_hash,
+                code_state_hash=code_state_hash,
+            )
+        )
+
+    amplitude = float(config["analytical"]["amplitude"])
+    ny = int(config["analytical"]["transverse_cells"])
+    for solver in SOLVERS:
+        spatial_cfl = float(config["analytical"]["spatial_refinement_cfl"][solver])
+        for index, grid in enumerate(config["analytical"]["grids"]):
+            add(
+                f"analytical/{solver}/spatial/{index}",
+                "analytical",
+                {
+                    "role": "spatial",
+                    "solver": solver,
+                    "grid": int(grid),
+                    "ny": ny,
+                    "mode": 1,
+                    "cfl": spatial_cfl,
+                    "amplitude": amplitude,
+                },
+            )
+        for index, cfl in enumerate(config["production"]["cfl"][solver]):
+            add(
+                f"analytical/{solver}/temporal/{index}",
+                "analytical",
+                {
+                    "role": "temporal",
+                    "solver": solver,
+                    "grid": 128,
+                    "ny": ny,
+                    "mode": 1,
+                    "cfl": float(cfl),
+                    "amplitude": amplitude,
+                },
+            )
+        production_cfl = float(config["production"]["cfl"][solver][0])
+        for index, mode in enumerate(config["analytical"]["modes"]):
+            add(
+                f"analytical/{solver}/modal/{index}",
+                "analytical",
+                {
+                    "role": "modal",
+                    "solver": solver,
+                    "grid": 128,
+                    "ny": ny,
+                    "mode": int(mode),
+                    "cfl": production_cfl,
+                    "amplitude": amplitude,
+                },
+            )
+
+    for solver in SOLVERS:
+        production, half = [
+            float(value) for value in config["production"]["cfl"][solver][:2]
+        ]
+        variants = [
+            (
+                "legacy_per_step",
+                "legacy_per_step" if solver == "boussinesq" else "disabled",
+                0.01 if solver == "boussinesq" else 0.0,
+            ),
+            ("elapsed_no_filter", "disabled", 0.0),
+        ]
+        if solver == "boussinesq":
+            variants.append(("elapsed_filter", "elapsed_time_consistent", 0.01))
+        for variant, filter_mode, filter_strength in variants:
+            for cfl_index, cfl in enumerate((production, half)):
+                add(
+                    f"operator/{solver}/{variant}/{cfl_index}",
+                    "operator",
+                    {
+                        "solver": solver,
+                        "variant": variant,
+                        "filter_mode": filter_mode,
+                        "filter_strength": filter_strength,
+                        "cfl": cfl,
+                        "nx": 64,
+                        "ny": 4,
+                    },
+                )
+
+    boundary_spec = _json_safe(config["boundary_packet"])
+    for solver in SOLVERS:
+        for variant, use_sponge in (("baseline", False), ("damped", True)):
+            add(
+                f"boundary/{solver}/{variant}",
+                "boundary",
+                {
+                    "solver": solver,
+                    "variant": variant,
+                    "use_sponge": use_sponge,
+                    "cfl": float(config["production"]["cfl"][solver][0]),
+                    "nx": 128,
+                    "ny": 4,
+                    "packet": boundary_spec,
+                },
+            )
+
+    for boundary in ("periodic", "reflective"):
+        for solver in SOLVERS:
+            add(
+                f"conservation/{boundary}/{solver}",
+                "conservation",
+                {
+                    "solver": solver,
+                    "boundary": boundary,
+                    "cfl": float(config["production"]["cfl"][solver][0]),
+                    "nx": 64,
+                    "ny": 4,
+                },
+            )
+
+    for canary in canaries:
+        for solver in SOLVERS:
+            add(
+                f"canary/{canary['qualified_id']}/{solver}",
+                "canary",
+                {
+                    "solver": solver,
+                    "cfl": float(config["production"]["cfl"][solver][0]),
+                    "canary": _json_safe(canary),
+                },
+            )
+
+    counts: dict[str, int] = {}
+    for task in tasks:
+        counts[str(task["kind"])] = counts.get(str(task["kind"]), 0) + 1
+    expected = {
+        "analytical": 27,
+        "operator": 14,
+        "boundary": 6,
+        "conservation": 6,
+        "canary": 18,
+    }
+    if counts != expected:
+        raise RuntimeError(f"Level A task plan mismatch: {counts} != {expected}")
+    return tasks
+
+
+def _validate_task_plan(tasks: Sequence[Mapping[str, Any]]) -> None:
+    ids = [str(task["task_id"]) for task in tasks]
+    hashes = [str(task["task_spec_hash"]) for task in tasks]
+    ordinals = [int(task["ordinal"]) for task in tasks]
+    if len(set(ids)) != len(ids):
+        raise RuntimeError("Duplicate Level A task_id")
+    if len(set(hashes)) != len(hashes):
+        raise RuntimeError("Duplicate Level A task_spec_hash")
+    if ordinals != list(range(len(tasks))):
+        raise RuntimeError("Level A task ordinals are not contiguous and ordered")
+    names = [_task_directory_name(task) for task in tasks]
+    if len(set(names)) != len(names):
+        raise RuntimeError("Colliding Level A task artifact directory names")
+    for task in tasks:
+        expected = _make_level_a_task(
+            ordinal=int(task["ordinal"]),
+            task_id=str(task["task_id"]),
+            kind=str(task["kind"]),
+            spec=dict(task["spec"]),
+            contract_hash=str(task["contract_hash"]),
+            code_state_hash=str(task["code_state_hash"]),
+        )
+        if _json_safe(task) != expected:
+            raise RuntimeError(f"Level A task identity mismatch: {task['task_id']}")
+
+
+def _task_directory_name(task: Mapping[str, Any]) -> str:
+    return f"{int(task['ordinal']):03d}-{str(task['task_spec_hash'])[:16]}"
+
+
+def _compute_level_a_task(
+    task: Mapping[str, Any],
+) -> tuple[dict[str, Any], np.ndarray | None]:
+    spec = task["spec"]
+    kind = str(task["kind"])
+    if kind == "fixture":
+        delay = float(spec.get("delay_s", 0.0))
+        if delay > 0.0:
+            time.sleep(delay)
+        if bool(spec.get("fail", False)):
+            raise RuntimeError(str(spec.get("message", "fixture failure")))
+        value = float(spec["value"])
+        return (
+            {
+                "component": "fixture",
+                "name": str(spec["name"]),
+                "value": value,
+                "runtime_s": delay,
+            },
+            np.asarray([value, value * value], dtype=np.float64),
+        )
+    if kind == "analytical":
+        row = _run_mode(
+            str(spec["solver"]),
+            nx=int(spec["grid"]),
+            ny=int(spec["ny"]),
+            mode=int(spec["mode"]),
+            cfl=float(spec["cfl"]),
+            amplitude=float(spec["amplitude"]),
+        )
+        trajectory = np.asarray(row.pop("_trajectory_eta"))
+        row["analytical_role"] = str(spec["role"])
+        return row, trajectory
+    if kind == "operator":
+        nx, ny = int(spec["nx"]), int(spec["ny"])
+        eta0 = _packet(nx, ny)
+        variant = str(spec["variant"])
+        sponge_mode = (
+            "legacy_per_step"
+            if variant == "legacy_per_step"
+            else "elapsed_time_consistent"
+        )
+        eta, dt, diagnostics, solver = _trajectory_eta(
+            str(spec["solver"]),
+            nx=nx,
+            ny=ny,
+            cfl=float(spec["cfl"]),
+            boundary="open",
+            use_sponge=True,
+            sponge_mode=sponge_mode,
+            filter_mode=str(spec["filter_mode"]),
+            filter_strength=float(spec["filter_strength"]),
+            eta0=eta0,
+        )
+        row = {
+            "component": "operator_sensitivity",
+            "solver": str(spec["solver"]),
+            "variant": variant,
+            "cfl": float(spec["cfl"]),
+            "natural_steps": int(dt.size),
+            "amplitude_ratio": float(
+                np.max(np.abs(eta)) / max(np.max(np.abs(eta0)), 1e-30)
+            ),
+            "high_frequency_fraction": _high_frequency_fraction(eta),
+            "cg_failure_count": int(
+                np.sum(np.asarray(diagnostics.get("cg_failed_count", []), dtype=int))
+            ),
+            "finite": bool(np.isfinite(eta).all()),
+            "operator": solver.get_operator_diagnostics(),
+        }
+        return row, eta
+    if kind == "boundary":
+        packet_spec = spec["packet"]
+        eta0 = _packet(
+            int(spec["nx"]),
+            int(spec["ny"]),
+            center=float(packet_spec["center_x"]),
+            sigma=float(packet_spec["sigma"]),
+        )
+        use_sponge = bool(spec["use_sponge"])
+        eta, _, diagnostics, solver = _trajectory_eta(
+            str(spec["solver"]),
+            nx=int(spec["nx"]),
+            ny=int(spec["ny"]),
+            cfl=float(spec["cfl"]),
+            boundary="open",
+            use_sponge=use_sponge,
+            sponge_mode="elapsed_time_consistent" if use_sponge else "legacy_per_step",
+            eta0=eta0,
+        )
+        return {
+            "component": "boundary_trajectory",
+            "solver": str(spec["solver"]),
+            "variant": str(spec["variant"]),
+            "finite": bool(np.isfinite(eta).all()),
+            "cg_failure_count": int(
+                np.sum(np.asarray(diagnostics.get("cg_failed_count", []), dtype=int))
+            ),
+            "operator": solver.get_operator_diagnostics(),
+        }, eta
+    if kind == "conservation":
+        nx, ny = int(spec["nx"]), int(spec["ny"])
+        eta0 = _packet(nx, ny, center=0.5, sigma=0.06)
+        solver_name = str(spec["solver"])
+        eta, _, diagnostics, solver = _trajectory_eta(
+            solver_name,
+            nx=nx,
+            ny=ny,
+            cfl=float(spec["cfl"]),
+            boundary=str(spec["boundary"]),
+            use_sponge=False,
+            sponge_mode="legacy_per_step",
+            eta0=eta0,
+        )
+        mean0 = float(np.sum(eta0))
+        mean_drift = float(np.max(np.abs(np.sum(eta, axis=(1, 2)) - mean0))) / max(
+            float(np.sum(np.abs(eta0))), 1e-30
+        )
+        mass_drift = None
+        if solver_name != "boussinesq":
+            mass0 = float(np.sum(1.0 + eta0))
+            mass_drift = float(
+                np.max(np.abs(np.sum(1.0 + eta, axis=(1, 2)) - mass0))
+                / max(abs(mass0), 1e-30)
+            )
+        cg_failures = int(
+            np.sum(np.asarray(diagnostics.get("cg_failed_count", []), dtype=int))
+        )
+        return {
+            "component": "conservation_health",
+            "solver": solver_name,
+            "boundary": str(spec["boundary"]),
+            "mass_relative_drift": mass_drift,
+            "mean_integral_relative_drift": mean_drift,
+            "cg_failure_count": cg_failures,
+            "finite": bool(np.isfinite(eta).all()),
+            "operator": solver.get_operator_diagnostics(),
+        }, None
+    if kind == "canary":
+        canary = spec["canary"]
+        bathymetry, _source, _strength_array, _strength, arrays = _load_canary_arrays(
+            canary
+        )
+        eta0 = arrays["eta0"]
+        rest = arrays["rest_depth"]
+        h0 = arrays["initial_depth"]
+        solver_name = str(spec["solver"])
+        started = time.monotonic()
+        eta, dt, diagnostics, solver = _trajectory_eta(
+            solver_name,
+            nx=bathymetry.shape[0],
+            ny=bathymetry.shape[1],
+            cfl=float(spec["cfl"]),
+            boundary="open",
+            use_sponge=True,
+            sponge_mode="elapsed_time_consistent",
+            filter_mode="disabled",
+            bathymetry=bathymetry,
+            eta0=eta0,
+            h0=h0,
+        )
+        effective_depth = (
+            np.maximum(-bathymetry, 1e-4)
+            if solver_name == "boussinesq"
+            else np.maximum(rest, 1e-8)
+        )
+        return {
+            "component": "production_amplitude_canary",
+            "qualified_id": str(canary["qualified_id"]),
+            "solver": solver_name,
+            "runtime_s": time.monotonic() - started,
+            "natural_steps": int(dt.size),
+            "amplitude_growth": float(np.max(np.abs(eta)))
+            / max(float(np.max(np.abs(eta0))), 1e-30),
+            "max_eta_over_depth": float(
+                np.max(np.abs(eta) / effective_depth[None, ...])
+            ),
+            "cg_failure_count": int(
+                np.sum(np.asarray(diagnostics.get("cg_failed_count", []), dtype=int))
+            ),
+            "finite": bool(np.isfinite(eta).all()),
+            "max_bracket_width": float(np.max(diagnostics["bracket_widths"])),
+            "operator": solver.get_operator_diagnostics(),
+        }, None
+    raise ValueError(f"Unknown Level A task kind: {kind}")
+
+
+def _write_task_artifact(
+    task: Mapping[str, Any],
+    tasks_root: Path,
+    row: Mapping[str, Any],
+    trajectory: np.ndarray | None,
+) -> Path:
+    final = tasks_root / _task_directory_name(task)
+    if final.exists():
+        raise FileExistsError(f"Refusing to overwrite Level A task artifact: {final}")
+    staging = tasks_root / f".{_task_directory_name(task)}.staging-{os.getpid()}"
+    if staging.exists():
+        raise FileExistsError(staging)
+    staging.mkdir(parents=False, exist_ok=False)
+    try:
+        array_hashes: dict[str, Any] = {}
+        if trajectory is not None:
+            values = np.asarray(trajectory)
+            np.save(staging / "trajectory.npy", values, allow_pickle=False)
+            array_hashes["trajectory"] = hash_array(values)
+        scientific_hash = _scientific_digest({"row": row, "array_hashes": array_hashes})
+        result = {
+            "schema_id": TASK_RESULT_SCHEMA_ID,
+            "task_id": task["task_id"],
+            "task_spec_hash": task["task_spec_hash"],
+            "row": _json_safe(row),
+            "array_hashes": array_hashes,
+            "scientific_hash": scientific_hash,
+            "worker_metadata": {
+                "pid": os.getpid(),
+                "python_version": platform.python_version(),
+                "numpy_version": np.__version__,
+                "thread_environment": _thread_settings(),
+            },
+        }
+        expected_files = ["SHA256SUMS.txt", "manifest.json", "result.json"]
+        if trajectory is not None:
+            expected_files.append("trajectory.npy")
+        manifest = {
+            "schema_id": TASK_ARTIFACT_SCHEMA_ID,
+            "status": "complete",
+            "task": _json_safe(task),
+            "expected_files": expected_files,
+            "scientific_hash": scientific_hash,
+        }
+        _write_json(staging / "result.json", result)
+        _write_json(staging / "manifest.json", manifest)
+        _write_checksums(staging)
+        os.replace(staging, final)
+        return final
+    except Exception:
+        if staging.exists():
+            shutil.rmtree(staging)
+        raise
+
+
+def _run_level_a_task_worker(task: Mapping[str, Any], tasks_root: str) -> str:
+    row, trajectory = _compute_level_a_task(task)
+    _write_task_artifact(task, Path(tasks_root), row, trajectory)
+    return str(task["task_id"])
+
+
+def _validate_task_result_semantics(
+    task: Mapping[str, Any], row: Mapping[str, Any], trajectory: np.ndarray | None
+) -> None:
+    kind = str(task["kind"])
+    spec = task["spec"]
+    if kind == "fixture":
+        expected = {"component": "fixture", "name": str(spec["name"])}
+    elif kind == "analytical":
+        expected = {
+            "component": "analytical_mode",
+            "solver": str(spec["solver"]),
+            "analytical_role": str(spec["role"]),
+            "grid": int(spec["grid"]),
+            "mode": int(spec["mode"]),
+            "cfl": float(spec["cfl"]),
+        }
+    elif kind == "operator":
+        expected = {
+            "component": "operator_sensitivity",
+            "solver": str(spec["solver"]),
+            "variant": str(spec["variant"]),
+            "cfl": float(spec["cfl"]),
+        }
+    elif kind == "boundary":
+        expected = {
+            "component": "boundary_trajectory",
+            "solver": str(spec["solver"]),
+            "variant": str(spec["variant"]),
+        }
+    elif kind == "conservation":
+        expected = {
+            "component": "conservation_health",
+            "solver": str(spec["solver"]),
+            "boundary": str(spec["boundary"]),
+        }
+    elif kind == "canary":
+        expected = {
+            "component": "production_amplitude_canary",
+            "solver": str(spec["solver"]),
+            "qualified_id": str(spec["canary"]["qualified_id"]),
+        }
+    else:
+        raise RuntimeError(f"Unknown Level A task kind in artifact: {kind}")
+    for key, expected_value in expected.items():
+        actual = row.get(key)
+        if isinstance(expected_value, float):
+            matches = isinstance(actual, (float, int)) and math.isclose(
+                float(actual), expected_value, rel_tol=0.0, abs_tol=0.0
+            )
+        else:
+            matches = actual == expected_value
+        if not matches:
+            raise RuntimeError(
+                f"Level A task result/spec mismatch for {task['task_id']}: {key}"
+            )
+    requires_trajectory = kind in {"fixture", "analytical", "operator", "boundary"}
+    if requires_trajectory != (trajectory is not None):
+        raise RuntimeError(
+            f"Level A task trajectory presence mismatch: {task['task_id']}"
+        )
+
+
+def _load_task_artifact(task: Mapping[str, Any], tasks_root: Path) -> dict[str, Any]:
+    root = tasks_root / _task_directory_name(task)
+    if not root.is_dir():
+        raise FileNotFoundError(root)
+    manifest_path = root / "manifest.json"
+    result_path = root / "result.json"
+    if not manifest_path.is_file() or not result_path.is_file():
+        raise RuntimeError(f"Incomplete Level A task artifact: {task['task_id']}")
+    result = _read_json(result_path)
+    expected_files = {"manifest.json", "result.json", "SHA256SUMS.txt"}
+    if result.get("array_hashes", {}).get("trajectory") is not None:
+        expected_files.add("trajectory.npy")
+    actual_files = {path.name for path in root.iterdir() if path.is_file()}
+    actual_dirs = [path.name for path in root.iterdir() if path.is_dir()]
+    if actual_files != expected_files or actual_dirs:
+        raise RuntimeError(
+            f"Unexpected files in Level A task artifact: {task['task_id']}"
+        )
+    validate_checksums(root)
+    manifest = _read_json(manifest_path)
+    if (
+        manifest.get("schema_id") != TASK_ARTIFACT_SCHEMA_ID
+        or manifest.get("status") != "complete"
+    ):
+        raise RuntimeError(f"Invalid Level A task manifest: {task['task_id']}")
+    if manifest.get("expected_files") != sorted(expected_files):
+        raise RuntimeError(
+            f"Level A task expected-file list mismatch: {task['task_id']}"
+        )
+    if manifest.get("task") != _json_safe(task):
+        raise RuntimeError(
+            f"Level A task semantic identity mismatch: {task['task_id']}"
+        )
+    if result.get("schema_id") != TASK_RESULT_SCHEMA_ID:
+        raise RuntimeError(f"Invalid Level A task result schema: {task['task_id']}")
+    if (
+        result.get("task_id") != task["task_id"]
+        or result.get("task_spec_hash") != task["task_spec_hash"]
+    ):
+        raise RuntimeError(f"Level A task result identity mismatch: {task['task_id']}")
+    trajectory = None
+    array_hashes = result.get("array_hashes", {})
+    if "trajectory" in array_hashes:
+        trajectory = np.load(root / "trajectory.npy", allow_pickle=False)
+        if hash_array(trajectory) != array_hashes["trajectory"]:
+            raise RuntimeError(
+                f"Level A task trajectory semantic hash mismatch: {task['task_id']}"
+            )
+    scientific_hash = _scientific_digest(
+        {"row": result.get("row"), "array_hashes": array_hashes}
+    )
+    if scientific_hash != result.get(
+        "scientific_hash"
+    ) or scientific_hash != manifest.get("scientific_hash"):
+        raise RuntimeError(f"Level A task scientific hash mismatch: {task['task_id']}")
+    _validate_task_result_semantics(task, result["row"], trajectory)
+    return {
+        "task": dict(task),
+        "row": result["row"],
+        "trajectory": trajectory,
+        "result": result,
+    }
+
+
+def _recover_incomplete_task_staging(
+    tasks: Sequence[Mapping[str, Any]], tasks_root: Path
+) -> None:
+    prefixes = {f".{_task_directory_name(task)}.staging-" for task in tasks}
+    for path in list(tasks_root.iterdir()):
+        matching = next(
+            (
+                prefix
+                for prefix in prefixes
+                if path.name.startswith(prefix) and path.name[len(prefix) :].isdigit()
+            ),
+            None,
+        )
+        if matching is None:
+            continue
+        if path.is_symlink() or not path.is_dir():
+            raise RuntimeError(f"Unsafe Level A task staging path: {path.name}")
+        shutil.rmtree(path)
+
+
+def _scan_task_artifacts(
+    tasks: Sequence[Mapping[str, Any]], tasks_root: Path
+) -> tuple[dict[str, dict[str, Any]], list[Mapping[str, Any]]]:
+    expected = {_task_directory_name(task): task for task in tasks}
+    if tasks_root.exists():
+        extras = sorted(
+            path.name for path in tasks_root.iterdir() if path.name not in expected
+        )
+        if extras:
+            raise RuntimeError(
+                f"Unexpected or partial Level A task artifacts: {extras}"
+            )
+    loaded: dict[str, dict[str, Any]] = {}
+    missing: list[Mapping[str, Any]] = []
+    for name, task in expected.items():
+        path = tasks_root / name
+        if not path.exists():
+            missing.append(task)
+            continue
+        if not path.is_dir():
+            raise RuntimeError(f"Level A task artifact is not a directory: {name}")
+        payload = _load_task_artifact(task, tasks_root)
+        task_id = str(task["task_id"])
+        if task_id in loaded:
+            raise RuntimeError(f"Duplicate Level A task artifact: {task_id}")
+        loaded[task_id] = payload
+    return loaded, missing
+
+
+def _require_single_thread_backends() -> None:
+    invalid = {
+        key: value for key in THREAD_ENV_KEYS if (value := os.environ.get(key)) != "1"
+    }
+    if invalid:
+        details = ", ".join(
+            f"{key}={value!r}" for key, value in sorted(invalid.items())
+        )
+        raise RuntimeError(
+            "Level A multiprocessing requires single-thread numerical backends: "
+            + details
+        )
+
+
+def _execute_level_a_task_plan(
+    tasks: Sequence[Mapping[str, Any]],
+    *,
+    tasks_root: Path,
+    workers: int = 1,
+    resume: bool = False,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if workers <= 0:
+        raise ValueError("workers must be positive")
+    _validate_task_plan(tasks)
+    tasks_root.mkdir(parents=True, exist_ok=True)
+    if resume:
+        _recover_incomplete_task_staging(tasks, tasks_root)
+    loaded, missing = _scan_task_artifacts(tasks, tasks_root)
+    if loaded and not resume:
+        raise FileExistsError(f"Level A task artifacts already exist: {tasks_root}")
+    effective = min(int(workers), max(1, len(missing))) if missing else 0
+    if missing and workers > 1:
+        _require_single_thread_backends()
+    if missing and workers == 1:
+        for task in missing:
+            try:
+                returned = _run_level_a_task_worker(task, str(tasks_root))
+            except Exception as exc:
+                raise RuntimeError(f"Level A task failed: {task['task_id']}") from exc
+            if returned != task["task_id"]:
+                raise RuntimeError(
+                    f"Level A worker returned wrong task identity: {returned}"
+                )
+    elif missing:
+        context = multiprocessing.get_context("spawn")
+        with ProcessPoolExecutor(max_workers=effective, mp_context=context) as pool:
+            futures = {
+                pool.submit(_run_level_a_task_worker, task, str(tasks_root)): task
+                for task in missing
+            }
+            for future in as_completed(futures):
+                task = futures[future]
+                try:
+                    returned = future.result()
+                except Exception as exc:
+                    for pending in futures:
+                        pending.cancel()
+                    raise RuntimeError(
+                        f"Level A task failed: {task['task_id']}"
+                    ) from exc
+                if returned != task["task_id"]:
+                    raise RuntimeError(
+                        f"Level A worker returned wrong task identity: {returned}"
+                    )
+    loaded, remaining = _scan_task_artifacts(tasks, tasks_root)
+    if remaining:
+        raise RuntimeError(
+            "Missing Level A task artifacts after execution: "
+            + ", ".join(str(task["task_id"]) for task in remaining)
+        )
+    ordered = [loaded[str(task["task_id"])] for task in tasks]
+    worker_history = []
+    for payload in ordered:
+        metadata = payload["result"].get("worker_metadata", {})
+        entry = {
+            "pid": metadata.get("pid"),
+            "python_version": metadata.get("python_version"),
+            "numpy_version": metadata.get("numpy_version"),
+            "thread_environment": metadata.get("thread_environment"),
+        }
+        if entry not in worker_history:
+            worker_history.append(entry)
+    provenance = _operational_provenance(
+        requested_workers=int(workers),
+        effective_workers=effective,
+        process_start_method=("spawn" if missing and workers > 1 else "serial"),
+    )
+    provenance["task_worker_history"] = worker_history
+    return ordered, provenance
+
+
+def _trajectory_eta(
+    name: str,
+    *,
+    nx: int,
+    ny: int,
+    cfl: float,
+    boundary: str,
+    use_sponge: bool,
+    sponge_mode: str,
+    filter_mode: str = "disabled",
+    filter_strength: float = 0.0,
+    bathymetry: np.ndarray | None = None,
+    eta0: np.ndarray | None = None,
+    h0: np.ndarray | None = None,
+    eta_t0: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray], Any]:
+    solver = _solver(
+        name,
+        nx=nx,
+        ny=ny,
+        cfl=cfl,
+        boundary=boundary,
+        use_sponge=use_sponge,
+        sponge_mode=sponge_mode,
+        filter_mode=filter_mode,
+        filter_strength=filter_strength,
+    )
+    bathy = (
+        -np.ones((nx, ny), dtype=float)
+        if bathymetry is None
+        else np.asarray(bathymetry, dtype=float)
+    )
+    initial_eta = (
+        np.zeros((nx, ny), dtype=float)
+        if eta0 is None
+        else np.asarray(eta0, dtype=float)
+    )
+    solver.set_bathymetry(bathy)
+    if name == "boussinesq":
+        solver.set_initial_condition(
+            initial_eta,
+            eta_t0=(
+                np.zeros_like(initial_eta)
+                if eta_t0 is None
+                else np.asarray(eta_t0, dtype=float)
+            ),
+        )
+    else:
+        initial_h = (
+            np.maximum(-bathy + initial_eta, 0.0)
+            if h0 is None
+            else np.asarray(h0, dtype=float)
+        )
+        solver.set_initial_condition(
+            initial_h, hu0=np.zeros_like(initial_h), hv0=np.zeros_like(initial_h)
+        )
+    states, _, dt_history, diagnostics = _simulate_one_local(
+        solver,
+        n_steps=1,
+        save_every=1,
+        auto_dt=True,
+        target_cfl=cfl,
+        include_initial_state=False,
+        requested_times=candidate_requested_times(),
+        max_natural_steps=20000,
+        collect_natural_step_health=True,
+    )
+    eta = states[:, 0] if name == "boussinesq" else states[:, 0] + bathy
+    return eta, dt_history, diagnostics, solver
+
+
+def _relative_l2(a: np.ndarray, b: np.ndarray) -> float:
+    aa = np.asarray(a, dtype=float)
+    bb = np.asarray(b, dtype=float)
+    return float(np.linalg.norm(aa - bb) / max(np.linalg.norm(bb), 1e-30))
+
+
+def _packet(
+    nx: int, ny: int, *, center: float = 0.25, sigma: float = 0.04
+) -> np.ndarray:
+    x = np.arange(nx, dtype=float)[:, None] / nx
+    eta = np.exp(-0.5 * ((x - center) / sigma) ** 2)
+    eta -= float(np.mean(eta))
+    return 1.0e-5 * eta * np.ones((1, ny), dtype=float)
+
+
+def _high_frequency_fraction(trajectory: np.ndarray) -> float:
+    eta = np.asarray(trajectory[-1], dtype=float)
+    spectrum = np.abs(np.fft.rfft(eta, axis=0)) ** 2
+    total = float(np.sum(spectrum))
+    if total <= 1e-30:
+        return 0.0
+    cutoff = max(1, spectrum.shape[0] * 3 // 4)
+    return float(np.sum(spectrum[cutoff:]) / total)
+
+
+def _run_operator_component(
+    config: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    rows: list[dict[str, Any]] = []
+    gates: list[dict[str, Any]] = []
+    nx, ny = 64, 4
+    eta0 = _packet(nx, ny)
+    threshold = float(
+        config["thresholds"]["operator"]["elapsed_candidate_cfl_relative_l2"]
+    )
+    for name in SOLVERS:
+        production, half = [float(v) for v in config["production"]["cfl"][name][:2]]
+        modes = [
+            (
+                "legacy_per_step",
+                "legacy_per_step" if name == "boussinesq" else "disabled",
+                0.01 if name == "boussinesq" else 0.0,
+            ),
+            ("elapsed_no_filter", "disabled", 0.0),
+        ]
+        if name == "boussinesq":
+            modes.append(("elapsed_filter", "elapsed_time_consistent", 0.01))
+        by_variant: dict[str, dict[float, np.ndarray]] = {}
+        for variant, filter_mode, strength in modes:
+            sponge_mode = (
+                "legacy_per_step"
+                if variant == "legacy_per_step"
+                else "elapsed_time_consistent"
+            )
+            for cfl in (production, half):
+                eta, dt, diagnostics, solver = _trajectory_eta(
+                    name,
+                    nx=nx,
+                    ny=ny,
+                    cfl=cfl,
+                    boundary="open",
+                    use_sponge=True,
+                    sponge_mode=sponge_mode,
+                    filter_mode=filter_mode,
+                    filter_strength=strength,
+                    eta0=eta0,
+                )
+                by_variant.setdefault(variant, {})[cfl] = eta
+                rows.append(
+                    {
+                        "component": "operator_sensitivity",
+                        "solver": name,
+                        "variant": variant,
+                        "cfl": cfl,
+                        "natural_steps": int(dt.size),
+                        "amplitude_ratio": float(
+                            np.max(np.abs(eta)) / max(np.max(np.abs(eta0)), 1e-30)
+                        ),
+                        "high_frequency_fraction": _high_frequency_fraction(eta),
+                        "cg_failure_count": int(
+                            np.sum(
+                                np.asarray(
+                                    diagnostics.get("cg_failed_count", []), dtype=int
+                                )
+                            )
+                        ),
+                        "operator": solver.get_operator_diagnostics(),
+                    }
+                )
+        legacy_diff = _relative_l2(
+            by_variant["legacy_per_step"][production],
+            by_variant["legacy_per_step"][half],
+        )
+        elapsed_diff = _relative_l2(
+            by_variant["elapsed_no_filter"][production],
+            by_variant["elapsed_no_filter"][half],
+        )
+        rows.append(
+            {
+                "component": "operator_sensitivity_summary",
+                "solver": name,
+                "legacy_cfl_relative_l2": legacy_diff,
+                "elapsed_no_filter_cfl_relative_l2": elapsed_diff,
+            }
+        )
+        gates.append(
+            {
+                "gate": f"elapsed_operator_consistency_{name}",
+                "category": "blocked_operator_semantics",
+                "passed": elapsed_diff <= threshold and elapsed_diff <= legacy_diff,
+                "legacy_relative_l2": legacy_diff,
+                "elapsed_relative_l2": elapsed_diff,
+            }
+        )
+        if name == "boussinesq":
+            primary = next(
+                row
+                for row in rows
+                if row.get("component") == "operator_sensitivity"
+                and row.get("solver") == name
+                and row.get("variant") == "elapsed_no_filter"
+                and math.isclose(float(row["cfl"]), production)
+            )
+            fallback = next(
+                row
+                for row in rows
+                if row.get("component") == "operator_sensitivity"
+                and row.get("solver") == name
+                and row.get("variant") == "elapsed_filter"
+                and math.isclose(float(row["cfl"]), production)
+            )
+            initial_high_frequency_fraction = _high_frequency_fraction(eta0[None, ...])
+            high_frequency_limit = max(
+                2.0 * initial_high_frequency_fraction,
+                float(
+                    config["thresholds"]["boussinesq_no_filter"][
+                        "high_frequency_fraction_absolute"
+                    ]
+                ),
+            )
+            no_filter_ok = (
+                primary["cg_failure_count"] == 0
+                and primary["amplitude_ratio"]
+                <= float(
+                    config["thresholds"]["boussinesq_no_filter"]["amplitude_growth"]
+                )
+                and primary["high_frequency_fraction"] <= high_frequency_limit
+                and elapsed_diff <= threshold
+            )
+            filter_diff = _relative_l2(
+                by_variant["elapsed_filter"][production],
+                by_variant["elapsed_filter"][half],
+            )
+            filter_ok = (
+                fallback["cg_failure_count"] == 0
+                and fallback["amplitude_ratio"]
+                <= float(
+                    config["thresholds"]["boussinesq_no_filter"]["amplitude_growth"]
+                )
+                and fallback["high_frequency_fraction"] <= high_frequency_limit
+                and filter_diff <= threshold
+            )
+            gates.extend(
+                [
+                    {
+                        "gate": "boussinesq_no_filter_health",
+                        "category": "informational",
+                        "passed": no_filter_ok,
+                        "high_frequency_limit": high_frequency_limit,
+                    },
+                    {
+                        "gate": "boussinesq_elapsed_filter_fallback",
+                        "category": "informational",
+                        "passed": filter_ok,
+                        "cfl_relative_l2": filter_diff,
+                        "high_frequency_limit": high_frequency_limit,
+                    },
+                    {
+                        "gate": "boussinesq_filter_acceptance",
+                        "category": "blocked_boussinesq_health",
+                        "passed": no_filter_ok or filter_ok,
+                        "recommended_filter": (
+                            "disabled"
+                            if no_filter_ok
+                            else "elapsed_time_consistent"
+                            if filter_ok
+                            else "none"
+                        ),
+                    },
+                ]
+            )
+    reference_dt = float(config["operators"]["sponge"]["reference_dt"])
+    m_ref = float(config["operators"]["sponge"]["reference_min_factor"])
+    product = 1.0
+    elapsed = 0.0
+    for dt in (0.0011, 0.0007, 0.0017):
+        product *= m_ref ** (dt / reference_dt)
+        elapsed += dt
+    expected = m_ref ** (elapsed / reference_dt)
+    rel = abs(product - expected) / expected
+    rows.append(
+        {
+            "component": "operator_factor_identity",
+            "observed": product,
+            "expected": expected,
+            "relative_error": rel,
+        }
+    )
+    gates.append(
+        {
+            "gate": "elapsed_sponge_factor_identity",
+            "category": "blocked_operator_semantics",
+            "passed": rel
+            <= float(
+                config["thresholds"]["operator"]["accumulated_factor_relative_error"]
+            ),
+        }
+    )
+    return rows, gates
+
+
+def _run_boundary_component(
+    config: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    rows: list[dict[str, Any]] = []
+    gates: list[dict[str, Any]] = []
+    nx, ny = 128, 4
+    spec = config["boundary_packet"]
+    eta0 = _packet(nx, ny, center=float(spec["center_x"]), sigma=float(spec["sigma"]))
+    x = np.arange(nx, dtype=float) / nx
+    reflected = (x >= float(spec["reflected_window"][0])) & (
+        x <= float(spec["reflected_window"][1])
+    )
+    interior = (x >= float(spec["interior_window"][0])) & (
+        x <= float(spec["interior_window"][1])
+    )
+    thresholds = config["thresholds"]["boundary"]
+    for name in SOLVERS:
+        cfl = float(config["production"]["cfl"][name][0])
+        baseline, _, _, _ = _trajectory_eta(
+            name,
+            nx=nx,
+            ny=ny,
+            cfl=cfl,
+            boundary="open",
+            use_sponge=False,
+            sponge_mode="legacy_per_step",
+            eta0=eta0,
+        )
+        damped, _, _, _ = _trajectory_eta(
+            name,
+            nx=nx,
+            ny=ny,
+            cfl=cfl,
+            boundary="open",
+            use_sponge=True,
+            sponge_mode="elapsed_time_consistent",
+            eta0=eta0,
+        )
+        initial_amp = max(float(np.max(np.abs(eta0))), 1e-30)
+        reflected_amp = float(np.max(np.abs(damped[-1, reflected]))) / initial_amp
+        reflected_energy = float(np.sum(damped[-1, reflected] ** 2)) / max(
+            float(np.sum(eta0**2)), 1e-30
+        )
+        interior_l2 = _relative_l2(damped[-1, interior], baseline[-1, interior])
+        row = {
+            "component": "boundary_sponge",
+            "solver": name,
+            "boundary_implementation": "zero_gradient_edge_padding",
+            "reflected_amplitude_ratio": reflected_amp,
+            "reflected_energy_ratio": reflected_energy,
+            "interior_relative_l2": interior_l2,
+        }
+        rows.append(row)
+        gates.append(
+            {
+                "gate": f"boundary_sponge_{name}",
+                "category": "blocked_boundary_behavior",
+                "passed": reflected_amp
+                <= float(thresholds["reflected_amplitude_ratio"])
+                and reflected_energy <= float(thresholds["reflected_energy_ratio"])
+                and interior_l2 <= float(thresholds["interior_relative_l2"]),
+            }
+        )
+    return rows, gates
+
+
+def _run_conservation_component(
+    config: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    rows: list[dict[str, Any]] = []
+    gates: list[dict[str, Any]] = []
+    nx, ny = 64, 4
+    eta0 = _packet(nx, ny, center=0.5, sigma=0.06)
+    thresholds = config["thresholds"]["conservation"]
+    for boundary in ("periodic", "reflective"):
+        for name in SOLVERS:
+            cfl = float(config["production"]["cfl"][name][0])
+            eta, _, diagnostics, _ = _trajectory_eta(
+                name,
+                nx=nx,
+                ny=ny,
+                cfl=cfl,
+                boundary=boundary,
+                use_sponge=False,
+                sponge_mode="legacy_per_step",
+                eta0=eta0,
+            )
+            mean0 = float(np.sum(eta0))
+            mean_drift = float(np.max(np.abs(np.sum(eta, axis=(1, 2)) - mean0))) / max(
+                float(np.sum(np.abs(eta0))), 1e-30
+            )
+            if name == "boussinesq":
+                mass_drift = None
+            else:
+                mass0 = float(np.sum(1.0 + eta0))
+                mass_drift = float(
+                    np.max(np.abs(np.sum(1.0 + eta, axis=(1, 2)) - mass0))
+                    / max(abs(mass0), 1e-30)
+                )
+            cg_failures = int(
+                np.sum(np.asarray(diagnostics.get("cg_failed_count", []), dtype=int))
+            )
+            row = {
+                "component": "conservation_health",
+                "solver": name,
+                "boundary": boundary,
+                "mass_relative_drift": mass_drift,
+                "mean_integral_relative_drift": mean_drift,
+                "cg_failure_count": cg_failures,
+                "finite": bool(np.isfinite(eta).all()),
+            }
+            rows.append(row)
+            gates.append(
+                {
+                    "gate": f"conservation_{boundary}_{name}",
+                    "category": "blocked_convergence",
+                    "passed": row["finite"]
+                    and cg_failures == 0
+                    and mean_drift <= float(thresholds["mean_integral_relative_drift"])
+                    and (
+                        mass_drift is None
+                        or mass_drift <= float(thresholds["mass_relative_drift"])
+                    ),
+                }
+            )
+    return rows, gates
+
+
+def _run_canary_component(
+    config: Mapping[str, Any], canaries: Sequence[Mapping[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    rows: list[dict[str, Any]] = []
+    gates: list[dict[str, Any]] = []
+    thresholds = config["thresholds"]["canary"]
+    for canary in canaries:
+        bathymetry, source, _strength_array, strength, arrays = _load_canary_arrays(
+            canary
+        )
+        eta0 = arrays["eta0"]
+        rest = arrays["rest_depth"]
+        h0 = arrays["initial_depth"]
+        for name in SOLVERS:
+            cfl = float(config["production"]["cfl"][name][0])
+            started = time.monotonic()
+            eta, dt, diagnostics, solver = _trajectory_eta(
+                name,
+                nx=bathymetry.shape[0],
+                ny=bathymetry.shape[1],
+                cfl=cfl,
+                boundary="open",
+                use_sponge=True,
+                sponge_mode="elapsed_time_consistent",
+                filter_mode="disabled",
+                bathymetry=bathymetry,
+                eta0=eta0,
+                h0=h0,
+            )
+            effective_depth = (
+                np.maximum(-bathymetry, 1e-4)
+                if name == "boussinesq"
+                else np.maximum(rest, 1e-8)
+            )
+            amplitude = float(np.max(np.abs(eta))) / max(
+                float(np.max(np.abs(eta0))), 1e-30
+            )
+            eta_over_depth = float(np.max(np.abs(eta) / effective_depth[None, ...]))
+            cg_failures = int(
+                np.sum(np.asarray(diagnostics.get("cg_failed_count", []), dtype=int))
+            )
+            row = {
+                "component": "production_amplitude_canary",
+                "qualified_id": canary["qualified_id"],
+                "solver": name,
+                "runtime_s": time.monotonic() - started,
+                "natural_steps": int(dt.size),
+                "amplitude_growth": amplitude,
+                "max_eta_over_depth": eta_over_depth,
+                "cg_failure_count": cg_failures,
+                "finite": bool(np.isfinite(eta).all()),
+                "max_bracket_width": float(np.max(diagnostics["bracket_widths"])),
+                "operator": solver.get_operator_diagnostics(),
+            }
+            rows.append(row)
+            gates.append(
+                {
+                    "gate": f"canary_{canary['qualified_id']}_{name}",
+                    "category": (
+                        "blocked_boussinesq_health"
+                        if name == "boussinesq"
+                        else "blocked_convergence"
+                    ),
+                    "passed": row["finite"]
+                    and cg_failures == 0
+                    and amplitude <= float(thresholds["amplitude_growth"])
+                    and eta_over_depth <= float(thresholds["eta_over_depth"]),
+                }
+            )
+    return rows, gates
+
+
+def _bootstrap_canary_aggregates(
+    rows: Sequence[Mapping[str, Any]], *, seed: int, resamples: int
+) -> list[dict[str, Any]]:
+    if resamples <= 0:
+        raise ValueError("bootstrap resamples must be positive")
+    by_solver: dict[str, list[Mapping[str, Any]]] = {}
+    for row in rows:
+        if row.get("component") == "production_amplitude_canary":
+            by_solver.setdefault(str(row["solver"]), []).append(row)
+    rng = np.random.default_rng(seed)
+    summaries: list[dict[str, Any]] = []
+    for solver, solver_rows in sorted(by_solver.items()):
+        ordered = sorted(solver_rows, key=lambda row: str(row["qualified_id"]))
+        if not ordered:
+            continue
+        for metric in ("amplitude_growth", "max_eta_over_depth", "runtime_s"):
+            values = np.asarray([row[metric] for row in ordered], dtype=np.float64)
+            draws = rng.integers(0, values.size, size=(resamples, values.size))
+            means = np.mean(values[draws], axis=1)
+            summaries.append(
+                {
+                    "component": "canary_bootstrap_descriptive",
+                    "solver": solver,
+                    "metric": metric,
+                    "scenario_count": int(values.size),
+                    "resamples": int(resamples),
+                    "seed": int(seed),
+                    "mean": float(np.mean(values)),
+                    "mean_ci95_low": float(np.quantile(means, 0.025)),
+                    "mean_ci95_high": float(np.quantile(means, 0.975)),
+                    "decision_role": "descriptive_only",
+                }
+            )
+    return summaries
+
+
+def _universal_health_gate(
+    rows: Sequence[Mapping[str, Any]], *, universal: Mapping[str, Any]
+) -> dict[str, Any]:
+    failures: list[str] = []
+    expected_count = int(universal["exact_output_count"])
+    expected_cg_failures = int(universal["cg_failure_count"])
+    expected_replacements = int(universal["nan_to_num_replacement_count"])
+    for index, row in enumerate(rows):
+        component = str(row.get("component", "unknown"))
+        label = f"{component}[{index}]"
+        if component == "analytical_mode":
+            if int(row.get("output_count", -1)) != expected_count:
+                failures.append(f"{label}: output_count")
+            if not bool(row.get("requested_times_exact", False)):
+                failures.append(f"{label}: requested_times")
+        if (
+            "finite" in row
+            and bool(universal["require_finite"])
+            and not bool(row["finite"])
+        ):
+            failures.append(f"{label}: nonfinite")
+        if int(row.get("cg_failure_count", 0)) != expected_cg_failures:
+            failures.append(f"{label}: cg_failure_count")
+        operator = row.get("operator")
+        if isinstance(operator, Mapping):
+            if "nan_to_num_replacement_count" not in operator:
+                failures.append(f"{label}: missing_nan_to_num_replacement_count")
+            elif int(operator["nan_to_num_replacement_count"]) != expected_replacements:
+                failures.append(f"{label}: nan_to_num_replacement_count")
+        elif component in {
+            "analytical_mode",
+            "operator_sensitivity",
+            "boundary_sponge",
+            "conservation_health",
+            "production_amplitude_canary",
+        }:
+            failures.append(f"{label}: missing_operator_diagnostics")
+    return {
+        "gate": "universal_health_and_output_contract",
+        "category": "implementation_failure",
+        "passed": not failures,
+        "failure_count": len(failures),
+        "failures": failures,
+    }
+
+
+def _decision_from_gates(gates: Sequence[Mapping[str, Any]]) -> str:
+    failed = {str(row["category"]) for row in gates if not bool(row["passed"])}
+    for decision in (
+        "implementation_failure",
+        "blocked_boussinesq_health",
+        "blocked_boundary_behavior",
+        "blocked_convergence",
+        "blocked_operator_semantics",
+    ):
+        if decision in failed:
+            return decision
+    return "pass_to_H1"
+
+
+def _aggregate_level_a_tasks(
+    task_results: Sequence[Mapping[str, Any]],
+    *,
+    config: Mapping[str, Any],
+    contract: Mapping[str, Any],
+    operational_provenance: Mapping[str, Any],
+    elapsed_s: float,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    gates: list[dict[str, Any]] = []
+    analytical_payloads = [
+        payload for payload in task_results if payload["task"]["kind"] == "analytical"
+    ]
+    for payload in analytical_payloads:
+        row = dict(payload["row"])
+        row["_trajectory_eta"] = payload["trajectory"]
+        rows.append(row)
+
+    thresholds = config["thresholds"]
+    for name in SOLVERS:
+        spatial = [
+            row
+            for row in rows
+            if row["solver"] == name and row["analytical_role"] == "spatial"
+        ]
+        temporal = [
+            row
+            for row in rows
+            if row["solver"] == name and row["analytical_role"] == "temporal"
+        ]
+        modal = [
+            row
+            for row in rows
+            if row["solver"] == name and row["analytical_role"] == "modal"
+        ]
+        if (
+            len(spatial) != 3
+            or len(temporal) != 3
+            or len(modal) != len(config["analytical"]["modes"])
+        ):
+            raise RuntimeError(f"Incomplete analytical task roles for {name}")
+        spatial.sort(key=lambda row: int(row["grid"]))
+        temporal.sort(key=lambda row: float(row["cfl"]), reverse=True)
+        modal.sort(key=lambda row: int(row["mode"]))
+        finest = spatial[-1]
+        analytical = thresholds["analytical"][name]
+        passed = (
+            finest["finite"]
+            and finest["output_count"]
+            == int(thresholds["universal"]["exact_output_count"])
+            and finest["requested_times_exact"]
+            and finest["cg_failure_count"] == 0
+            and finest["nan_to_num_replacement_count"]
+            == int(thresholds["universal"]["nan_to_num_replacement_count"])
+            and finest["positivity_projection_count"] == 0
+            and finest["dry_projection_count"] == 0
+            and finest["phase_speed_relative_error"]
+            <= analytical["phase_speed_relative_error"]
+            and finest["amplitude_drift"] <= analytical["amplitude_drift"]
+            and finest["field_relative_l2"] <= analytical["field_relative_l2"]
+        )
+        gates.append(
+            {
+                "gate": f"analytical_{name}",
+                "category": (
+                    "blocked_boussinesq_health"
+                    if name == "boussinesq"
+                    else "blocked_convergence"
+                ),
+                "passed": passed,
+            }
+        )
+        errors = [float(row["field_relative_l2"]) for row in spatial]
+        floor = float(thresholds["temporal_roundoff_floor"])
+        spatial_below_floor = all(value <= floor for value in errors)
+        order = _observed_order(errors[1], errors[2])
+        gates.append(
+            {
+                "gate": f"spatial_refinement_{name}",
+                "category": "blocked_convergence",
+                "passed": spatial_below_floor
+                or (
+                    errors[0] > errors[1] > errors[2]
+                    and order is not None
+                    and order >= float(thresholds["spatial_order_minimum"][name])
+                ),
+                "errors": errors,
+                "all_below_roundoff_floor": spatial_below_floor,
+                "observed_order": order,
+            }
+        )
+        temporal_result = _temporal_refinement_gate(
+            [row["_trajectory_eta"] for row in temporal],
+            minimum_order=float(thresholds["temporal_order_minimum"][name]),
+            floor=floor,
+        )
+        gates.append(
+            {
+                "gate": f"temporal_refinement_{name}",
+                "category": "blocked_convergence",
+                **temporal_result,
+            }
+        )
+
+    interpolation_failures = [
+        row
+        for row in rows
+        if float(row["interpolation_actual_max_abs_error"])
+        > float(row["interpolation_absolute_bound"])
+        + float(row["interpolation_bound_floating_tolerance"])
+    ]
+    gates.append(
+        {
+            "gate": "analytical_interpolation_bound",
+            "category": "blocked_convergence",
+            "passed": not interpolation_failures,
+            "failure_count": len(interpolation_failures),
+        }
+    )
+    boussinesq_modal = [
+        row
+        for row in rows
+        if row["solver"] == "boussinesq" and row["analytical_role"] == "modal"
+    ]
+    group_result = _group_speed_gate(
+        boussinesq_modal,
+        relative_error_limit=float(
+            thresholds["analytical"]["boussinesq"]["group_speed_relative_error"]
+        ),
+    )
+    gates.append(
+        {
+            "gate": "analytical_boussinesq_group_speed",
+            "category": "blocked_boussinesq_health",
+            **group_result,
+        }
+    )
+
+    operator_payloads = [
+        payload for payload in task_results if payload["task"]["kind"] == "operator"
+    ]
+    operator_threshold = float(
+        thresholds["operator"]["elapsed_candidate_cfl_relative_l2"]
+    )
+    for name in SOLVERS:
+        selected = [
+            payload
+            for payload in operator_payloads
+            if payload["task"]["spec"]["solver"] == name
+        ]
+        by_variant: dict[str, dict[float, np.ndarray]] = {}
+        solver_rows: list[dict[str, Any]] = []
+        for payload in selected:
+            row = dict(payload["row"])
+            solver_rows.append(row)
+            by_variant.setdefault(str(row["variant"]), {})[float(row["cfl"])] = (
+                np.asarray(payload["trajectory"])
+            )
+        rows.extend(solver_rows)
+        production, half = [
+            float(value) for value in config["production"]["cfl"][name][:2]
+        ]
+        legacy_diff = _relative_l2(
+            by_variant["legacy_per_step"][production],
+            by_variant["legacy_per_step"][half],
+        )
+        elapsed_diff = _relative_l2(
+            by_variant["elapsed_no_filter"][production],
+            by_variant["elapsed_no_filter"][half],
+        )
+        rows.append(
+            {
+                "component": "operator_sensitivity_summary",
+                "solver": name,
+                "legacy_cfl_relative_l2": legacy_diff,
+                "elapsed_no_filter_cfl_relative_l2": elapsed_diff,
+            }
+        )
+        gates.append(
+            {
+                "gate": f"elapsed_operator_consistency_{name}",
+                "category": "blocked_operator_semantics",
+                "passed": elapsed_diff <= operator_threshold
+                and elapsed_diff <= legacy_diff,
+                "legacy_relative_l2": legacy_diff,
+                "elapsed_relative_l2": elapsed_diff,
+            }
+        )
+        if name == "boussinesq":
+            primary = next(
+                row
+                for row in solver_rows
+                if row["variant"] == "elapsed_no_filter"
+                and math.isclose(float(row["cfl"]), production)
+            )
+            fallback = next(
+                row
+                for row in solver_rows
+                if row["variant"] == "elapsed_filter"
+                and math.isclose(float(row["cfl"]), production)
+            )
+            initial_fraction = _high_frequency_fraction(_packet(64, 4)[None, ...])
+            high_frequency_limit = max(
+                2.0 * initial_fraction,
+                float(
+                    thresholds["boussinesq_no_filter"][
+                        "high_frequency_fraction_absolute"
+                    ]
+                ),
+            )
+            no_filter_ok = (
+                primary["cg_failure_count"] == 0
+                and primary["amplitude_ratio"]
+                <= float(thresholds["boussinesq_no_filter"]["amplitude_growth"])
+                and primary["high_frequency_fraction"] <= high_frequency_limit
+                and elapsed_diff <= operator_threshold
+            )
+            filter_diff = _relative_l2(
+                by_variant["elapsed_filter"][production],
+                by_variant["elapsed_filter"][half],
+            )
+            filter_ok = (
+                fallback["cg_failure_count"] == 0
+                and fallback["amplitude_ratio"]
+                <= float(thresholds["boussinesq_no_filter"]["amplitude_growth"])
+                and fallback["high_frequency_fraction"] <= high_frequency_limit
+                and filter_diff <= operator_threshold
+            )
+            gates.extend(
+                [
+                    {
+                        "gate": "boussinesq_no_filter_health",
+                        "category": "informational",
+                        "passed": no_filter_ok,
+                        "high_frequency_limit": high_frequency_limit,
+                    },
+                    {
+                        "gate": "boussinesq_elapsed_filter_fallback",
+                        "category": "informational",
+                        "passed": filter_ok,
+                        "cfl_relative_l2": filter_diff,
+                        "high_frequency_limit": high_frequency_limit,
+                    },
+                    {
+                        "gate": "boussinesq_filter_acceptance",
+                        "category": "blocked_boussinesq_health",
+                        "passed": no_filter_ok or filter_ok,
+                        "recommended_filter": (
+                            "disabled"
+                            if no_filter_ok
+                            else "elapsed_time_consistent"
+                            if filter_ok
+                            else "none"
+                        ),
+                    },
+                ]
+            )
+
+    reference_dt = float(config["operators"]["sponge"]["reference_dt"])
+    reference_factor = float(config["operators"]["sponge"]["reference_min_factor"])
+    product = 1.0
+    elapsed = 0.0
+    for dt in (0.0011, 0.0007, 0.0017):
+        product *= reference_factor ** (dt / reference_dt)
+        elapsed += dt
+    expected_factor = reference_factor ** (elapsed / reference_dt)
+    factor_error = abs(product - expected_factor) / expected_factor
+    rows.append(
+        {
+            "component": "operator_factor_identity",
+            "observed": product,
+            "expected": expected_factor,
+            "relative_error": factor_error,
+        }
+    )
+    gates.append(
+        {
+            "gate": "elapsed_sponge_factor_identity",
+            "category": "blocked_operator_semantics",
+            "passed": factor_error
+            <= float(thresholds["operator"]["accumulated_factor_relative_error"]),
+        }
+    )
+
+    boundary_payloads = [
+        payload for payload in task_results if payload["task"]["kind"] == "boundary"
+    ]
+    packet_spec = config["boundary_packet"]
+    x = np.arange(128, dtype=float) / 128
+    reflected = (x >= float(packet_spec["reflected_window"][0])) & (
+        x <= float(packet_spec["reflected_window"][1])
+    )
+    interior = (x >= float(packet_spec["interior_window"][0])) & (
+        x <= float(packet_spec["interior_window"][1])
+    )
+    initial_packet = _packet(
+        128,
+        4,
+        center=float(packet_spec["center_x"]),
+        sigma=float(packet_spec["sigma"]),
+    )
+    for name in SOLVERS:
+        selected = [
+            payload
+            for payload in boundary_payloads
+            if payload["task"]["spec"]["solver"] == name
+        ]
+        trajectories = {
+            str(payload["task"]["spec"]["variant"]): np.asarray(payload["trajectory"])
+            for payload in selected
+        }
+        if set(trajectories) != {"baseline", "damped"}:
+            raise RuntimeError(f"Incomplete boundary tasks for {name}")
+        baseline = trajectories["baseline"]
+        damped = trajectories["damped"]
+        initial_amp = max(float(np.max(np.abs(initial_packet))), 1e-30)
+        reflected_amp = float(np.max(np.abs(damped[-1, reflected]))) / initial_amp
+        reflected_energy = float(np.sum(damped[-1, reflected] ** 2)) / max(
+            float(np.sum(initial_packet**2)), 1e-30
+        )
+        interior_l2 = _relative_l2(damped[-1, interior], baseline[-1, interior])
+        boundary_row = {
+            "component": "boundary_sponge",
+            "solver": name,
+            "boundary_implementation": "zero_gradient_edge_padding",
+            "reflected_amplitude_ratio": reflected_amp,
+            "reflected_energy_ratio": reflected_energy,
+            "interior_relative_l2": interior_l2,
+            "finite": all(bool(payload["row"]["finite"]) for payload in selected),
+            "cg_failure_count": sum(
+                int(payload["row"]["cg_failure_count"]) for payload in selected
+            ),
+            "operator": {
+                **(
+                    {
+                        "nan_to_num_replacement_count": sum(
+                            int(
+                                payload["row"]["operator"][
+                                    "nan_to_num_replacement_count"
+                                ]
+                            )
+                            for payload in selected
+                        )
+                    }
+                    if all(
+                        "nan_to_num_replacement_count" in payload["row"]["operator"]
+                        for payload in selected
+                    )
+                    else {}
+                ),
+                "task_diagnostics": [
+                    {
+                        "variant": str(payload["row"]["variant"]),
+                        "diagnostics": payload["row"]["operator"],
+                    }
+                    for payload in selected
+                ],
+            },
+        }
+        rows.append(boundary_row)
+        boundary_thresholds = thresholds["boundary"]
+        gates.append(
+            {
+                "gate": f"boundary_sponge_{name}",
+                "category": "blocked_boundary_behavior",
+                "passed": boundary_row["finite"]
+                and boundary_row["cg_failure_count"] == 0
+                and reflected_amp
+                <= float(boundary_thresholds["reflected_amplitude_ratio"])
+                and reflected_energy
+                <= float(boundary_thresholds["reflected_energy_ratio"])
+                and interior_l2 <= float(boundary_thresholds["interior_relative_l2"]),
+            }
+        )
+
+    conservation_payloads = [
+        payload for payload in task_results if payload["task"]["kind"] == "conservation"
+    ]
+    conservation_thresholds = thresholds["conservation"]
+    for payload in conservation_payloads:
+        row = dict(payload["row"])
+        rows.append(row)
+        mass_drift = row["mass_relative_drift"]
+        gates.append(
+            {
+                "gate": f"conservation_{row['boundary']}_{row['solver']}",
+                "category": "blocked_convergence",
+                "passed": row["finite"]
+                and row["cg_failure_count"] == 0
+                and row["mean_integral_relative_drift"]
+                <= float(conservation_thresholds["mean_integral_relative_drift"])
+                and (
+                    mass_drift is None
+                    or mass_drift
+                    <= float(conservation_thresholds["mass_relative_drift"])
+                ),
+            }
+        )
+
+    canary_rows = [
+        dict(payload["row"])
+        for payload in task_results
+        if payload["task"]["kind"] == "canary"
+    ]
+    rows.extend(canary_rows)
+    canary_thresholds = thresholds["canary"]
+    for row in canary_rows:
+        gates.append(
+            {
+                "gate": f"canary_{row['qualified_id']}_{row['solver']}",
+                "category": (
+                    "blocked_boussinesq_health"
+                    if row["solver"] == "boussinesq"
+                    else "blocked_convergence"
+                ),
+                "passed": row["finite"]
+                and row["cg_failure_count"] == 0
+                and row["amplitude_growth"]
+                <= float(canary_thresholds["amplitude_growth"])
+                and row["max_eta_over_depth"]
+                <= float(canary_thresholds["eta_over_depth"]),
+            }
+        )
+    rows.extend(
+        _bootstrap_canary_aggregates(
+            canary_rows,
+            seed=int(config["seeds"]["bootstrap"]),
+            resamples=int(config["seeds"]["bootstrap_resamples"]),
+        )
+    )
+    gates.append(_universal_health_gate(rows, universal=thresholds["universal"]))
+
+    decision_name = _decision_from_gates(gates)
+    filter_gate = next(
+        row for row in gates if row["gate"] == "boussinesq_filter_acceptance"
+    )
+    recommended_filter = (
+        str(filter_gate["recommended_filter"])
+        if bool(filter_gate["passed"])
+        else "undetermined"
+    )
+    elapsed_operator_gates = [
+        row
+        for row in gates
+        if str(row["gate"]).startswith("elapsed_operator_consistency_")
+        or row["gate"] == "elapsed_sponge_factor_identity"
+    ]
+    if len(elapsed_operator_gates) != len(SOLVERS) + 1:
+        raise RuntimeError("Incomplete elapsed-operator gate set")
+    decision = {
+        "schema_id": LEVEL_A_SCHEMA_ID,
+        "contract_hash": contract["contract_hash"],
+        "decision": decision_name,
+        "level_a_passed": decision_name == "pass_to_H1",
+        "three_reference_contract_accepted": False,
+        "h1_executed": False,
+        "failed_gates": [row for row in gates if not row["passed"]],
+        "elapsed_s": float(elapsed_s),
+        "recommended_sponge": (
+            "elapsed_time_consistent"
+            if all(bool(row["passed"]) for row in elapsed_operator_gates)
+            else "undetermined"
+        ),
+        "recommended_boussinesq_filter": recommended_filter,
+        "boussinesq_depth_scale": 1.0,
+        "boundary_interpretation": "zero_gradient_edge_padding_not_radiative",
+        "operational_provenance": _json_safe(operational_provenance),
+    }
+    public_rows = [_public_row(row) for row in rows]
+    decision["scientific_digest"] = _scientific_digest(
+        {"rows": public_rows, "gates": gates, "decision": decision}
+    )
+    return public_rows, gates, decision
+
+
+def _write_failure_execution(
+    execution: Path,
+    *,
+    contract: Mapping[str, Any],
+    issues: Sequence[str],
+    elapsed: float,
+    gate: str,
+    report_reason: str,
+) -> None:
+    gates = [
+        {
+            "gate": gate,
+            "category": "implementation_failure",
+            "passed": False,
+            "details": list(issues),
+        }
+    ]
+    decision = {
+        "schema_id": LEVEL_A_SCHEMA_ID,
+        "artifact_kind": "common-time-v2-level-a-decision",
+        "contract_hash": contract["contract_hash"],
+        "decision": "implementation_failure",
+        "level_a_passed": False,
+        "three_reference_contract_accepted": False,
+        "h1_executed": False,
+        "failed_gates": gates,
+        "elapsed_s": elapsed,
+        "recommended_sponge": "undetermined",
+        "recommended_boussinesq_filter": "undetermined",
+    }
+    _write_json(execution / "decision.json", decision)
+    _write_json(execution / "summary.json", {"decision": decision, "rows": 0})
+    _write_jsonl(execution / "detailed_rows.jsonl", [])
+    _write_csv(execution / "detailed_rows.csv", [])
+    (execution / "REPORT.md").write_text(
+        "# Common-time-v2 Level A report\n\n"
+        "Decision: `implementation_failure`.\n\n"
+        f"{report_reason} "
+        "No Level A numerical outcomes were inspected and no thresholds or settings were changed.\n\n"
+        + "\n".join(f"- {issue}" for issue in issues)
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _report_text(decision_name: str) -> str:
+    return f"# Common-time-v2 Level A report\n\nDecision: `{decision_name}`.\n"
+
+
+def _validate_failure_execution(
+    execution: Path, *, expected_contract_hash: str
+) -> None:
+    expected_files = {
+        "decision.json",
+        "detailed_rows.csv",
+        "detailed_rows.jsonl",
+        "REPORT.md",
+        "SHA256SUMS.txt",
+        "summary.json",
+    }
+    actual_files = {path.name for path in execution.iterdir() if path.is_file()}
+    if actual_files != expected_files or any(
+        path.is_dir() for path in execution.iterdir()
+    ):
+        raise RuntimeError("Finalized Level A failure has an unexpected file set")
+    validate_checksums(execution)
+    decision = _read_json(execution / "decision.json")
+    summary = _read_json(execution / "summary.json")
+    if decision.get("decision") != "implementation_failure":
+        raise RuntimeError("Finalized Level A failure has the wrong decision")
+    if (
+        decision.get("level_a_passed") is not False
+        or decision.get("h1_executed") is not False
+    ):
+        raise RuntimeError(
+            "Finalized Level A failure has contradictory progression flags"
+        )
+    failed_gates = decision.get("failed_gates")
+    if not isinstance(failed_gates, list) or not failed_gates:
+        raise RuntimeError("Finalized Level A failure has no failed gate evidence")
+    if any(
+        gate.get("category") != "implementation_failure"
+        or gate.get("passed") is not False
+        for gate in failed_gates
+        if isinstance(gate, Mapping)
+    ) or any(not isinstance(gate, Mapping) for gate in failed_gates):
+        raise RuntimeError("Finalized Level A failure has contradictory gate evidence")
+    if decision.get("contract_hash") != expected_contract_hash:
+        raise RuntimeError("Finalized Level A failure contract mismatch")
+    if summary.get("decision") != decision or int(summary.get("rows", -1)) != 0:
+        raise RuntimeError("Finalized Level A failure summary mismatch")
+    if _read_jsonl(execution / "detailed_rows.jsonl"):
+        raise RuntimeError("Finalized Level A failure unexpectedly contains rows")
+    if (execution / "detailed_rows.csv").read_text(encoding="utf-8") != "":
+        raise RuntimeError("Finalized Level A failure unexpectedly contains CSV rows")
+    report = (execution / "REPORT.md").read_text(encoding="utf-8")
+    if "Decision: `implementation_failure`." not in report:
+        raise RuntimeError("Finalized Level A failure report contradicts decision")
+    for gate in failed_gates:
+        for detail in gate.get("details", []):
+            if str(detail) not in report:
+                raise RuntimeError(
+                    "Finalized Level A failure report omits gate evidence"
+                )
+
+
+def _validate_completed_execution(
+    execution: Path,
+    tasks: Sequence[Mapping[str, Any]],
+    *,
+    config: Mapping[str, Any],
+    contract: Mapping[str, Any],
+) -> None:
+    expected_files = {
+        "detailed_rows.jsonl",
+        "detailed_rows.csv",
+        "aggregate_summary.json",
+        "decision.json",
+        "summary.json",
+        "REPORT.md",
+        "operational_provenance.json",
+        "SHA256SUMS.txt",
+    }
+    actual_files = {path.name for path in execution.iterdir() if path.is_file()}
+    actual_dirs = {path.name for path in execution.iterdir() if path.is_dir()}
+    if actual_files != expected_files or actual_dirs != {"tasks"}:
+        raise RuntimeError("Completed Level A execution has an unexpected file set")
+    validate_checksums(execution)
+    loaded, missing = _scan_task_artifacts(tasks, execution / "tasks")
+    if missing or len(loaded) != len(tasks):
+        raise RuntimeError("Completed Level A execution has an incomplete task set")
+    operational = _read_json(execution / "operational_provenance.json")
+    ordered = [loaded[str(task["task_id"])] for task in tasks]
+    derived_rows, derived_gates, derived_decision = _aggregate_level_a_tasks(
+        ordered,
+        config=config,
+        contract=contract,
+        operational_provenance=operational,
+        elapsed_s=0.0,
+    )
+    decision = _read_json(execution / "decision.json")
+    summary = _read_json(execution / "summary.json")
+    aggregate = _read_json(execution / "aggregate_summary.json")
+    public_rows = _read_jsonl(execution / "detailed_rows.jsonl")
+    if summary.get("decision") != decision:
+        raise RuntimeError("Completed Level A decision and summary disagree")
+    if decision.get("operational_provenance") != operational:
+        raise RuntimeError("Completed Level A operational provenance mismatch")
+    if decision.get("contract_hash") != contract["contract_hash"]:
+        raise RuntimeError("Completed Level A execution contract mismatch")
+    if int(summary.get("rows", -1)) != len(public_rows):
+        raise RuntimeError("Completed Level A row count mismatch")
+    if _scientific_normalize(public_rows) != _scientific_normalize(derived_rows):
+        raise RuntimeError("Completed Level A rows contradict task evidence")
+    if _scientific_normalize(aggregate.get("gates")) != _scientific_normalize(
+        derived_gates
+    ):
+        raise RuntimeError("Completed Level A gates contradict task evidence")
+    if _scientific_normalize(decision) != _scientific_normalize(derived_decision):
+        raise RuntimeError("Completed Level A decision contradicts task evidence")
+    digest_decision = dict(decision)
+    recorded_digest = digest_decision.pop("scientific_digest", None)
+    expected_digest = _scientific_digest(
+        {
+            "rows": public_rows,
+            "gates": aggregate.get("gates"),
+            "decision": digest_decision,
+        }
+    )
+    if recorded_digest != expected_digest:
+        raise RuntimeError("Completed Level A scientific digest mismatch")
+    if (execution / "detailed_rows.csv").read_text(encoding="utf-8") != _csv_text(
+        public_rows
+    ):
+        raise RuntimeError("Completed Level A CSV contradicts JSON rows")
+    if (execution / "REPORT.md").read_text(encoding="utf-8") != _report_text(
+        str(decision["decision"])
+    ):
+        raise RuntimeError("Completed Level A report contradicts decision")
+
+
+def _recover_execution_staging(staging: Path) -> None:
+    recoverable_files = {
+        "detailed_rows.jsonl",
+        "detailed_rows.csv",
+        "aggregate_summary.json",
+        "decision.json",
+        "summary.json",
+        "operational_provenance.json",
+        "REPORT.md",
+        "SHA256SUMS.txt",
+    }
+    for path in list(staging.iterdir()):
+        if path.name == "tasks":
+            if path.is_symlink() or not path.is_dir():
+                raise RuntimeError("Unsafe Level A tasks staging path")
+            continue
+        if path.name not in recoverable_files:
+            raise RuntimeError(f"Unexpected Level A staging contents: {path.name}")
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError(f"Unsafe Level A staging output: {path.name}")
+        path.unlink()
+
+
+def execute_level_a(
+    *,
+    repo_root: Path,
+    contract_root: Path,
+    workers: int = 1,
+    resume: bool = False,
+) -> Path:
+    if workers <= 0:
+        raise ValueError("workers must be positive")
+    started = time.monotonic()
+    repo_root = repo_root.resolve()
+    contract_root = contract_root.resolve()
+    execution = contract_root / "execution"
+    allowed_unlisted = [".execution-staging/"]
+    if resume and execution.exists():
+        allowed_unlisted.append("execution/")
+    validate_checksums(contract_root, allow_unlisted_prefixes=tuple(allowed_unlisted))
+    contract = _read_json(contract_root / "preregistered_contract.json")
+    if contract.get("schema_id") != LEVEL_A_SCHEMA_ID:
+        raise RuntimeError("Level A contract schema mismatch")
+    contract_identity = dict(contract)
+    recorded_contract_hash = contract_identity.pop("contract_hash", None)
+    expected_contract_hash = stable_hash_payload(
+        artifact_kind="common-time-v2-level-a-contract",
+        payload=contract_identity,
+        schema_id=LEVEL_A_SCHEMA_ID,
+    )
+    if (
+        recorded_contract_hash != expected_contract_hash
+        or contract_root.name != expected_contract_hash
+    ):
+        raise RuntimeError("Level A content-addressed contract hash mismatch")
+    current_code = code_state(repo_root)
+    config = contract["source_config"]
+    tasks = _build_level_a_task_plan(
+        config,
+        contract["canaries"],
+        contract_hash=str(contract["contract_hash"]),
+        code_state_hash=str(contract["code_state"]["code_state_hash"]),
+    )
+    execution = contract_root / "execution"
+    if execution.exists():
+        if not resume:
+            raise FileExistsError(
+                f"Refusing to overwrite Level A execution: {execution}"
+            )
+        existing_decision = _read_json(execution / "decision.json")
+        if existing_decision.get("decision") == "implementation_failure":
+            _validate_failure_execution(
+                execution, expected_contract_hash=str(contract["contract_hash"])
+            )
+        else:
+            _validate_completed_execution(
+                execution,
+                tasks,
+                config=config,
+                contract=contract,
+            )
+        return execution
+
+    staging = contract_root / ".execution-staging"
+    if staging.exists() and not resume:
+        raise FileExistsError(staging)
+    if not staging.exists():
+        staging.mkdir(parents=False, exist_ok=False)
+    else:
+        _recover_execution_staging(staging)
+    tasks_root = staging / "tasks"
+    tasks_root.mkdir(parents=False, exist_ok=True)
+
+    if current_code["code_state_hash"] != contract["code_state"]["code_state_hash"]:
+        if any(tasks_root.iterdir()):
+            raise RuntimeError("Cannot finalize code-state failure over task artifacts")
+        _write_failure_execution(
+            staging,
+            contract=contract,
+            issues=["code_state_hash changed after preregistration"],
+            elapsed=time.monotonic() - started,
+            gate="code_state_preflight",
+            report_reason="The code state changed after preregistration.",
+        )
+        shutil.rmtree(tasks_root)
+    else:
+        issues = _preflight_canaries(contract["canaries"])
+        if issues:
+            if any(tasks_root.iterdir()):
+                raise RuntimeError(
+                    "Cannot finalize canary preflight failure over task artifacts"
+                )
+            _write_failure_execution(
+                staging,
+                contract=contract,
+                issues=issues,
+                elapsed=time.monotonic() - started,
+                gate="authoritative_canary_preflight",
+                report_reason=(
+                    "The frozen authoritative training canaries were unavailable "
+                    "or invalid at their H0-recorded paths."
+                ),
+            )
+            shutil.rmtree(tasks_root)
+        else:
+            task_results, operational = _execute_level_a_task_plan(
+                tasks,
+                tasks_root=tasks_root,
+                workers=workers,
+                resume=resume,
+            )
+            public_rows, gates, decision = _aggregate_level_a_tasks(
+                task_results,
+                config=config,
+                contract=contract,
+                operational_provenance=operational,
+                elapsed_s=time.monotonic() - started,
+            )
+            _write_jsonl(staging / "detailed_rows.jsonl", public_rows)
+            _write_csv(staging / "detailed_rows.csv", public_rows)
+            _write_json(staging / "aggregate_summary.json", {"gates": gates})
+            _write_json(staging / "decision.json", decision)
+            _write_json(
+                staging / "summary.json",
+                {"decision": decision, "rows": len(public_rows)},
+            )
+            _write_json(staging / "operational_provenance.json", operational)
+            (staging / "REPORT.md").write_text(
+                _report_text(str(decision["decision"])),
+                encoding="utf-8",
+            )
+
+    _write_checksums(staging)
+    os.replace(staging, execution)
+    _write_checksums(contract_root)
+    return execution

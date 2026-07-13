@@ -26,8 +26,10 @@ def main() -> None:
     parser.add_argument("--manifest-path", type=str, default=None)
     parser.add_argument("--continue", dest="continue_from_last", action="store_true")
     parser.add_argument("--start-at", type=int, default=None)
+    parser.add_argument("--stop-at", type=int, default=None)
     parser.add_argument("--allow-override", action="store_true")
     parser.add_argument("--rebuild-manifests", action="store_true")
+    parser.add_argument("--acknowledge-provisional", action="store_true")
     args = parser.parse_args()
 
     cfg_path = Path(args.config)
@@ -62,8 +64,10 @@ def main() -> None:
         builder.run(
             continue_from_last=bool(args.continue_from_last),
             start_at=args.start_at,
+            stop_at=args.stop_at,
             allow_override=bool(args.allow_override),
             rebuild_manifests=bool(args.rebuild_manifests),
+            acknowledge_provisional=bool(args.acknowledge_provisional),
         )
         print(f"Dataset generation complete using {cfg_path}")
     finally:
