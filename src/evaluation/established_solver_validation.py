@@ -132,6 +132,52 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         "level_a_scientific_tasks_thresholds_or_metrics",
     }:
         raise ValueError("Established-solver forbidden post-Level-A scopes changed")
+    execution = config.get("external_execution")
+    if not isinstance(execution, Mapping):
+        raise ValueError("Established-solver external execution policy is missing")
+    expected_execution = {
+        "spatial_order": 2,
+        "dimensional_split": "unsplit",
+        "transverse_waves": 2,
+        "limiter": "mc",
+        "use_fwaves": True,
+        "source_split": "godunov",
+        "cfl_desired": 0.75,
+        "cfl_max": 1.0,
+        "dt_initial": 1.0e-4,
+        "steps_max": 100000,
+        "num_ghost": 2,
+        "coordinate_system": 1,
+        "sea_level": 0.0,
+        "dry_tolerance": 1.0e-12,
+        "friction_forcing": False,
+        "coriolis_forcing": False,
+        "amr_levels": 1,
+        "output_format": "ascii",
+        "output_t0_for_initial_state_verification": True,
+        "initial_state_mapping": "exact_cell_centered_custom_qinit_and_setaux",
+        "initial_state_abs_tolerance": 5.0e-13,
+    }
+    for key, expected in expected_execution.items():
+        if execution.get(key) != expected:
+            raise ValueError(f"Established-solver external execution {key} changed")
+    if float(execution.get("dt_max", 0.0)) != 1.0e99:
+        raise ValueError("Established-solver external execution dt_max changed")
+    expected_sgn = {
+        "bouss_equations": 2,
+        "bouss_min_level": 1,
+        "bouss_max_level": 1,
+        "bouss_min_depth": 0.0,
+        "bouss_solver": 3,
+        "bouss_tstart": 0.0,
+        "petsc_ksp_type": "gmres",
+        "petsc_ksp_rtol": 1.0e-9,
+        "petsc_ksp_max_it": 200,
+        "mpi_processes": 2,
+        "omp_threads": 1,
+    }
+    if dict(execution.get("sgn", {})) != expected_sgn:
+        raise ValueError("Established-solver SGN execution policy changed")
     _requested_times(config)
 
     case_ids: set[str] = set()
