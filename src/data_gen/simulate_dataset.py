@@ -99,6 +99,8 @@ COMMON_SOLVER_KEYS = {
     "sponge_min_factor",
     "sponge_time_mode",
     "sponge_reference_dt",
+    "sponge_axes",
+    "sponge_profile",
 }
 SWE_SOLVER_KEYS = COMMON_SOLVER_KEYS | {"dry_tolerance", "max_velocity"}
 BOUSSINESQ_SOLVER_KEYS = COMMON_SOLVER_KEYS | {
@@ -109,6 +111,7 @@ BOUSSINESQ_SOLVER_KEYS = COMMON_SOLVER_KEYS | {
     "mode",
     "filter_strength",
     "linear_solver_tol",
+    "linear_solver_abs_tol",
     "linear_solver_max_iter",
     "check_finite",
     "filter_time_mode",
@@ -126,6 +129,26 @@ class QualityPolicy:
     max_velocity_limit: float | None
     max_eta_over_depth: float | None
     require_cg_converged: bool
+
+
+@dataclass(frozen=True)
+class BufferedDomainConfig:
+    """Opt-in computational padding around an unchanged publication crop."""
+
+    enabled: bool = False
+    buffer_cells: int = 0
+    source_taper_cells: int = 0
+    bathymetry_extension: str = "edge"
+    output_crop: str = "central"
+
+    def semantics(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "buffer_cells": self.buffer_cells,
+            "source_taper_cells": self.source_taper_cells,
+            "bathymetry_extension": self.bathymetry_extension,
+            "output_crop": self.output_crop,
+        }
 
 
 @dataclass
@@ -152,6 +175,7 @@ class DatasetConfig:
     quality_policy: QualityPolicy
     requested_output: RequestedOutputConfig | None
     solver_profiles: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    buffered_domain: BufferedDomainConfig = field(default_factory=BufferedDomainConfig)
 
 
 @dataclass
@@ -161,6 +185,104 @@ class RolloutResult:
     timestamps: np.ndarray
     dt_history: np.ndarray
     diagnostics: Dict[str, np.ndarray] | None = None
+
+
+def _cosine_source_window(shape: tuple[int, int], taper_cells: int) -> np.ndarray:
+    if min(shape) <= 1:
+        raise ValueError("source-window shape must contain two valid axes")
+    if taper_cells < 2 or 2 * taper_cells >= min(shape):
+        raise ValueError(
+            "source_taper_cells must be at least 2 and leave an untapered interior"
+        )
+    nx, ny = shape
+    x_distance = np.minimum(np.arange(nx), np.arange(nx)[::-1])
+    y_distance = np.minimum(np.arange(ny), np.arange(ny)[::-1])
+    edge_distance = np.minimum(x_distance[:, None], y_distance[None, :])
+    coordinate = np.clip(
+        edge_distance.astype(np.float64) / float(taper_cells - 1), 0.0, 1.0
+    )
+    return 0.5 * (1.0 - np.cos(np.pi * coordinate))
+
+
+def _prepare_buffered_domain(
+    bathymetry: np.ndarray,
+    source_field: np.ndarray,
+    source_strength: float,
+    sea_level_offset: float,
+    config: BufferedDomainConfig,
+) -> dict[str, Any]:
+    """Build solver-sized arrays while retaining a source-consistent core."""
+
+    bathy = np.asarray(bathymetry, dtype=np.float32)
+    source = np.asarray(source_field, dtype=np.float32)
+    if bathy.ndim != 2 or source.shape != bathy.shape:
+        raise ValueError("bathymetry and source_field must be same-shape 2-D arrays")
+    if not config.enabled:
+        raise ValueError("buffered-domain preparation requires enabled=true")
+
+    window = _cosine_source_window(bathy.shape, config.source_taper_cells)
+    effective_source = np.asarray(
+        np.asarray(source, dtype=np.float64) * window, dtype=np.float32
+    )
+    eta0 = np.asarray(float(source_strength) * effective_source, dtype=np.float32)
+    rest_depth = np.maximum(-bathy + sea_level_offset, 0.0)
+    initial_depth = np.maximum(rest_depth + eta0, 0.0)
+    free_surface0 = initial_depth + bathy
+
+    width = config.buffer_cells
+    pad = ((width, width), (width, width))
+    solver_bathymetry = np.pad(
+        np.asarray(bathy, dtype=np.float64), pad, mode=config.bathymetry_extension
+    )
+    solver_eta0 = np.zeros_like(solver_bathymetry)
+    solver_rest_depth = np.maximum(
+        -solver_bathymetry + sea_level_offset, 0.0
+    )
+    solver_h0 = solver_rest_depth.copy()
+    crop = (
+        slice(width, width + bathy.shape[0]),
+        slice(width, width + bathy.shape[1]),
+    )
+    solver_eta0[crop] = np.asarray(eta0, dtype=np.float64)
+    solver_h0[crop] = np.asarray(initial_depth, dtype=np.float64)
+
+    if not np.array_equal(solver_bathymetry[crop], bathy):
+        raise RuntimeError("buffer construction changed core bathymetry")
+    edge_max = max(
+        float(np.max(np.abs(effective_source[[0, -1], :]))),
+        float(np.max(np.abs(effective_source[:, [0, -1]]))),
+    )
+    if edge_max != 0.0:
+        raise RuntimeError("source taper did not produce an exact-zero crop edge")
+
+    return {
+        "bathymetry": bathy,
+        "source_field": effective_source,
+        "eta0": eta0,
+        "rest_depth": rest_depth,
+        "h0": initial_depth,
+        "free_surface0": free_surface0,
+        "solver_bathymetry": solver_bathymetry,
+        "solver_eta0": solver_eta0,
+        "solver_rest_depth": solver_rest_depth,
+        "solver_h0": solver_h0,
+        "crop": crop,
+        "source_edge_max_abs": edge_max,
+    }
+
+
+def _crop_rollout(rollout: RolloutResult, crop: tuple[slice, slice]) -> RolloutResult:
+    trajectory = np.asarray(rollout.trajectory)
+    trajectory_eta = np.asarray(rollout.trajectory_eta)
+    if trajectory.ndim != 4 or trajectory_eta.ndim != 3:
+        raise ValueError("rollout arrays do not have the expected spatial dimensions")
+    return RolloutResult(
+        trajectory=trajectory[..., crop[0], crop[1]].copy(),
+        trajectory_eta=trajectory_eta[..., crop[0], crop[1]].copy(),
+        timestamps=rollout.timestamps,
+        dt_history=rollout.dt_history,
+        diagnostics=rollout.diagnostics,
+    )
 
 
 def _sample_output_complete(sample_dir: Path, *, requested: RequestedOutputConfig | None = None) -> bool:
@@ -425,6 +547,8 @@ def _make_hydrostatic_solver_from_cfg(
         max_velocity=float(cfg.get("max_velocity", 50.0)),
         sponge_time_mode=str(cfg.get("sponge_time_mode", "legacy_per_step")),
         sponge_reference_dt=cfg.get("sponge_reference_dt", None),
+        sponge_axes=str(cfg.get("sponge_axes", "xy")),
+        sponge_profile=str(cfg.get("sponge_profile", "quadratic")),
     )
 
 
@@ -447,6 +571,8 @@ def _make_muscl_solver_from_cfg(sv: Dict[str, Any]) -> MUSCLHRShallowWaterSolver
         max_velocity=float(cfg.get("max_velocity", 50.0)),
         sponge_time_mode=str(cfg.get("sponge_time_mode", "legacy_per_step")),
         sponge_reference_dt=cfg.get("sponge_reference_dt", None),
+        sponge_axes=str(cfg.get("sponge_axes", "xy")),
+        sponge_profile=str(cfg.get("sponge_profile", "quadratic")),
     )
 
 
@@ -471,6 +597,7 @@ def _make_boussinesq_solver_from_cfg(sv: Dict[str, Any]) -> BoussinesqSolver:
         sponge_min_factor=float(cfg.get("sponge_min_factor", 0.9)),
         filter_strength=float(cfg.get("filter_strength", 0.0)),
         linear_solver_tol=float(cfg.get("linear_solver_tol", 1e-8)),
+        linear_solver_abs_tol=float(cfg.get("linear_solver_abs_tol", 0.0)),
         linear_solver_max_iter=int(cfg.get("linear_solver_max_iter", 80)),
         check_finite=bool(cfg.get("check_finite", True)),
         sponge_time_mode=str(cfg.get("sponge_time_mode", "legacy_per_step")),
@@ -478,6 +605,8 @@ def _make_boussinesq_solver_from_cfg(sv: Dict[str, Any]) -> BoussinesqSolver:
         filter_time_mode=str(cfg.get("filter_time_mode", "legacy_per_step")),
         filter_reference_dt=cfg.get("filter_reference_dt", None),
         cg_failure_mode=str(cfg.get("cg_failure_mode", "legacy_posthoc")),
+        sponge_axes=str(cfg.get("sponge_axes", "xy")),
+        sponge_profile=str(cfg.get("sponge_profile", "quadratic")),
     )
 
 
@@ -610,6 +739,7 @@ def _extract_requested_states_from_bracket(
     right_time: float,
     requested_times: np.ndarray,
     right_natural_step_index: int,
+    output_dtype: Any = np.float32,
 ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
     left = np.asarray(left_state)
     right = np.asarray(right_state)
@@ -649,8 +779,12 @@ def _extract_requested_states_from_bracket(
             "requested_times extend beyond the adjacent natural-state bracket"
         )
 
+    dtype = np.dtype(output_dtype)
+    if dtype not in (np.dtype(np.float32), np.dtype(np.float64)):
+        raise ValueError("requested-state output dtype must be float32 or float64")
+
     output_shape = (int(queries.size),) + left.shape
-    extracted = np.empty(output_shape, dtype=np.float32)
+    extracted = np.empty(output_shape, dtype=dtype)
     left_times = np.full(queries.shape, left_t, dtype=np.float64)
     right_times = np.full(queries.shape, right_t, dtype=np.float64)
     widths = np.full(queries.shape, right_t - left_t, dtype=np.float64)
@@ -662,7 +796,7 @@ def _extract_requested_states_from_bracket(
     right64 = np.asarray(right, dtype=np.float64)
     for query_idx, query in enumerate(queries):
         if query == left_t:
-            extracted[query_idx] = np.asarray(left, dtype=np.float32)
+            extracted[query_idx] = np.asarray(left, dtype=dtype)
             left_times[query_idx] = query
             right_times[query_idx] = query
             weights[query_idx] = 0.0
@@ -670,7 +804,7 @@ def _extract_requested_states_from_bracket(
             exact_knot[query_idx] = True
             step_indices[query_idx] = right_step - 1
         elif query == right_t:
-            extracted[query_idx] = np.asarray(right, dtype=np.float32)
+            extracted[query_idx] = np.asarray(right, dtype=dtype)
             left_times[query_idx] = query
             right_times[query_idx] = query
             weights[query_idx] = 0.0
@@ -680,7 +814,7 @@ def _extract_requested_states_from_bracket(
             weight = float(weights[query_idx])
             extracted[query_idx] = np.asarray(
                 left64 * (1.0 - weight) + right64 * weight,
-                dtype=np.float32,
+                dtype=dtype,
             )
 
     provenance = {
@@ -703,6 +837,7 @@ def _simulate_requested_times_local(
     requested_times: np.ndarray,
     max_natural_steps: int | None,
     collect_natural_step_health: bool = False,
+    requested_state_dtype: Any = np.float32,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict[str, np.ndarray]]:
     queries = np.asarray(requested_times, dtype=np.float64)
     if queries.ndim != 1 or queries.size == 0:
@@ -879,6 +1014,7 @@ def _simulate_requested_times_local(
                 right_time=current_time,
                 requested_times=queries[next_request:bracket_end],
                 right_natural_step_index=right_step,
+                output_dtype=requested_state_dtype,
             )
             extracted_chunks.append(states)
             for key, values in provenance.items():
@@ -914,9 +1050,7 @@ def _simulate_requested_times_local(
                         cg_max_residual_ratio, dtype=np.float64
                     )
                 return (
-                    np.concatenate(extracted_chunks, axis=0).astype(
-                        np.float32, copy=False
-                    ),
+                    np.concatenate(extracted_chunks, axis=0),
                     queries.copy(),
                     natural_history,
                     diagnostics,
@@ -946,6 +1080,7 @@ def _simulate_one_local(
     requested_times: np.ndarray | None = None,
     max_natural_steps: int | None = None,
     collect_natural_step_health: bool = False,
+    requested_state_dtype: Any = np.float32,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict[str, np.ndarray]]:
     if requested_times is not None:
         if record_every_step or dense_diagnostics:
@@ -960,6 +1095,7 @@ def _simulate_one_local(
             requested_times=requested_times,
             max_natural_steps=max_natural_steps,
             collect_natural_step_health=collect_natural_step_health,
+            requested_state_dtype=requested_state_dtype,
         )
 
     if max_natural_steps is not None:
@@ -1350,6 +1486,7 @@ def _write_requested_publication(
             "quality_policy": dataset.quality_policy.__dict__,
             "eta_primary": requested.eta_primary,
             "debug_full_states": requested.debug_full_states,
+            "buffered_domain": dataset.buffered_domain.semantics(),
         },
     )
     code = code_state(ROOT)
@@ -1404,6 +1541,11 @@ def _write_requested_publication(
             **code,
             "timestamps_shape": list(map(int, rollout.timestamps.shape)),
             "trajectory_eta_shape": list(map(int, rollout.trajectory_eta.shape)),
+            "computational_domain": {
+                **dataset.buffered_domain.semantics(),
+                "solver_shape": [int(solver_cfg["nx"]), int(solver_cfg["ny"])],
+                "publication_shape": list(map(int, bathymetry.shape)),
+            },
             "debug_full_states": requested.debug_full_states,
             "quality_status": quality_status,
             "quality_violations": quality_violations,
@@ -1490,10 +1632,35 @@ def _generate_sample_worker(
         source_type = str(np.asarray(src_npz["source_type"]).reshape(-1)[0])
         source_strength = float(np.asarray(src_npz["source_strength"]).reshape(-1)[0])
 
-    eta0 = source_strength * source_field
-    rest_depth = np.maximum(-bathymetry + dataset.sea_level_offset, 0.0)
-    h0 = np.maximum(rest_depth + eta0, 0.0)
-    free_surface0 = h0 + bathymetry
+    if dataset.buffered_domain.enabled:
+        prepared = _prepare_buffered_domain(
+            bathymetry,
+            source_field,
+            source_strength,
+            dataset.sea_level_offset,
+            dataset.buffered_domain,
+        )
+        bathymetry = prepared["bathymetry"]
+        source_field = prepared["source_field"]
+        eta0 = prepared["eta0"]
+        rest_depth = prepared["rest_depth"]
+        h0 = prepared["h0"]
+        free_surface0 = prepared["free_surface0"]
+        solver_bathymetry = prepared["solver_bathymetry"]
+        solver_eta0 = prepared["solver_eta0"]
+        solver_rest_depth = prepared["solver_rest_depth"]
+        solver_h0 = prepared["solver_h0"]
+        output_crop = prepared["crop"]
+    else:
+        eta0 = source_strength * source_field
+        rest_depth = np.maximum(-bathymetry + dataset.sea_level_offset, 0.0)
+        h0 = np.maximum(rest_depth + eta0, 0.0)
+        free_surface0 = h0 + bathymetry
+        solver_bathymetry = bathymetry
+        solver_eta0 = eta0
+        solver_rest_depth = rest_depth
+        solver_h0 = h0
+        output_crop = None
 
     runnable_fdes = [name for name in dataset.enabled_fdes if name in IMPLEMENTED_FDES]
     skipped_unimplemented = [
@@ -1547,6 +1714,7 @@ def _generate_sample_worker(
                             "quality_policy": dataset.quality_policy.__dict__,
                             "eta_primary": dataset.requested_output.eta_primary,
                             "debug_full_states": dataset.requested_output.debug_full_states,
+                            "buffered_domain": dataset.buffered_domain.semantics(),
                         },
                     )
                     expected_code_hash = code_state(ROOT)["code_state_hash"]
@@ -1600,13 +1768,13 @@ def _generate_sample_worker(
             dataset,
             target_cfl=float(solver_cfg_for_fde.get("cfl", dataset.target_cfl)),
         )
-        rollout = _run_fde_rollout(
+        full_rollout = _run_fde_rollout(
             fde_name=fde_name,
             solver_cfg=solver_cfg_for_fde,
             dataset=dataset_for_fde,
-            bathymetry=bathymetry,
-            eta0=eta0,
-            h0=h0,
+            bathymetry=solver_bathymetry,
+            eta0=solver_eta0,
+            h0=solver_h0,
             requested_times=(
                 None
                 if dataset.requested_output is None
@@ -1630,19 +1798,19 @@ def _generate_sample_worker(
             solver_depth_scale = float(solver_cfg_for_fde.get("depth_scale", 1.0))
             solver_min_depth = float(solver_cfg_for_fde.get("min_depth", 1e-3))
             effective_depth = np.maximum(
-                (-bathymetry + solver_sea_level) * solver_depth_scale,
+                (-solver_bathymetry + solver_sea_level) * solver_depth_scale,
                 solver_min_depth,
             )
 
         health = _compute_rollout_health(
             fde_name=fde_name,
-            rollout=rollout,
-            rest_depth=rest_depth,
+            rollout=full_rollout,
+            rest_depth=solver_rest_depth,
             effective_depth=effective_depth,
         )
         if dataset.requested_output is not None:
             health = _requested_health_summary(
-                rollout.diagnostics or {}, health, fde_name=fde_name
+                full_rollout.diagnostics or {}, health, fde_name=fde_name
             )
         quality_violations = _quality_violations_for_health(
             health=health, policy=dataset.quality_policy
@@ -1657,6 +1825,12 @@ def _generate_sample_worker(
             if dataset.quality_policy.on_violation == "fail":
                 raise RuntimeError(message)
             print(f"{message} (continuing)")
+
+        rollout = (
+            full_rollout
+            if output_crop is None
+            else _crop_rollout(full_rollout, output_crop)
+        )
 
         if dataset.requested_output is not None:
             publication_result = _write_requested_publication(
@@ -1767,6 +1941,11 @@ def _generate_sample_worker(
             "bathymetry_config_path": bathy_cfg_path,
             "source_config_path": source_cfg_path,
             "solver": solver_cfg_for_fde,
+            "computational_domain": {
+                **dataset.buffered_domain.semantics(),
+                "solver_shape": list(map(int, solver_bathymetry.shape)),
+                "publication_shape": list(map(int, bathymetry.shape)),
+            },
             "bathymetry_cache_path": str(bathy_path),
             "source_cache_path": str(source_path),
             "fdes_requested": list(dataset.enabled_fdes),
@@ -1892,21 +2071,55 @@ class TsunamiDatasetBuilder:
 
         solver_nx = int(self.solver_cfg["nx"])
         solver_ny = int(self.solver_cfg["ny"])
-
-        if self.bathy_generator.nx != solver_nx or self.bathy_generator.ny != solver_ny:
+        input_shape = (self.bathy_generator.nx, self.bathy_generator.ny)
+        source_shape = (self.source_generator.nx, self.source_generator.ny)
+        if source_shape != input_shape:
             raise ValueError(
-                f"Bathymetry grid ({self.bathy_generator.nx}, {self.bathy_generator.ny}) "
-                f"must match solver grid ({solver_nx}, {solver_ny})"
+                f"Bathymetry grid {input_shape} must match source grid {source_shape}"
             )
 
-        if (
-            self.source_generator.nx != solver_nx
-            or self.source_generator.ny != solver_ny
-        ):
-            raise ValueError(
-                f"Source grid ({self.source_generator.nx}, {self.source_generator.ny}) "
-                f"must match solver grid ({solver_nx}, {solver_ny})"
+        buffered = self.dataset.buffered_domain
+        expected_solver_shape = input_shape
+        if buffered.enabled:
+            expected_solver_shape = tuple(
+                axis + 2 * buffered.buffer_cells for axis in input_shape
             )
+            if 2 * buffered.source_taper_cells >= min(input_shape):
+                raise ValueError(
+                    "computational_domain.source_taper_cells must leave an "
+                    "untapered input-grid interior"
+                )
+
+        if (solver_nx, solver_ny) != expected_solver_shape:
+            raise ValueError(
+                f"Solver grid ({solver_nx}, {solver_ny}) must match the expected "
+                f"computational grid {expected_solver_shape} for input grid {input_shape}"
+            )
+
+        if buffered.enabled:
+            for fde_name in self.dataset.enabled_fdes:
+                if fde_name not in IMPLEMENTED_FDES:
+                    continue
+                resolved = _resolved_solver_cfg_for_fde(
+                    self.solver_cfg, self.dataset.solver_profiles, fde_name
+                )
+                if not bool(resolved.get("use_sponge", False)):
+                    raise ValueError(
+                        f"Buffered solver profile {fde_name} must enable the external sponge"
+                    )
+                if int(resolved.get("sponge_width", -1)) != buffered.buffer_cells:
+                    raise ValueError(
+                        f"Buffered solver profile {fde_name} must use sponge_width="
+                        f"{buffered.buffer_cells} so damping remains outside the crop"
+                    )
+                if str(resolved.get("sponge_axes", "xy")) != "xy":
+                    raise ValueError(
+                        f"Buffered solver profile {fde_name} must use sponge_axes='xy'"
+                    )
+                if str(resolved.get("sponge_profile", "quadratic")) != "cosine":
+                    raise ValueError(
+                        f"Buffered solver profile {fde_name} must use sponge_profile='cosine'"
+                    )
 
     @staticmethod
     def _require_path(cfg: Dict[str, Any], keys: list[str]) -> Path:
@@ -1925,6 +2138,58 @@ class TsunamiDatasetBuilder:
         if arr[0] > arr[1]:
             raise ValueError(f"{name} must have min <= max")
         return float(arr[0]), float(arr[1])
+
+    @staticmethod
+    def _parse_buffered_domain_section(cfg: Mapping[str, Any]) -> BufferedDomainConfig:
+        raw = cfg.get("computational_domain", {})
+        if raw is None:
+            raw = {}
+        if not isinstance(raw, Mapping):
+            raise ValueError("computational_domain section must be a mapping")
+        allowed = {
+            "enabled",
+            "buffer_cells",
+            "source_taper_cells",
+            "bathymetry_extension",
+            "output_crop",
+        }
+        unknown = sorted(set(str(key) for key in raw) - allowed)
+        if unknown:
+            raise ValueError(f"Unknown computational_domain keys: {unknown}")
+
+        enabled = bool(raw.get("enabled", False))
+        buffer_cells = int(raw.get("buffer_cells", 0))
+        source_taper_cells = int(raw.get("source_taper_cells", 0))
+        bathymetry_extension = str(raw.get("bathymetry_extension", "edge"))
+        output_crop = str(raw.get("output_crop", "central"))
+        if enabled:
+            if buffer_cells <= 0:
+                raise ValueError(
+                    "computational_domain.buffer_cells must be positive when enabled"
+                )
+            if source_taper_cells < 2:
+                raise ValueError(
+                    "computational_domain.source_taper_cells must be at least 2"
+                )
+            if bathymetry_extension != "edge":
+                raise ValueError(
+                    "only computational_domain.bathymetry_extension='edge' is supported"
+                )
+            if output_crop != "central":
+                raise ValueError(
+                    "only computational_domain.output_crop='central' is supported"
+                )
+        elif buffer_cells != 0 or source_taper_cells != 0:
+            raise ValueError(
+                "disabled computational_domain must use zero buffer and taper cells"
+            )
+        return BufferedDomainConfig(
+            enabled=enabled,
+            buffer_cells=buffer_cells,
+            source_taper_cells=source_taper_cells,
+            bathymetry_extension=bathymetry_extension,
+            output_crop=output_crop,
+        )
 
     @staticmethod
     def _parse_dataset_section(cfg: Dict[str, Any]) -> DatasetConfig:
@@ -2060,6 +2325,7 @@ class TsunamiDatasetBuilder:
                 _canonical_fde_name(str(name)): dict(profile)
                 for name, profile in dict(cfg.get("solver_profiles", {})).items()
             },
+            buffered_domain=TsunamiDatasetBuilder._parse_buffered_domain_section(cfg),
         )
 
     @staticmethod

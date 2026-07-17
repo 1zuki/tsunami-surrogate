@@ -35,6 +35,16 @@ requested_output:
   debug_full_states: false
   acknowledge_provisional: false
 
+# Provisional 96x96 computational domain with a source-compatible 64x64
+# publication crop. The explicit taper changes edge-touching raw sources and
+# therefore requires new input fingerprints and fresh Level A review.
+computational_domain:
+  enabled: true
+  buffer_cells: 16
+  source_taper_cells: 8
+  bathymetry_extension: edge
+  output_crop: central
+
 fdes:
   enabled: [swe_hydrostatic, swe_muscl_hr, boussinesq]
   primary: swe_hydrostatic
@@ -42,14 +52,17 @@ fdes:
 solver_profiles:
   swe_hydrostatic:
     cfl: 0.45
+    boundary: radiation
     sponge_time_mode: elapsed_time_consistent
     sponge_reference_dt: 0.0035
   swe_muscl_hr:
     cfl: 0.45
+    boundary: radiation
     sponge_time_mode: elapsed_time_consistent
     sponge_reference_dt: 0.0035
   boussinesq:
     cfl: 0.35
+    boundary: open
     depth_scale: 1.0
     sponge_time_mode: elapsed_time_consistent
     sponge_reference_dt: 0.0035
@@ -67,8 +80,10 @@ quality:
   require_cg_converged: true
 
 solver:
-  nx: 64
-  ny: 64
+  nx: 96
+  ny: 96
+  # Preserve the original 64x64 physical resolution; the extra cells enlarge
+  # the computational domain rather than refining the central crop.
   dx: 0.015625
   dy: 0.015625
   dt: 0.001
@@ -79,13 +94,16 @@ solver:
   max_velocity: 30.0
   boundary: open
   use_sponge: true
-  sponge_width: 20
-  sponge_min_factor: 0.9
+  sponge_width: 16
+  sponge_min_factor: 0.8
+  sponge_axes: xy
+  sponge_profile: cosine
   alpha: 0.3333333333333333
   min_depth: 1.0e-4
   depth_scale: 1.0
   mode: linear_variable_depth
-  filter_strength: 0.01
-  linear_solver_tol: 1.0e-6
-  linear_solver_max_iter: 500
+  filter_strength: 0.0
+  linear_solver_tol: 1.0e-10
+  linear_solver_abs_tol: 0.0
+  linear_solver_max_iter: 750
   check_finite: true

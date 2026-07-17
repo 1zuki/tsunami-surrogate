@@ -17,7 +17,14 @@ from src.data_gen.preprocess import TsunamiPreprocessor
 from src.data_gen.simulate_dataset import TsunamiDatasetBuilder
 
 
-def _write_fixture_configs(tmp_path: Path, *, requested: bool) -> Path:
+def _write_fixture_configs(
+    tmp_path: Path,
+    *,
+    requested: bool,
+    buffered: bool = False,
+    num_workers: int = 1,
+) -> Path:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     bathy = {
         "nx": 8,
         "ny": 8,
@@ -67,7 +74,7 @@ def _write_fixture_configs(tmp_path: Path, *, requested: bool) -> Path:
         "dataset": {
             "num_samples": 2,
             "seed": 17,
-            "num_workers": 1,
+            "num_workers": num_workers,
             "n_steps": 6,
             "save_every": 2,
             "auto_dt": True,
@@ -148,6 +155,37 @@ def _write_fixture_configs(tmp_path: Path, *, requested: bool) -> Path:
                 "cg_failure_mode": "strict_v2",
             },
         }
+    if buffered:
+        cfg["computational_domain"] = {
+            "enabled": True,
+            "buffer_cells": 2,
+            "source_taper_cells": 2,
+            "bathymetry_extension": "edge",
+            "output_crop": "central",
+        }
+        cfg["solver"].update(
+            {
+                "nx": 12,
+                "ny": 12,
+                "use_sponge": True,
+                "sponge_width": 2,
+                "sponge_min_factor": 0.8,
+                "sponge_axes": "xy",
+                "sponge_profile": "cosine",
+                "sponge_time_mode": "elapsed_time_consistent",
+                "sponge_reference_dt": 0.0035,
+            }
+        )
+        cfg.setdefault("solver_profiles", {})
+        cfg["solver_profiles"].setdefault("swe_hydrostatic", {}).update(
+            {"boundary": "radiation"}
+        )
+        cfg["solver_profiles"].setdefault("swe_muscl_hr", {}).update(
+            {"boundary": "radiation"}
+        )
+        cfg["solver_profiles"].setdefault("boussinesq", {}).update(
+            {"boundary": "open"}
+        )
     path = tmp_path / ("requested.yaml" if requested else "legacy.yaml")
     path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
     return path
@@ -235,6 +273,72 @@ def test_real_requested_range_interrupt_resume_is_stable_and_fail_closed(
     with pytest.raises(RuntimeError, match="corrupt or incompatible"):
         TsunamiDatasetBuilder(str(config)).run(continue_from_last=True, stop_at=2)
     assert sample.exists()
+
+
+def test_buffered_requested_generation_publishes_only_the_central_core(
+    tmp_path: Path,
+) -> None:
+    config = _write_fixture_configs(tmp_path, requested=True, buffered=True)
+    builder = TsunamiDatasetBuilder(str(config))
+    builder.run(acknowledge_provisional=True, stop_at=1)
+
+    fingerprints: set[str] = set()
+    for folder in ("hydrostatic", "muscl_hr", "boussinesq"):
+        sample_dir = tmp_path / "raw" / folder / "samples" / "sample_000001"
+        with np.load(sample_dir / "sample.npz", allow_pickle=False) as payload:
+            assert payload["bathymetry"].shape == (8, 8)
+            assert payload["source_field"].shape == (8, 8)
+            assert payload["trajectory_eta"].shape == (50, 8, 8)
+            assert payload["trajectory_eta"].dtype == np.float32
+            assert np.max(np.abs(payload["source_field"][[0, -1], :])) == 0.0
+            assert np.max(np.abs(payload["source_field"][:, [0, -1]])) == 0.0
+            np.testing.assert_allclose(
+                payload["eta0"],
+                payload["source_field"] * payload["source_strength"][0],
+                rtol=0.0,
+                atol=np.finfo(np.float32).eps,
+            )
+        meta = json.loads((sample_dir / "meta.json").read_text(encoding="utf-8"))
+        assert meta["computational_domain"]["solver_shape"] == [12, 12]
+        assert meta["computational_domain"]["publication_shape"] == [8, 8]
+        assert meta["computational_domain"]["buffer_cells"] == 2
+        fingerprints.add(str(meta["input_fingerprint"]))
+    assert len(fingerprints) == 1
+
+
+def test_buffered_requested_generation_is_serial_process_equivalent(
+    tmp_path: Path,
+) -> None:
+    roots = {"serial": tmp_path / "serial", "process": tmp_path / "process"}
+    configs = {
+        "serial": _write_fixture_configs(
+            roots["serial"], requested=True, buffered=True, num_workers=1
+        ),
+        "process": _write_fixture_configs(
+            roots["process"], requested=True, buffered=True, num_workers=2
+        ),
+    }
+    for config in configs.values():
+        TsunamiDatasetBuilder(str(config)).run(
+            acknowledge_provisional=True, stop_at=1
+        )
+
+    for folder in ("hydrostatic", "muscl_hr", "boussinesq"):
+        relative = Path("raw") / folder / "samples" / "sample_000001"
+        serial_dir = roots["serial"] / relative
+        process_dir = roots["process"] / relative
+        with np.load(serial_dir / "sample.npz", allow_pickle=False) as left, np.load(
+            process_dir / "sample.npz", allow_pickle=False
+        ) as right:
+            assert set(left.files) == set(right.files)
+            for key in left.files:
+                np.testing.assert_array_equal(left[key], right[key])
+        left_meta = json.loads((serial_dir / "meta.json").read_text(encoding="utf-8"))
+        right_meta = json.loads(
+            (process_dir / "meta.json").read_text(encoding="utf-8")
+        )
+        assert left_meta["input_fingerprint"] == right_meta["input_fingerprint"]
+        assert left_meta["resolved_config_hash"] == right_meta["resolved_config_hash"]
 
 
 def test_full_legacy_generation_and_preprocess_contract(
