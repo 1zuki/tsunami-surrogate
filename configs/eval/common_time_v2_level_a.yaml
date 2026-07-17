@@ -26,8 +26,25 @@ analytical:
     swe_muscl_hr: 0.1125
     boussinesq: 0.0875
 production:
-  grid: 64
-  boundary_implementation: zero_gradient_edge_padding
+  computational_grid: 96
+  publication_grid: 64
+  boundary_implementation:
+    swe_hydrostatic: radiation
+    swe_muscl_hr: radiation
+    boussinesq: open_zero_gradient_edge_padding
+  computational_domain:
+    buffer_cells: 16
+    source_taper_cells: 8
+    bathymetry_extension: edge
+    output_crop: central
+  sponge:
+    enabled: true
+    axes: xy
+    width: 16
+    min_factor: 0.8
+    profile: cosine
+    time_mode: elapsed_time_consistent
+    reference_dt: 0.0035
   cfl:
     swe_hydrostatic: [0.45, 0.225, 0.1125]
     swe_muscl_hr: [0.45, 0.225, 0.1125]
@@ -37,9 +54,12 @@ production:
     depth_scale: 1.0
     cg_failure_mode: strict_v2
     primary_filter_time_mode: disabled
+    sponge_axes: xy
+    sponge_width: 16
+    sponge_min_factor: 0.8
 execution:
-  requested_workers: 2
-  requested_max_in_flight: 2
+  requested_workers: 8
+  requested_max_in_flight: 8
   process_start_method: spawn
   thread_environment:
     OMP_NUM_THREADS: "1"
@@ -60,37 +80,86 @@ operators:
   legacy_comparator:
     sponge_time_mode: legacy_per_step
     filter_time_mode: legacy_per_step
+  hydrostatic_gate:
+    clean_boundary: periodic
+    clean_grid: 64
+    spatial_grids: [32, 64, 128]
+    reference_cfl_divisor: 8
+    candidate_pipeline_status: frozen_proposed_96x96_pipeline
+    candidate_boundary: radiation
+    candidate_sponge:
+      enabled: true
+      axes: x
+      profile: cosine
+      width_fraction: 0.16666666666666666
+      reference_min_factor: 0.8
 boundary_packet:
   grid: 128
   transverse_cells: 4
+  support_sigmas: 4.0
+  post_exit_observation_sigmas: 4.0
+  prearrival_sample_count: 4
+  post_exit_sample_count: 5
+  outgoing_tail_safety_factor: 100.0
+  gate_candidate_status: frozen_proposed_96x96_pipeline
+  gate_candidate:
+    swe_hydrostatic: radiation_cosine_sponge
+    swe_muscl_hr: radiation_cosine_sponge
+    boussinesq: zero_gradient_cosine_sponge
+  candidates:
+    zero_gradient_no_sponge: {boundary: open, sponge: disabled}
+    current_elapsed_sponge: {boundary: open, sponge: current_quadratic}
+    radiation_no_sponge: {boundary: radiation, sponge: disabled, swe_only: true}
+    radiation_cosine_sponge: {boundary: radiation, sponge: provisional_cosine, swe_only: true}
+    zero_gradient_cosine_sponge: {boundary: open, sponge: provisional_cosine}
   solvers:
     swe_hydrostatic: &swe_boundary_packet
       center_x: 0.50
       sigma: 0.04
       direction: left
       arrival_model: linear-shallow-water-speed
-      incident_window: [0.40, 0.60]
-      reflected_window: [0.00, 0.20]
+      depth: 1.0
+      incident_window: [0.30, 0.70]
+      reflected_window: [0.00, 0.50]
       interior_window: [0.25, 0.40]
-      expected_boundary_arrival_time: 0.1597
-      evaluation_time: 0.175
-      maximum_initial_reflected_ratio: 1.0e-8
       minimum_initial_incident_energy_fraction: 0.98
-      minimum_arrival_energy_ratio: 1.0e-4
     swe_muscl_hr: *swe_boundary_packet
     boussinesq:
-      center_x: 0.50
-      sigma: 0.04
+      protocol: spectral_large_domain_v1
       direction: left
-      arrival_model: long-wave-front-earliest-bound
-      incident_window: [0.40, 0.60]
-      reflected_window: [0.00, 0.20]
-      interior_window: [0.25, 0.40]
-      expected_boundary_arrival_time: 0.1597
-      evaluation_time: 0.175
-      maximum_initial_reflected_ratio: 1.0e-8
-      minimum_initial_incident_energy_fraction: 0.98
-      minimum_arrival_energy_ratio: 1.0e-4
+      depth: 1.0
+      gravity: 9.81
+      alpha: 0.3333333333333333
+      reflection:
+        length: 32.0
+        dx: 0.125
+        ny: 4
+        dy: 0.25
+        center: 16.0
+        carrier_wavenumber: 1.5
+        spectral_width: 0.3
+        amplitude: 1.0e-5
+        spectral_energy_tail: 1.0e-6
+        spatial_energy_tail: 1.0e-8
+        reference_length: 512.0
+        taper_edge_cells: 8
+        cg_absolute_residual_tolerance: 1.0e-12
+      production_horizon:
+        length: 1.0
+        dx: 0.015625
+        ny: 4
+        dy: 0.25
+        center: 0.50
+        carrier_wavenumber: 12.566370614359172
+        spectral_width: 4.0
+        amplitude: 1.0e-5
+        spectral_energy_tail: 1.0e-6
+        spatial_energy_tail: 1.0e-8
+        reference_length: 64.0
+        taper_edge_cells: 4
+        cg_absolute_residual_tolerance: 0.0
+        current_sponge_axes: xy
+        current_sponge_width: 20
 canaries:
   split: train
   count: 6
@@ -118,7 +187,15 @@ thresholds:
   temporal_roundoff_floor: 1.0e-6
   operator:
     accumulated_factor_relative_error: 1.0e-12
-    elapsed_candidate_cfl_relative_l2: 0.05
+    non_hydro_elapsed_candidate_cfl_relative_l2: 0.05
+    clean_temporal_order_minimum: 0.7
+    clean_temporal_order_rationale: first_order_method_with_preexisting_0.7_allowance
+    spatial_order_diagnostic_minimum: 0.7
+    spatial_order_decision_role: diagnostic_only_localized_packet_is_not_asymptotic_on_32_64_128
+    reference_to_spatial_error_ratio_maximum: 1.0
+    reference_adequacy_rationale: temporal_reference_error_must_not_exceed_measured_spatial_discretization
+    precision_floor_safety_factor: 64.0
+    precision_floor_method: float64_eps_scaled_trajectory_rms
   boussinesq_no_filter:
     amplitude_growth: 1.25
     high_frequency_fraction_absolute: 0.05
@@ -126,6 +203,12 @@ thresholds:
     reflected_amplitude_ratio: 0.10
     reflected_energy_ratio: 0.02
     interior_relative_l2: 0.10
+    boussinesq_protocol_status: proposed_unfrozen
+    boussinesq_reference_uncertainty_fraction: 0.10
+    boussinesq_production_interior_energy_ratio: 0.10
+    boussinesq_h0_initial_sponge_energy_ratio: 0.10
+    boussinesq_precision_floor_safety_factor: 64.0
+    boussinesq_threshold_policy: retained_preexisting_ceilings_plus_control_floors
   conservation:
     measurement_grid: internal_natural_states
     measurement_dtype: float64

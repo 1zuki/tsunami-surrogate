@@ -5,6 +5,7 @@ import argparse
 import os
 from pathlib import Path
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 THREAD_ENV_KEYS = (
@@ -43,6 +44,11 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--max-in-flight", type=int)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument(
+        "--quiet-progress",
+        action="store_true",
+        help="suppress per-task progress lines",
+    )
     args = parser.parse_args()
     if args.workers <= 0:
         parser.error("--workers must be positive")
@@ -53,13 +59,43 @@ def main() -> None:
     sys.path.insert(0, str(ROOT))
     from src.evaluation.common_time_v2_level_a import execute_level_a
 
+    wall_started = time.monotonic()
+
+    def report_progress(event: dict[str, object]) -> None:
+        kind = str(event["event"])
+        completed = int(event["completed"])
+        total = int(event["total"])
+        pending = int(event["pending"])
+        elapsed = float(event["elapsed_s"])
+        if kind == "start":
+            print(
+                f"[Level A] start: {completed}/{total} complete, "
+                f"{pending} pending, {int(event['workers'])} workers",
+                flush=True,
+            )
+        elif kind == "task_completed":
+            print(
+                f"[Level A] {completed}/{total} "
+                f"{event['kind']} {event['task_id']} "
+                f"(elapsed {elapsed / 60.0:.1f} min)",
+                flush=True,
+            )
+        elif kind == "complete":
+            print(
+                f"[Level A] all {total} tasks complete "
+                f"(task phase {elapsed / 60.0:.1f} min)",
+                flush=True,
+            )
+
     path = execute_level_a(
         repo_root=ROOT,
         contract_root=args.contract_root,
         workers=args.workers,
         max_in_flight=args.max_in_flight,
         resume=args.resume,
+        progress_callback=None if args.quiet_progress else report_progress,
     )
+    print(f"[Level A] finalized in {(time.monotonic() - wall_started) / 60.0:.1f} min")
     print(path)
 
 

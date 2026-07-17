@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 from pathlib import Path
 import sys
@@ -21,15 +23,24 @@ from src.evaluation.common_time_v2_level_a import (
     _task_directory_name,
     _write_checksums,
     _bootstrap_canary_aggregates,
+    _boussinesq_directional_components,
+    _boussinesq_directional_rate,
+    _boussinesq_spectral_packet_bundle,
+    _boundary_initial_conditions,
     _boundary_metrics,
+    _boundary_timing,
+    _csv_text,
     _decision_from_gates,
     _derived_replay_equal,
     _group_speed_gate,
+    _hydro_clean_temporal_metrics,
+    _hydro_spatial_control_metrics,
     _invariant_metrics,
     _operator_discrepancy_metrics,
     _packet,
     _preflight_canaries,
     _recomputed_rows_equal,
+    _resolved_boundary_packet_spec,
     _run_float64_conservation,
     _select_canaries,
     _solver,
@@ -98,10 +109,10 @@ def test_preregistration_is_content_addressed_and_refuses_overwrite(
     assert root.name == payload["contract_hash"]
     assert payload["thresholds_frozen_before_execution"] is True
     task_plan = json.loads((root / "task_plan.json").read_text(encoding="utf-8"))
-    assert len(task_plan) == 71
-    assert len(payload["task_blueprint"]) == 71
-    assert payload["worker_policy"]["requested_workers"] == 2
-    assert payload["worker_policy"]["requested_max_in_flight"] == 2
+    assert len(task_plan) == 86
+    assert len(payload["task_blueprint"]) == 86
+    assert payload["worker_policy"]["requested_workers"] == 8
+    assert payload["worker_policy"]["requested_max_in_flight"] == 8
     assert payload["worker_policy"]["process_start_method"] == "spawn"
     assert set(payload["execution_environment"]["thread_environment"].values()) == {
         "1"
@@ -230,6 +241,15 @@ def test_canary_bootstrap_is_seeded_and_descriptive() -> None:
     assert all(row["resamples"] == 2000 for row in first)
 
 
+def test_csv_replay_compares_canonical_raw_bytes(tmp_path: Path) -> None:
+    expected = _csv_text([{"nested": {"b": 2, "a": 1}, "value": 3.0}])
+    path = tmp_path / "rows.csv"
+    path.write_text(expected, encoding="utf-8", newline="")
+    assert b"\r\n" in path.read_bytes()
+    assert path.read_bytes() == expected.encode("utf-8")
+    assert path.read_text(encoding="utf-8") != expected
+
+
 def test_universal_health_gate_fails_missing_or_replaced_diagnostics() -> None:
     universal = {
         "exact_output_count": 50,
@@ -285,7 +305,7 @@ def test_x_only_sponge_preserves_quasi_1d_interior(solver_name: str) -> None:
     assert np.all(production_default.sponge_mask < 1.0)
 
 
-def test_boundary_packet_windows_exclude_initial_packet_and_sponge() -> None:
+def test_boundary_packet_windows_cover_incident_and_separated_reflection() -> None:
     repo = Path(__file__).resolve().parents[1]
     config = __import__("yaml").safe_load(
         (repo / "configs/eval/common_time_v2_level_a.yaml").read_text(
@@ -293,50 +313,116 @@ def test_boundary_packet_windows_exclude_initial_packet_and_sponge() -> None:
         )
     )
     boundary = config["boundary_packet"]
-    for spec in boundary["solvers"].values():
-        _validate_boundary_packet_spec(spec, nx=128, sponge_width=16)
+    for solver in ("swe_hydrostatic", "swe_muscl_hr"):
+        spec = _resolved_boundary_packet_spec(boundary, solver)
+        _validate_boundary_packet_spec(spec, nx=128, sponge_width=24)
+        timing = _boundary_timing(solver, spec)
+        assert timing["prearrival_times"][-1] < timing["leading_edge_arrival_time"]
+        assert timing["postexit_times"][0] >= timing["trailing_edge_exit_time"]
 
-    invalid = dict(boundary["solvers"]["swe_hydrostatic"])
-    invalid["incident_window"] = [0.70, 0.90]
-    invalid["reflected_window"] = [0.45, 0.55]
-    with pytest.raises(ValueError, match="outside the reflected window"):
-        _validate_boundary_packet_spec(invalid, nx=128, sponge_width=16)
-
-
-def test_boundary_metrics_require_arrival_and_use_incident_window() -> None:
-    nx, ny = 128, 4
-    initial = _packet(nx, ny, center=0.5, sigma=0.04, zero_mean=False)
-    baseline = np.zeros((50, nx, ny), dtype=np.float64)
-    damped = np.zeros_like(baseline)
-    reflected = (np.arange(nx) / nx <= 0.20)
-    baseline[-1, reflected] = 0.1 * np.max(initial)
-    damped[-1, reflected] = 0.01 * np.max(initial)
-    spec = {
-        "incident_window": [0.40, 0.60],
-        "reflected_window": [0.00, 0.20],
-        "interior_window": [0.25, 0.40],
-        "expected_boundary_arrival_time": 0.1597,
-        "evaluation_time": 0.175,
-        "minimum_arrival_energy_ratio": 1.0e-4,
-    }
-    metrics = _boundary_metrics(
-        baseline=baseline,
-        damped=damped,
-        initial_packet=initial,
-        spec=spec,
+    boussinesq = _resolved_boundary_packet_spec(boundary, "boussinesq")
+    _packet_spec, _finite, _reference, _metadata, timing = (
+        _boussinesq_spectral_packet_bundle(boussinesq, role="reflection")
     )
-    assert metrics["arrival_observed"] is True
-    assert metrics["incident_energy"] < float(np.sum(initial**2))
+    assert timing["prearrival_times"][-1] < timing["leading_edge_arrival_time"]
+    assert timing["postexit_times"][0] >= timing["trailing_edge_exit_time"]
+    assert timing["reference_safe"] is True
+
+    invalid = _resolved_boundary_packet_spec(boundary, "swe_hydrostatic")
+    invalid["incident_window"] = [0.70, 0.90]
+    with pytest.raises(ValueError, match="enough initial packet energy"):
+        _validate_boundary_packet_spec(invalid, nx=128, sponge_width=24)
+
+    invalid = _resolved_boundary_packet_spec(boundary, "swe_hydrostatic")
+    invalid["reflected_window"] = [0.00, 0.20]
+    with pytest.raises(ValueError, match="cannot contain"):
+        _validate_boundary_packet_spec(invalid, nx=128, sponge_width=24)
+
+
+def test_boundary_metrics_require_packet_exit_and_use_characteristics() -> None:
+    nx, ny = 128, 4
+    repo = Path(__file__).resolve().parents[1]
+    config = __import__("yaml").safe_load(
+        (repo / "configs/eval/common_time_v2_level_a.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    spec = _resolved_boundary_packet_spec(
+        config["boundary_packet"], "swe_hydrostatic"
+    )
+    timing = _boundary_timing("swe_hydrostatic", spec)
+    times = np.asarray(timing["requested_times"], dtype=np.float64)
+    initial = _boundary_initial_conditions(
+        "swe_hydrostatic", nx=nx, ny=ny, spec=spec
+    )
+    bathymetry = -np.ones((nx, ny), dtype=np.float64)
+    baseline = np.zeros((times.size, 3, nx, ny), dtype=np.float64)
+    baseline[:, 0] = 1.0
+    prearrival = times < float(timing["leading_edge_arrival_time"])
+    baseline[prearrival, 0] = np.asarray(initial["h0"])
+    baseline[prearrival, 1] = np.asarray(initial["hu0"])
+    candidate = baseline.copy()
+    reflected = np.arange(nx) / nx <= 0.50
+    first_post = int(
+        np.flatnonzero(times >= float(timing["trailing_edge_exit_time"]))[0]
+    )
+    reflected_eta = 0.01 * float(np.max(initial["eta0"]))
+    candidate[first_post, 0, reflected] += reflected_eta
+    candidate[first_post, 1, reflected] += np.sqrt(9.81) * reflected_eta
+    metrics = _boundary_metrics(
+        solver_name="swe_hydrostatic",
+        baseline=baseline,
+        candidate=candidate,
+        initial_conditions=initial,
+        bathymetry=bathymetry,
+        spec=spec,
+        timing=timing,
+        timestamps=times,
+    )
+    assert metrics["measurement_temporally_separated"] is True
+    assert metrics["packet_exit_achieved"] is True
+    assert metrics["reflection_metrics_valid"] is True
     assert metrics["reflected_amplitude_ratio"] == pytest.approx(0.01)
 
-    baseline[-1] = 0.0
-    no_arrival = _boundary_metrics(
+    uncleared = baseline.copy()
+    postexit = times >= float(timing["trailing_edge_exit_time"])
+    uncleared[postexit, 0] = np.asarray(initial["h0"])
+    uncleared[postexit, 1] = np.asarray(initial["hu0"])
+    uncleared_metrics = _boundary_metrics(
+        solver_name="swe_hydrostatic",
         baseline=baseline,
-        damped=damped,
-        initial_packet=initial,
+        candidate=uncleared,
+        initial_conditions=initial,
+        bathymetry=bathymetry,
         spec=spec,
+        timing=timing,
+        timestamps=times,
     )
-    assert no_arrival["arrival_observed"] is False
+    assert uncleared_metrics["packet_exit_achieved"] is False
+    assert uncleared_metrics["reflection_metrics_valid"] is False
+
+    with pytest.raises(ValueError, match="timestamps"):
+        _boundary_metrics(
+            solver_name="swe_hydrostatic",
+            baseline=baseline[:-1],
+            candidate=candidate[:-1],
+            initial_conditions=initial,
+            bathymetry=bathymetry,
+            spec=spec,
+            timing=timing,
+            timestamps=times[:-1],
+        )
+
+
+def test_boussinesq_spectral_directional_decomposition_separates_packet() -> None:
+    nx, ny = 64, 4
+    x = np.arange(nx, dtype=np.float64)[:, None] / nx
+    eta = 1.0e-5 * np.cos(4.0 * np.pi * x) * np.ones((1, ny))
+    eta_t = _boussinesq_directional_rate(eta, depth=1.0, direction="left")
+    states = np.stack([eta, eta_t], axis=0)[None, ...]
+    rightgoing, leftgoing = _boussinesq_directional_components(states, depth=1.0)
+    np.testing.assert_allclose(rightgoing, 0.0, rtol=0.0, atol=2.0e-20)
+    np.testing.assert_allclose(leftgoing[0], eta, rtol=1.0e-14, atol=2.0e-20)
 
 
 def test_float32_requested_state_contaminates_conservation_measurement() -> None:
@@ -395,6 +481,39 @@ def test_operator_metrics_isolate_sponge_and_interior_regions() -> None:
     assert metrics["interior_final_time_relative_l2"] == 0.0
 
 
+def test_hydro_temporal_and_spatial_controls_use_absolute_float64_refinement() -> None:
+    shape = (3, 64, 2)
+    pattern = np.broadcast_to(
+        np.sin(2.0 * np.pi * np.arange(64) / 64)[None, :, None], shape
+    )
+    exact = 1.0e-5 * pattern
+    temporal = [exact + scale * pattern for scale in (8.0e-7, 4.0e-7, 2.0e-7, 1.0e-7)]
+    temporal_metrics = _hydro_clean_temporal_metrics(
+        temporal,
+        minimum_order=0.7,
+        precision_floor_safety_factor=64.0,
+    )
+    assert temporal_metrics["passed"] is True
+    np.testing.assert_allclose(temporal_metrics["pairwise_orders"], [1.0, 1.0])
+    assert all(
+        row["absolute_rms"] > 0.0
+        and row["relative_l2"] > 0.0
+        for row in temporal_metrics["reference_errors"]
+    )
+
+    spatial = {
+        grid: np.full((3, grid, 2), scale, dtype=np.float64)
+        for grid, scale in ((32, 4.0e-7), (64, 2.0e-7), (128, 1.0e-7))
+    }
+    spatial_metrics = _hydro_spatial_control_metrics(
+        spatial,
+        minimum_order=0.7,
+        precision_floor_safety_factor=64.0,
+    )
+    assert spatial_metrics["passed"] is True
+    assert spatial_metrics["observed_order"] == pytest.approx(1.0)
+
+
 def test_derived_replay_tolerates_only_machine_scale_reduction_noise() -> None:
     stored = {
         "component": "operator_sensitivity_summary",
@@ -418,6 +537,25 @@ def test_derived_replay_tolerates_only_machine_scale_reduction_noise() -> None:
         "value": float(np.nextafter(1.0, 2.0)),
     }
     assert not _recomputed_rows_equal([direct_stored], [direct_changed])
+
+
+def test_csv_nested_mappings_regenerate_independent_of_key_order() -> None:
+    first = {
+        "component": "operator_sensitivity_summary",
+        "metrics": {"trajectory": 0.1, "regions": {"sponge": 0.2, "interior": 0.0}},
+    }
+    reordered = {
+        "metrics": {"regions": {"interior": 0.0, "sponge": 0.2}, "trajectory": 0.1},
+        "component": "operator_sensitivity_summary",
+    }
+    regenerated = json.loads(json.dumps(first, sort_keys=True))
+
+    expected = _csv_text([first])
+    assert _csv_text([reordered]) == expected
+    assert _csv_text([regenerated]) == expected
+
+    parsed = next(csv.DictReader(io.StringIO(expected)))
+    assert json.loads(parsed["metrics"]) == first["metrics"]
 
 
 def _fixture_tasks(count: int = 3) -> list[dict[str, object]]:
@@ -483,14 +621,25 @@ def test_production_task_plan_has_stable_rollout_granularity() -> None:
         code_state_hash="code",
     )
     assert first == second
+    reordered = json.loads(json.dumps(config))
+    candidates = reordered["boundary_packet"]["candidates"]
+    reordered["boundary_packet"]["candidates"] = dict(
+        reversed(list(candidates.items()))
+    )
+    assert first == _build_level_a_task_plan(
+        reordered,
+        canaries,
+        contract_hash="contract",
+        code_state_hash="code",
+    )
     counts = {
         kind: sum(task["kind"] == kind for task in first)
         for kind in ("analytical", "operator", "boundary", "conservation", "canary")
     }
     assert counts == {
         "analytical": 27,
-        "operator": 14,
-        "boundary": 6,
+        "operator": 19,
+        "boundary": 16,
         "conservation": 6,
         "canary": 18,
     }
@@ -503,6 +652,30 @@ def test_production_task_plan_has_stable_rollout_granularity() -> None:
         assert roles.count("spatial") == 3
         assert roles.count("temporal") == 3
         assert roles.count("modal") == 3
+    boussinesq_boundary_roles = [
+        task["spec"]["boundary_role"]
+        for task in first
+        if task["kind"] == "boundary"
+        and task["spec"]["solver"] == "boussinesq"
+    ]
+    assert boussinesq_boundary_roles.count("reflection") == 3
+    assert boussinesq_boundary_roles.count("production_horizon") == 3
+    canary_specs = [task["spec"] for task in first if task["kind"] == "canary"]
+    assert len(canary_specs) == 18
+    assert all(spec["computational_grid"] == 96 for spec in canary_specs)
+    assert all(spec["publication_grid"] == 64 for spec in canary_specs)
+    assert all(spec["buffer_cells"] == 16 for spec in canary_specs)
+    assert all(spec["source_taper_cells"] == 8 for spec in canary_specs)
+    assert all(spec["sponge_axes"] == "xy" for spec in canary_specs)
+    assert all(spec["sponge_width"] == 16 for spec in canary_specs)
+    assert all(spec["sponge_profile"] == "cosine" for spec in canary_specs)
+    assert {
+        spec["solver"]: spec["boundary"] for spec in canary_specs[:3]
+    } == {
+        "swe_hydrostatic": "radiation",
+        "swe_muscl_hr": "radiation",
+        "boussinesq": "open_zero_gradient_edge_padding",
+    }
 
 
 def _fixture_scientific_outputs(
@@ -571,6 +744,71 @@ def test_task_execution_is_serial_parallel_scientifically_equivalent(
         "BLIS_NUM_THREADS",
         "VECLIB_MAXIMUM_THREADS",
     }
+
+
+def test_task_execution_reports_resume_aware_progress(tmp_path: Path) -> None:
+    tasks = _fixture_tasks()
+    events: list[dict[str, object]] = []
+    _execute_level_a_task_plan(
+        tasks,
+        tasks_root=tmp_path / "progress",
+        workers=1,
+        progress_callback=lambda event: events.append(dict(event)),
+    )
+    assert events[0]["event"] == "start"
+    assert events[0]["completed"] == 0
+    task_events = [event for event in events if event["event"] == "task_completed"]
+    assert [event["completed"] for event in task_events] == [1, 2, 3]
+    assert events[-1]["event"] == "complete"
+    assert events[-1]["completed"] == 3
+
+    resumed: list[dict[str, object]] = []
+    _execute_level_a_task_plan(
+        tasks,
+        tasks_root=tmp_path / "progress",
+        workers=1,
+        resume=True,
+        progress_callback=lambda event: resumed.append(dict(event)),
+    )
+    assert [event["event"] for event in resumed] == ["start", "complete"]
+    assert resumed[0]["completed"] == 3
+
+
+def test_float64_scientific_tasks_are_serial_parallel_equivalent(
+    tmp_path: Path,
+) -> None:
+    tasks = [
+        _make_level_a_task(
+            ordinal=index,
+            task_id=f"analytical/{solver}",
+            kind="analytical",
+            spec={
+                "role": "modal",
+                "solver": solver,
+                "grid": 8,
+                "ny": 4,
+                "mode": 1,
+                "cfl": 0.2,
+                "amplitude": 1.0e-5,
+                "reconstruction_limiter": "minmod",
+            },
+            contract_hash="float64-equivalence",
+            code_state_hash="test-code",
+        )
+        for index, solver in enumerate(("swe_hydrostatic", "swe_muscl_hr"))
+    ]
+    serial, _ = _execute_level_a_task_plan(
+        tasks, tasks_root=tmp_path / "scientific-serial", workers=1
+    )
+    parallel, _ = _execute_level_a_task_plan(
+        tasks,
+        tasks_root=tmp_path / "scientific-parallel",
+        workers=2,
+        max_in_flight=2,
+    )
+    assert all(payload["trajectory"].dtype == np.float64 for payload in serial)
+    assert all(payload["trajectory"].dtype == np.float64 for payload in parallel)
+    assert _scientific_digest(serial) == _scientific_digest(parallel)
 
 
 def test_task_execution_uses_default_bounded_window(tmp_path: Path) -> None:

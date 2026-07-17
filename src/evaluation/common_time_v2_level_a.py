@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import replace
 import io
 import json
 import math
@@ -12,7 +13,7 @@ import sys
 import time
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 import yaml
@@ -25,10 +26,25 @@ from src.data_gen.common_time_v2 import (
     sha256_file,
     stable_hash_payload,
 )
-from src.data_gen.simulate_dataset import _simulate_one_local
+from src.data_gen.simulate_dataset import (
+    BufferedDomainConfig,
+    _prepare_buffered_domain,
+    _simulate_one_local,
+)
 from src.solver.boussinesq import BoussinesqSolver
+from src.evaluation.boussinesq_boundary import (
+    SpectralPacketSpec,
+    build_reference_packet,
+    cosine_taper,
+    directional_states as boussinesq_directional_states,
+    discrete_energy as boussinesq_discrete_energy,
+    energy_density as boussinesq_energy_density,
+    evolve_reference as evolve_boussinesq_reference,
+    packet_timing as boussinesq_packet_timing,
+)
 from src.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
 from src.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
+from src.solver.operator_time import build_sponge_mask
 
 
 LEVEL_A_SCHEMA_ID = "tsunami-surrogate.common-time-v2.level-a.v1"
@@ -63,6 +79,7 @@ DERIVED_REPLAY_REL_TOL = 2.0e-15
 DERIVED_REPLAY_ABS_TOL = 1.0e-18
 _DERIVED_ROW_COMPONENTS = {
     "boundary_sponge",
+    "boussinesq_h0_boundary_exposure",
     "canary_bootstrap_descriptive",
     "operator_factor_identity",
     "operator_sensitivity_summary",
@@ -121,7 +138,15 @@ def _csv_text(rows: Sequence[Mapping[str, Any]]) -> str:
     writer = csv.DictWriter(handle, fieldnames=fields)
     writer.writeheader()
     for row in rows:
-        writer.writerow({key: _json_safe(row.get(key)) for key in fields})
+        values: dict[str, Any] = {}
+        for key in fields:
+            value = _json_safe(row.get(key))
+            values[key] = (
+                json.dumps(value, sort_keys=True, separators=(",", ":"))
+                if isinstance(value, (Mapping, list))
+                else value
+            )
+        writer.writerow(values)
     return handle.getvalue()
 
 
@@ -175,6 +200,74 @@ def validate_checksums(
         )
 
 
+def _resolved_boundary_packet_spec(
+    boundary_config: Mapping[str, Any], solver_name: str
+) -> dict[str, Any]:
+    shared_keys = (
+        "support_sigmas",
+        "post_exit_observation_sigmas",
+        "prearrival_sample_count",
+        "post_exit_sample_count",
+        "outgoing_tail_safety_factor",
+    )
+    resolved = {
+        key: boundary_config[key]
+        for key in shared_keys
+        if key in boundary_config
+    }
+    resolved.update(dict(boundary_config["solvers"][solver_name]))
+    resolved["solver"] = solver_name
+    return _json_safe(resolved)
+
+
+def _boussinesq_spectral_packet_spec(
+    packet_spec: Mapping[str, Any], *, role: str
+) -> SpectralPacketSpec:
+    if packet_spec.get("protocol") != "spectral_large_domain_v1":
+        raise ValueError("unsupported Boussinesq boundary protocol")
+    if role not in ("reflection", "production_horizon"):
+        raise ValueError("unsupported Boussinesq boundary role")
+    values = packet_spec[role]
+    return SpectralPacketSpec(
+        length=float(values["length"]),
+        dx=float(values["dx"]),
+        ny=int(values["ny"]),
+        dy=float(values["dy"]),
+        center=float(values["center"]),
+        carrier_wavenumber=float(values["carrier_wavenumber"]),
+        spectral_width=float(values["spectral_width"]),
+        amplitude=float(values["amplitude"]),
+        direction=str(packet_spec["direction"]),
+        depth=float(packet_spec["depth"]),
+        gravity=float(packet_spec["gravity"]),
+        alpha=float(packet_spec["alpha"]),
+        spectral_energy_tail=float(values["spectral_energy_tail"]),
+        spatial_energy_tail=float(values["spatial_energy_tail"]),
+        reference_length=float(values["reference_length"]),
+    )
+
+
+def _boussinesq_spectral_packet_bundle(
+    packet_spec: Mapping[str, Any], *, role: str
+) -> tuple[SpectralPacketSpec, np.ndarray, np.ndarray, dict[str, Any], dict[str, Any]]:
+    spec = _boussinesq_spectral_packet_spec(packet_spec, role=role)
+    finite, reference, metadata = build_reference_packet(spec)
+    timing = boussinesq_packet_timing(spec, metadata)
+    if role == "production_horizon":
+        support_width = float(metadata["spatial_support_right"]) - float(
+            metadata["spatial_support_left"]
+        )
+        timing["reference_safe"] = bool(
+            float(metadata["reference_distance"])
+            > float(metadata["group_velocity_max"])
+            * float(candidate_requested_times()[-1])
+            + support_width
+        )
+    if not bool(timing["reference_safe"]):
+        raise ValueError("Boussinesq large-domain reference is not return-safe")
+    return spec, finite, reference, metadata, timing
+
+
 def _validate_source_contract(config: Mapping[str, Any]) -> None:
     if config.get("schema_id") != LEVEL_A_SCHEMA_ID:
         raise ValueError("Level A schema mismatch")
@@ -198,11 +291,39 @@ def _validate_source_contract(config: Mapping[str, Any]) -> None:
     if set(solver_specs) != set(SOLVERS):
         raise ValueError("Level A boundary_packet must define every solver")
     for solver in SOLVERS:
+        spec = _resolved_boundary_packet_spec(boundary, solver)
+        if solver == "boussinesq":
+            for role in ("reflection", "production_horizon"):
+                spectral_spec, _finite, _reference, _metadata, timing = (
+                    _boussinesq_spectral_packet_bundle(spec, role=role)
+                )
+                if role == "reflection" and float(
+                    spec[role]["cg_absolute_residual_tolerance"]
+                ) <= 0.0:
+                    raise ValueError(
+                        "Boussinesq reflection requires a positive frozen CG floor"
+                    )
+                if spectral_spec.nx <= 1 or not bool(timing["reference_safe"]):
+                    raise ValueError("invalid Boussinesq spectral boundary protocol")
+            continue
         _validate_boundary_packet_spec(
-            solver_specs[solver],
+            spec,
             nx=int(boundary.get("grid", 128)),
-            sponge_width=max(1, int(boundary.get("grid", 128)) // 8),
+            sponge_width=max(
+                1,
+                int(
+                    round(
+                        int(boundary.get("grid", 128))
+                        * float(
+                            config["operators"]["hydrostatic_gate"][
+                                "candidate_sponge"
+                            ]["width_fraction"]
+                        )
+                    )
+                ),
+            ),
         )
+        _boundary_timing(solver, spec)
     conservation = config.get("thresholds", {}).get("conservation", {})
     required_conservation_contract = {
         "measurement_grid": "internal_natural_states",
@@ -215,10 +336,66 @@ def _validate_source_contract(config: Mapping[str, Any]) -> None:
             raise ValueError(
                 f"Level A conservation {key} must be frozen as {expected!r}"
             )
+    production = config.get("production", {})
+    expected_domain = {
+        "buffer_cells": 16,
+        "source_taper_cells": 8,
+        "bathymetry_extension": "edge",
+        "output_crop": "central",
+    }
+    expected_boundary = {
+        "swe_hydrostatic": "radiation",
+        "swe_muscl_hr": "radiation",
+        "boussinesq": "open_zero_gradient_edge_padding",
+    }
+    expected_sponge = {
+        "enabled": True,
+        "axes": "xy",
+        "width": 16,
+        "min_factor": 0.8,
+        "profile": "cosine",
+        "time_mode": "elapsed_time_consistent",
+        "reference_dt": 0.0035,
+    }
+    if (
+        int(production.get("computational_grid", -1)) != 96
+        or int(production.get("publication_grid", -1)) != 64
+        or production.get("computational_domain") != expected_domain
+        or production.get("boundary_implementation") != expected_boundary
+        or production.get("sponge") != expected_sponge
+    ):
+        raise ValueError(
+            "Level A production policy must freeze the reviewed 96-to-64 "
+            "buffered computational contract"
+        )
+    if boundary.get("gate_candidate") != {
+        "swe_hydrostatic": "radiation_cosine_sponge",
+        "swe_muscl_hr": "radiation_cosine_sponge",
+        "boussinesq": "zero_gradient_cosine_sponge",
+    }:
+        raise ValueError("Level A boundary gates do not match the production policy")
+    hydro_gate = config.get("operators", {}).get("hydrostatic_gate", {})
+    hydro_sponge = hydro_gate.get("candidate_sponge", {})
+    if (
+        hydro_gate.get("candidate_boundary") != "radiation"
+        or hydro_sponge.get("axes") != "x"
+        or hydro_sponge.get("profile") != "cosine"
+        or not math.isclose(
+            float(hydro_sponge.get("width_fraction", -1.0)),
+            1.0 / 6.0,
+            rel_tol=0.0,
+            abs_tol=0.0,
+        )
+        or float(hydro_sponge.get("reference_min_factor", -1.0)) != 0.8
+    ):
+        raise ValueError(
+            "Level A Hydrostatic production-sensitivity task does not match "
+            "the buffered candidate"
+        )
     execution = config.get("execution", {})
     expected_execution = {
-        "requested_workers": 2,
-        "requested_max_in_flight": 2,
+        "requested_workers": 8,
+        "requested_max_in_flight": 8,
         "process_start_method": "spawn",
         "thread_environment": {key: "1" for key in THREAD_ENV_KEYS},
     }
@@ -372,9 +549,11 @@ def preregister_level_a(
 - Training canaries: {len(canaries)}
 - Frozen task count: {len(task_plan)}
 - Worker policy: {config["execution"]["requested_workers"]} workers, {config["execution"]["requested_max_in_flight"]} maximum in-flight tasks, `{config["execution"]["process_start_method"]}` start method
+- Production computation/publication grids: {config["production"]["computational_grid"]} x {config["production"]["computational_grid"]} -> central {config["production"]["publication_grid"]} x {config["production"]["publication_grid"]} crop
+- Production outer treatment: SWE radiation, Boussinesq open zero-gradient, external {config["production"]["sponge"]["width"]}-cell elapsed-time cosine sponge
 - Thresholds frozen before execution: yes
 
-Stage C thresholds are historical context only and were not inherited. `depth_scale=1.0` is the sole v2 production interpretation in this contract. The current `open` implementation is labelled zero-gradient edge padding, not radiative. A Level A pass permits only progression to H1; it does not accept the production contract.
+Stage C thresholds are historical context only and were not inherited. `depth_scale=1.0` is the sole v2 production interpretation in this contract. Boussinesq `open` is explicitly labelled zero-gradient edge padding, not radiative. The buffered production treatment is a frozen candidate under test, not a pre-accepted boundary claim. A Level A pass permits only progression to H1; it does not accept the production contract.
 """
     (staging / "PREREGISTRATION.md").write_text(report, encoding="utf-8")
     _write_checksums(staging)
@@ -389,30 +568,39 @@ def _solver(
     nx: int,
     ny: int,
     cfl: float,
-    boundary: str,
+    boundary: Any,
     use_sponge: bool,
     sponge_mode: str = "legacy_per_step",
     filter_mode: str = "disabled",
     filter_strength: float = 0.0,
     sponge_axes: str = "xy",
+    sponge_width: int | None = None,
+    sponge_min_factor: float = 0.9,
+    sponge_profile: str = "quadratic",
+    reconstruction_limiter: str = "minmod",
+    dx: float | None = None,
+    dy: float | None = None,
+    cg_failure_mode: str = "strict_v2",
+    linear_solver_abs_tol: float = 0.0,
 ) -> Any:
     common = dict(
         nx=nx,
         ny=ny,
-        dx=1.0 / nx,
-        dy=1.0 / ny,
+        dx=1.0 / nx if dx is None else float(dx),
+        dy=1.0 / ny if dy is None else float(dy),
         dt=1.0e-4,
         g=9.81,
         cfl=cfl,
         boundary=boundary,
         use_sponge=use_sponge,
-        sponge_width=max(1, nx // 8),
-        sponge_min_factor=0.9,
+        sponge_width=max(1, nx // 8) if sponge_width is None else sponge_width,
+        sponge_min_factor=sponge_min_factor,
         sponge_time_mode=sponge_mode,
         sponge_reference_dt=0.0035
         if sponge_mode == "elapsed_time_consistent"
         else None,
         sponge_axes=sponge_axes,
+        sponge_profile=sponge_profile,
     )
     if name == "swe_hydrostatic":
         return HydrostaticShallowWaterSolver(
@@ -420,7 +608,10 @@ def _solver(
         )
     if name == "swe_muscl_hr":
         return MUSCLHRShallowWaterSolver(
-            **common, dry_tolerance=1e-6, max_velocity=30.0
+            **common,
+            dry_tolerance=1e-6,
+            max_velocity=30.0,
+            reconstruction_limiter=reconstruction_limiter,
         )
     return BoussinesqSolver(
         **common,
@@ -433,7 +624,8 @@ def _solver(
         filter_reference_dt=(
             0.0035 if filter_mode == "elapsed_time_consistent" else None
         ),
-        cg_failure_mode="strict_v2",
+        cg_failure_mode=cg_failure_mode,
+        linear_solver_abs_tol=linear_solver_abs_tol,
         linear_solver_tol=1e-10,
         linear_solver_max_iter=500,
         check_finite=True,
@@ -469,13 +661,28 @@ def _mode_exact(
 
 
 def _run_mode(
-    name: str, *, nx: int, ny: int, mode: int, cfl: float, amplitude: float
+    name: str,
+    *,
+    nx: int,
+    ny: int,
+    mode: int,
+    cfl: float,
+    amplitude: float,
+    reconstruction_limiter: str = "minmod",
 ) -> dict[str, Any]:
     times = candidate_requested_times()
     exact, omega, group = _mode_exact(
         name, nx=nx, ny=ny, mode=mode, amplitude=amplitude, times=times
     )
-    solver = _solver(name, nx=nx, ny=ny, cfl=cfl, boundary="periodic", use_sponge=False)
+    solver = _solver(
+        name,
+        nx=nx,
+        ny=ny,
+        cfl=cfl,
+        boundary="periodic",
+        use_sponge=False,
+        reconstruction_limiter=reconstruction_limiter,
+    )
     bathymetry = -np.ones((nx, ny), dtype=float)
     x = np.arange(nx, dtype=float)[:, None] / nx
     k = 2.0 * math.pi * mode
@@ -499,6 +706,7 @@ def _run_mode(
         requested_times=times,
         max_natural_steps=10000,
         collect_natural_step_health=True,
+        requested_state_dtype=np.float64,
     )
     eta = states[:, 0] if name == "boussinesq" else states[:, 0] + bathymetry
     basis = np.exp(-1j * k * np.arange(nx) / nx)[:, None]
@@ -533,6 +741,10 @@ def _run_mode(
         "mode": mode,
         "wavenumber": k,
         "cfl": cfl,
+        "reconstruction_limiter": (
+            reconstruction_limiter if name == "swe_muscl_hr" else "not_applicable"
+        ),
+        "measurement_dtype": str(np.asarray(eta).dtype),
         "measured_omega": measured_omega,
         "expected_omega": omega,
         "phase_speed_relative_error": abs(measured_omega - omega) / omega,
@@ -928,6 +1140,7 @@ def _build_level_a_task_plan(
                     "mode": 1,
                     "cfl": spatial_cfl,
                     "amplitude": amplitude,
+                    "reconstruction_limiter": "minmod",
                 },
             )
         for index, cfl in enumerate(config["production"]["cfl"][solver]):
@@ -942,6 +1155,7 @@ def _build_level_a_task_plan(
                     "mode": 1,
                     "cfl": float(cfl),
                     "amplitude": amplitude,
+                    "reconstruction_limiter": "minmod",
                 },
             )
         production_cfl = float(config["production"]["cfl"][solver][0])
@@ -957,13 +1171,92 @@ def _build_level_a_task_plan(
                     "mode": int(mode),
                     "cfl": production_cfl,
                     "amplitude": amplitude,
+                    "reconstruction_limiter": "minmod",
                 },
             )
 
     for solver in SOLVERS:
-        production, half = [
-            float(value) for value in config["production"]["cfl"][solver][:2]
+        production, half, quarter = [
+            float(value) for value in config["production"]["cfl"][solver]
         ]
+        if solver == "swe_hydrostatic":
+            gate = config["operators"]["hydrostatic_gate"]
+            clean_grid = int(gate["clean_grid"])
+            reference_cfl = production / float(gate["reference_cfl_divisor"])
+            for cfl_index, cfl in enumerate(
+                (production, half, quarter, reference_cfl)
+            ):
+                add(
+                    f"operator/{solver}/clean_temporal/{cfl_index}",
+                    "operator",
+                    {
+                        "solver": solver,
+                        "operator_role": "clean_temporal",
+                        "variant": "no_sponge_periodic",
+                        "filter_mode": "disabled",
+                        "filter_strength": 0.0,
+                        "cfl": cfl,
+                        "nx": clean_grid,
+                        "ny": 4,
+                        "boundary": str(gate["clean_boundary"]),
+                        "use_sponge": False,
+                        "sponge_axes": "x",
+                        "sponge_profile": "quadratic",
+                    },
+                )
+            for grid in gate["spatial_grids"]:
+                if int(grid) == clean_grid:
+                    continue
+                add(
+                    f"operator/{solver}/spatial/{int(grid)}",
+                    "operator",
+                    {
+                        "solver": solver,
+                        "operator_role": "spatial_reference",
+                        "variant": "no_sponge_periodic",
+                        "filter_mode": "disabled",
+                        "filter_strength": 0.0,
+                        "cfl": reference_cfl,
+                        "nx": int(grid),
+                        "ny": 4,
+                        "boundary": str(gate["clean_boundary"]),
+                        "use_sponge": False,
+                        "sponge_axes": "x",
+                        "sponge_profile": "quadratic",
+                    },
+                )
+            candidate = gate["candidate_sponge"]
+            for cfl_index, cfl in enumerate((production, half, quarter)):
+                add(
+                    f"operator/{solver}/production_pipeline/{cfl_index}",
+                    "operator",
+                    {
+                        "solver": solver,
+                        "operator_role": "production_pipeline",
+                        "variant": "proposed_radiation_cosine_buffered",
+                        "filter_mode": "disabled",
+                        "filter_strength": 0.0,
+                        "cfl": cfl,
+                        "nx": clean_grid,
+                        "ny": 4,
+                        "boundary": str(gate["candidate_boundary"]),
+                        "use_sponge": bool(candidate["enabled"]),
+                        "sponge_axes": str(candidate["axes"]),
+                        "sponge_width": max(
+                            1,
+                            int(
+                                round(
+                                    clean_grid * float(candidate["width_fraction"])
+                                )
+                            ),
+                        ),
+                        "sponge_min_factor": float(
+                            candidate["reference_min_factor"]
+                        ),
+                        "sponge_profile": str(candidate["profile"]),
+                    },
+                )
+            continue
         variants = [
             (
                 "legacy_per_step",
@@ -981,13 +1274,17 @@ def _build_level_a_task_plan(
                     "operator",
                     {
                         "solver": solver,
+                        "operator_role": "legacy_operator_comparison",
                         "variant": variant,
                         "filter_mode": filter_mode,
                         "filter_strength": filter_strength,
                         "cfl": cfl,
                         "nx": 64,
                         "ny": 4,
+                        "boundary": "open",
+                        "use_sponge": True,
                         "sponge_axes": "x",
+                        "sponge_profile": "quadratic",
                     },
                 )
 
@@ -995,22 +1292,97 @@ def _build_level_a_task_plan(
     boundary_grid = int(boundary_config["grid"])
     boundary_ny = int(boundary_config["transverse_cells"])
     for solver in SOLVERS:
-        boundary_spec = _json_safe(boundary_config["solvers"][solver])
-        for variant, use_sponge in (("baseline", False), ("damped", True)):
-            add(
-                f"boundary/{solver}/{variant}",
-                "boundary",
-                {
-                    "solver": solver,
-                    "variant": variant,
-                    "use_sponge": use_sponge,
-                    "cfl": float(config["production"]["cfl"][solver][0]),
-                    "nx": boundary_grid,
-                    "ny": boundary_ny,
-                    "sponge_axes": "x",
-                    "packet": boundary_spec,
-                },
-            )
+        boundary_spec = _resolved_boundary_packet_spec(boundary_config, solver)
+        if solver == "boussinesq":
+            roles = ("reflection", "production_horizon")
+        else:
+            roles = ("reflection",)
+        for variant in sorted(boundary_config["candidates"]):
+            candidate = boundary_config["candidates"][variant]
+            if bool(candidate.get("swe_only", False)) and solver == "boussinesq":
+                continue
+            if bool(candidate.get("boussinesq_only", False)) and solver != "boussinesq":
+                continue
+            for role in roles:
+                if solver == "boussinesq":
+                    spectral_spec, _finite, _reference, metadata, timing = (
+                        _boussinesq_spectral_packet_bundle(
+                            boundary_spec, role=role
+                        )
+                    )
+                    nx = spectral_spec.nx
+                    ny = spectral_spec.ny
+                    dx = spectral_spec.dx
+                    dy = spectral_spec.dy
+                    requested_times = (
+                        candidate_requested_times().tolist()
+                        if role == "production_horizon"
+                        else timing["requested_times"]
+                    )
+                else:
+                    timing = _boundary_timing(solver, boundary_spec)
+                    metadata = {}
+                    nx = boundary_grid
+                    ny = boundary_ny
+                    dx = 1.0 / nx
+                    dy = 1.0 / ny
+                    requested_times = timing["requested_times"]
+                sponge_name = str(candidate["sponge"])
+                use_sponge = sponge_name != "disabled"
+                if sponge_name == "provisional_cosine":
+                    sponge_profile = "cosine"
+                    sponge_width = max(1, int(round(3 * nx / 16)))
+                    sponge_min_factor = 0.8
+                else:
+                    sponge_profile = "quadratic"
+                    sponge_width = max(1, nx // 8)
+                    sponge_min_factor = float(
+                        config["operators"]["sponge"]["reference_min_factor"]
+                    )
+                sponge_axes = "x"
+                if (
+                    solver == "boussinesq"
+                    and role == "production_horizon"
+                    and sponge_name != "provisional_cosine"
+                ):
+                    production_spec = boundary_spec["production_horizon"]
+                    sponge_axes = str(production_spec["current_sponge_axes"])
+                    sponge_width = int(production_spec["current_sponge_width"])
+                task_role = role if solver == "boussinesq" else "swe_reflection"
+                add(
+                    f"boundary/{solver}/{task_role}/{variant}",
+                    "boundary",
+                    {
+                        "solver": solver,
+                        "boundary_role": task_role,
+                        "variant": variant,
+                        "use_sponge": use_sponge,
+                        "boundary": str(candidate["boundary"]),
+                        "cfl": float(config["production"]["cfl"][solver][0]),
+                        "nx": nx,
+                        "ny": ny,
+                        "dx": dx,
+                        "dy": dy,
+                        "sponge_axes": sponge_axes,
+                        "sponge_width": sponge_width,
+                        "sponge_min_factor": sponge_min_factor,
+                        "sponge_profile": sponge_profile,
+                        "requested_times": requested_times,
+                        "timing": timing,
+                        "packet_metadata": metadata,
+                        "packet": boundary_spec,
+                        "cg_failure_mode": (
+                            "legacy_posthoc"
+                            if solver == "boussinesq" and role == "reflection"
+                            else "strict_v2"
+                        ),
+                        "cg_absolute_residual_tolerance": (
+                            float(boundary_spec[role]["cg_absolute_residual_tolerance"])
+                            if solver == "boussinesq"
+                            else 0.0
+                        ),
+                    },
+                )
 
     for boundary in ("periodic", "reflective"):
         for solver in SOLVERS:
@@ -1033,14 +1405,69 @@ def _build_level_a_task_plan(
 
     for canary in canaries:
         for solver in SOLVERS:
+            production = config["production"]
+            domain = production["computational_domain"]
+            sponge = production["sponge"]
+            boundary_name = str(production["boundary_implementation"][solver])
+            canary_spec: dict[str, Any] = {
+                "solver": solver,
+                "cfl": float(config["production"]["cfl"][solver][0]),
+                "canary": _json_safe(canary),
+                "computational_grid": int(production["computational_grid"]),
+                "publication_grid": int(production["publication_grid"]),
+                "buffer_cells": int(domain["buffer_cells"]),
+                "source_taper_cells": int(domain["source_taper_cells"]),
+                "bathymetry_extension": str(domain["bathymetry_extension"]),
+                "output_crop": str(domain["output_crop"]),
+                "boundary": boundary_name,
+                "use_sponge": bool(sponge["enabled"]),
+                "sponge_axes": str(sponge["axes"]),
+                "sponge_width": int(sponge["width"]),
+                "sponge_min_factor": float(sponge["min_factor"]),
+                "sponge_profile": str(sponge["profile"]),
+                "sponge_time_mode": str(sponge["time_mode"]),
+                "sponge_reference_dt": float(sponge["reference_dt"]),
+            }
+            if solver == "boussinesq":
+                production_boussinesq = config["production"]["boussinesq"]
+                canary_spec.update(
+                    {
+                        "sponge_axes": str(production_boussinesq["sponge_axes"]),
+                        "sponge_width": int(production_boussinesq["sponge_width"]),
+                        "sponge_min_factor": float(
+                            production_boussinesq["sponge_min_factor"]
+                        ),
+                        "boundary_candidate_exposure": {
+                            "zero_gradient_no_sponge": {
+                                "use_sponge": False,
+                                "axes": str(sponge["axes"]),
+                                "width": int(sponge["width"]),
+                                "min_factor": float(sponge["min_factor"]),
+                                "profile": "quadratic",
+                            },
+                            "current_elapsed_sponge": {
+                                "use_sponge": True,
+                                "axes": str(production_boussinesq["sponge_axes"]),
+                                "width": int(production_boussinesq["sponge_width"]),
+                                "min_factor": float(
+                                    production_boussinesq["sponge_min_factor"]
+                                ),
+                                "profile": "quadratic",
+                            },
+                            "zero_gradient_cosine_sponge": {
+                                "use_sponge": True,
+                                "axes": str(sponge["axes"]),
+                                "width": int(sponge["width"]),
+                                "min_factor": float(sponge["min_factor"]),
+                                "profile": str(sponge["profile"]),
+                            },
+                        },
+                    }
+                )
             add(
                 f"canary/{canary['qualified_id']}/{solver}",
                 "canary",
-                {
-                    "solver": solver,
-                    "cfl": float(config["production"]["cfl"][solver][0]),
-                    "canary": _json_safe(canary),
-                },
+                canary_spec,
             )
 
     counts: dict[str, int] = {}
@@ -1048,8 +1475,8 @@ def _build_level_a_task_plan(
         counts[str(task["kind"])] = counts.get(str(task["kind"]), 0) + 1
     expected = {
         "analytical": 27,
-        "operator": 14,
-        "boundary": 6,
+        "operator": 19,
+        "boundary": 16,
         "conservation": 6,
         "canary": 18,
     }
@@ -1117,6 +1544,9 @@ def _compute_level_a_task(
             mode=int(spec["mode"]),
             cfl=float(spec["cfl"]),
             amplitude=float(spec["amplitude"]),
+            reconstruction_limiter=str(
+                spec.get("reconstruction_limiter", "minmod")
+            ),
         )
         trajectory = np.asarray(row.pop("_trajectory_eta"))
         row["analytical_role"] = str(spec["role"])
@@ -1130,22 +1560,36 @@ def _compute_level_a_task(
             if variant == "legacy_per_step"
             else "elapsed_time_consistent"
         )
+        boundary: Any = str(spec.get("boundary", "open"))
+        if str(spec.get("operator_role")) == "production_pipeline":
+            boundary = (boundary, "open")
+        started = time.monotonic()
         eta, dt, diagnostics, solver = _trajectory_eta(
             str(spec["solver"]),
             nx=nx,
             ny=ny,
             cfl=float(spec["cfl"]),
-            boundary="open",
-            use_sponge=True,
+            boundary=boundary,
+            use_sponge=bool(spec.get("use_sponge", True)),
             sponge_mode=sponge_mode,
             filter_mode=str(spec["filter_mode"]),
             filter_strength=float(spec["filter_strength"]),
             eta0=eta0,
             sponge_axes=str(spec["sponge_axes"]),
+            sponge_width=(
+                None
+                if spec.get("sponge_width") is None
+                else int(spec["sponge_width"])
+            ),
+            sponge_min_factor=float(spec.get("sponge_min_factor", 0.9)),
+            sponge_profile=str(spec.get("sponge_profile", "quadratic")),
         )
         row = {
             "component": "operator_sensitivity",
             "solver": str(spec["solver"]),
+            "operator_role": str(
+                spec.get("operator_role", "legacy_operator_comparison")
+            ),
             "variant": variant,
             "cfl": float(spec["cfl"]),
             "natural_steps": int(dt.size),
@@ -1157,30 +1601,62 @@ def _compute_level_a_task(
                 np.sum(np.asarray(diagnostics.get("cg_failed_count", []), dtype=int))
             ),
             "finite": bool(np.isfinite(eta).all()),
+            "measurement_dtype": str(np.asarray(eta).dtype),
+            "boundary": _json_safe(boundary),
+            "use_sponge": bool(spec.get("use_sponge", True)),
             "sponge_axes": str(spec["sponge_axes"]),
+            "sponge_width": int(getattr(solver, "sponge_width", 0)),
+            "sponge_min_factor": float(
+                getattr(solver, "sponge_min_factor", 1.0)
+            ),
+            "sponge_profile": str(
+                getattr(solver, "sponge_profile", "quadratic")
+            ),
             "whole_domain_sponge": bool(np.all(solver.sponge_mask < 1.0)),
+            "runtime_s": time.monotonic() - started,
             "operator": solver.get_operator_diagnostics(),
         }
         return row, eta
     if kind == "boundary":
         packet_spec = spec["packet"]
-        initial = _boundary_initial_conditions(
-            str(spec["solver"]),
-            nx=int(spec["nx"]),
-            ny=int(spec["ny"]),
-            spec=packet_spec,
-        )
+        solver_name = str(spec["solver"])
+        if solver_name == "boussinesq":
+            spectral_spec, finite_state, _reference, metadata, _timing = (
+                _boussinesq_spectral_packet_bundle(
+                    packet_spec,
+                    role=str(spec["boundary_role"]),
+                )
+            )
+            initial: dict[str, Any] = {
+                "eta0": finite_state[0],
+                "eta_t0": finite_state[1],
+                "characteristic_speed": metadata["group_velocity_max"],
+            }
+            depth = spectral_spec.depth
+        else:
+            initial = _boundary_initial_conditions(
+                solver_name,
+                nx=int(spec["nx"]),
+                ny=int(spec["ny"]),
+                spec=packet_spec,
+            )
+            depth = float(packet_spec.get("depth", 1.0))
         eta0 = np.asarray(initial["eta0"])
         use_sponge = bool(spec["use_sponge"])
-        eta, _, diagnostics, solver = _trajectory_eta(
-            str(spec["solver"]),
+        bathymetry = -depth * np.ones(
+            (int(spec["nx"]), int(spec["ny"])), dtype=np.float64
+        )
+        started = time.monotonic()
+        states, dt, diagnostics, solver = _trajectory_eta(
+            solver_name,
             nx=int(spec["nx"]),
             ny=int(spec["ny"]),
             cfl=float(spec["cfl"]),
-            boundary="open",
+            boundary=(str(spec["boundary"]), "open"),
             use_sponge=use_sponge,
             sponge_mode="elapsed_time_consistent" if use_sponge else "legacy_per_step",
             eta0=eta0,
+            bathymetry=bathymetry,
             h0=(
                 None
                 if initial.get("h0") is None
@@ -1197,20 +1673,43 @@ def _compute_level_a_task(
                 else np.asarray(initial["eta_t0"])
             ),
             sponge_axes=str(spec["sponge_axes"]),
+            sponge_width=int(spec["sponge_width"]),
+            sponge_min_factor=float(spec["sponge_min_factor"]),
+            sponge_profile=str(spec["sponge_profile"]),
+            requested_times=np.asarray(spec["requested_times"], dtype=np.float64),
+            return_full_state=True,
+            dx=float(spec["dx"]),
+            dy=float(spec["dy"]),
+            cg_failure_mode=str(spec.get("cg_failure_mode", "strict_v2")),
+            linear_solver_abs_tol=float(
+                spec.get("cg_absolute_residual_tolerance", 0.0)
+            ),
         )
         return {
             "component": "boundary_trajectory",
             "solver": str(spec["solver"]),
+            "boundary_role": str(spec["boundary_role"]),
             "variant": str(spec["variant"]),
             "characteristic_speed": float(initial["characteristic_speed"]),
+            "boundary": str(spec["boundary"]),
             "sponge_axes": str(spec["sponge_axes"]),
+            "sponge_width": int(spec["sponge_width"]),
+            "sponge_min_factor": float(spec["sponge_min_factor"]),
+            "sponge_profile": str(spec["sponge_profile"]),
             "whole_domain_sponge": bool(np.all(solver.sponge_mask < 1.0)),
-            "finite": bool(np.isfinite(eta).all()),
+            "finite": bool(np.isfinite(states).all()),
+            "measurement_dtype": str(np.asarray(states).dtype),
+            "natural_steps": int(dt.size),
+            "runtime_s": time.monotonic() - started,
+            "max_post_step_cfl": float(
+                np.max(np.asarray(diagnostics["post_step_cfl"], dtype=np.float64))
+            ),
             "cg_failure_count": int(
                 np.sum(np.asarray(diagnostics.get("cg_failed_count", []), dtype=int))
             ),
+            "cg_failure_mode": str(getattr(solver, "cg_failure_mode", "not_applicable")),
             "operator": solver.get_operator_diagnostics(),
-        }, eta
+        }, states
     if kind == "conservation":
         return _run_float64_conservation(
             str(spec["solver"]),
@@ -1222,50 +1721,119 @@ def _compute_level_a_task(
         ), None
     if kind == "canary":
         canary = spec["canary"]
-        bathymetry, _source, _strength_array, _strength, arrays = _load_canary_arrays(
+        bathymetry, source, _strength_array, strength, arrays = _load_canary_arrays(
             canary
         )
-        eta0 = arrays["eta0"]
-        rest = arrays["rest_depth"]
-        h0 = arrays["initial_depth"]
         solver_name = str(spec["solver"])
-        started = time.monotonic()
-        eta, dt, diagnostics, solver = _trajectory_eta(
-            solver_name,
-            nx=bathymetry.shape[0],
-            ny=bathymetry.shape[1],
-            cfl=float(spec["cfl"]),
-            boundary="open",
-            use_sponge=True,
-            sponge_mode="elapsed_time_consistent",
-            filter_mode="disabled",
-            bathymetry=bathymetry,
-            eta0=eta0,
-            h0=h0,
+        from src.evaluation.buffered_crop_benchmark import run_buffered_case
+
+        buffered_row, eta = run_buffered_case(
+            canary,
+            solver_name=solver_name,
+            total_grid=int(spec["computational_grid"]),
+            core_grid=int(spec["publication_grid"]),
+            source_taper_cells=int(spec["source_taper_cells"]),
+            sponge_min_factor=float(spec["sponge_min_factor"]),
+            sponge_width_cells=int(spec["sponge_width"]),
         )
+        if (
+            int(buffered_row["buffer_cells"]) != int(spec["buffer_cells"])
+            or buffered_row["outer_boundary"]
+            != ("open" if solver_name == "boussinesq" else "radiation")
+            or float(buffered_row["sponge_core_min"]) != 1.0
+            or float(buffered_row["source_edge_max_abs"]) != 0.0
+        ):
+            raise RuntimeError("buffered canary execution changed the frozen policy")
+        prepared = _prepare_buffered_domain(
+            bathymetry,
+            source,
+            strength,
+            0.0,
+            BufferedDomainConfig(
+                enabled=True,
+                buffer_cells=int(spec["buffer_cells"]),
+                source_taper_cells=int(spec["source_taper_cells"]),
+                bathymetry_extension=str(spec["bathymetry_extension"]),
+                output_crop=str(spec["output_crop"]),
+            ),
+        )
+        health = buffered_row["health"]
         effective_depth = (
             np.maximum(-bathymetry, 1e-4)
             if solver_name == "boussinesq"
-            else np.maximum(rest, 1e-8)
+            else np.maximum(arrays["rest_depth"], 1e-8)
         )
-        return {
+        canary_row = {
             "component": "production_amplitude_canary",
             "qualified_id": str(canary["qualified_id"]),
             "solver": solver_name,
-            "runtime_s": time.monotonic() - started,
-            "natural_steps": int(dt.size),
+            "runtime_s": float(health["runtime_s"]),
+            "natural_steps": int(health["natural_steps"]),
             "amplitude_growth": float(np.max(np.abs(eta)))
-            / max(float(np.max(np.abs(eta0))), 1e-30),
+            / max(float(buffered_row["initial_core_amplitude"]), 1e-30),
             "max_eta_over_depth": float(
                 np.max(np.abs(eta) / effective_depth[None, ...])
             ),
-            "cg_failure_count": int(
-                np.sum(np.asarray(diagnostics.get("cg_failed_count", []), dtype=int))
-            ),
-            "finite": bool(np.isfinite(eta).all()),
-            "max_bracket_width": float(np.max(diagnostics["bracket_widths"])),
-            "operator": solver.get_operator_diagnostics(),
-        }, None
+            "cg_failure_count": int(health["cg_failure_count"]),
+            "finite": bool(health["finite"] and np.isfinite(eta).all()),
+            "measurement_dtype": str(np.asarray(eta).dtype),
+            "output_count": int(np.asarray(eta).shape[0]),
+            "requested_times_exact": bool(health["requested_times_exact"]),
+            "max_post_step_cfl": float(health["max_post_step_cfl"]),
+            "computational_grid": int(buffered_row["total_grid"]),
+            "publication_grid": int(buffered_row["core_grid"]),
+            "publication_shape": list(map(int, np.asarray(eta).shape)),
+            "buffer_cells": int(buffered_row["buffer_cells"]),
+            "source_taper_cells": int(buffered_row["source_taper_cells"]),
+            "source_edge_max_abs": float(buffered_row["source_edge_max_abs"]),
+            "sponge_core_min": float(buffered_row["sponge_core_min"]),
+            "outer_boundary": str(buffered_row["outer_boundary"]),
+            "operator": health["operator"],
+        }
+        if solver_name == "boussinesq":
+            horizon = float(candidate_requested_times()[-1])
+            solver_eta0 = np.asarray(prepared["solver_eta0"], dtype=np.float64)
+            solver_depth = np.maximum(
+                -np.asarray(prepared["solver_bathymetry"], dtype=np.float64),
+                1.0e-4,
+            )
+            production_mask = build_sponge_mask(
+                nx=int(spec["computational_grid"]),
+                ny=int(spec["computational_grid"]),
+                width=int(spec["sponge_width"]),
+                min_factor=float(spec["sponge_min_factor"]),
+                axes=str(spec["sponge_axes"]),
+                profile=str(spec["sponge_profile"]),
+            )
+            canary_row.update(
+                _boussinesq_h0_exposure_metrics(
+                    solver_eta0,
+                    solver_depth,
+                    production_mask,
+                    horizon=horizon,
+                )
+            )
+            candidate_exposure: dict[str, Any] = {}
+            for variant, candidate in spec["boundary_candidate_exposure"].items():
+                if bool(candidate["use_sponge"]):
+                    candidate_mask = build_sponge_mask(
+                        nx=solver_eta0.shape[0],
+                        ny=solver_eta0.shape[1],
+                        width=int(candidate["width"]),
+                        min_factor=float(candidate["min_factor"]),
+                        axes=str(candidate["axes"]),
+                        profile=str(candidate["profile"]),
+                    )
+                else:
+                    candidate_mask = np.ones_like(solver_eta0, dtype=np.float64)
+                candidate_exposure[str(variant)] = _boussinesq_h0_exposure_metrics(
+                    solver_eta0,
+                    solver_depth,
+                    candidate_mask,
+                    horizon=horizon,
+                )
+            canary_row["boundary_candidate_exposure"] = candidate_exposure
+        return canary_row, None
     raise ValueError(f"Unknown Level A task kind: {kind}")
 
 
@@ -1345,21 +1913,27 @@ def _validate_task_result_semantics(
             "grid": int(spec["grid"]),
             "mode": int(spec["mode"]),
             "cfl": float(spec["cfl"]),
+            "measurement_dtype": "float64",
         }
     elif kind == "operator":
         expected = {
             "component": "operator_sensitivity",
             "solver": str(spec["solver"]),
+            "operator_role": str(spec["operator_role"]),
             "variant": str(spec["variant"]),
             "cfl": float(spec["cfl"]),
             "sponge_axes": str(spec["sponge_axes"]),
+            "measurement_dtype": "float64",
         }
     elif kind == "boundary":
         expected = {
             "component": "boundary_trajectory",
             "solver": str(spec["solver"]),
             "variant": str(spec["variant"]),
+            "boundary": str(spec["boundary"]),
             "sponge_axes": str(spec["sponge_axes"]),
+            "sponge_profile": str(spec["sponge_profile"]),
+            "measurement_dtype": "float64",
         }
     elif kind == "conservation":
         expected = {
@@ -1374,6 +1948,13 @@ def _validate_task_result_semantics(
             "component": "production_amplitude_canary",
             "solver": str(spec["solver"]),
             "qualified_id": str(spec["canary"]["qualified_id"]),
+            "measurement_dtype": "float64",
+            "computational_grid": int(spec["computational_grid"]),
+            "publication_grid": int(spec["publication_grid"]),
+            "buffer_cells": int(spec["buffer_cells"]),
+            "source_taper_cells": int(spec["source_taper_cells"]),
+            "source_edge_max_abs": 0.0,
+            "sponge_core_min": 1.0,
         }
     else:
         raise RuntimeError(f"Unknown Level A task kind in artifact: {kind}")
@@ -1530,6 +2111,7 @@ def _execute_level_a_task_plan(
     workers: int = 1,
     max_in_flight: int | None = None,
     resume: bool = False,
+    progress_callback: Callable[[Mapping[str, Any]], None] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if workers <= 0:
         raise ValueError("workers must be positive")
@@ -1543,6 +2125,31 @@ def _execute_level_a_task_plan(
     if loaded and not resume:
         raise FileExistsError(f"Level A task artifacts already exist: {tasks_root}")
     effective = min(int(workers), max(1, len(missing))) if missing else 0
+    progress_started = time.monotonic()
+    completed_count = len(loaded)
+
+    def emit_progress(event: str, task: Mapping[str, Any] | None = None) -> None:
+        if progress_callback is None:
+            return
+        payload: dict[str, Any] = {
+            "event": event,
+            "completed": int(completed_count),
+            "total": int(len(tasks)),
+            "pending": int(len(tasks) - completed_count),
+            "workers": int(workers),
+            "elapsed_s": float(time.monotonic() - progress_started),
+        }
+        if task is not None:
+            payload.update(
+                {
+                    "task_id": str(task["task_id"]),
+                    "kind": str(task["kind"]),
+                    "ordinal": int(task["ordinal"]),
+                }
+            )
+        progress_callback(payload)
+
+    emit_progress("start")
     if (
         missing
         and effective > 1
@@ -1575,6 +2182,8 @@ def _execute_level_a_task_plan(
                     "Level A worker returned wrong task identity for "
                     f"{task['task_id']}: {returned}"
                 )
+            completed_count += 1
+            emit_progress("task_completed", task)
     elif missing:
         context = multiprocessing.get_context("spawn")
         task_iter = iter(missing)
@@ -1622,6 +2231,8 @@ def _execute_level_a_task_plan(
                             "Level A worker returned wrong task identity for "
                             f"{task['task_id']}: {returned}"
                         )
+                    completed_count += 1
+                    emit_progress("task_completed", task)
                 submit_until_full()
         finally:
             pool.shutdown(wait=True, cancel_futures=True)
@@ -1652,6 +2263,7 @@ def _execute_level_a_task_plan(
         process_start_method=("spawn" if missing and workers > 1 else "serial"),
     )
     provenance["task_worker_history"] = worker_history
+    emit_progress("complete")
     return ordered, provenance
 
 
@@ -1673,6 +2285,16 @@ def _trajectory_eta(
     hv0: np.ndarray | None = None,
     eta_t0: np.ndarray | None = None,
     sponge_axes: str = "xy",
+    sponge_width: int | None = None,
+    sponge_min_factor: float = 0.9,
+    sponge_profile: str = "quadratic",
+    reconstruction_limiter: str = "minmod",
+    requested_times: np.ndarray | None = None,
+    return_full_state: bool = False,
+    dx: float | None = None,
+    dy: float | None = None,
+    cg_failure_mode: str = "strict_v2",
+    linear_solver_abs_tol: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray], Any]:
     solver = _solver(
         name,
@@ -1685,6 +2307,14 @@ def _trajectory_eta(
         filter_mode=filter_mode,
         filter_strength=filter_strength,
         sponge_axes=sponge_axes,
+        sponge_width=sponge_width,
+        sponge_min_factor=sponge_min_factor,
+        sponge_profile=sponge_profile,
+        reconstruction_limiter=reconstruction_limiter,
+        dx=dx,
+        dy=dy,
+        cg_failure_mode=cg_failure_mode,
+        linear_solver_abs_tol=linear_solver_abs_tol,
     )
     bathy = (
         -np.ones((nx, ny), dtype=float)
@@ -1725,6 +2355,11 @@ def _trajectory_eta(
                 else np.asarray(hv0, dtype=float)
             ),
         )
+    times = (
+        candidate_requested_times()
+        if requested_times is None
+        else np.asarray(requested_times, dtype=np.float64)
+    )
     states, _, dt_history, diagnostics = _simulate_one_local(
         solver,
         n_steps=1,
@@ -1732,12 +2367,14 @@ def _trajectory_eta(
         auto_dt=True,
         target_cfl=cfl,
         include_initial_state=False,
-        requested_times=candidate_requested_times(),
+        requested_times=times,
         max_natural_steps=20000,
         collect_natural_step_health=True,
+        requested_state_dtype=np.float64,
     )
     eta = states[:, 0] if name == "boussinesq" else states[:, 0] + bathy
-    return eta, dt_history, diagnostics, solver
+    trajectory = states if return_full_state else eta
+    return trajectory, dt_history, diagnostics, solver
 
 
 def _stable_sum(values: np.ndarray) -> float:
@@ -1760,6 +2397,53 @@ def _relative_l2(a: np.ndarray, b: np.ndarray) -> float:
     aa = np.asarray(a, dtype=float)
     bb = np.asarray(b, dtype=float)
     return float(_stable_l2_norm(aa - bb) / max(_stable_l2_norm(bb), 1e-30))
+
+
+def _boussinesq_h0_exposure_metrics(
+    eta0: np.ndarray,
+    effective_depth: np.ndarray,
+    sponge_mask: np.ndarray,
+    *,
+    horizon: float,
+    energy_tail: float = 1.0e-6,
+) -> dict[str, Any]:
+    values = np.asarray(eta0, dtype=np.float64)
+    depth = np.asarray(effective_depth, dtype=np.float64)
+    damping = np.asarray(sponge_mask, dtype=np.float64)
+    if values.shape != depth.shape or values.shape != damping.shape:
+        raise ValueError("Boussinesq H0 exposure arrays must share one shape")
+    if values.ndim != 2 or horizon <= 0.0 or not (0.0 < energy_tail < 1.0):
+        raise ValueError("invalid Boussinesq H0 exposure specification")
+    weights = values**2
+    total = max(float(math.fsum(weights.ravel())), 1.0e-300)
+    flat_order = np.argsort(weights.ravel())[::-1]
+    cumulative = np.cumsum(weights.ravel()[flat_order])
+    support_count = min(
+        int(np.searchsorted(cumulative, (1.0 - energy_tail) * total)) + 1,
+        weights.size,
+    )
+    significant = np.zeros(weights.size, dtype=bool)
+    significant[flat_order[:support_count]] = True
+    significant = significant.reshape(weights.shape)
+    x = (np.arange(weights.shape[0], dtype=np.float64) + 0.5) / weights.shape[0]
+    y = (np.arange(weights.shape[1], dtype=np.float64) + 0.5) / weights.shape[1]
+    x_distance = np.minimum(x, 1.0 - x)[:, None]
+    y_distance = np.minimum(y, 1.0 - y)[None, :]
+    distance = np.minimum(x_distance, y_distance)
+    support_distance = float(np.min(distance[significant]))
+    reach = float(math.sqrt(9.81 * float(np.max(depth))) * horizon)
+    sponge = damping < 1.0
+    return {
+        "initial_sponge_energy_fraction": float(
+            math.fsum(weights[sponge].ravel()) / total
+        ),
+        "significant_source_distance_to_boundary": support_distance,
+        "conservative_long_wave_reach": reach,
+        "production_horizon": float(horizon),
+        "significant_source_overlaps_sponge": bool(np.any(significant & sponge)),
+        "conservative_boundary_reachable": bool(support_distance <= reach),
+        "exposure_role": "diagnostic_not_used_to_tune_thresholds",
+    }
 
 
 def _packet(
@@ -1806,30 +2490,160 @@ def _validate_boundary_packet_spec(
     sigma = float(spec["sigma"])
     if not (0.0 < center < 1.0) or sigma <= 0.0:
         raise ValueError("boundary packet center and sigma must be positive and in-domain")
+    direction = str(spec.get("direction", "left"))
+    if direction not in ("left", "right"):
+        raise ValueError("boundary packet direction must be left or right")
+    support_sigmas = float(spec["support_sigmas"])
+    post_exit_sigmas = float(spec["post_exit_observation_sigmas"])
+    if support_sigmas <= 0.0 or post_exit_sigmas <= 0.0:
+        raise ValueError("boundary packet support and observation widths must be positive")
+    support_lower = center - support_sigmas * sigma
+    support_upper = center + support_sigmas * sigma
+    if support_lower <= 0.0 or support_upper >= 1.0:
+        raise ValueError("boundary packet analytical support must begin inside the domain")
     incident = _window_mask(nx, spec["incident_window"])
     reflected = _window_mask(nx, spec["reflected_window"])
     interior = _window_mask(nx, spec["interior_window"])
-    if np.any(incident & reflected):
-        raise ValueError("incident and reflected windows must not overlap")
     if np.any(interior & _x_sponge_region(nx, sponge_width)):
         raise ValueError("boundary interior window overlaps the x-only sponge")
     packet = _packet(nx, 1, center=center, sigma=sigma, zero_mean=False)[:, 0]
-    initial_amp = max(float(np.max(np.abs(packet))), 1e-30)
-    initial_reflected_ratio = float(np.max(np.abs(packet[reflected]))) / initial_amp
-    if initial_reflected_ratio > float(spec["maximum_initial_reflected_ratio"]):
-        raise ValueError("initial packet is not outside the reflected window")
     incident_energy_fraction = float(np.sum(packet[incident] ** 2)) / max(
         float(np.sum(packet**2)), 1e-30
     )
     if incident_energy_fraction < float(spec["minimum_initial_incident_energy_fraction"]):
         raise ValueError("incident window does not contain enough initial packet energy")
-    arrival = float(spec["expected_boundary_arrival_time"])
-    evaluation = float(spec["evaluation_time"])
-    times = candidate_requested_times()
-    if arrival <= 0.0 or evaluation <= arrival:
-        raise ValueError("boundary evaluation must occur after expected arrival")
-    if not np.any(np.isclose(times, evaluation, rtol=0.0, atol=1e-15)):
-        raise ValueError("boundary evaluation_time must be a requested timestamp")
+    captured_distance = (2.0 * support_sigmas + post_exit_sigmas) * sigma
+    x = np.arange(nx, dtype=np.float64) / nx
+    if direction == "left":
+        capture_limit = float(np.max(x[reflected]))
+    else:
+        capture_limit = 1.0 - float(np.min(x[reflected]))
+    if capture_limit < captured_distance:
+        raise ValueError("reflected window cannot contain the separated packet")
+
+
+def _boundary_characteristic_speed(
+    solver_name: str, spec: Mapping[str, Any]
+) -> float:
+    depth = float(spec.get("depth", 1.0))
+    if depth <= 0.0:
+        raise ValueError("boundary packet depth must be positive")
+    if solver_name == "boussinesq":
+        dominant_wavenumber = 1.0 / float(spec["sigma"])
+        return math.sqrt(9.81 * depth) / math.sqrt(
+            1.0 + (depth * dominant_wavenumber) ** 2 / 3.0
+        )
+    return math.sqrt(9.81 * depth)
+
+
+def _boussinesq_directional_components(
+    states: np.ndarray, *, depth: float
+) -> tuple[np.ndarray, np.ndarray]:
+    values = np.asarray(states, dtype=np.float64)
+    if values.ndim != 4 or values.shape[1] < 2:
+        raise ValueError("Boussinesq directional decomposition requires [time,2,x,y]")
+    nx = int(values.shape[2])
+    dx = 1.0 / nx
+    wavenumber = 2.0 * math.pi * np.fft.fftfreq(nx, d=dx)
+    discrete_wavenumber = 2.0 * np.sin(0.5 * wavenumber * dx) / dx
+    signed_omega = np.sign(discrete_wavenumber) * np.sqrt(
+        9.81 * depth * discrete_wavenumber**2
+        / (1.0 + depth * depth * discrete_wavenumber**2 / 3.0)
+    )
+    eta_hat = np.fft.fft(values[:, 0], axis=1)
+    eta_t_hat = np.fft.fft(values[:, 1], axis=1)
+    inverse_omega = np.zeros_like(signed_omega)
+    nonzero = signed_omega != 0.0
+    inverse_omega[nonzero] = 1.0 / signed_omega[nonzero]
+    scaled_rate = 1j * eta_t_hat * inverse_omega[None, :, None]
+    rightgoing_hat = 0.5 * (eta_hat + scaled_rate)
+    leftgoing_hat = 0.5 * (eta_hat - scaled_rate)
+    rightgoing_hat[:, ~nonzero, :] = 0.0
+    leftgoing_hat[:, ~nonzero, :] = 0.0
+    return (
+        np.fft.ifft(rightgoing_hat, axis=1).real,
+        np.fft.ifft(leftgoing_hat, axis=1).real,
+    )
+
+
+def _boussinesq_directional_rate(
+    eta: np.ndarray, *, depth: float, direction: str
+) -> np.ndarray:
+    values = np.asarray(eta, dtype=np.float64)
+    states = np.stack([values, np.zeros_like(values)], axis=0)[None, ...]
+    nx = int(values.shape[0])
+    dx = 1.0 / nx
+    wavenumber = 2.0 * math.pi * np.fft.fftfreq(nx, d=dx)
+    discrete_wavenumber = 2.0 * np.sin(0.5 * wavenumber * dx) / dx
+    signed_omega = np.sign(discrete_wavenumber) * np.sqrt(
+        9.81 * depth * discrete_wavenumber**2
+        / (1.0 + depth * depth * discrete_wavenumber**2 / 3.0)
+    )
+    eta_hat = np.fft.fft(states[0, 0], axis=0)
+    sign = 1.0 if direction == "left" else -1.0
+    rate_hat = sign * 1j * signed_omega[:, None] * eta_hat
+    return np.fft.ifft(rate_hat, axis=0).real
+
+
+def _boundary_timing(
+    solver_name: str, spec: Mapping[str, Any]
+) -> dict[str, Any]:
+    center = float(spec["center_x"])
+    sigma = float(spec["sigma"])
+    support = float(spec["support_sigmas"])
+    post_exit = float(spec["post_exit_observation_sigmas"])
+    speed = _boundary_characteristic_speed(solver_name, spec)
+    front_speed = (
+        math.sqrt(9.81 * float(spec.get("depth", 1.0)))
+        if solver_name == "boussinesq"
+        else speed
+    )
+    lower = center - support * sigma
+    upper = center + support * sigma
+    if str(spec["direction"]) == "left":
+        leading_distance = lower
+        trailing_distance = upper
+    else:
+        leading_distance = 1.0 - upper
+        trailing_distance = 1.0 - lower
+    arrival = leading_distance / front_speed
+    center_arrival = (
+        center / speed
+        if str(spec["direction"]) == "left"
+        else (1.0 - center) / speed
+    )
+    exit_time = trailing_distance / speed
+    observation_end = exit_time + post_exit * sigma / speed
+    pre_count = int(spec["prearrival_sample_count"])
+    post_count = int(spec["post_exit_sample_count"])
+    if pre_count < 2 or post_count < 2:
+        raise ValueError("boundary timing requires at least two pre/post samples")
+    prearrival = np.linspace(0.25 * arrival, 0.9 * arrival, pre_count)
+    postexit = np.linspace(exit_time, observation_end, post_count)
+    requested = np.unique(np.concatenate([prearrival, postexit])).astype(np.float64)
+    if (
+        requested.size != pre_count + post_count
+        or np.any(requested <= 0.0)
+        or np.any(np.diff(requested) <= 0.0)
+        or float(prearrival[-1]) >= arrival
+        or float(postexit[0]) < exit_time
+    ):
+        raise ValueError("boundary packet timing is not temporally separated")
+    analytical_tail = 0.5 * math.erfc(support)
+    return {
+        "characteristic_speed": speed,
+        "front_speed_bound": front_speed,
+        "leading_edge_arrival_time": arrival,
+        "center_arrival_time": center_arrival,
+        "trailing_edge_exit_time": exit_time,
+        "observation_end_time": observation_end,
+        "prearrival_times": prearrival.tolist(),
+        "postexit_times": postexit.tolist(),
+        "requested_times": requested.tolist(),
+        "analytical_outgoing_energy_tail_fraction": analytical_tail,
+        "maximum_outgoing_energy_fraction_after_exit": analytical_tail
+        * float(spec["outgoing_tail_safety_factor"]),
+    }
 
 
 def _boundary_initial_conditions(
@@ -1846,22 +2660,20 @@ def _boundary_initial_conditions(
     if direction not in ("left", "right"):
         raise ValueError("boundary packet direction must be left or right")
     sign = -1.0 if direction == "left" else 1.0
+    phase_speed = _boundary_characteristic_speed(solver_name, spec)
+    depth = float(spec.get("depth", 1.0))
     if solver_name == "boussinesq":
-        dominant_wavenumber = 1.0 / float(spec["sigma"])
-        phase_speed = math.sqrt(9.81) / math.sqrt(
-            1.0 + dominant_wavenumber * dominant_wavenumber / 3.0
+        eta_t0 = _boussinesq_directional_rate(
+            eta0, depth=depth, direction=direction
         )
-        derivative = np.gradient(eta0, 1.0 / nx, axis=0, edge_order=2)
-        eta_t0 = -sign * phase_speed * derivative
         return {
             "eta0": eta0,
             "eta_t0": eta_t0,
             "characteristic_speed": phase_speed,
         }
-    phase_speed = math.sqrt(9.81)
     return {
         "eta0": eta0,
-        "h0": 1.0 + eta0,
+        "h0": depth + eta0,
         "hu0": sign * phase_speed * eta0,
         "characteristic_speed": phase_speed,
     }
@@ -1884,80 +2696,788 @@ def _operator_discrepancy_metrics(
         raise ValueError("operator region masks do not match the x dimension")
     if not np.any(sponge_region) or not np.any(interior_region):
         raise ValueError("operator regions must both be non-empty")
+    def metrics(a: np.ndarray, b: np.ndarray) -> dict[str, float]:
+        difference = np.asarray(a, dtype=np.float64) - np.asarray(
+            b, dtype=np.float64
+        )
+        return {
+            "absolute_rms": _stable_l2_norm(difference)
+            / math.sqrt(difference.size),
+            "relative_l2": _stable_l2_norm(difference)
+            / max(_stable_l2_norm(np.asarray(b, dtype=np.float64)), 1.0e-30),
+        }
+
+    full = metrics(first, second)
+    final = metrics(first[-1], second[-1])
+    sponge = metrics(first[:, sponge_region, :], second[:, sponge_region, :])
+    sponge_final = metrics(
+        first[-1, sponge_region, :], second[-1, sponge_region, :]
+    )
+    interior = metrics(
+        first[:, interior_region, :], second[:, interior_region, :]
+    )
+    interior_final = metrics(
+        first[-1, interior_region, :], second[-1, interior_region, :]
+    )
     return {
+        "trajectory_absolute_rms": full["absolute_rms"],
         "trajectory_relative_l2": _relative_l2(first, second),
+        "final_time_absolute_rms": final["absolute_rms"],
         "final_time_relative_l2": _relative_l2(first[-1], second[-1]),
+        "sponge_trajectory_absolute_rms": sponge["absolute_rms"],
         "sponge_trajectory_relative_l2": _relative_l2(
             first[:, sponge_region, :], second[:, sponge_region, :]
         ),
+        "sponge_final_time_absolute_rms": sponge_final["absolute_rms"],
         "sponge_final_time_relative_l2": _relative_l2(
             first[-1, sponge_region, :], second[-1, sponge_region, :]
         ),
+        "interior_trajectory_absolute_rms": interior["absolute_rms"],
         "interior_trajectory_relative_l2": _relative_l2(
             first[:, interior_region, :], second[:, interior_region, :]
         ),
+        "interior_final_time_absolute_rms": interior_final["absolute_rms"],
         "interior_final_time_relative_l2": _relative_l2(
             first[-1, interior_region, :], second[-1, interior_region, :]
         ),
     }
 
 
+def _evaluation_precision_floor(
+    trajectories: Sequence[np.ndarray], *, safety_factor: float
+) -> float:
+    scales = [
+        _stable_l2_norm(np.asarray(values, dtype=np.float64))
+        / math.sqrt(np.asarray(values).size)
+        for values in trajectories
+    ]
+    return float(
+        safety_factor * np.finfo(np.float64).eps * max([*scales, 1.0e-30])
+    )
+
+
+def _restrict_x_aligned(values: np.ndarray, target_nx: int) -> np.ndarray:
+    array = np.asarray(values, dtype=np.float64)
+    if array.ndim != 3:
+        raise ValueError("spatial restriction requires [time, x, y]")
+    source_nx = int(array.shape[1])
+    if target_nx <= 0 or source_nx % int(target_nx) != 0:
+        raise ValueError("fine x grid must be an integer multiple of target_nx")
+    ratio = source_nx // int(target_nx)
+    return np.asarray(array[:, ::ratio, :], dtype=np.float64)
+
+
+def _hydro_clean_temporal_metrics(
+    trajectories: Sequence[np.ndarray],
+    *,
+    minimum_order: float,
+    precision_floor_safety_factor: float,
+) -> dict[str, Any]:
+    if len(trajectories) != 4:
+        raise ValueError(
+            "Hydro clean temporal comparison requires production through eighth CFL"
+        )
+    differences = [
+        _trajectory_rms_difference(trajectories[index], trajectories[index + 1])
+        for index in range(3)
+    ]
+    orders = [
+        _observed_order(differences[index], differences[index + 1])
+        for index in range(2)
+    ]
+    floor = _evaluation_precision_floor(
+        trajectories, safety_factor=precision_floor_safety_factor
+    )
+    below_floor = all(value <= floor for value in differences)
+    monotone = differences[0] > differences[1] > differences[2]
+    passed = below_floor or (
+        monotone
+        and all(order is not None and order >= minimum_order for order in orders)
+    )
+    reference = np.asarray(trajectories[-1], dtype=np.float64)
+    reference_errors = []
+    for trajectory in trajectories[:-1]:
+        difference = np.asarray(trajectory, dtype=np.float64) - reference
+        reference_errors.append(
+            {
+                "absolute_rms": _stable_l2_norm(difference)
+                / math.sqrt(difference.size),
+                "relative_l2": _stable_l2_norm(difference)
+                / max(_stable_l2_norm(reference), 1.0e-30),
+            }
+        )
+    return {
+        "pairwise_absolute_rms": differences,
+        "pairwise_orders": orders,
+        "reference_errors": reference_errors,
+        "precision_floor_absolute_rms": floor,
+        "precision_floor_method": "float64_eps_scaled_trajectory_rms",
+        "all_below_precision_floor": below_floor,
+        "monotone_refinement": monotone,
+        "minimum_order": minimum_order,
+        "passed": passed,
+    }
+
+
+def _hydro_spatial_control_metrics(
+    trajectories_by_grid: Mapping[int, np.ndarray],
+    *,
+    minimum_order: float,
+    precision_floor_safety_factor: float,
+) -> dict[str, Any]:
+    grids = sorted(int(grid) for grid in trajectories_by_grid)
+    if len(grids) != 3 or grids[1] != 2 * grids[0] or grids[2] != 2 * grids[1]:
+        raise ValueError("Hydro spatial control requires three factor-two grids")
+    coarse, middle, fine = (np.asarray(trajectories_by_grid[grid]) for grid in grids)
+    middle_on_coarse = _restrict_x_aligned(middle, grids[0])
+    fine_on_middle = _restrict_x_aligned(fine, grids[1])
+    errors = [
+        _trajectory_rms_difference(coarse, middle_on_coarse),
+        _trajectory_rms_difference(middle, fine_on_middle),
+    ]
+    order = _observed_order(errors[0], errors[1])
+    floor = _evaluation_precision_floor(
+        [coarse, middle, fine], safety_factor=precision_floor_safety_factor
+    )
+    below_floor = all(value <= floor for value in errors)
+    passed = below_floor or (
+        errors[0] > errors[1]
+        and order is not None
+        and order >= minimum_order
+    )
+    return {
+        "grids": grids,
+        "restriction_method": "aligned_x_i_over_n_subsampling",
+        "pairwise_absolute_rms": errors,
+        "observed_order": order,
+        "precision_floor_absolute_rms": floor,
+        "all_below_precision_floor": below_floor,
+        "monotone_refinement": errors[0] > errors[1],
+        "minimum_order": minimum_order,
+        "passed": passed,
+    }
+
+
 def _boundary_metrics(
     *,
+    solver_name: str,
     baseline: np.ndarray,
-    damped: np.ndarray,
-    initial_packet: np.ndarray,
+    candidate: np.ndarray,
+    initial_conditions: Mapping[str, Any],
+    bathymetry: np.ndarray,
     spec: Mapping[str, Any],
+    timing: Mapping[str, Any],
+    timestamps: np.ndarray,
 ) -> dict[str, Any]:
-    if baseline.shape != damped.shape or baseline.ndim != 3:
-        raise ValueError("boundary trajectories must have equal [time, x, y] shape")
-    nx = int(baseline.shape[1])
+    if baseline.shape != candidate.shape or baseline.ndim != 4:
+        raise ValueError(
+            "boundary trajectories must have equal [time, state, x, y] shape"
+        )
+    nx = int(baseline.shape[2])
     incident = _window_mask(nx, spec["incident_window"])
     reflected = _window_mask(nx, spec["reflected_window"])
     interior = _window_mask(nx, spec["interior_window"])
-    times = candidate_requested_times()
-    evaluation_matches = np.flatnonzero(
-        np.isclose(times, float(spec["evaluation_time"]), rtol=0.0, atol=1e-15)
+    times = np.asarray(timestamps, dtype=np.float64)
+    expected_times = np.asarray(timing["requested_times"], dtype=np.float64)
+    if not np.array_equal(times, expected_times):
+        raise ValueError("boundary trajectory timestamps do not match derived timing")
+    arrival = float(timing["leading_edge_arrival_time"])
+    exit_time = float(timing["trailing_edge_exit_time"])
+    prearrival = times < arrival
+    postexit = times >= exit_time
+    temporally_separated = bool(
+        np.any(prearrival)
+        and np.any(postexit)
+        and float(np.max(times[prearrival])) < arrival
+        and float(np.min(times[postexit])) >= exit_time
     )
-    if evaluation_matches.size != 1:
-        raise ValueError("boundary evaluation time is not unique")
-    evaluation_index = int(evaluation_matches[0])
-    arrival_index = int(
-        np.searchsorted(
-            times, float(spec["expected_boundary_arrival_time"]), side="left"
+    if not temporally_separated:
+        raise ValueError("boundary measurement is not temporally separated")
+
+    initial_eta = np.asarray(initial_conditions["eta0"], dtype=np.float64)
+    if solver_name == "boussinesq":
+        baseline_eta = np.asarray(baseline[:, 0], dtype=np.float64)
+        candidate_eta = np.asarray(candidate[:, 0], dtype=np.float64)
+        depth = float(spec.get("depth", 1.0))
+        rightgoing, leftgoing = _boussinesq_directional_components(
+            candidate, depth=depth
         )
-    )
-    if arrival_index > evaluation_index:
-        raise ValueError("boundary evaluation precedes expected arrival")
+        initial_state = np.stack(
+            [
+                initial_eta,
+                np.asarray(initial_conditions["eta_t0"], dtype=np.float64),
+            ],
+            axis=0,
+        )[None, ...]
+        initial_rightgoing, initial_leftgoing = _boussinesq_directional_components(
+            initial_state, depth=depth
+        )
+        if str(spec["direction"]) == "left":
+            initial_outgoing = initial_leftgoing[0]
+            outgoing_component = leftgoing
+            reflected_component = rightgoing
+        else:
+            initial_outgoing = initial_rightgoing[0]
+            outgoing_component = rightgoing
+            reflected_component = leftgoing
+        initial_total_energy = max(
+            _stable_sum(initial_outgoing[incident] ** 2), 1.0e-30
+        )
+        postexit_indices = np.flatnonzero(postexit)
+        clearance_by_time = np.asarray(
+            [
+                _stable_sum(outgoing_component[index] ** 2)
+                / initial_total_energy
+                for index in postexit_indices
+            ],
+            dtype=np.float64,
+        )
+        qualified = np.flatnonzero(
+            clearance_by_time
+            <= float(timing["maximum_outgoing_energy_fraction_after_exit"])
+        )
+        exit_achieved = qualified.size > 0
+        clearance_position = int(qualified[0]) if exit_achieved else -1
+        clearance_index = int(postexit_indices[clearance_position])
+        outgoing_clearance = float(clearance_by_time[clearance_position])
+        numerical_exit_time = float(times[clearance_index])
+        measurement_postexit = np.zeros(times.shape, dtype=bool)
+        measurement_postexit[clearance_index:] = True
+        decomposition = "discrete_boussinesq_spectral_directional_components"
+    else:
+        rest_depth = np.maximum(-np.asarray(bathymetry, dtype=np.float64), 1.0e-12)
+        wave_speed = np.sqrt(9.81 * rest_depth)
+        baseline_eta = np.asarray(baseline[:, 0], dtype=np.float64) - rest_depth
+        candidate_eta = np.asarray(candidate[:, 0], dtype=np.float64) - rest_depth
+        candidate_discharge = np.asarray(candidate[:, 1], dtype=np.float64)
+        rightgoing = 0.5 * (candidate_eta + candidate_discharge / wave_speed)
+        leftgoing = 0.5 * (candidate_eta - candidate_discharge / wave_speed)
+        initial_discharge = np.asarray(initial_conditions["hu0"], dtype=np.float64)
+        initial_rightgoing = 0.5 * (initial_eta + initial_discharge / wave_speed)
+        initial_leftgoing = 0.5 * (initial_eta - initial_discharge / wave_speed)
+        if str(spec["direction"]) == "left":
+            initial_outgoing = initial_leftgoing
+            outgoing_component = leftgoing
+            reflected_component = rightgoing
+        else:
+            initial_outgoing = initial_rightgoing
+            outgoing_component = rightgoing
+            reflected_component = leftgoing
+        initial_total_energy = max(
+            _stable_sum(initial_outgoing[incident] ** 2), 1.0e-30
+        )
+        postexit_indices = np.flatnonzero(postexit)
+        clearance_by_time = np.asarray(
+            [
+                _stable_sum(outgoing_component[index] ** 2)
+                / initial_total_energy
+                for index in postexit_indices
+            ],
+            dtype=np.float64,
+        )
+        qualified = np.flatnonzero(
+            clearance_by_time
+            <= float(timing["maximum_outgoing_energy_fraction_after_exit"])
+        )
+        exit_achieved = qualified.size > 0
+        clearance_position = int(qualified[0]) if exit_achieved else -1
+        clearance_index = int(postexit_indices[clearance_position])
+        outgoing_clearance = float(clearance_by_time[clearance_position])
+        numerical_exit_time = float(times[clearance_index])
+        measurement_postexit = np.zeros(times.shape, dtype=bool)
+        measurement_postexit[clearance_index:] = True
+        decomposition = "linear_shallow_water_characteristics"
+
     incident_amplitude = max(
-        float(np.max(np.abs(initial_packet[incident]))), 1e-30
+        float(np.max(np.abs(initial_outgoing[incident]))), 1e-30
     )
     incident_energy = max(
-        float(np.sum(initial_packet[incident] ** 2)), 1e-30
+        _stable_sum(initial_outgoing[incident] ** 2), 1e-30
     )
-    baseline_post_arrival = baseline[arrival_index : evaluation_index + 1, reflected]
-    arrival_energy_ratio = float(np.max(np.sum(baseline_post_arrival**2, axis=(1, 2)))) / (
-        incident_energy
+    reflected_postexit = reflected_component[measurement_postexit][:, reflected, :]
+    reflected_energy_by_time = np.asarray(
+        [_stable_sum(frame**2) for frame in reflected_postexit], dtype=np.float64
     )
-    reflected_frame = damped[evaluation_index, reflected]
+    pre_difference = (
+        candidate_eta[prearrival][:, interior, :]
+        - baseline_eta[prearrival][:, interior, :]
+    )
+    pre_reference = baseline_eta[prearrival][:, interior, :]
+    post_interior = candidate_eta[measurement_postexit][:, interior, :]
+    post_interior_energy = np.asarray(
+        [_stable_sum(frame**2) for frame in post_interior], dtype=np.float64
+    )
     return {
-        "evaluation_time": float(times[evaluation_index]),
-        "expected_boundary_arrival_time": float(
-            spec["expected_boundary_arrival_time"]
+        "leading_edge_arrival_time": arrival,
+        "center_arrival_time": float(timing["center_arrival_time"]),
+        "trailing_edge_exit_time": exit_time,
+        "observation_end_time": float(timing["observation_end_time"]),
+        "measurement_temporally_separated": temporally_separated,
+        "packet_exit_achieved": bool(exit_achieved),
+        "reflection_metrics_valid": bool(exit_achieved),
+        "numerical_packet_exit_time": numerical_exit_time,
+        "outgoing_energy_fraction_after_exit": outgoing_clearance,
+        "maximum_outgoing_energy_fraction_after_exit": float(
+            timing["maximum_outgoing_energy_fraction_after_exit"]
         ),
-        "arrival_energy_ratio": arrival_energy_ratio,
-        "arrival_observed": arrival_energy_ratio
-        >= float(spec["minimum_arrival_energy_ratio"]),
+        "decomposition": decomposition,
         "incident_amplitude": incident_amplitude,
         "incident_energy": incident_energy,
-        "reflected_amplitude_ratio": float(np.max(np.abs(reflected_frame)))
+        "reflected_amplitude_ratio": float(np.max(np.abs(reflected_postexit)))
         / incident_amplitude,
-        "reflected_energy_ratio": float(np.sum(reflected_frame**2))
+        "reflected_energy_ratio": float(np.max(reflected_energy_by_time))
         / incident_energy,
-        "interior_relative_l2": _relative_l2(
-            damped[evaluation_index, interior], baseline[evaluation_index, interior]
-        ),
+        "interior_relative_l2": _stable_l2_norm(pre_difference)
+        / max(_stable_l2_norm(pre_reference), 1.0e-30),
+        "post_exit_interior_energy_ratio": float(np.max(post_interior_energy))
+        / incident_energy,
     }
+
+
+def _boussinesq_reference_crop(
+    reference_state: np.ndarray,
+    times: np.ndarray,
+    *,
+    spec: SpectralPacketSpec,
+    metadata: Mapping[str, Any],
+) -> np.ndarray:
+    evolved = evolve_boussinesq_reference(reference_state, times, spec=spec)
+    start = int(metadata["crop_start"])
+    stop = int(metadata["crop_stop"])
+    return np.asarray(evolved[:, :, start:stop], dtype=np.float64)
+
+
+def _boussinesq_reference_refinement_error(
+    *,
+    spec: SpectralPacketSpec,
+    coarse_reference: np.ndarray,
+    coarse_metadata: Mapping[str, Any],
+    times: np.ndarray,
+) -> float:
+    coarse = _boussinesq_reference_crop(
+        coarse_reference,
+        times,
+        spec=spec,
+        metadata=coarse_metadata,
+    )
+    fine_spec = replace(spec, dx=0.5 * spec.dx)
+    _fine_initial, fine_reference, fine_metadata = build_reference_packet(fine_spec)
+    fine = _boussinesq_reference_crop(
+        fine_reference,
+        times,
+        spec=fine_spec,
+        metadata=fine_metadata,
+    )[:, :, ::2]
+    initial_energy = max(
+        boussinesq_discrete_energy(
+            coarse[0],
+            dx=spec.dx,
+            dy=spec.dy,
+            depth=spec.depth,
+            gravity=spec.gravity,
+            alpha=spec.alpha,
+        ),
+        1.0e-300,
+    )
+    ratios = []
+    for difference in coarse - fine:
+        ratios.append(
+            boussinesq_discrete_energy(
+                difference,
+                dx=spec.dx,
+                dy=spec.dy,
+                depth=spec.depth,
+                gravity=spec.gravity,
+                alpha=spec.alpha,
+            )
+            / initial_energy
+        )
+    return float(max(ratios, default=0.0))
+
+
+def _boussinesq_reference_boundary_metrics(
+    *,
+    candidate: np.ndarray,
+    timestamps: np.ndarray,
+    packet_spec: Mapping[str, Any],
+    role: str,
+    sponge_width: int,
+    reference_refinement_error_ratio: float,
+    uncertainty_fraction: float,
+    reflected_energy_ceiling: float,
+    production_error_ceiling: float,
+    precision_floor_safety_factor: float,
+) -> dict[str, Any]:
+    spec, initial, reference_state, metadata, timing = (
+        _boussinesq_spectral_packet_bundle(packet_spec, role=role)
+    )
+    times = np.asarray(timestamps, dtype=np.float64)
+    values = np.asarray(candidate, dtype=np.float64)
+    if values.shape != (times.size, 2, spec.nx, spec.ny):
+        raise ValueError("Boussinesq boundary trajectory shape mismatch")
+    if np.any(np.diff(times) <= 0.0):
+        raise ValueError("Boussinesq boundary timestamps must increase")
+    reference = _boussinesq_reference_crop(
+        reference_state,
+        times,
+        spec=spec,
+        metadata=metadata,
+    )
+    difference = values - reference
+    taper_cells = int(packet_spec[role]["taper_edge_cells"])
+    taper = cosine_taper(spec.nx, taper_cells)[:, None]
+    tapered_difference = difference * taper[None, None, :, :]
+    right_error, left_error = boussinesq_directional_states(
+        tapered_difference,
+        dx=spec.dx,
+        depth=spec.depth,
+        gravity=spec.gravity,
+        alpha=spec.alpha,
+    )
+    if spec.direction == "left":
+        reflected_error = right_error
+        outgoing_candidate = boussinesq_directional_states(
+            values * taper[None, None, :, :],
+            dx=spec.dx,
+            depth=spec.depth,
+            gravity=spec.gravity,
+            alpha=spec.alpha,
+        )[1]
+    else:
+        reflected_error = left_error
+        outgoing_candidate = boussinesq_directional_states(
+            values * taper[None, None, :, :],
+            dx=spec.dx,
+            depth=spec.depth,
+            gravity=spec.gravity,
+            alpha=spec.alpha,
+        )[0]
+
+    initial_energy = max(
+        boussinesq_discrete_energy(
+            initial,
+            dx=spec.dx,
+            dy=spec.dy,
+            depth=spec.depth,
+            gravity=spec.gravity,
+            alpha=spec.alpha,
+        ),
+        1.0e-300,
+    )
+    reference_right, reference_left = boussinesq_directional_states(
+        reference_state[None],
+        dx=spec.dx,
+        depth=spec.depth,
+        gravity=spec.gravity,
+        alpha=spec.alpha,
+    )
+    initial_wrong = (
+        reference_right[0] if spec.direction == "left" else reference_left[0]
+    )
+    reference_initial_energy = max(
+        boussinesq_discrete_energy(
+            reference_state,
+            dx=spec.dx,
+            dy=spec.dy,
+            depth=spec.depth,
+            gravity=spec.gravity,
+            alpha=spec.alpha,
+        ),
+        1.0e-300,
+    )
+    wrong_way_ratio = boussinesq_discrete_energy(
+        initial_wrong,
+        dx=spec.dx,
+        dy=spec.dy,
+        depth=spec.depth,
+        gravity=spec.gravity,
+        alpha=spec.alpha,
+    ) / reference_initial_energy
+    precision_floor = float(
+        precision_floor_safety_factor * np.finfo(np.float64).eps
+    )
+    numerical_floor = max(
+        precision_floor,
+        4.0 * float(reference_refinement_error_ratio),
+        4.0 * float(wrong_way_ratio),
+    )
+
+    common_sponge_width = max(sponge_width, int(round(3 * spec.nx / 16)))
+    interior = np.zeros(spec.nx, dtype=bool)
+    interior[common_sponge_width : spec.nx - common_sponge_width] = True
+    boundary = ~interior
+    interior_energy_errors: list[float] = []
+    boundary_energy_errors: list[float] = []
+    interior_absolute_rms: list[float] = []
+    for frame in difference:
+        density = boussinesq_energy_density(
+            frame,
+            dx=spec.dx,
+            dy=spec.dy,
+            depth=spec.depth,
+            gravity=spec.gravity,
+            alpha=spec.alpha,
+        )
+        interior_energy_errors.append(
+            float(math.fsum(density[interior].ravel()) * spec.dx * spec.dy)
+            / initial_energy
+        )
+        boundary_energy_errors.append(
+            float(math.fsum(density[boundary].ravel()) * spec.dx * spec.dy)
+            / initial_energy
+        )
+        interior_absolute_rms.append(
+            float(math.sqrt(np.mean(frame[0, interior] ** 2)))
+        )
+
+    if role == "reflection":
+        measurement = times >= float(timing["trailing_edge_exit_time"])
+        separated = (
+            bool(timing["reference_safe"])
+            and np.any(measurement)
+            and float(times[-1]) >= float(timing["observation_end_time"])
+        )
+    else:
+        measurement = times <= float(candidate_requested_times()[-1])
+        separated = bool(timing["reference_safe"]) and np.any(measurement)
+    if np.any(measurement):
+        reflected_amplitude = float(
+            np.max(np.abs(reflected_error[measurement, 0]))
+            / max(float(np.max(np.abs(initial[0]))), 1.0e-300)
+        )
+        reflected_energy = max(
+            boussinesq_discrete_energy(
+                frame,
+                dx=spec.dx,
+                dy=spec.dy,
+                depth=spec.depth,
+                gravity=spec.gravity,
+                alpha=spec.alpha,
+            )
+            / initial_energy
+            for frame in reflected_error[measurement]
+        )
+        remaining_outgoing = max(
+            boussinesq_discrete_energy(
+                frame,
+                dx=spec.dx,
+                dy=spec.dy,
+                depth=spec.depth,
+                gravity=spec.gravity,
+                alpha=spec.alpha,
+            )
+            / initial_energy
+            for frame in outgoing_candidate[measurement]
+        )
+    else:
+        reflected_amplitude = math.inf
+        reflected_energy = math.inf
+        remaining_outgoing = math.inf
+    uncertainty_limit = uncertainty_fraction * min(
+        reflected_energy_ceiling,
+        production_error_ceiling,
+    )
+    return {
+        "protocol": "spectral_large_domain_v1",
+        "boundary_role": role,
+        "measurement_temporally_separated": bool(separated),
+        "reflection_metrics_valid": bool(separated),
+        "spectral_exit_horizon_achieved": bool(
+            separated if role == "reflection" else False
+        ),
+        "reference_safe": bool(timing["reference_safe"]),
+        "leading_edge_arrival_time": float(timing["leading_edge_arrival_time"]),
+        "trailing_edge_exit_time": float(timing["trailing_edge_exit_time"]),
+        "observation_end_time": float(timing["observation_end_time"]),
+        "significant_k_min": float(metadata["significant_k_min"]),
+        "significant_k_max": float(metadata["significant_k_max"]),
+        "group_velocity_min": float(metadata["group_velocity_min"]),
+        "group_velocity_max": float(metadata["group_velocity_max"]),
+        "reference_initial_mean_eta": float(np.mean(reference_state[0])),
+        "finite_crop_initial_mean_eta": float(np.mean(initial[0])),
+        "initial_wrong_way_energy_ratio": float(wrong_way_ratio),
+        "reference_refinement_error_ratio": float(
+            reference_refinement_error_ratio
+        ),
+        "reference_uncertainty_limit": float(uncertainty_limit),
+        "reference_adequate": bool(
+            reference_refinement_error_ratio <= uncertainty_limit
+        ),
+        "normalized_numerical_floor": float(numerical_floor),
+        "reflected_amplitude_ratio": reflected_amplitude,
+        "reflected_energy_ratio": float(reflected_energy),
+        "interior_energy_error_ratio": float(max(interior_energy_errors)),
+        "interior_absolute_rms": float(max(interior_absolute_rms)),
+        "boundary_layer_energy_error_ratio": float(max(boundary_energy_errors)),
+        "remaining_outgoing_energy_ratio": float(remaining_outgoing),
+        "interior_start_index": int(common_sponge_width),
+        "interior_stop_index": int(spec.nx - common_sponge_width),
+        "measurement_dtype": str(values.dtype),
+    }
+
+
+def _aggregate_boussinesq_boundary_payloads(
+    payloads: Sequence[Mapping[str, Any]],
+    *,
+    packet_spec: Mapping[str, Any],
+    boundary_config: Mapping[str, Any],
+    boundary_thresholds: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    rows: list[dict[str, Any]] = []
+    gates: list[dict[str, Any]] = []
+    expected_variants = {
+        str(variant)
+        for variant, candidate in boundary_config["candidates"].items()
+        if not bool(candidate.get("swe_only", False))
+    }
+    selected_variant = str(boundary_config["gate_candidate"]["boussinesq"])
+    for role in ("reflection", "production_horizon"):
+        role_payloads = [
+            payload
+            for payload in payloads
+            if payload["task"]["spec"]["solver"] == "boussinesq"
+            and payload["task"]["spec"]["boundary_role"] == role
+        ]
+        payloads_by_variant = {
+            str(payload["task"]["spec"]["variant"]): payload
+            for payload in role_payloads
+        }
+        if set(payloads_by_variant) != expected_variants:
+            raise RuntimeError(f"Incomplete Boussinesq {role} boundary tasks")
+        timestamps = np.asarray(
+            next(iter(payloads_by_variant.values()))["task"]["spec"][
+                "requested_times"
+            ],
+            dtype=np.float64,
+        )
+        spec, _initial, reference, metadata, timing = (
+            _boussinesq_spectral_packet_bundle(packet_spec, role=role)
+        )
+        expected_times = (
+            candidate_requested_times()
+            if role == "production_horizon"
+            else np.asarray(timing["requested_times"], dtype=np.float64)
+        )
+        if not np.array_equal(timestamps, expected_times):
+            raise RuntimeError("Boussinesq boundary task timing changed")
+        reference_error = _boussinesq_reference_refinement_error(
+            spec=spec,
+            coarse_reference=reference,
+            coarse_metadata=metadata,
+            times=timestamps,
+        )
+        baseline_runtime = max(
+            float(payloads_by_variant["zero_gradient_no_sponge"]["row"]["runtime_s"]),
+            1.0e-30,
+        )
+        candidate_rows: dict[str, dict[str, Any]] = {}
+        for variant in sorted(payloads_by_variant):
+            payload = payloads_by_variant[variant]
+            task_row = payload["row"]
+            metrics = _boussinesq_reference_boundary_metrics(
+                candidate=np.asarray(payload["trajectory"]),
+                timestamps=timestamps,
+                packet_spec=packet_spec,
+                role=role,
+                sponge_width=int(task_row["sponge_width"]),
+                reference_refinement_error_ratio=reference_error,
+                uncertainty_fraction=float(
+                    boundary_thresholds[
+                        "boussinesq_reference_uncertainty_fraction"
+                    ]
+                ),
+                reflected_energy_ceiling=float(
+                    boundary_thresholds["reflected_energy_ratio"]
+                ),
+                production_error_ceiling=float(
+                    boundary_thresholds[
+                        "boussinesq_production_interior_energy_ratio"
+                    ]
+                ),
+                precision_floor_safety_factor=float(
+                    boundary_thresholds[
+                        "boussinesq_precision_floor_safety_factor"
+                    ]
+                ),
+            )
+            row = {
+                "component": "boundary_sponge",
+                "solver": "boussinesq",
+                "variant": variant,
+                "candidate_status": boundary_config["gate_candidate_status"],
+                "boundary_implementation": task_row["boundary"],
+                **metrics,
+                "sponge_axes": task_row["sponge_axes"],
+                "sponge_width": int(task_row["sponge_width"]),
+                "sponge_min_factor": float(task_row["sponge_min_factor"]),
+                "sponge_profile": task_row["sponge_profile"],
+                "whole_domain_sponge": bool(task_row["whole_domain_sponge"]),
+                "finite": bool(task_row["finite"]),
+                "cg_failure_count": int(task_row["cg_failure_count"]),
+                "cg_failure_mode": str(task_row["cg_failure_mode"]),
+                "natural_steps": int(task_row["natural_steps"]),
+                "runtime_s": float(task_row["runtime_s"]),
+                "relative_runtime_cost": float(task_row["runtime_s"])
+                / baseline_runtime,
+                "max_post_step_cfl": float(task_row["max_post_step_cfl"]),
+                "operator": task_row["operator"],
+                "decision_role": (
+                    "provisional_gate_candidate"
+                    if variant == selected_variant
+                    else "non_decisional_candidate_diagnostic"
+                ),
+            }
+            candidate_rows[variant] = row
+            rows.append(row)
+
+        selected = candidate_rows[selected_variant]
+        floor = float(selected["normalized_numerical_floor"])
+        common_pass = (
+            selected["finite"]
+            and selected["cg_failure_count"] == 0
+            and selected["measurement_dtype"] == "float64"
+            and not selected["whole_domain_sponge"]
+            and selected["reference_safe"]
+            and selected["reference_adequate"]
+        )
+        if role == "reflection":
+            passed = (
+                common_pass
+                and selected["measurement_temporally_separated"]
+                and selected["reflection_metrics_valid"]
+                and selected["reflected_amplitude_ratio"]
+                <= float(boundary_thresholds["reflected_amplitude_ratio"]) + floor
+                and selected["reflected_energy_ratio"]
+                <= float(boundary_thresholds["reflected_energy_ratio"]) + floor
+            )
+            gate_name = "boundary_boussinesq_reflection_separation"
+        else:
+            passed = (
+                common_pass
+                and selected["interior_energy_error_ratio"]
+                <= float(
+                    boundary_thresholds[
+                        "boussinesq_production_interior_energy_ratio"
+                    ]
+                )
+                + floor
+                and selected["reflected_energy_ratio"]
+                <= float(boundary_thresholds["reflected_energy_ratio"]) + floor
+            )
+            gate_name = "boundary_boussinesq_production_contamination"
+        gates.append(
+            {
+                "gate": gate_name,
+                "category": "blocked_boundary_behavior",
+                "passed": bool(passed),
+                "candidate": selected_variant,
+                "candidate_status": boundary_config["gate_candidate_status"],
+                "reference_adequate": bool(selected["reference_adequate"]),
+                "reference_safe": bool(selected["reference_safe"]),
+                "normalized_numerical_floor": floor,
+            }
+        )
+    return rows, gates
 
 
 def _summation_roundoff_floor(
@@ -2107,7 +3627,9 @@ def _run_operator_component(
     nx, ny = 64, 4
     eta0 = _packet(nx, ny)
     threshold = float(
-        config["thresholds"]["operator"]["elapsed_candidate_cfl_relative_l2"]
+        config["thresholds"]["operator"][
+            "non_hydro_elapsed_candidate_cfl_relative_l2"
+        ]
     )
     for name in SOLVERS:
         production, half = [float(v) for v in config["production"]["cfl"][name][:2]]
@@ -2736,17 +4258,190 @@ def _aggregate_level_a_tasks(
         payload for payload in task_results if payload["task"]["kind"] == "operator"
     ]
     operator_threshold = float(
-        thresholds["operator"]["elapsed_candidate_cfl_relative_l2"]
+        thresholds["operator"]["non_hydro_elapsed_candidate_cfl_relative_l2"]
     )
     operator_nx = 64
-    operator_sponge = _x_sponge_region(operator_nx, max(1, operator_nx // 8))
-    operator_interior = ~operator_sponge
     for name in SOLVERS:
         selected = [
             payload
             for payload in operator_payloads
             if payload["task"]["spec"]["solver"] == name
         ]
+        if name == "swe_hydrostatic":
+            solver_rows = [dict(payload["row"]) for payload in selected]
+            rows.extend(solver_rows)
+            clean_payloads = [
+                payload
+                for payload in selected
+                if payload["task"]["spec"]["operator_role"] == "clean_temporal"
+            ]
+            clean_payloads.sort(
+                key=lambda payload: float(payload["task"]["spec"]["cfl"]),
+                reverse=True,
+            )
+            operator_thresholds = thresholds["operator"]
+            clean_metrics = _hydro_clean_temporal_metrics(
+                [np.asarray(payload["trajectory"]) for payload in clean_payloads],
+                minimum_order=float(
+                    operator_thresholds["clean_temporal_order_minimum"]
+                ),
+                precision_floor_safety_factor=float(
+                    operator_thresholds["precision_floor_safety_factor"]
+                ),
+            )
+            reference_cfl = float(clean_payloads[-1]["task"]["spec"]["cfl"])
+            spatial_by_grid = {
+                int(payload["task"]["spec"]["nx"]): np.asarray(
+                    payload["trajectory"]
+                )
+                for payload in selected
+                if payload["task"]["spec"]["operator_role"]
+                == "spatial_reference"
+            }
+            spatial_by_grid[operator_nx] = np.asarray(
+                clean_payloads[-1]["trajectory"]
+            )
+            spatial_metrics = _hydro_spatial_control_metrics(
+                spatial_by_grid,
+                minimum_order=float(
+                    operator_thresholds["spatial_order_diagnostic_minimum"]
+                ),
+                precision_floor_safety_factor=float(
+                    operator_thresholds["precision_floor_safety_factor"]
+                ),
+            )
+            reference_ratio = clean_metrics["pairwise_absolute_rms"][-1] / max(
+                spatial_metrics["pairwise_absolute_rms"][-1], 1.0e-30
+            )
+            reference_adequate = reference_ratio <= float(
+                operator_thresholds[
+                    "reference_to_spatial_error_ratio_maximum"
+                ]
+            )
+            clean_summary = {
+                "component": "hydro_clean_temporal_spatial_summary",
+                "solver": name,
+                "measurement_dtype": "float64",
+                "reference_cfl": reference_cfl,
+                "temporal": clean_metrics,
+                "spatial": spatial_metrics,
+                "spatial_control_role": (
+                    "measured_discretization_scale_and_asymptotic_diagnostic"
+                ),
+                "temporal_reference_to_spatial_error_ratio": reference_ratio,
+                "reference_adequate": reference_adequate,
+                "threshold_rationale": (
+                    "first_order_monotone_refinement_with_float64_precision_floor_"
+                    "and_temporal_reference_below_measured_spatial_error;_"
+                    "localized_packet_spatial_order_is_reported_not_forced"
+                ),
+            }
+            rows.append(clean_summary)
+            gates.append(
+                {
+                    "gate": "hydro_clean_temporal_spatial_consistency",
+                    "category": "blocked_operator_semantics",
+                    "passed": bool(clean_metrics["passed"])
+                    and reference_adequate,
+                    "temporal_passed": bool(clean_metrics["passed"]),
+                    "spatial_expected_order_met": bool(spatial_metrics["passed"]),
+                    "spatial_classification": (
+                        "asymptotic_first_order_or_better"
+                        if bool(spatial_metrics["passed"])
+                        else "localized_packet_not_asymptotic_on_control_grids"
+                    ),
+                    "reference_adequate": reference_adequate,
+                    "temporal_orders": clean_metrics["pairwise_orders"],
+                    "spatial_order": spatial_metrics["observed_order"],
+                    "reference_to_spatial_error_ratio": reference_ratio,
+                }
+            )
+
+            pipeline = [
+                payload
+                for payload in selected
+                if payload["task"]["spec"]["operator_role"]
+                == "production_pipeline"
+            ]
+            pipeline.sort(
+                key=lambda payload: float(payload["task"]["spec"]["cfl"]),
+                reverse=True,
+            )
+            width = int(pipeline[0]["row"]["sponge_width"])
+            sponge_region = _x_sponge_region(operator_nx, width)
+            interior_region = ~sponge_region
+            boundary_region = _x_sponge_region(operator_nx, 2)
+            nonboundary_region = ~boundary_region
+            production_to_half = _operator_discrepancy_metrics(
+                np.asarray(pipeline[0]["trajectory"]),
+                np.asarray(pipeline[1]["trajectory"]),
+                sponge_region=sponge_region,
+                interior_region=interior_region,
+            )
+            half_to_quarter = _operator_discrepancy_metrics(
+                np.asarray(pipeline[1]["trajectory"]),
+                np.asarray(pipeline[2]["trajectory"]),
+                sponge_region=sponge_region,
+                interior_region=interior_region,
+            )
+            boundary_contribution = _operator_discrepancy_metrics(
+                np.asarray(pipeline[0]["trajectory"]),
+                np.asarray(pipeline[1]["trajectory"]),
+                sponge_region=boundary_region,
+                interior_region=nonboundary_region,
+            )
+            spatial_scale = float(spatial_metrics["pairwise_absolute_rms"][-1])
+            pipeline_absolute = float(
+                production_to_half["trajectory_absolute_rms"]
+            )
+            classification = (
+                "within_measured_spatial_discretization"
+                if pipeline_absolute <= spatial_scale
+                else "production_pipeline_cfl_sensitive"
+            )
+            pipeline_summary = {
+                "component": "hydro_production_pipeline_sensitivity",
+                "solver": name,
+                "candidate_status": config["operators"]["hydrostatic_gate"][
+                    "candidate_pipeline_status"
+                ],
+                "candidate_boundary": pipeline[0]["row"]["boundary"],
+                "candidate_sponge": {
+                    "profile": pipeline[0]["row"]["sponge_profile"],
+                    "width": width,
+                    "minimum_reference_factor": pipeline[0]["row"][
+                        "sponge_min_factor"
+                    ],
+                },
+                "production_to_half": production_to_half,
+                "half_to_quarter": half_to_quarter,
+                "boundary_region_production_to_half": boundary_contribution,
+                "spatial_control_absolute_rms": spatial_scale,
+                "classification": classification,
+                "decision_role": "informational_pipeline_sensitivity",
+            }
+            rows.append(pipeline_summary)
+            pipeline_healthy = all(
+                bool(payload["row"]["finite"])
+                and payload["row"]["measurement_dtype"] == "float64"
+                and not bool(payload["row"]["whole_domain_sponge"])
+                for payload in pipeline
+            )
+            gates.append(
+                {
+                    "gate": "hydro_production_pipeline_sensitivity",
+                    "category": "informational",
+                    "passed": pipeline_healthy,
+                    "classification": classification,
+                    "decision_role": "health_only_not_temporal_order",
+                }
+            )
+            continue
+
+        operator_sponge = _x_sponge_region(
+            operator_nx, max(1, operator_nx // 8)
+        )
+        operator_interior = ~operator_sponge
         by_variant: dict[str, dict[float, np.ndarray]] = {}
         solver_rows: list[dict[str, Any]] = []
         for payload in selected:
@@ -2912,83 +4607,109 @@ def _aggregate_level_a_tasks(
     boundary_nx = int(boundary_config["grid"])
     boundary_ny = int(boundary_config["transverse_cells"])
     for name in SOLVERS:
-        packet_spec = boundary_config["solvers"][name]
+        packet_spec = _resolved_boundary_packet_spec(boundary_config, name)
+        if name == "boussinesq":
+            bouss_rows, bouss_gates = _aggregate_boussinesq_boundary_payloads(
+                boundary_payloads,
+                packet_spec=packet_spec,
+                boundary_config=boundary_config,
+                boundary_thresholds=thresholds["boundary"],
+            )
+            rows.extend(bouss_rows)
+            gates.extend(bouss_gates)
+            continue
+        timing = _boundary_timing(name, packet_spec)
+        provisional_width = max(1, int(round(3 * boundary_nx / 16)))
         _validate_boundary_packet_spec(
             packet_spec,
             nx=boundary_nx,
-            sponge_width=max(1, boundary_nx // 8),
+            sponge_width=provisional_width,
         )
-        initial_packet = np.asarray(
-            _boundary_initial_conditions(
-                name, nx=boundary_nx, ny=boundary_ny, spec=packet_spec
-            )["eta0"]
+        initial_conditions = _boundary_initial_conditions(
+            name, nx=boundary_nx, ny=boundary_ny, spec=packet_spec
+        )
+        depth = float(packet_spec.get("depth", 1.0))
+        bathymetry = -depth * np.ones(
+            (boundary_nx, boundary_ny), dtype=np.float64
         )
         selected = [
             payload
             for payload in boundary_payloads
             if payload["task"]["spec"]["solver"] == name
         ]
-        trajectories = {
-            str(payload["task"]["spec"]["variant"]): np.asarray(payload["trajectory"])
+        payloads_by_variant = {
+            str(payload["task"]["spec"]["variant"]): payload
             for payload in selected
         }
-        if set(trajectories) != {"baseline", "damped"}:
+        expected_variants = {
+            variant
+            for variant, candidate in boundary_config["candidates"].items()
+            if not (
+                bool(candidate.get("swe_only", False)) and name == "boussinesq"
+            )
+            and not (
+                bool(candidate.get("boussinesq_only", False))
+                and name != "boussinesq"
+            )
+        }
+        if set(payloads_by_variant) != expected_variants:
             raise RuntimeError(f"Incomplete boundary tasks for {name}")
-        baseline = trajectories["baseline"]
-        damped = trajectories["damped"]
-        metrics = _boundary_metrics(
-            baseline=baseline,
-            damped=damped,
-            initial_packet=initial_packet,
-            spec=packet_spec,
+        baseline_payload = payloads_by_variant["zero_gradient_no_sponge"]
+        baseline = np.asarray(baseline_payload["trajectory"])
+        baseline_runtime = max(
+            float(baseline_payload["row"]["runtime_s"]), 1.0e-30
         )
-        whole_domain_sponge = any(
-            bool(payload["row"].get("whole_domain_sponge", True))
-            for payload in selected
-            if payload["task"]["spec"]["use_sponge"]
-        )
-        boundary_row = {
-            "component": "boundary_sponge",
-            "solver": name,
-            "boundary_implementation": "zero_gradient_edge_padding",
-            **metrics,
-            "incident_window": _json_safe(packet_spec["incident_window"]),
-            "reflected_window": _json_safe(packet_spec["reflected_window"]),
-            "interior_window": _json_safe(packet_spec["interior_window"]),
-            "sponge_axes": "x",
-            "whole_domain_sponge": whole_domain_sponge,
-            "finite": all(bool(payload["row"]["finite"]) for payload in selected),
-            "cg_failure_count": sum(
-                int(payload["row"]["cg_failure_count"]) for payload in selected
-            ),
-            "operator": {
-                **(
-                    {
-                        "nan_to_num_replacement_count": sum(
-                            int(
-                                payload["row"]["operator"][
-                                    "nan_to_num_replacement_count"
-                                ]
-                            )
-                            for payload in selected
-                        )
-                    }
-                    if all(
-                        "nan_to_num_replacement_count" in payload["row"]["operator"]
-                        for payload in selected
-                    )
-                    else {}
+        candidate_rows: dict[str, dict[str, Any]] = {}
+        for variant in sorted(payloads_by_variant):
+            payload = payloads_by_variant[variant]
+            metrics = _boundary_metrics(
+                solver_name=name,
+                baseline=baseline,
+                candidate=np.asarray(payload["trajectory"]),
+                initial_conditions=initial_conditions,
+                bathymetry=bathymetry,
+                spec=packet_spec,
+                timing=timing,
+                timestamps=np.asarray(spec_time := payload["task"]["spec"]["requested_times"], dtype=np.float64),
+            )
+            if list(spec_time) != list(timing["requested_times"]):
+                raise RuntimeError("boundary task timing changed after preregistration")
+            task_row = payload["row"]
+            boundary_row = {
+                "component": "boundary_sponge",
+                "solver": name,
+                "variant": variant,
+                "candidate_status": boundary_config["gate_candidate_status"],
+                "boundary_implementation": task_row["boundary"],
+                **metrics,
+                "incident_window": _json_safe(packet_spec["incident_window"]),
+                "reflected_window": _json_safe(packet_spec["reflected_window"]),
+                "interior_window": _json_safe(packet_spec["interior_window"]),
+                "sponge_axes": task_row["sponge_axes"],
+                "sponge_width": task_row["sponge_width"],
+                "sponge_min_factor": task_row["sponge_min_factor"],
+                "sponge_profile": task_row["sponge_profile"],
+                "whole_domain_sponge": bool(task_row["whole_domain_sponge"]),
+                "finite": bool(task_row["finite"]),
+                "cg_failure_count": int(task_row["cg_failure_count"]),
+                "natural_steps": int(task_row["natural_steps"]),
+                "runtime_s": float(task_row["runtime_s"]),
+                "relative_runtime_cost": float(task_row["runtime_s"])
+                / baseline_runtime,
+                "max_post_step_cfl": float(task_row["max_post_step_cfl"]),
+                "measurement_dtype": task_row["measurement_dtype"],
+                "operator": task_row["operator"],
+                "decision_role": (
+                    "provisional_gate_candidate"
+                    if variant == boundary_config["gate_candidate"][name]
+                    else "non_decisional_candidate_diagnostic"
                 ),
-                "task_diagnostics": [
-                    {
-                        "variant": str(payload["row"]["variant"]),
-                        "diagnostics": payload["row"]["operator"],
-                    }
-                    for payload in selected
-                ],
-            },
-        }
-        rows.append(boundary_row)
+            }
+            candidate_rows[variant] = boundary_row
+            rows.append(boundary_row)
+
+        selected_variant = str(boundary_config["gate_candidate"][name])
+        boundary_row = candidate_rows[selected_variant]
         boundary_thresholds = thresholds["boundary"]
         gates.append(
             {
@@ -2996,17 +4717,23 @@ def _aggregate_level_a_tasks(
                 "category": "blocked_boundary_behavior",
                 "passed": boundary_row["finite"]
                 and boundary_row["cg_failure_count"] == 0
-                and not whole_domain_sponge
-                and bool(metrics["arrival_observed"])
-                and metrics["reflected_amplitude_ratio"]
+                and boundary_row["measurement_dtype"] == "float64"
+                and not boundary_row["whole_domain_sponge"]
+                and bool(boundary_row["measurement_temporally_separated"])
+                and bool(boundary_row["packet_exit_achieved"])
+                and boundary_row["reflected_amplitude_ratio"]
                 <= float(boundary_thresholds["reflected_amplitude_ratio"])
-                and metrics["reflected_energy_ratio"]
+                and boundary_row["reflected_energy_ratio"]
                 <= float(boundary_thresholds["reflected_energy_ratio"])
-                and metrics["interior_relative_l2"]
+                and boundary_row["interior_relative_l2"]
                 <= float(boundary_thresholds["interior_relative_l2"]),
-                "arrival_observed": bool(metrics["arrival_observed"]),
-                "arrival_energy_ratio": float(metrics["arrival_energy_ratio"]),
-                "whole_domain_sponge": whole_domain_sponge,
+                "candidate": selected_variant,
+                "candidate_status": boundary_config["gate_candidate_status"],
+                "measurement_temporally_separated": bool(
+                    boundary_row["measurement_temporally_separated"]
+                ),
+                "packet_exit_achieved": bool(boundary_row["packet_exit_achieved"]),
+                "whole_domain_sponge": boundary_row["whole_domain_sponge"],
             }
         )
 
@@ -3060,6 +4787,85 @@ def _aggregate_level_a_tasks(
                 <= float(canary_thresholds["eta_over_depth"]),
             }
         )
+    boussinesq_exposure = [
+        row for row in canary_rows if row["solver"] == "boussinesq"
+    ]
+    if boussinesq_exposure:
+        exposure_variants = sorted(
+            boussinesq_exposure[0]["boundary_candidate_exposure"]
+        )
+        candidate_exposure_summary = {
+            variant: {
+                "sponge_overlap_count": sum(
+                    bool(row["boundary_candidate_exposure"][variant][
+                        "significant_source_overlaps_sponge"
+                    ])
+                    for row in boussinesq_exposure
+                ),
+                "maximum_initial_sponge_energy_fraction": max(
+                    float(row["boundary_candidate_exposure"][variant][
+                        "initial_sponge_energy_fraction"
+                    ])
+                    for row in boussinesq_exposure
+                ),
+            }
+            for variant in exposure_variants
+        }
+        exposure_row = {
+            "component": "boussinesq_h0_boundary_exposure",
+            "decision_role": "production_contamination_gate_input",
+            "canary_count": len(boussinesq_exposure),
+            "sponge_overlap_count": sum(
+                bool(row["significant_source_overlaps_sponge"])
+                for row in boussinesq_exposure
+            ),
+            "conservative_reachable_count": sum(
+                bool(row["conservative_boundary_reachable"])
+                for row in boussinesq_exposure
+            ),
+            "maximum_initial_sponge_energy_fraction": max(
+                float(row["initial_sponge_energy_fraction"])
+                for row in boussinesq_exposure
+            ),
+            "minimum_significant_source_distance_to_boundary": min(
+                float(row["significant_source_distance_to_boundary"])
+                for row in boussinesq_exposure
+            ),
+            "maximum_conservative_long_wave_reach": max(
+                float(row["conservative_long_wave_reach"])
+                for row in boussinesq_exposure
+            ),
+            "candidate_exposure_summary": candidate_exposure_summary,
+        }
+        rows.append(exposure_row)
+        exposure_limit = float(
+            thresholds["boundary"]["boussinesq_h0_initial_sponge_energy_ratio"]
+        )
+        production_gate = next(
+            gate
+            for gate in gates
+            if gate["gate"] == "boundary_boussinesq_production_contamination"
+        )
+        selected_exposure_variant = str(
+            boundary_config["gate_candidate"]["boussinesq"]
+        )
+        selected_initial_fraction = float(
+            candidate_exposure_summary[selected_exposure_variant][
+                "maximum_initial_sponge_energy_fraction"
+            ]
+        )
+        production_gate["h0_initial_sponge_energy_ratio"] = float(
+            selected_initial_fraction
+        )
+        production_gate["h0_initial_sponge_energy_ratio_limit"] = exposure_limit
+        production_gate["h0_sponge_overlap_count"] = int(
+            candidate_exposure_summary[selected_exposure_variant][
+                "sponge_overlap_count"
+            ]
+        )
+        production_gate["passed"] = bool(production_gate["passed"]) and (
+            selected_initial_fraction <= exposure_limit
+        )
     rows.extend(
         _bootstrap_canary_aggregates(
             canary_rows,
@@ -3082,6 +4888,7 @@ def _aggregate_level_a_tasks(
         row
         for row in gates
         if str(row["gate"]).startswith("elapsed_operator_consistency_")
+        or row["gate"] == "hydro_clean_temporal_spatial_consistency"
         or row["gate"] == "elapsed_sponge_factor_identity"
     ]
     if len(elapsed_operator_gates) != len(SOLVERS) + 1:
@@ -3281,9 +5088,9 @@ def _validate_completed_execution(
     )
     if recorded_digest != expected_digest:
         raise RuntimeError("Completed Level A scientific digest mismatch")
-    if (execution / "detailed_rows.csv").read_text(encoding="utf-8") != _csv_text(
+    if (execution / "detailed_rows.csv").read_bytes() != _csv_text(
         public_rows
-    ):
+    ).encode("utf-8"):
         raise RuntimeError("Completed Level A CSV contradicts JSON rows")
     if (execution / "REPORT.md").read_text(encoding="utf-8") != _report_text(
         str(decision["decision"])
@@ -3321,6 +5128,7 @@ def execute_level_a(
     workers: int = 1,
     max_in_flight: int | None = None,
     resume: bool = False,
+    progress_callback: Callable[[Mapping[str, Any]], None] | None = None,
 ) -> Path:
     if workers <= 0:
         raise ValueError("workers must be positive")
@@ -3447,6 +5255,7 @@ def execute_level_a(
                 workers=workers,
                 max_in_flight=max_in_flight,
                 resume=resume,
+                progress_callback=progress_callback,
             )
             public_rows, gates, decision = _aggregate_level_a_tasks(
                 task_results,
@@ -3463,7 +5272,7 @@ def execute_level_a(
                 staging / "summary.json",
                 {"decision": decision, "rows": len(public_rows)},
             )
-            _write_json(staging / "operational_provenance.json", operational)
+            _write_json(staging / "operational_provenance.json", operational) # i honestly dunno what this even is lmao
             (staging / "REPORT.md").write_text(
                 _report_text(str(decision["decision"])),
                 encoding="utf-8",
