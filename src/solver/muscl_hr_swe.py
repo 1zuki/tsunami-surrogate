@@ -1,13 +1,21 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional
+from typing import Any, Literal, Mapping, Optional
 
 import numpy as np
 
 try:
     from src.solver.hydrostatic_swe import ShallowWaterSolver
+    from src.solver.boundary_conditions import (
+        radiation_boundary_state_x,
+        radiation_boundary_state_y,
+    )
 except ImportError:
     from hydrostatic_swe import ShallowWaterSolver
+    from boundary_conditions import (
+        radiation_boundary_state_x,
+        radiation_boundary_state_y,
+    )
 
 
 class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
@@ -18,15 +26,35 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
     reconstruction at interfaces for a better bathymetry-balanced update
     """
 
+    def __init__(
+        self,
+        *args: Any,
+        reconstruction_limiter: Literal["minmod", "unlimited"] = "minmod",
+        **kwargs: Any,
+    ) -> None:
+        if reconstruction_limiter not in ("minmod", "unlimited"):
+            raise ValueError(
+                "reconstruction_limiter must be 'minmod' or 'unlimited'"
+            )
+        self.reconstruction_limiter = reconstruction_limiter
+        super().__init__(*args, **kwargs)
+
     def reset_operator_diagnostics(self) -> None:
         super().reset_operator_diagnostics()
         self.operator_diagnostics.update(
             {
+                "muscl_reconstruction_limiter": self.reconstruction_limiter,
                 "muscl_cell_velocity_clip_count": 0,
                 "muscl_face_velocity_clip_count": 0,
                 "muscl_limiter_total_count": 0,
                 "muscl_limiter_zeroed_count": 0,
                 "muscl_limiter_limited_count": 0,
+                "muscl_limiter_x_seam_total_count": 0,
+                "muscl_limiter_x_seam_zeroed_count": 0,
+                "muscl_limiter_x_seam_limited_count": 0,
+                "muscl_limiter_y_seam_total_count": 0,
+                "muscl_limiter_y_seam_zeroed_count": 0,
+                "muscl_limiter_y_seam_limited_count": 0,
             }
         )
 
@@ -47,19 +75,68 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
         ) + int(np.count_nonzero(result != unlimited))
         return result
 
+    def _limited_slope(
+        self,
+        forward: np.ndarray,
+        backward: np.ndarray,
+        *,
+        axis: Literal["x", "y"],
+        periodic: bool,
+    ) -> np.ndarray:
+        if self.reconstruction_limiter == "unlimited":
+            return 0.5 * (forward + backward)
+        result = self._minmod(forward, backward)
+        if periodic:
+            unlimited = 0.5 * (forward + backward)
+            seam = result[[0, -1], :] if axis == "x" else result[:, [0, -1]]
+            seam_unlimited = (
+                unlimited[[0, -1], :]
+                if axis == "x"
+                else unlimited[:, [0, -1]]
+            )
+            prefix = f"muscl_limiter_{axis}_seam"
+            self.operator_diagnostics[f"{prefix}_total_count"] = int(
+                self.operator_diagnostics[f"{prefix}_total_count"]
+            ) + int(seam.size)
+            self.operator_diagnostics[f"{prefix}_zeroed_count"] = int(
+                self.operator_diagnostics[f"{prefix}_zeroed_count"]
+            ) + int(np.count_nonzero(seam == 0.0))
+            self.operator_diagnostics[f"{prefix}_limited_count"] = int(
+                self.operator_diagnostics[f"{prefix}_limited_count"]
+            ) + int(np.count_nonzero(seam != seam_unlimited))
+        return result
+
     def _slope_x(self, field: np.ndarray) -> np.ndarray:
+        if self.boundary_x == "periodic":
+            forward = np.roll(field, -1, axis=0) - field
+            backward = field - np.roll(field, 1, axis=0)
+            return self._limited_slope(
+                forward, backward, axis="x", periodic=True
+            )
+
         slope = np.zeros_like(field)
         fwd = field[2:, :] - field[1:-1, :]
         bwd = field[1:-1, :] - field[:-2, :]
-        slope[1:-1, :] = self._minmod(fwd, bwd)
+        slope[1:-1, :] = self._limited_slope(
+            fwd, bwd, axis="x", periodic=False
+        )
 
         return slope
 
     def _slope_y(self, field: np.ndarray) -> np.ndarray:
+        if self.boundary_y == "periodic":
+            forward = np.roll(field, -1, axis=1) - field
+            backward = field - np.roll(field, 1, axis=1)
+            return self._limited_slope(
+                forward, backward, axis="y", periodic=True
+            )
+
         slope = np.zeros_like(field)
         fwd = field[:, 2:] - field[:, 1:-1]
         bwd = field[:, 1:-1] - field[:, :-2]
-        slope[:, 1:-1] = self._minmod(fwd, bwd)
+        slope[:, 1:-1] = self._limited_slope(
+            fwd, bwd, axis="y", periodic=False
+        )
 
         return slope
 
@@ -155,7 +232,20 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
                 hC, huC, hvC, bC = rec["h_w"][i, j], rec["hu_w"][i, j], rec["hv_w"][i, j], rec["b_w"][i, j]
 
                 if i == 0:
-                    hL, huL, hvL, bL = self._boundary_state_x(h_old, hu_old, hv_old, b, j, side="left")
+                    if self.boundary_x == "periodic":
+                        hL, huL, hvL, bL = rec["h_e"][-1, j], rec["hu_e"][-1, j], rec["hv_e"][-1, j], rec["b_e"][-1, j]
+                    elif self.boundary_x == "radiation":
+                        hL, huL, hvL, bL = radiation_boundary_state_x(
+                            hC,
+                            huC,
+                            hvC,
+                            bC,
+                            side="left",
+                            g=self.g,
+                            dry_tolerance=self.dry_tolerance,
+                        )
+                    else:
+                        hL, huL, hvL, bL = self._boundary_state_x(h_old, hu_old, hv_old, b, j, side="left")
                 else:
                     hL, huL, hvL, bL = rec["h_e"][i - 1, j], rec["hu_e"][i - 1, j], rec["hv_e"][i - 1, j], rec["b_e"][i - 1, j]
 
@@ -165,7 +255,20 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
                 hC, huC, hvC, bC = rec["h_e"][i, j], rec["hu_e"][i, j], rec["hv_e"][i, j], rec["b_e"][i, j]
 
                 if i == self.nx - 1:
-                    hR, huR, hvR, bR = self._boundary_state_x(h_old, hu_old, hv_old, b, j, side="right")
+                    if self.boundary_x == "periodic":
+                        hR, huR, hvR, bR = rec["h_w"][0, j], rec["hu_w"][0, j], rec["hv_w"][0, j], rec["b_w"][0, j]
+                    elif self.boundary_x == "radiation":
+                        hR, huR, hvR, bR = radiation_boundary_state_x(
+                            hC,
+                            huC,
+                            hvC,
+                            bC,
+                            side="right",
+                            g=self.g,
+                            dry_tolerance=self.dry_tolerance,
+                        )
+                    else:
+                        hR, huR, hvR, bR = self._boundary_state_x(h_old, hu_old, hv_old, b, j, side="right")
                 else:
                     hR, huR, hvR, bR = rec["h_w"][i + 1, j], rec["hu_w"][i + 1, j], rec["hv_w"][i + 1, j], rec["b_w"][i + 1, j]
 
@@ -175,7 +278,20 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
                 hC, huC, hvC, bC = rec["h_s"][i, j], rec["hu_s"][i, j], rec["hv_s"][i, j], rec["b_s"][i, j]
 
                 if j == 0:
-                    hB, huB, hvB, bB = self._boundary_state_y(h_old, hu_old, hv_old, b, i, side="bottom")
+                    if self.boundary_y == "periodic":
+                        hB, huB, hvB, bB = rec["h_n"][i, -1], rec["hu_n"][i, -1], rec["hv_n"][i, -1], rec["b_n"][i, -1]
+                    elif self.boundary_y == "radiation":
+                        hB, huB, hvB, bB = radiation_boundary_state_y(
+                            hC,
+                            huC,
+                            hvC,
+                            bC,
+                            side="bottom",
+                            g=self.g,
+                            dry_tolerance=self.dry_tolerance,
+                        )
+                    else:
+                        hB, huB, hvB, bB = self._boundary_state_y(h_old, hu_old, hv_old, b, i, side="bottom")
                 else:
                     hB, huB, hvB, bB = rec["h_n"][i, j - 1], rec["hu_n"][i, j - 1], rec["hv_n"][i, j - 1], rec["b_n"][i, j - 1]
 
@@ -185,7 +301,20 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
                 hC, huC, hvC, bC = rec["h_n"][i, j], rec["hu_n"][i, j], rec["hv_n"][i, j], rec["b_n"][i, j]
 
                 if j == self.ny - 1:
-                    hT, huT, hvT, bT = self._boundary_state_y(h_old, hu_old, hv_old, b, i, side="top")
+                    if self.boundary_y == "periodic":
+                        hT, huT, hvT, bT = rec["h_s"][i, 0], rec["hu_s"][i, 0], rec["hv_s"][i, 0], rec["b_s"][i, 0]
+                    elif self.boundary_y == "radiation":
+                        hT, huT, hvT, bT = radiation_boundary_state_y(
+                            hC,
+                            huC,
+                            hvC,
+                            bC,
+                            side="top",
+                            g=self.g,
+                            dry_tolerance=self.dry_tolerance,
+                        )
+                    else:
+                        hT, huT, hvT, bT = self._boundary_state_y(h_old, hu_old, hv_old, b, i, side="top")
                 else:
                     hT, huT, hvT, bT = rec["h_s"][i, j + 1], rec["hu_s"][i, j + 1], rec["hv_s"][i, j + 1], rec["b_s"][i, j + 1]
 
@@ -314,6 +443,7 @@ def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
         sponge_min_factor=float(kwargs.get("sponge_min_factor", 0.9)),
         sponge_axes=str(kwargs.get("sponge_axes", "xy")),
         max_velocity=float(kwargs.get("max_velocity", 50.0)),
+        reconstruction_limiter=str(kwargs.get("reconstruction_limiter", "minmod")),
     )
     solver.set_bathymetry(bathymetry)
     solver.set_initial_condition(h0, hu0=np.zeros_like(h0), hv0=np.zeros_like(h0))

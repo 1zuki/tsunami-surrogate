@@ -4,11 +4,13 @@ from typing import Literal, Tuple, Union
 
 import numpy as np
 
-BoundaryMode = Literal["open", "reflective", "periodic"]
+BoundaryMode = Literal["open", "reflective", "periodic", "radiation"]
 
 def validate_boundary_mode(mode: BoundaryMode, name: str) -> None:
-    if mode not in ("open", "reflective", "periodic"):
-        raise ValueError(f"{name} must be one of: open, reflective, periodic")
+    if mode not in ("open", "reflective", "periodic", "radiation"):
+        raise ValueError(
+            f"{name} must be one of: open, reflective, periodic, radiation"
+        )
 
 def resolve_boundary_modes(
         boundary: Union[BoundaryMode, Tuple[BoundaryMode, BoundaryMode]]
@@ -30,7 +32,83 @@ def resolve_boundary_modes(
     return boundary_x, boundary_y
 
 def pad_mode(mode: BoundaryMode) -> str:
+    if mode == "radiation":
+        raise ValueError("radiation boundaries require characteristic face states")
     return "wrap" if mode == "periodic" else "edge"
+
+
+def radiation_boundary_state_x(
+    h_inside: float,
+    hu_inside: float,
+    hv_inside: float,
+    b_inside: float,
+    *,
+    side: Literal["left", "right"],
+    g: float,
+    dry_tolerance: float,
+) -> tuple[float, float, float, float]:
+    """Linearized bathymetry-aware SWE radiation state at an x face."""
+    rest_depth = max(-float(b_inside), 0.0)
+    if rest_depth <= float(dry_tolerance):
+        return rest_depth, 0.0, 0.0, float(b_inside)
+    wave_speed = float(np.sqrt(float(g) * rest_depth))
+    elevation = float(h_inside) - rest_depth
+    scaled_discharge = float(hu_inside) / wave_speed
+    if side == "left":
+        outgoing = 0.5 * (elevation - scaled_discharge)
+        normal_discharge = -wave_speed * outgoing
+    elif side == "right":
+        outgoing = 0.5 * (elevation + scaled_discharge)
+        normal_discharge = wave_speed * outgoing
+    else:
+        raise ValueError("side must be 'left' or 'right'")
+    ghost_depth = max(rest_depth + outgoing, 0.0)
+    tangential_velocity = float(hv_inside) / max(
+        float(h_inside), float(dry_tolerance)
+    )
+    return (
+        ghost_depth,
+        normal_discharge,
+        ghost_depth * tangential_velocity,
+        float(b_inside),
+    )
+
+
+def radiation_boundary_state_y(
+    h_inside: float,
+    hu_inside: float,
+    hv_inside: float,
+    b_inside: float,
+    *,
+    side: Literal["bottom", "top"],
+    g: float,
+    dry_tolerance: float,
+) -> tuple[float, float, float, float]:
+    """Linearized bathymetry-aware SWE radiation state at a y face."""
+    rest_depth = max(-float(b_inside), 0.0)
+    if rest_depth <= float(dry_tolerance):
+        return rest_depth, 0.0, 0.0, float(b_inside)
+    wave_speed = float(np.sqrt(float(g) * rest_depth))
+    elevation = float(h_inside) - rest_depth
+    scaled_discharge = float(hv_inside) / wave_speed
+    if side == "bottom":
+        outgoing = 0.5 * (elevation - scaled_discharge)
+        normal_discharge = -wave_speed * outgoing
+    elif side == "top":
+        outgoing = 0.5 * (elevation + scaled_discharge)
+        normal_discharge = wave_speed * outgoing
+    else:
+        raise ValueError("side must be 'bottom' or 'top'")
+    ghost_depth = max(rest_depth + outgoing, 0.0)
+    tangential_velocity = float(hu_inside) / max(
+        float(h_inside), float(dry_tolerance)
+    )
+    return (
+        ghost_depth,
+        ghost_depth * tangential_velocity,
+        normal_discharge,
+        float(b_inside),
+    )
 
 def pad_scalar_field(A: np.ndarray, boundary_x: BoundaryMode, boundary_y: BoundaryMode) -> np.ndarray:
     if A.ndim != 2:
@@ -87,6 +165,9 @@ def boundary_state_x(
     j: int,
     side: Literal["left", "right"],
     boundary_x: BoundaryMode,
+    *,
+    g: float = 9.81,
+    dry_tolerance: float = 1.0e-6,
 ) -> tuple[float, float, float, float]:
     nx = h.shape[0]
 
@@ -101,6 +182,17 @@ def boundary_state_x(
 
     if boundary_x == "periodic":
         return h[periodic_i, j], hu[periodic_i, j], hv[periodic_i, j], b[periodic_i, j]
+
+    if boundary_x == "radiation":
+        return radiation_boundary_state_x(
+            h[inside_i, j],
+            hu[inside_i, j],
+            hv[inside_i, j],
+            b[inside_i, j],
+            side=side,
+            g=g,
+            dry_tolerance=dry_tolerance,
+        )
 
     h_g = h[inside_i, j]
     hu_g = hu[inside_i, j]
@@ -120,6 +212,9 @@ def boundary_state_y(
     i: int,
     side: Literal["bottom", "top"],
     boundary_y: BoundaryMode,
+    *,
+    g: float = 9.81,
+    dry_tolerance: float = 1.0e-6,
 ) -> tuple[float, float, float, float]:
     ny = h.shape[1]
 
@@ -135,6 +230,17 @@ def boundary_state_y(
 
     if boundary_y == "periodic":
         return h[i, periodic_j], hu[i, periodic_j], hv[i, periodic_j], b[i, periodic_j]
+
+    if boundary_y == "radiation":
+        return radiation_boundary_state_y(
+            h[i, inside_j],
+            hu[i, inside_j],
+            hv[i, inside_j],
+            b[i, inside_j],
+            side=side,
+            g=g,
+            dry_tolerance=dry_tolerance,
+        )
 
     h_g = h[i, inside_j]
     hu_g = hu[i, inside_j]

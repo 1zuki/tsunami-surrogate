@@ -10,10 +10,12 @@ from src.solver.boundary_conditions import (
     resolve_boundary_modes,
 )
 from src.solver.operator_time import (
+    build_sponge_mask,
     filter_coefficient,
     sponge_factor,
     validate_cg_failure_mode,
     validate_filter_time_mode,
+    validate_sponge_profile,
     validate_sponge_time_mode,
 )
 
@@ -81,6 +83,7 @@ class BoussinesqSolver:
         sponge_min_factor: float = 0.9,
         filter_strength: float = 0.0,
         linear_solver_tol: float = 1e-8,
+        linear_solver_abs_tol: float = 0.0,
         linear_solver_max_iter: int = 80,
         check_finite: bool = True,
         sponge_time_mode: str = "legacy_per_step",
@@ -89,6 +92,7 @@ class BoussinesqSolver:
         filter_reference_dt: float | None = None,
         cg_failure_mode: str = "legacy_posthoc",
         sponge_axes: str = "xy",
+        sponge_profile: str = "quadratic",
     ) -> None:
         if nx <= 1 or ny <= 1:
             raise ValueError("nx and ny must be greater than 1")
@@ -116,6 +120,8 @@ class BoussinesqSolver:
             raise ValueError("filter_strength must be non-negative")
         if linear_solver_tol <= 0:
             raise ValueError("linear_solver_tol must be positive")
+        if linear_solver_abs_tol < 0:
+            raise ValueError("linear_solver_abs_tol must be non-negative")
         if linear_solver_max_iter <= 0:
             raise ValueError("linear_solver_max_iter must be positive")
 
@@ -133,6 +139,7 @@ class BoussinesqSolver:
         self.mode = mode
         self.filter_strength = float(filter_strength)
         self.linear_solver_tol = float(linear_solver_tol)
+        self.linear_solver_abs_tol = float(linear_solver_abs_tol)
         self.linear_solver_max_iter = int(linear_solver_max_iter)
         self.check_finite = bool(check_finite)
         self.sponge_time_mode = validate_sponge_time_mode(
@@ -150,6 +157,10 @@ class BoussinesqSolver:
         self.cg_failure_mode = validate_cg_failure_mode(cg_failure_mode)
 
         self.boundary_x, self.boundary_y = resolve_boundary_modes(boundary)
+        if "radiation" in (self.boundary_x, self.boundary_y):
+            raise ValueError(
+                "radiation boundary is currently implemented only for SWE solvers"
+            )
         self._validate_mode(self.mode)
 
         self.eta = np.zeros((self.nx, self.ny), dtype=float)
@@ -165,6 +176,7 @@ class BoussinesqSolver:
         self.sponge_width = int(sponge_width)
         self.sponge_min_factor = float(sponge_min_factor)
         self.sponge_axes = str(sponge_axes)
+        self.sponge_profile = validate_sponge_profile(sponge_profile)
         self.sponge_mask = np.ones((self.nx, self.ny), dtype=float)
         self.last_cg_iterations = 0
         self.last_cg_initial_residual = 0.0
@@ -346,13 +358,16 @@ class BoussinesqSolver:
         rz_old = float(np.sum(r * z))
         rs0 = rs_old
         residual0 = float(np.sqrt(rs0))
-        threshold = (self.linear_solver_tol * residual0) ** 2
+        threshold = max(
+            (self.linear_solver_tol * residual0) ** 2,
+            self.linear_solver_abs_tol**2,
+        )
         self.last_cg_iterations = 0
         self.last_cg_initial_residual = residual0
         self.last_cg_final_residual = residual0
-        self.last_cg_converged = rs0 == 0.0
+        self.last_cg_converged = residual0 <= self.linear_solver_abs_tol
 
-        if rs0 == 0.0:
+        if rs0 == 0.0 or residual0 <= self.linear_solver_abs_tol:
             return x
 
         eps = 1e-30
@@ -388,29 +403,14 @@ class BoussinesqSolver:
         return x
 
     def _init_sponge_layer(self, width: int = 20, min_factor: float = 0.9) -> None:
-        width = int(max(0, width))
-        min_factor = float(min_factor)
-        self.sponge_mask = np.ones((self.nx, self.ny), dtype=float)
-
-        if width == 0:
-            return
-
-        max_width = (
-            max(1, min(self.nx, self.ny) // 2)
-            if self.sponge_axes == "xy"
-            else max(1, self.nx // 2)
+        self.sponge_mask = build_sponge_mask(
+            nx=self.nx,
+            ny=self.ny,
+            width=width,
+            min_factor=min_factor,
+            axes=self.sponge_axes,
+            profile=self.sponge_profile,
         )
-        width = min(width, max_width)
-
-        for d in range(width):
-            t = (width - d) / width
-            val = 1.0 - (1.0 - min_factor) * (t * t)
-
-            self.sponge_mask[d, :] = np.minimum(self.sponge_mask[d, :], val)
-            self.sponge_mask[-(d + 1), :] = np.minimum(self.sponge_mask[-(d + 1), :], val)
-            if self.sponge_axes == "xy":
-                self.sponge_mask[:, d] = np.minimum(self.sponge_mask[:, d], val)
-                self.sponge_mask[:, -(d + 1)] = np.minimum(self.sponge_mask[:, -(d + 1)], val)
 
     def reset_operator_diagnostics(self) -> None:
         if self.sponge_reference_dt is None:
@@ -428,6 +428,7 @@ class BoussinesqSolver:
         self.operator_diagnostics = {
             "sponge_time_mode": self.sponge_time_mode,
             "sponge_axes": self.sponge_axes,
+            "sponge_profile": self.sponge_profile,
             "sponge_reference_dt": self.sponge_reference_dt,
             "sponge_reference_decay_rate_min": reference_rate_min,
             "sponge_reference_decay_rate_max": reference_rate_max,
@@ -443,6 +444,7 @@ class BoussinesqSolver:
             "filter_effective_coefficient_last": 0.0,
             "filter_effective_coefficient_max": 0.0,
             "cg_failure_mode": self.cg_failure_mode,
+            "cg_absolute_residual_tolerance": self.linear_solver_abs_tol,
             "cg_solve_count": 0,
             "cg_failure_count": 0,
             "cg_iterations_sum": 0,
@@ -806,8 +808,10 @@ def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
         sponge_width=int(kwargs.get("sponge_width", 20)),
         sponge_min_factor=float(kwargs.get("sponge_min_factor", 0.9)),
         sponge_axes=str(kwargs.get("sponge_axes", "xy")),
+        sponge_profile=str(kwargs.get("sponge_profile", "quadratic")),
         filter_strength=float(kwargs.get("filter_strength", 0.0)),
         linear_solver_tol=float(kwargs.get("linear_solver_tol", 1e-8)),
+        linear_solver_abs_tol=float(kwargs.get("linear_solver_abs_tol", 0.0)),
         linear_solver_max_iter=int(kwargs.get("linear_solver_max_iter", 80)),
         check_finite=bool(kwargs.get("check_finite", True)),
     )

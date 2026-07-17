@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from src.solver.boussinesq import BoussinesqSolver, simulate_rollout
 
@@ -73,6 +74,75 @@ def test_boussinesq_zero_source_rest_stays_zero() -> None:
     assert np.isfinite(state).all()
     assert np.allclose(state[0], 0.0)
     assert np.allclose(state[1], 0.0)
+
+
+def test_boussinesq_optional_absolute_cg_floor_accepts_negligible_rhs() -> None:
+    nx, ny = 16, 4
+    solver = BoussinesqSolver(
+        nx=nx,
+        ny=ny,
+        dx=1.0 / nx,
+        dy=1.0 / ny,
+        dt=1.0e-3,
+        boundary="periodic",
+        use_sponge=False,
+        linear_solver_tol=1.0e-10,
+        linear_solver_abs_tol=1.0e-15,
+        cg_failure_mode="strict_v2",
+    )
+    solver.set_bathymetry(-np.ones((nx, ny), dtype=np.float64))
+    x = np.arange(nx, dtype=np.float64)[:, None] / nx
+    eta = 1.0e-19 * np.cos(2.0 * np.pi * x) * np.ones((1, ny))
+    acceleration = solver.solve_acceleration(eta)
+    assert np.array_equal(acceleration, np.zeros_like(acceleration))
+    assert solver.last_cg_converged
+    assert solver.last_cg_iterations == 0
+    assert solver.last_cg_initial_residual <= solver.linear_solver_abs_tol
+
+
+def test_boussinesq_absolute_cg_floor_defaults_to_disabled() -> None:
+    solver = BoussinesqSolver(
+        nx=4,
+        ny=4,
+        dx=0.25,
+        dy=0.25,
+        dt=1.0e-3,
+    )
+    assert solver.linear_solver_abs_tol == 0.0
+    with pytest.raises(ValueError, match="linear_solver_abs_tol"):
+        BoussinesqSolver(
+            nx=4,
+            ny=4,
+            dx=0.25,
+            dy=0.25,
+            dt=1.0e-3,
+            linear_solver_abs_tol=-1.0,
+        )
+
+
+def test_explicit_zero_absolute_cg_floor_matches_legacy_default() -> None:
+    common = dict(
+        nx=12,
+        ny=4,
+        dx=1.0 / 12,
+        dy=0.25,
+        dt=1.0e-3,
+        boundary="periodic",
+        use_sponge=False,
+        linear_solver_tol=1.0e-10,
+        linear_solver_max_iter=200,
+    )
+    default = BoussinesqSolver(**common)
+    explicit = BoussinesqSolver(**common, linear_solver_abs_tol=0.0)
+    bathymetry = -np.ones((12, 4), dtype=np.float64)
+    x = np.arange(12, dtype=np.float64)[:, None] / 12
+    eta = 1.0e-4 * np.cos(2.0 * np.pi * x) * np.ones((1, 4))
+    for solver in (default, explicit):
+        solver.set_bathymetry(bathymetry)
+        solver.set_initial_condition(eta)
+        solver.step()
+    np.testing.assert_array_equal(default.get_state(), explicit.get_state())
+    assert default.last_step_cg_solve_iterations == explicit.last_step_cg_solve_iterations
 
 
 def test_boussinesq_alpha_zero_matches_face_flux_wave_operator() -> None:

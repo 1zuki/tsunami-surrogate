@@ -6,12 +6,55 @@ import numpy as np
 
 
 SpongeTimeMode = Literal["legacy_per_step", "elapsed_time_consistent"]
+SpongeProfile = Literal["quadratic", "cosine"]
 FilterTimeMode = Literal[
     "legacy_per_step",
     "disabled",
     "elapsed_time_consistent",
 ]
 CGFailureMode = Literal["legacy_posthoc", "strict_v2"]
+
+
+def validate_sponge_profile(profile: str) -> SpongeProfile:
+    normalized = str(profile).strip().lower()
+    if normalized not in {"quadratic", "cosine"}:
+        raise ValueError("sponge_profile must be quadratic or cosine")
+    return normalized  # type: ignore[return-value]
+
+
+def build_sponge_mask(
+    *,
+    nx: int,
+    ny: int,
+    width: int,
+    min_factor: float,
+    axes: str,
+    profile: SpongeProfile,
+) -> np.ndarray:
+    """Build the reference mask without assigning timestep semantics."""
+    mask = np.ones((int(nx), int(ny)), dtype=float)
+    effective_width = int(max(0, width))
+    if effective_width == 0:
+        return mask
+    max_width = (
+        max(1, min(int(nx), int(ny)) // 2)
+        if axes == "xy"
+        else max(1, int(nx) // 2)
+    )
+    effective_width = min(effective_width, max_width)
+    for distance in range(effective_width):
+        coordinate = (effective_width - distance) / effective_width
+        if profile == "quadratic":
+            weight = coordinate * coordinate
+        else:
+            weight = 0.5 * (1.0 - np.cos(np.pi * coordinate))
+        value = 1.0 - (1.0 - float(min_factor)) * weight
+        mask[distance, :] = np.minimum(mask[distance, :], value)
+        mask[-(distance + 1), :] = np.minimum(mask[-(distance + 1), :], value)
+        if axes == "xy":
+            mask[:, distance] = np.minimum(mask[:, distance], value)
+            mask[:, -(distance + 1)] = np.minimum(mask[:, -(distance + 1)], value)
+    return mask
 
 
 def validate_sponge_time_mode(mode: str, reference_dt: float | None) -> SpongeTimeMode:

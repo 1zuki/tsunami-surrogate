@@ -83,6 +83,7 @@ def _requested_rollout(
     *,
     auto_dt: bool = False,
     max_natural_steps: int = 10,
+    requested_state_dtype=np.float32,
 ):
     return _simulate_one_local(
         solver=solver,
@@ -93,6 +94,7 @@ def _requested_rollout(
         include_initial_state=True,
         requested_times=requested_times,
         max_natural_steps=max_natural_steps,
+        requested_state_dtype=requested_state_dtype,
     )
 
 
@@ -139,6 +141,80 @@ def test_bracket_extractor_is_exact_for_affine_multicomponent_states() -> None:
         "bracket_widths",
     ):
         assert provenance[key].dtype == np.float64
+
+
+def test_float64_requested_state_avoids_small_elevation_cancellation() -> None:
+    eta = np.asarray([[[2.0e-8, -3.0e-8]]], dtype=np.float64)
+    depth = 1.0 + eta
+    requested = np.asarray([0.5], dtype=np.float64)
+    common = dict(
+        left_state=depth,
+        right_state=depth,
+        left_time=0.5,
+        right_time=1.0,
+        requested_times=requested,
+        right_natural_step_index=2,
+    )
+    publication, publication_provenance = _extract_requested_states_from_bracket(
+        **common
+    )
+    scientific, scientific_provenance = _extract_requested_states_from_bracket(
+        **common, output_dtype=np.float64
+    )
+
+    assert publication.dtype == np.float32
+    assert scientific.dtype == np.float64
+    exact_eta = (depth - 1.0)[None, ...]
+    np.testing.assert_array_equal(scientific - 1.0, exact_eta)
+    assert not np.array_equal(publication.astype(np.float64) - 1.0, exact_eta)
+    for key in publication_provenance:
+        np.testing.assert_array_equal(
+            publication_provenance[key], scientific_provenance[key]
+        )
+
+
+def test_requested_output_precision_does_not_change_solver_stepping() -> None:
+    requested = np.asarray([0.1, 0.2, 0.3, 0.55, 0.65], dtype=np.float64)
+    common = dict(
+        state=np.zeros((2, 1, 1), dtype=np.float32),
+        suggested_dts=[0.3, 0.4],
+        slope=np.asarray([[[2.0]], [[-1.0]]], dtype=np.float32),
+    )
+    publication_solver = _AffineFakeSolver(**common)
+    scientific_solver = _AffineFakeSolver(**common)
+    publication = _requested_rollout(
+        publication_solver, requested, auto_dt=True
+    )
+    scientific = _requested_rollout(
+        scientific_solver,
+        requested,
+        auto_dt=True,
+        requested_state_dtype=np.float64,
+    )
+
+    assert publication[0].dtype == np.float32
+    assert scientific[0].dtype == np.float64
+    np.testing.assert_array_equal(publication[1], scientific[1])
+    np.testing.assert_array_equal(publication[2], scientific[2])
+    assert publication_solver.step_dts == scientific_solver.step_dts
+    np.testing.assert_array_equal(
+        publication_solver.get_state(), scientific_solver.get_state()
+    )
+    for key in publication[3]:
+        np.testing.assert_array_equal(publication[3][key], scientific[3][key])
+
+
+def test_requested_state_dtype_rejects_non_float_publication_types() -> None:
+    with pytest.raises(ValueError, match="float32 or float64"):
+        _extract_requested_states_from_bracket(
+            left_state=np.zeros((1, 1)),
+            right_state=np.ones((1, 1)),
+            left_time=0.0,
+            right_time=1.0,
+            requested_times=np.asarray([0.5]),
+            right_natural_step_index=1,
+            output_dtype=np.float16,
+        )
 
 
 def test_bracket_extractor_handles_multiple_requests_and_canonical_knots() -> None:

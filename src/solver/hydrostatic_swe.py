@@ -22,9 +22,19 @@ except ImportError:
     )
 
 try:
-    from src.solver.operator_time import sponge_factor, validate_sponge_time_mode
+    from src.solver.operator_time import (
+        build_sponge_mask,
+        sponge_factor,
+        validate_sponge_profile,
+        validate_sponge_time_mode,
+    )
 except ImportError:
-    from operator_time import sponge_factor, validate_sponge_time_mode
+    from operator_time import (
+        build_sponge_mask,
+        sponge_factor,
+        validate_sponge_profile,
+        validate_sponge_time_mode,
+    )
 
 class SolverInfo(NamedTuple):
     """ metadata bundle for logging / experiment tracking"""
@@ -46,7 +56,8 @@ class ShallowWaterSolver:
                  eps: float = 1e-9, max_velocity: float = 50.0,
                  sponge_time_mode: str = "legacy_per_step",
                  sponge_reference_dt: float | None = None,
-                 sponge_axes: str = "xy") -> None:
+                 sponge_axes: str = "xy",
+                 sponge_profile: str = "quadratic") -> None:
         if nx <= 1 or ny <= 1:
             raise ValueError("nx and ny must be greater than 1")
         if dx <= 0 or dy <= 0:
@@ -90,6 +101,7 @@ class ShallowWaterSolver:
         self.sponge_width = int(sponge_width)
         self.sponge_min_factor = float(sponge_min_factor)
         self.sponge_axes = str(sponge_axes)
+        self.sponge_profile = validate_sponge_profile(sponge_profile)
         self.sponge_time_mode = validate_sponge_time_mode(
             sponge_time_mode, sponge_reference_dt
         )
@@ -351,32 +363,14 @@ class ShallowWaterSolver:
         initializes a multiplicative mask to damp waves near the boundaries.
         factor = 1.0 in the center, dropping smoothly to min_factor at the edge
         """
-        width = int(max(0, width))
-        min_factor = float(min_factor)
-
-        self.sponge_mask = np.ones((self.nx, self.ny), dtype=float)
-
-        if width == 0:
-            return
-
-        # Preserve the legacy two-axis production mask exactly. Quasi-1D
-        # validation may opt into x-only damping so ny=4 is not fully damped.
-        max_width = (
-            max(1, min(self.nx, self.ny) // 2)
-            if self.sponge_axes == "xy"
-            else max(1, self.nx // 2)
+        self.sponge_mask = build_sponge_mask(
+            nx=self.nx,
+            ny=self.ny,
+            width=width,
+            min_factor=min_factor,
+            axes=self.sponge_axes,
+            profile=self.sponge_profile,
         )
-        width = min(width, max_width)
-
-        for d in range(width):
-            t = (width - d) / width
-            val = 1.0 - (1.0 - min_factor) * (t * t)
-
-            self.sponge_mask[d, :] = np.minimum(self.sponge_mask[d, :], val)
-            self.sponge_mask[-(d + 1), :] = np.minimum(self.sponge_mask[-(d + 1), :], val)
-            if self.sponge_axes == "xy":
-                self.sponge_mask[:, d] = np.minimum(self.sponge_mask[:, d], val)
-                self.sponge_mask[:, -(d + 1)] = np.minimum(self.sponge_mask[:, -(d + 1)], val)
 
     def reset_operator_diagnostics(self) -> None:
         if self.sponge_reference_dt is None:
@@ -389,6 +383,7 @@ class ShallowWaterSolver:
         self.operator_diagnostics = {
             "sponge_time_mode": self.sponge_time_mode,
             "sponge_axes": self.sponge_axes,
+            "sponge_profile": self.sponge_profile,
             "sponge_reference_dt": self.sponge_reference_dt,
             "sponge_reference_decay_rate_min": reference_rate_min,
             "sponge_reference_decay_rate_max": reference_rate_max,
@@ -632,11 +627,31 @@ class ShallowWaterSolver:
 
     def _boundary_state_x (self, h: np.ndarray, hu: np.ndarray, hv: np.ndarray, b: np.ndarray, 
                            j: int, side: Literal["left", "right"]) -> tuple[float, float, float, float]:
-        return boundary_state_x(h, hu, hv, b, j, side, self.boundary_x)
+        return boundary_state_x(
+            h,
+            hu,
+            hv,
+            b,
+            j,
+            side,
+            self.boundary_x,
+            g=self.g,
+            dry_tolerance=self.dry_tolerance,
+        )
 
     def _boundary_state_y(self, h: np.ndarray, hu: np.ndarray, hv: np.ndarray, b: np.ndarray,
                           i: int, side: Literal["bottom", "top"]) -> tuple[float, float, float, float]:
-        return boundary_state_y(h, hu, hv, b, i, side, self.boundary_y)
+        return boundary_state_y(
+            h,
+            hu,
+            hv,
+            b,
+            i,
+            side,
+            self.boundary_y,
+            g=self.g,
+            dry_tolerance=self.dry_tolerance,
+        )
 
     def update(self, dt: float) -> None:
         """ advance the solution by one explicit finite-volume step """
@@ -860,6 +875,7 @@ def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
         sponge_width=int(kwargs.get("sponge_width", 20)),
         sponge_min_factor=float(kwargs.get("sponge_min_factor", 0.9)),
         sponge_axes=str(kwargs.get("sponge_axes", "xy")),
+        sponge_profile=str(kwargs.get("sponge_profile", "quadratic")),
         max_velocity=float(kwargs.get("max_velocity", 50.0)),
     )
 
