@@ -37,11 +37,42 @@ def _write_frame(path: Path, values: np.ndarray) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _write_time(path: Path, time_value: float, components: int = 4) -> None:
+def _write_time(
+    path: Path, time_value: float, components: int = 4, grids: int = 1
+) -> None:
     path.write_text(
-        f"{time_value:.17e} time\n{components} meqn\n1 ngrids\n1 naux\n2 ndim\n2 nghost\nascii format\n",
+        f"{time_value:.17e} time\n{components} meqn\n{grids} ngrids\n"
+        "1 naux\n2 ndim\n2 nghost\nascii format\n",
         encoding="utf-8",
     )
+
+
+def _patch_lines(
+    values: np.ndarray,
+    *,
+    grid_number: int,
+    xlower: float,
+    ylower: float,
+    dx: float,
+    dy: float,
+) -> list[str]:
+    _components, nx, ny = values.shape
+    lines = [
+        f"{grid_number} grid_number",
+        "1 AMR_level",
+        f"{nx} mx",
+        f"{ny} my",
+        f"{xlower:.17e} xlow",
+        f"{ylower:.17e} ylow",
+        f"{dx:.17e} dx",
+        f"{dy:.17e} dy",
+        "",
+    ]
+    for j in range(ny):
+        for i in range(nx):
+            lines.append(" ".join(f"{value:.17e}" for value in values[:, i, j]))
+        lines.append("")
+    return lines
 
 
 def test_external_execution_policy_is_frozen_and_complete() -> None:
@@ -125,6 +156,62 @@ def test_output_collection_verifies_initial_state_times_and_crop(tmp_path: Path)
     np.testing.assert_allclose(eta[0], eta0[1:3] + 0.1, rtol=0.0, atol=1.0e-16)
     assert diagnostics["initial_state_max_abs_error"] == 0.0
     assert diagnostics["requested_time_max_abs_error"] == 0.0
+
+
+def test_output_collection_stitches_unordered_level_one_patches(
+    tmp_path: Path,
+) -> None:
+    nx, ny = 4, 2
+    bathymetry = -np.ones((nx, ny), dtype=np.float64)
+    eta0 = np.arange(nx * ny, dtype=np.float64).reshape(nx, ny) * 1.0e-6
+    depth = eta0 - bathymetry
+    arrays = {
+        "bathymetry": bathymetry,
+        "eta0": eta0,
+        "initial_depth": depth,
+        "hu0": np.zeros((nx, ny), dtype=np.float64),
+        "hv0": np.zeros((nx, ny), dtype=np.float64),
+        "requested_times": np.asarray([0.1], dtype=np.float64),
+        "output_crop": np.asarray([0, nx, 0, ny], dtype=np.int64),
+        "domain_bounds": np.asarray([0.0, 1.0, 0.0, 1.0]),
+    }
+    for frame, time_value in enumerate((0.0, 0.1)):
+        values = np.zeros((4, nx, ny), dtype=np.float64)
+        values[0] = depth
+        values[3] = eta0 + time_value
+        if frame == 0:
+            values[3] = eta0
+        lines = [
+            *_patch_lines(
+                values[:, 2:4, :],
+                grid_number=2,
+                xlower=0.5,
+                ylower=0.0,
+                dx=0.25,
+                dy=0.5,
+            ),
+            *_patch_lines(
+                values[:, 0:2, :],
+                grid_number=1,
+                xlower=0.0,
+                ylower=0.0,
+                dx=0.25,
+                dy=0.5,
+            ),
+        ]
+        (tmp_path / f"fort.q{frame:04d}").write_text(
+            "\n".join(lines) + "\n", encoding="utf-8"
+        )
+        _write_time(tmp_path / f"fort.t{frame:04d}", time_value, grids=2)
+    eta, actual_times, diagnostics = _collect_output(
+        run_dir=tmp_path,
+        arrays=arrays,
+        requirement={"eta_shape": [1, nx, ny]},
+        tolerance=5.0e-13,
+    )
+    np.testing.assert_array_equal(actual_times, [0.1])
+    np.testing.assert_allclose(eta[0], eta0 + 0.1, rtol=0.0, atol=1.0e-16)
+    assert diagnostics["initial_state_max_abs_error"] == 0.0
 
 
 def test_adapter_hash_and_boundary_mapping_are_deterministic() -> None:

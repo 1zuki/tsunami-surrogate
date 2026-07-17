@@ -531,45 +531,111 @@ def _write_state_file(
                 )
 
 
-def _parse_ascii_frame(path: Path) -> tuple[dict[str, float | int], np.ndarray]:
+def _parse_ascii_patches(
+    path: Path,
+) -> list[tuple[dict[str, float | int], np.ndarray]]:
     lines = path.read_text(encoding="utf-8").splitlines()
     nonempty = [line for line in lines if line.strip()]
     if len(nonempty) < 9:
         raise RuntimeError(f"Truncated GeoClaw frame: {path}")
-    header_values = [nonempty[index].split()[0] for index in range(8)]
-    header: dict[str, float | int] = {
-        "grid_number": int(header_values[0]),
-        "level": int(header_values[1]),
-        "nx": int(header_values[2]),
-        "ny": int(header_values[3]),
-        "xlower": float(header_values[4]),
-        "ylower": float(header_values[5]),
-        "dx": float(header_values[6]),
-        "dy": float(header_values[7]),
-    }
-    nx = int(header["nx"])
-    ny = int(header["ny"])
-    data_lines = nonempty[8:]
-    if len(data_lines) != nx * ny:
-        raise RuntimeError(
-            f"GeoClaw frame cell count mismatch: {len(data_lines)} != {nx * ny}"
-        )
-    first = data_lines[0].split()
-    component_count = len(first)
-    if component_count not in (4, 6):
-        raise RuntimeError(f"Unexpected GeoClaw output component count: {component_count}")
-    values = np.empty((component_count, nx, ny), dtype=np.float64)
     cursor = 0
-    for j in range(ny):
-        for i in range(nx):
-            tokens = data_lines[cursor].split()
-            cursor += 1
-            if len(tokens) != component_count:
-                raise RuntimeError(f"Inconsistent GeoClaw component count in {path}")
-            values[:, i, j] = [float(token) for token in tokens]
-    if not np.isfinite(values).all():
-        raise RuntimeError(f"Nonfinite GeoClaw frame: {path}")
-    return header, values
+    patches: list[tuple[dict[str, float | int], np.ndarray]] = []
+    while cursor < len(nonempty):
+        if len(nonempty) - cursor < 9:
+            raise RuntimeError(f"Truncated GeoClaw patch header: {path}")
+        header_values = [nonempty[cursor + index].split()[0] for index in range(8)]
+        cursor += 8
+        header: dict[str, float | int] = {
+            "grid_number": int(header_values[0]),
+            "level": int(header_values[1]),
+            "nx": int(header_values[2]),
+            "ny": int(header_values[3]),
+            "xlower": float(header_values[4]),
+            "ylower": float(header_values[5]),
+            "dx": float(header_values[6]),
+            "dy": float(header_values[7]),
+        }
+        nx = int(header["nx"])
+        ny = int(header["ny"])
+        cell_count = nx * ny
+        if nx <= 0 or ny <= 0 or len(nonempty) - cursor < cell_count:
+            raise RuntimeError(f"Invalid GeoClaw patch shape in {path}")
+        component_count = len(nonempty[cursor].split())
+        if component_count not in (4, 6):
+            raise RuntimeError(
+                f"Unexpected GeoClaw output component count: {component_count}"
+            )
+        values = np.empty((component_count, nx, ny), dtype=np.float64)
+        for j in range(ny):
+            for i in range(nx):
+                tokens = nonempty[cursor].split()
+                cursor += 1
+                if len(tokens) != component_count:
+                    raise RuntimeError(
+                        f"Inconsistent GeoClaw component count in {path}"
+                    )
+                values[:, i, j] = [float(token) for token in tokens]
+        if not np.isfinite(values).all():
+            raise RuntimeError(f"Nonfinite GeoClaw frame: {path}")
+        patches.append((header, values))
+    return patches
+
+
+def _parse_ascii_frame(path: Path) -> tuple[dict[str, float | int], np.ndarray]:
+    patches = _parse_ascii_patches(path)
+    if len(patches) != 1:
+        raise RuntimeError(f"Expected one GeoClaw patch in {path}, found {len(patches)}")
+    return patches[0]
+
+
+def _assemble_ascii_frame(
+    path: Path,
+    *,
+    expected_grid_count: int,
+    expected_component_count: int,
+    bounds: np.ndarray,
+    shape: tuple[int, int],
+) -> np.ndarray:
+    patches = _parse_ascii_patches(path)
+    if len(patches) != expected_grid_count:
+        raise RuntimeError(
+            f"GeoClaw patch count mismatch in {path}: "
+            f"{len(patches)} != {expected_grid_count}"
+        )
+    nx, ny = shape
+    dx = (float(bounds[1]) - float(bounds[0])) / nx
+    dy = (float(bounds[3]) - float(bounds[2])) / ny
+    assembled = np.empty((expected_component_count, nx, ny), dtype=np.float64)
+    covered = np.zeros((nx, ny), dtype=bool)
+    scale = max(1.0, abs(float(bounds[0])), abs(float(bounds[2])), dx, dy)
+    tolerance = 5.0e-13 * scale
+    for header, values in patches:
+        if int(header["level"]) != 1:
+            raise RuntimeError(f"GeoClaw output contains non-level-1 patch: {path}")
+        if values.shape[0] != expected_component_count:
+            raise RuntimeError(f"GeoClaw component count mismatch in {path}")
+        if abs(float(header["dx"]) - dx) > tolerance or abs(
+            float(header["dy"]) - dy
+        ) > tolerance:
+            raise RuntimeError(f"GeoClaw patch spacing mismatch in {path}")
+        i_float = (float(header["xlower"]) - float(bounds[0])) / dx
+        j_float = (float(header["ylower"]) - float(bounds[2])) / dy
+        i0 = int(round(i_float))
+        j0 = int(round(j_float))
+        if abs(i_float - i0) > 5.0e-11 or abs(j_float - j0) > 5.0e-11:
+            raise RuntimeError(f"GeoClaw patch is not aligned to the frozen grid: {path}")
+        patch_nx, patch_ny = values.shape[1:]
+        i1 = i0 + patch_nx
+        j1 = j0 + patch_ny
+        if i0 < 0 or j0 < 0 or i1 > nx or j1 > ny:
+            raise RuntimeError(f"GeoClaw patch lies outside the frozen domain: {path}")
+        if np.any(covered[i0:i1, j0:j1]):
+            raise RuntimeError(f"GeoClaw level-1 patches overlap in {path}")
+        assembled[:, i0:i1, j0:j1] = values
+        covered[i0:i1, j0:j1] = True
+    if not np.all(covered):
+        raise RuntimeError(f"GeoClaw level-1 patches do not cover the frozen domain: {path}")
+    return assembled
 
 
 def _read_fort_time(path: Path) -> tuple[float, int, int]:
@@ -587,19 +653,24 @@ def _collect_output(
     tolerance: float,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, float]]:
     requested_times = np.asarray(arrays["requested_times"], dtype=np.float64)
-    frames: list[tuple[float, Path, int]] = []
+    frames: list[tuple[float, Path, int, int]] = []
     for time_path in sorted(run_dir.glob("fort.t[0-9][0-9][0-9][0-9]")):
         time_value, component_count, grid_count = _read_fort_time(time_path)
-        if grid_count != 1:
-            raise RuntimeError("GeoClaw adapter requires exactly one output grid")
         frame_number = int(time_path.name[-4:])
-        frames.append((time_value, run_dir / f"fort.q{frame_number:04d}", component_count))
+        frames.append(
+            (
+                time_value,
+                run_dir / f"fort.q{frame_number:04d}",
+                component_count,
+                grid_count,
+            )
+        )
     if len(frames) != requested_times.size + 1:
         raise RuntimeError(
             f"GeoClaw output count mismatch: {len(frames)} != {requested_times.size + 1}"
         )
     frames.sort(key=lambda row: row[0])
-    initial_time, initial_path, _ = frames[0]
+    initial_time, initial_path, initial_components, initial_grids = frames[0]
     if abs(initial_time) > tolerance:
         raise RuntimeError("GeoClaw initial verification frame is not at t=0")
     bounds = np.asarray(arrays["domain_bounds"], dtype=np.float64)
@@ -607,23 +678,18 @@ def _collect_output(
     dx = (float(bounds[1]) - float(bounds[0])) / nx
     dy = (float(bounds[3]) - float(bounds[2])) / ny
 
-    def parse_and_validate(path: Path) -> np.ndarray:
-        header, values = _parse_ascii_frame(path)
-        expected_header = {
-            "nx": nx,
-            "ny": ny,
-            "xlower": float(bounds[0]),
-            "ylower": float(bounds[2]),
-            "dx": dx,
-            "dy": dy,
-        }
-        for key, expected in expected_header.items():
-            actual = float(header[key])
-            if abs(actual - float(expected)) > 5.0e-13 * max(1.0, abs(float(expected))):
-                raise RuntimeError(f"GeoClaw frame {key} mismatch: {actual} != {expected}")
-        return values
+    def parse_and_validate(
+        path: Path, component_count: int, grid_count: int
+    ) -> np.ndarray:
+        return _assemble_ascii_frame(
+            path,
+            expected_grid_count=grid_count,
+            expected_component_count=component_count,
+            bounds=bounds,
+            shape=(nx, ny),
+        )
 
-    initial = parse_and_validate(initial_path)
+    initial = parse_and_validate(initial_path, initial_components, initial_grids)
     initial_expected = np.stack(
         [
             np.asarray(arrays["initial_depth"], dtype=np.float64),
@@ -644,7 +710,10 @@ def _collect_output(
     if time_error > 5.0e-14:
         raise RuntimeError(f"GeoClaw requested-time error too large: {time_error:.3e}")
     eta_full = np.stack(
-        [parse_and_validate(path)[-1] for _time, path, _components in frames[1:]],
+        [
+            parse_and_validate(path, components, grids)[-1]
+            for _time, path, components, grids in frames[1:]
+        ],
         axis=0,
     )
     crop = [int(value) for value in np.asarray(arrays["output_crop"]).tolist()]
