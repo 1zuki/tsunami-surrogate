@@ -498,11 +498,31 @@ def _load_case_input(path: Path) -> dict[str, np.ndarray]:
             raise RuntimeError(f"Frozen GeoClaw input {key} shape mismatch")
     if len(shape) != 2 or not all(int(value) > 0 for value in shape):
         raise RuntimeError("Frozen GeoClaw input must be a nonempty 2-D grid")
-    expected_eta = arrays["initial_depth"] + arrays["bathymetry"]
-    if not np.allclose(expected_eta, arrays["eta0"], rtol=0.0, atol=5.0e-15):
-        raise RuntimeError("Frozen GeoClaw depth/bathymetry/eta identity mismatch")
+    natural_eta0 = np.asarray(arrays["initial_depth"], dtype=np.float64) + np.asarray(
+        arrays["bathymetry"], dtype=np.float64
+    )
+    nominal_eta0 = np.asarray(arrays["eta0"], dtype=np.float64)
+    nominal_eta_difference = float(np.max(np.abs(natural_eta0 - nominal_eta0)))
+    consistency_scale = max(
+        1.0,
+        float(np.max(np.abs(arrays["initial_depth"]))),
+        float(np.max(np.abs(arrays["bathymetry"]))),
+    )
+    consistency_floor = 4.0 * float(np.finfo(np.float32).eps) * consistency_scale
+    if nominal_eta_difference > consistency_floor:
+        raise RuntimeError(
+            "Frozen GeoClaw nominal eta is inconsistent with the natural state: "
+            f"{nominal_eta_difference:.3e} > {consistency_floor:.3e}"
+        )
     if not all(np.isfinite(arrays[key]).all() for key in required - {"case_hash"}):
         raise RuntimeError("Frozen GeoClaw input contains nonfinite values")
+    arrays["natural_eta0"] = natural_eta0
+    arrays["nominal_eta_max_abs_difference"] = np.asarray(
+        nominal_eta_difference, dtype=np.float64
+    )
+    arrays["nominal_eta_consistency_floor"] = np.asarray(
+        consistency_floor, dtype=np.float64
+    )
     return arrays
 
 
@@ -690,12 +710,39 @@ def _collect_output(
         )
 
     initial = parse_and_validate(initial_path, initial_components, initial_grids)
+    natural_eta0 = np.asarray(
+        arrays.get(
+            "natural_eta0",
+            np.asarray(arrays["initial_depth"], dtype=np.float64)
+            + np.asarray(arrays["bathymetry"], dtype=np.float64),
+        ),
+        dtype=np.float64,
+    )
+    nominal_eta_difference = float(
+        arrays.get(
+            "nominal_eta_max_abs_difference",
+            np.max(
+                np.abs(natural_eta0 - np.asarray(arrays["eta0"], dtype=np.float64))
+            ),
+        )
+    )
+    consistency_scale = max(
+        1.0,
+        float(np.max(np.abs(arrays["initial_depth"]))),
+        float(np.max(np.abs(arrays["bathymetry"]))),
+    )
+    nominal_eta_floor = float(
+        arrays.get(
+            "nominal_eta_consistency_floor",
+            4.0 * float(np.finfo(np.float32).eps) * consistency_scale,
+        )
+    )
     initial_expected = np.stack(
         [
             np.asarray(arrays["initial_depth"], dtype=np.float64),
             np.asarray(arrays["hu0"], dtype=np.float64),
             np.asarray(arrays["hv0"], dtype=np.float64),
-            np.asarray(arrays["eta0"], dtype=np.float64),
+            natural_eta0,
         ],
         axis=0,
     )
@@ -724,6 +771,8 @@ def _collect_output(
     return eta, actual_times, {
         "initial_state_max_abs_error": initial_max_error,
         "requested_time_max_abs_error": time_error,
+        "nominal_eta_max_abs_difference": nominal_eta_difference,
+        "nominal_eta_consistency_floor": nominal_eta_floor,
     }
 
 
@@ -849,6 +898,12 @@ def _run_task(
             ),
             requested_time_max_abs_error=np.asarray(
                 diagnostics["requested_time_max_abs_error"], dtype=np.float64
+            ),
+            nominal_eta_max_abs_difference=np.asarray(
+                diagnostics["nominal_eta_max_abs_difference"], dtype=np.float64
+            ),
+            nominal_eta_consistency_floor=np.asarray(
+                diagnostics["nominal_eta_consistency_floor"], dtype=np.float64
             ),
         )
     os.replace(temporary, output_path)

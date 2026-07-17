@@ -156,6 +156,10 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         "output_format": "ascii",
         "output_t0_for_initial_state_verification": True,
         "initial_state_mapping": "exact_cell_centered_custom_qinit_and_setaux",
+        "initial_free_surface_definition": (
+            "natural_depth_plus_bathymetry_float64"
+        ),
+        "nominal_eta_consistency_floor": "four_float32_eps_scaled",
         "initial_state_abs_tolerance": 5.0e-13,
     }
     for key, expected in expected_execution.items():

@@ -10,6 +10,7 @@ import yaml
 from src.evaluation.geoclaw_adapter import (
     _adapter_hash,
     _collect_output,
+    _load_case_input,
     _parse_ascii_frame,
     _task_boundary,
     _write_state_file,
@@ -110,6 +111,47 @@ def test_state_file_preserves_fortran_cell_order_and_boundary_flags(tmp_path: Pa
     assert [float(line.split()[0]) for line in lines[4:]] == [-1.0, -3.0, -2.0, -4.0]
 
 
+def test_case_loader_separates_nominal_float32_eta_from_natural_state(
+    tmp_path: Path,
+) -> None:
+    shape = (2, 2)
+    bathymetry = -np.ones(shape, dtype=np.float64)
+    depth = np.ones(shape, dtype=np.float64)
+    nominal_eta = np.full(shape, 2.0e-7, dtype=np.float64)
+    path = tmp_path / "input.npz"
+    np.savez_compressed(
+        path,
+        bathymetry=bathymetry,
+        eta0=nominal_eta,
+        initial_depth=depth,
+        hu0=np.zeros(shape, dtype=np.float64),
+        hv0=np.zeros(shape, dtype=np.float64),
+        requested_times=np.asarray([0.1], dtype=np.float64),
+        case_hash=np.asarray("case"),
+        output_crop=np.asarray([0, 2, 0, 2], dtype=np.int64),
+        domain_bounds=np.asarray([0.0, 1.0, 0.0, 1.0], dtype=np.float64),
+    )
+    arrays = _load_case_input(path)
+    np.testing.assert_array_equal(arrays["natural_eta0"], np.zeros(shape))
+    assert float(arrays["nominal_eta_max_abs_difference"]) == 2.0e-7
+    assert float(arrays["nominal_eta_consistency_floor"]) > 2.0e-7
+
+    np.savez_compressed(
+        path,
+        bathymetry=bathymetry,
+        eta0=np.full(shape, 1.0e-4, dtype=np.float64),
+        initial_depth=depth,
+        hu0=np.zeros(shape, dtype=np.float64),
+        hv0=np.zeros(shape, dtype=np.float64),
+        requested_times=np.asarray([0.1], dtype=np.float64),
+        case_hash=np.asarray("case"),
+        output_crop=np.asarray([0, 2, 0, 2], dtype=np.int64),
+        domain_bounds=np.asarray([0.0, 1.0, 0.0, 1.0], dtype=np.float64),
+    )
+    with pytest.raises(RuntimeError, match="nominal eta is inconsistent"):
+        _load_case_input(path)
+
+
 def test_ascii_frame_parser_restores_x_y_orientation(tmp_path: Path) -> None:
     values = np.zeros((4, 3, 2), dtype=np.float64)
     for i in range(3):
@@ -154,7 +196,7 @@ def test_output_collection_verifies_initial_state_times_and_crop(tmp_path: Path)
     )
     np.testing.assert_array_equal(actual_times, [0.1, 0.2])
     np.testing.assert_allclose(eta[0], eta0[1:3] + 0.1, rtol=0.0, atol=1.0e-16)
-    assert diagnostics["initial_state_max_abs_error"] == 0.0
+    assert diagnostics["initial_state_max_abs_error"] <= 2.0e-16
     assert diagnostics["requested_time_max_abs_error"] == 0.0
 
 
@@ -211,7 +253,7 @@ def test_output_collection_stitches_unordered_level_one_patches(
     )
     np.testing.assert_array_equal(actual_times, [0.1])
     np.testing.assert_allclose(eta[0], eta0 + 0.1, rtol=0.0, atol=1.0e-16)
-    assert diagnostics["initial_state_max_abs_error"] == 0.0
+    assert diagnostics["initial_state_max_abs_error"] <= 2.0e-16
 
 
 def test_adapter_hash_and_boundary_mapping_are_deterministic() -> None:
