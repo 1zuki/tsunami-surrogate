@@ -1,0 +1,103 @@
+schema_id: tsunami-surrogate.common-time-v2.finite-horizon-boundary-study.v5
+status: diagnostic_unfrozen_non_decisional
+authoritative_inventory: artifacts/common_time_v2/h0/830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b/h0_input_inventory.jsonl
+
+production:
+  horizon: 0.175
+  requested_time_start: 0.0035
+  requested_time_step: 0.0035
+  requested_time_count: 50
+  grid: 64
+  gravity: 9.81
+  cfl:
+    swe_hydrostatic: 0.45
+    swe_muscl_hr: 0.45
+    boussinesq: 0.35
+
+static_audit:
+  source_energy_tail: 1.0e-6
+  scientific_interior_band_cells: 12
+  worst_risk_training_cases_per_source_family: 1
+  candidate_sponges:
+    no_sponge: {enabled: false, axes: xy, width: 0, minimum_factor: 1.0, profile: quadratic}
+    current_elapsed_sponge: {enabled: true, axes: xy, width: 20, minimum_factor: 0.9, profile: quadratic}
+    provisional_cosine_sponge: {enabled: true, axes: xy, width: 12, minimum_factor: 0.8, profile: cosine}
+    fixed_delayed_sponge: {enabled: true, axes: xy, width: 20, minimum_factor: 0.9, profile: quadratic, start_time: 0.10}
+    fixed_source_exclusion_sponge: {enabled: true, axes: xy, width: 20, minimum_factor: 0.9, profile: quadratic, exclude_global_source_union: true}
+
+# These policy maps are frozen before numerical outcomes. The larger-domain
+# crop is evaluated separately from the five finite-domain candidates because
+# it is the reference construction itself rather than a boundary treatment.
+candidate_policies:
+  no_sponge_boussinesq_only:
+    swe_hydrostatic: current_elapsed_sponge
+    swe_muscl_hr: current_elapsed_sponge
+    boussinesq: no_sponge
+  no_sponge_all:
+    swe_hydrostatic: no_sponge
+    swe_muscl_hr: no_sponge
+    boussinesq: no_sponge
+  solver_specific_provisional:
+    swe_hydrostatic: provisional_cosine_sponge
+    swe_muscl_hr: provisional_cosine_sponge
+    boussinesq: no_sponge
+  fixed_delayed_all:
+    swe_hydrostatic: fixed_delayed_sponge
+    swe_muscl_hr: fixed_delayed_sponge
+    boussinesq: fixed_delayed_sponge
+  fixed_source_exclusion_all:
+    swe_hydrostatic: fixed_source_exclusion_sponge
+    swe_muscl_hr: fixed_source_exclusion_sponge
+    boussinesq: fixed_source_exclusion_sponge
+  larger_domain_central_crop: padded_reference
+
+large_domain_reference:
+  boundary: open
+  # Match the authoritative edge value in the first exterior cell, then use a
+  # fixed-width cosine taper to rest. This removes the v4 zero-extension jump
+  # without pretending that the unavailable exterior generator state is known.
+  perturbation_extension: edge_cosine_taper
+  perturbation_taper_cells: 16
+  bathymetry_extension: edge
+  # The authoritative cache stores raster fields, not continuous generator
+  # parameters. The padded reference therefore preserves the common crop
+  # exactly and makes an explicit exterior assumption; it cannot itself select
+  # a production policy.
+  extension_status: explicit_edge_cosine_taper_source_and_edge_bathymetry_assumption
+  production_policy_eligible: false
+  # The shortest possible outer-boundary influence path is two padding widths
+  # minus the nonzero perturbation-extension width.
+  boundary_influence_safety_factor: 1.25
+  stencil_safety_cells: 4
+  # Use the largest reference for candidate comparisons only when the final
+  # adjacent difference is small and the norm controls are converging.
+  boussinesq_padding_control_offsets: [0, 8, 16]
+  # Preserve the production CG work budget per axis cell for padded references.
+  # The strict residual tolerance and production/candidate cap remain unchanged.
+  boussinesq_reference_cg_base_max_iterations: 500
+
+# Proposed before selected-case solver outcomes. These are contract-design
+# limits, not frozen Level A gates. The 1% relative ceiling is tied to the
+# intended resolved field scale; the absolute floor is below float32 dataset
+# publication resolution but well above accumulated float64 roundoff.
+proposed_future_thresholds:
+  shared_crop_relative_l2: 0.01
+  interior_relative_l2: 0.005
+  amplitude_relative_error: 0.01
+  phase_correlation_loss: 0.005
+  absolute_rms_floor: 1.0e-7
+  float64_roundoff_safety_factor: 64.0
+  reference_padding_control_fraction: 0.25
+
+execution:
+  workers: 8
+  max_in_flight: 8
+  progress_every: 1
+  process_start_method: spawn
+  thread_environment:
+    OMP_NUM_THREADS: "1"
+    OPENBLAS_NUM_THREADS: "1"
+    MKL_NUM_THREADS: "1"
+    NUMEXPR_NUM_THREADS: "1"
+    BLIS_NUM_THREADS: "1"
+    VECLIB_MAXIMUM_THREADS: "1"
