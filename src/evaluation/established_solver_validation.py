@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import csv
 import json
 import math
+import multiprocessing
 import os
 from pathlib import Path
 import shutil
-from typing import Any, Mapping, Sequence
+import time
+from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 import yaml
@@ -17,16 +20,21 @@ from src.data_gen.common_time_v2 import (
     sha256_file,
     stable_hash_payload,
 )
+from src.data_gen.simulate_dataset import (
+    BufferedDomainConfig,
+    _prepare_buffered_domain,
+)
 from src.evaluation.common_time_v2_level_a import (
+    execute_level_a,
     _load_canary_arrays,
     _trajectory_eta,
     validate_checksums,
 )
 
 
-SCHEMA_ID = "tsunami-surrogate.minimum-established-solver-validation.v1"
+SCHEMA_ID = "tsunami-surrogate.minimum-established-solver-validation.v2"
 EXTERNAL_RESULT_SCHEMA_ID = (
-    "tsunami-surrogate.minimum-established-solver-external-result.v1"
+    "tsunami-surrogate.minimum-established-solver-external-result.v2"
 )
 SOLVERS = ("swe_hydrostatic", "swe_muscl_hr", "boussinesq")
 COMPARATORS = ("geoclaw_swe", "geoclaw_sgn")
@@ -102,6 +110,28 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         raise ValueError("The minimum package must pin Clawpack 5.14.0")
     if not bool(config["prerequisites"].get("require_level_a_pass")):
         raise ValueError("The minimum package must require a passing Level A")
+    prerequisites = config["prerequisites"]
+    if bool(prerequisites.get("require_unchanged_code_state")):
+        raise ValueError(
+            "The reviewed comparator policy must use scoped post-Level-A provenance"
+        )
+    if not bool(prerequisites.get("require_completed_level_a_replay")):
+        raise ValueError("The minimum package must replay-validate completed Level A")
+    if prerequisites.get("code_state_policy") != (
+        "freeze_current_bundle_code_and_record_scoped_post_level_a_changes"
+    ):
+        raise ValueError("Established-solver code-state policy mismatch")
+    if set(prerequisites.get("allowed_post_level_a_scopes", [])) != {
+        "completed_level_a_raw_csv_newline_validator",
+        "established_solver_bundle_preparation_and_evaluation",
+    }:
+        raise ValueError("Established-solver allowed post-Level-A scopes changed")
+    if set(prerequisites.get("forbidden_post_level_a_scopes", [])) != {
+        "solver_numerics",
+        "dataset_generation_semantics",
+        "level_a_scientific_tasks_thresholds_or_metrics",
+    }:
+        raise ValueError("Established-solver forbidden post-Level-A scopes changed")
     _requested_times(config)
 
     case_ids: set[str] = set()
@@ -119,6 +149,27 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         for pairing in case.get("pairings", []):
             if len(pairing) != 2 or pairing[0] not in SOLVERS or pairing[1] not in COMPARATORS:
                 raise ValueError(f"Invalid pairing for case {case_id}: {pairing}")
+        if str(case.get("generator")) == "level_a_canaries":
+            buffered = case.get("buffered_domain")
+            if not isinstance(buffered, Mapping):
+                raise ValueError("Production canaries require buffered_domain")
+            core = int(buffered.get("core_grid", 0))
+            inhouse = int(buffered.get("inhouse_total_grid", 0))
+            external = int(buffered.get("external_total_grid", 0))
+            if core != 64 or inhouse != 96 or external <= inhouse:
+                raise ValueError(
+                    "Production comparison must freeze 64 crop, 96 in-house, "
+                    "and a larger external grid"
+                )
+            if any((grid - core) % 2 for grid in (inhouse, external)):
+                raise ValueError("Buffered comparison grids must have symmetric integer padding")
+            sponge = buffered.get("inhouse_sponge")
+            if not isinstance(sponge, Mapping) or not bool(sponge.get("enabled")):
+                raise ValueError("Production comparison must use the selected in-house sponge")
+            if int(sponge.get("width", 0)) > (inhouse - core) // 2:
+                raise ValueError("Production sponge must remain outside the crop")
+            if float(buffered.get("return_time_safety_factor", 0.0)) < 1.0:
+                raise ValueError("External reference requires a return-time safety factor")
 
     required_thresholds = {
         "trajectory_relative_l2",
@@ -158,6 +209,14 @@ def _verify_level_a(
         )
     if decision.get("contract_hash") != contract.get("contract_hash"):
         raise RuntimeError("Level A decision/contract identity mismatch")
+    worker_policy = contract.get("worker_policy", {})
+    execute_level_a(
+        repo_root=repo_root,
+        contract_root=level_a_root,
+        workers=int(worker_policy["requested_workers"]),
+        max_in_flight=worker_policy["requested_max_in_flight"],
+        resume=True,
+    )
     current_code = code_state(repo_root)
     return contract, decision, current_code
 
@@ -252,8 +311,10 @@ def _case_record(
 
 def _build_cases(
     config: Mapping[str, Any], level_a_contract: Mapping[str, Any]
-) -> list[tuple[dict[str, Any], dict[str, np.ndarray]]]:
-    cases: list[tuple[dict[str, Any], dict[str, np.ndarray]]] = []
+) -> list[tuple[dict[str, Any], dict[str, np.ndarray], dict[str, np.ndarray]]]:
+    cases: list[
+        tuple[dict[str, Any], dict[str, np.ndarray], dict[str, np.ndarray]]
+    ] = []
     fractions = config["gauges"]["fractional_cell_locations"]
     for spec in config["cases"]:
         generator = str(spec["generator"])
@@ -272,7 +333,7 @@ def _build_cases(
                     gauges=_gauge_indices(nx, ny, fractions),
                     source={"generator": generator, "parameters": dict(spec)},
                 )
-                cases.append((record, arrays))
+                cases.append((record, arrays, arrays))
             continue
 
         canaries = list(level_a_contract["canaries"])
@@ -280,36 +341,130 @@ def _build_cases(
         if len(canaries) < count:
             raise RuntimeError("Passing Level A contract has too few frozen canaries")
         for canary in canaries[:count]:
-            bathymetry, _source, _strength_array, _strength, loaded = (
+            bathymetry, source, _strength_array, strength, loaded = (
                 _load_canary_arrays(canary)
             )
             nx, ny = bathymetry.shape
-            arrays = {
-                "bathymetry": np.asarray(loaded["bathymetry"], dtype=np.float64),
-                "eta0": np.asarray(loaded["eta0"], dtype=np.float64),
-                "initial_depth": np.asarray(
-                    loaded["initial_depth"], dtype=np.float64
-                ),
-                "hu0": np.zeros((nx, ny), dtype=np.float64),
-                "hv0": np.zeros((nx, ny), dtype=np.float64),
-                "eta_t0": np.zeros((nx, ny), dtype=np.float64),
+            buffered = spec["buffered_domain"]
+            core = int(buffered["core_grid"])
+            if (nx, ny) != (core, core):
+                raise RuntimeError("Production canary does not match the frozen crop")
+
+            def buffered_arrays(
+                total_grid: int,
+            ) -> tuple[dict[str, np.ndarray], list[int]]:
+                prepared = _prepare_buffered_domain(
+                    bathymetry,
+                    source,
+                    strength,
+                    0.0,
+                    BufferedDomainConfig(
+                        enabled=True,
+                        buffer_cells=(total_grid - core) // 2,
+                        source_taper_cells=int(buffered["source_taper_cells"]),
+                        bathymetry_extension=str(buffered["bathymetry_extension"]),
+                        output_crop=str(buffered["output_crop"]),
+                    ),
+                )
+                shape = prepared["solver_bathymetry"].shape
+                zeros = np.zeros(shape, dtype=np.float64)
+                crop = prepared["crop"]
+                return (
+                    {
+                        "bathymetry": np.asarray(
+                            prepared["solver_bathymetry"], dtype=np.float64
+                        ),
+                        "eta0": np.asarray(
+                            prepared["solver_eta0"], dtype=np.float64
+                        ),
+                        "initial_depth": np.asarray(
+                            prepared["solver_h0"], dtype=np.float64
+                        ),
+                        "hu0": zeros,
+                        "hv0": zeros,
+                        "eta_t0": zeros,
+                    },
+                    [crop[0].start, crop[0].stop, crop[1].start, crop[1].stop],
+                )
+
+            inhouse_total = int(buffered["inhouse_total_grid"])
+            external_total = int(buffered["external_total_grid"])
+            inhouse_arrays, inhouse_crop = buffered_arrays(inhouse_total)
+            external_arrays, external_crop = buffered_arrays(external_total)
+            if (
+                inhouse_crop[1] - inhouse_crop[0] != core
+                or external_crop[1] - external_crop[0] != core
+            ):
+                raise RuntimeError("Buffered production crop shape mismatch")
+            maximum_speed = math.sqrt(
+                float(config["inhouse"]["gravity"])
+                * float(np.max(external_arrays["initial_depth"]))
+            )
+            external_buffer = (external_total - core) // 2
+            round_trip_bound = 2.0 * external_buffer * (1.0 / core) / maximum_speed
+            required_bound = float(config["requested_times"]["horizon"]) * float(
+                buffered["return_time_safety_factor"]
+            )
+            if round_trip_bound <= required_bound:
+                raise RuntimeError(
+                    f"External production grid is not return-safe for {canary['qualified_id']}: "
+                    f"{round_trip_bound} <= {required_bound}"
+                )
+            identity_arrays = {
+                **{f"inhouse_{name}": value for name, value in inhouse_arrays.items()},
+                **{f"external_{name}": value for name, value in external_arrays.items()},
             }
             record = _case_record(
                 case_id=f"{spec['case_id']}_{str(canary['qualified_id']).replace(':', '_')}",
                 category=str(spec["category"]),
-                nx=nx,
-                ny=ny,
+                nx=core,
+                ny=core,
                 boundary=str(spec["boundary"]),
-                arrays=arrays,
+                arrays=identity_arrays,
                 pairings=spec["pairings"],
-                gauges=_gauge_indices(nx, ny, fractions),
+                gauges=_gauge_indices(core, core, fractions),
                 source={
                     "generator": generator,
                     "qualified_id": canary["qualified_id"],
                     "input_fingerprint": canary["input_fingerprint"],
                 },
             )
-            cases.append((record, arrays))
+            record["inhouse_domain"] = {
+                "shape": [inhouse_total, inhouse_total],
+                "dx": 1.0 / core,
+                "bounds": [
+                    -((inhouse_total - core) // 2) / core,
+                    1.0 + ((inhouse_total - core) // 2) / core,
+                    -((inhouse_total - core) // 2) / core,
+                    1.0 + ((inhouse_total - core) // 2) / core,
+                ],
+                "output_crop": inhouse_crop,
+                "boundary": str(spec["boundary"]),
+                "sponge": _json_safe(buffered["inhouse_sponge"]),
+            }
+            record["external_domain"] = {
+                "shape": [external_total, external_total],
+                "dx": 1.0 / core,
+                "bounds": [
+                    -external_buffer / core,
+                    1.0 + external_buffer / core,
+                    -external_buffer / core,
+                    1.0 + external_buffer / core,
+                ],
+                "output_crop": external_crop,
+                "boundary": str(buffered["external_boundary"]),
+                "sponge": str(buffered["external_sponge"]),
+                "round_trip_time_bound": round_trip_bound,
+                "required_round_trip_time_bound": required_bound,
+            }
+            case_identity = dict(record)
+            case_identity.pop("case_hash", None)
+            record["case_hash"] = stable_hash_payload(
+                artifact_kind="minimum-established-solver-case",
+                payload=case_identity,
+                schema_id=SCHEMA_ID,
+            )
+            cases.append((record, inhouse_arrays, external_arrays))
     return cases
 
 
@@ -319,6 +474,33 @@ def _run_inhouse(
     arrays: Mapping[str, np.ndarray],
     solver_name: str,
 ) -> np.ndarray:
+    domain = record.get("inhouse_domain")
+    if isinstance(domain, Mapping):
+        sponge = domain["sponge"]
+        eta, _dt, _diagnostics, _solver = _trajectory_eta(
+            solver_name,
+            nx=int(domain["shape"][0]),
+            ny=int(domain["shape"][1]),
+            cfl=float(config["inhouse"]["cfl"][solver_name]),
+            boundary=str(domain["boundary"]),
+            use_sponge=bool(sponge["enabled"]),
+            sponge_mode=str(sponge["time_mode"]),
+            filter_mode="disabled",
+            bathymetry=np.asarray(arrays["bathymetry"], dtype=np.float64),
+            eta0=np.asarray(arrays["eta0"], dtype=np.float64),
+            h0=np.asarray(arrays["initial_depth"], dtype=np.float64),
+            hu0=np.asarray(arrays["hu0"], dtype=np.float64),
+            hv0=np.asarray(arrays["hv0"], dtype=np.float64),
+            eta_t0=np.asarray(arrays["eta_t0"], dtype=np.float64),
+            sponge_axes=str(sponge["axes"]),
+            sponge_width=int(sponge["width"]),
+            sponge_min_factor=float(sponge["min_factor"]),
+            sponge_profile=str(sponge["profile"]),
+            dx=float(domain["dx"]),
+            dy=float(domain["dx"]),
+        )
+        i0, i1, j0, j1 = (int(value) for value in domain["output_crop"])
+        return np.asarray(eta[:, i0:i1, j0:j1], dtype=np.float64)
     eta, _dt, _diagnostics, _solver = _trajectory_eta(
         solver_name,
         nx=int(record["nx"]),
@@ -336,6 +518,17 @@ def _run_inhouse(
     return np.asarray(eta, dtype=np.float64)
 
 
+def _run_inhouse_worker(
+    args: tuple[
+        Mapping[str, Any], Mapping[str, Any], Mapping[str, np.ndarray], str
+    ]
+) -> tuple[np.ndarray, float]:
+    config, record, arrays, solver_name = args
+    started = time.monotonic()
+    eta = _run_inhouse(config, record, arrays, solver_name)
+    return eta, time.monotonic() - started
+
+
 def _external_result_relative_path(case_id: str, comparator_id: str) -> str:
     return f"{case_id}/{comparator_id}.npz"
 
@@ -346,10 +539,14 @@ def prepare_minimum_established_solver_validation(
     config_path: Path,
     level_a_root: Path,
     output_root: Path | None = None,
+    workers: int = 1,
+    progress: Callable[[str], None] | None = None,
 ) -> Path:
     repo_root = repo_root.resolve()
     config_path = config_path.resolve()
     level_a_root = level_a_root.resolve()
+    if workers <= 0:
+        raise ValueError("workers must be positive")
     config = _load_config(config_path)
     level_a_contract, level_a_decision, current_code = _verify_level_a(
         repo_root, level_a_root
@@ -361,6 +558,10 @@ def prepare_minimum_established_solver_validation(
         raise RuntimeError(
             "Code state changed after the passing Level A; freeze a new Level A first"
         )
+    level_a_code_state = level_a_contract["code_state"]
+    code_state_matches_level_a = (
+        current_code["code_state_hash"] == level_a_code_state["code_state_hash"]
+    )
 
     times = _requested_times(config)
     if not np.array_equal(
@@ -368,7 +569,7 @@ def prepare_minimum_established_solver_validation(
     ):
         raise RuntimeError("Level B requested times differ from passing Level A")
     cases = _build_cases(config, level_a_contract)
-    case_records = [record for record, _arrays in cases]
+    case_records = [record for record, _inhouse, _external in cases]
     external_requirements: dict[tuple[str, str], dict[str, Any]] = {}
     pairings: list[dict[str, Any]] = []
     for record in case_records:
@@ -390,6 +591,21 @@ def prepare_minimum_established_solver_validation(
                     "eta",
                 ],
                 "eta_shape": [int(times.size), int(record["nx"]), int(record["ny"])],
+                "computational_shape": list(
+                    record.get("external_domain", {}).get(
+                        "shape", [int(record["nx"]), int(record["ny"])]
+                    )
+                ),
+                "output_crop": list(
+                    record.get("external_domain", {}).get(
+                        "output_crop", [0, int(record["nx"]), 0, int(record["ny"])]
+                    )
+                ),
+                "computational_domain_bounds": list(
+                    record.get("external_domain", {}).get(
+                        "bounds", record["domain"]
+                    )
+                ),
             }
             pairings.append(
                 {
@@ -413,6 +629,10 @@ def prepare_minimum_established_solver_validation(
             "contract_hash": level_a_contract["contract_hash"],
             "scientific_digest": level_a_decision["scientific_digest"],
             "decision": level_a_decision["decision"],
+            "completed_replay_validated": True,
+            "frozen_code_state_hash": level_a_code_state["code_state_hash"],
+            "bundle_code_state_matches_level_a": code_state_matches_level_a,
+            "code_state_policy": _json_safe(config["prerequisites"]),
         },
         "requested_times": times.tolist(),
         "cases": case_records,
@@ -444,28 +664,121 @@ def prepare_minimum_established_solver_validation(
                 "results": list(external_requirements.values()),
             },
         )
-        for record, arrays in cases:
+        run_specs: list[
+            tuple[
+                Mapping[str, Any],
+                Mapping[str, Any],
+                Mapping[str, np.ndarray],
+                str,
+                Path,
+            ]
+        ] = []
+        for record, inhouse_arrays, external_arrays in cases:
             case_dir = staging / "cases" / str(record["case_id"])
             case_dir.mkdir(parents=True, exist_ok=False)
             np.savez_compressed(
                 case_dir / "input.npz",
-                **arrays,
+                **external_arrays,
                 requested_times=times,
                 gauge_indices=np.asarray(record["gauges"], dtype=np.int64),
                 case_hash=np.asarray(record["case_hash"]),
+                output_crop=np.asarray(
+                    record.get("external_domain", {}).get(
+                        "output_crop", [0, int(record["nx"]), 0, int(record["ny"])]
+                    ),
+                    dtype=np.int64,
+                ),
+                domain_bounds=np.asarray(
+                    record.get("external_domain", {}).get(
+                        "bounds", record["domain"]
+                    ),
+                    dtype=np.float64,
+                ),
             )
+            if "inhouse_domain" in record:
+                np.savez_compressed(
+                    case_dir / "inhouse_input.npz",
+                    **inhouse_arrays,
+                    requested_times=times,
+                    output_crop=np.asarray(
+                        record["inhouse_domain"]["output_crop"], dtype=np.int64
+                    ),
+                    domain_bounds=np.asarray(
+                        record["inhouse_domain"]["bounds"], dtype=np.float64
+                    ),
+                    case_hash=np.asarray(record["case_hash"]),
+                )
             inhouse_solvers = sorted(
                 {str(pairing[0]) for pairing in record["pairings"]}
             )
             for solver_name in inhouse_solvers:
-                eta = _run_inhouse(config, record, arrays, solver_name)
-                np.savez_compressed(
-                    case_dir / f"inhouse_{solver_name}.npz",
-                    eta=eta,
-                    times=times,
-                    case_hash=np.asarray(record["case_hash"]),
-                    solver_id=np.asarray(solver_name),
+                run_specs.append(
+                    (config, record, inhouse_arrays, solver_name, case_dir)
                 )
+
+        run_total = len(run_specs)
+        run_completed = 0
+
+        def write_inhouse(
+            record: Mapping[str, Any],
+            solver_name: str,
+            case_dir: Path,
+            eta: np.ndarray,
+            runtime_s: float,
+        ) -> None:
+            nonlocal run_completed
+            np.savez_compressed(
+                case_dir / f"inhouse_{solver_name}.npz",
+                eta=eta,
+                times=times,
+                case_hash=np.asarray(record["case_hash"]),
+                solver_id=np.asarray(solver_name),
+            )
+            run_completed += 1
+            if progress is not None:
+                progress(
+                    f"[level-b-prepare] done {run_completed}/{run_total} "
+                    f"{record['case_id']} {solver_name} runtime={runtime_s:.1f}s"
+                )
+
+        if workers == 1:
+            for task_index, (task_config, record, arrays, solver_name, case_dir) in enumerate(
+                run_specs, start=1
+            ):
+                if progress is not None:
+                    progress(
+                        f"[level-b-prepare] start {task_index}/{run_total} "
+                        f"{record['case_id']} {solver_name}"
+                    )
+                eta, runtime_s = _run_inhouse_worker(
+                    (task_config, record, arrays, solver_name)
+                )
+                write_inhouse(record, solver_name, case_dir, eta, runtime_s)
+        else:
+            context = multiprocessing.get_context("spawn")
+            with ProcessPoolExecutor(
+                max_workers=min(workers, max(1, run_total)), mp_context=context
+            ) as executor:
+                futures = {}
+                for task_index, (task_config, record, arrays, solver_name, case_dir) in enumerate(
+                    run_specs, start=1
+                ):
+                    if progress is not None:
+                        progress(
+                            f"[level-b-prepare] queued {task_index}/{run_total} "
+                            f"{record['case_id']} {solver_name}"
+                        )
+                    future = executor.submit(
+                        _run_inhouse_worker,
+                        (task_config, record, arrays, solver_name),
+                    )
+                    futures[future] = (record, solver_name, case_dir)
+                for future in as_completed(futures):
+                    record, solver_name, case_dir = futures[future]
+                    eta, runtime_s = future.result()
+                    write_inhouse(
+                        record, solver_name, case_dir, eta, runtime_s
+                    )
         (staging / "README.md").write_text(
             "# Frozen minimum established-solver validation bundle\n\n"
             f"- Bundle hash: `{bundle_hash}`\n"
@@ -641,6 +954,7 @@ def evaluate_minimum_established_solver_validation(
     bundle_root: Path,
     external_root: Path,
     output_root: Path,
+    progress: Callable[[str], None] | None = None,
 ) -> Path:
     bundle_root = bundle_root.resolve()
     external_root = external_root.resolve()
@@ -667,7 +981,8 @@ def evaluate_minimum_established_solver_validation(
     }
     external_cache: dict[tuple[str, str], tuple[np.ndarray, dict[str, str]]] = {}
     rows: list[dict[str, Any]] = []
-    for pairing in frozen["pairings"]:
+    total_pairings = len(frozen["pairings"])
+    for pairing_index, pairing in enumerate(frozen["pairings"], start=1):
         case_id = str(pairing["case_id"])
         comparator_id = str(pairing["external_comparator"])
         key = (case_id, comparator_id)
@@ -718,6 +1033,12 @@ def evaluate_minimum_established_solver_validation(
                 "passed": _metrics_pass(metrics, thresholds),
             }
         )
+        if progress is not None:
+            progress(
+                f"[level-b-evaluate] {pairing_index}/{total_pairings} "
+                f"{case_id} {solver_name} vs {comparator_id} "
+                f"passed={rows[-1]['passed']}"
+            )
 
     refinement_rows: list[dict[str, Any]] = []
     gated_pairings = set(
@@ -788,3 +1109,40 @@ def evaluate_minimum_established_solver_validation(
     )
     _write_checksums(output_root)
     return output_root
+
+
+def established_solver_status(
+    *, bundle_root: Path, external_root: Path
+) -> dict[str, Any]:
+    bundle_root = bundle_root.resolve()
+    external_root = external_root.resolve()
+    validate_checksums(bundle_root)
+    frozen = _read_json(bundle_root / "frozen_contract.json")
+    requested_times = np.asarray(frozen["requested_times"], dtype=np.float64)
+    valid: list[str] = []
+    missing: list[str] = []
+    invalid: list[dict[str, str]] = []
+    for requirement in frozen["external_results"]:
+        relative = str(requirement["relative_path"])
+        path = external_root / relative
+        if not path.is_file():
+            missing.append(relative)
+            continue
+        try:
+            _load_external_result(path, requirement, requested_times)
+        except Exception as exc:
+            invalid.append({"relative_path": relative, "error": str(exc)})
+        else:
+            valid.append(relative)
+    total = len(frozen["external_results"])
+    return {
+        "bundle_hash": frozen["bundle_hash"],
+        "valid": len(valid),
+        "missing": len(missing),
+        "invalid": len(invalid),
+        "total": total,
+        "complete": len(valid) == total,
+        "valid_paths": valid,
+        "missing_paths": missing,
+        "invalid_paths": invalid,
+    }

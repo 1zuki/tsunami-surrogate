@@ -1,9 +1,18 @@
-schema_id: tsunami-surrogate.minimum-established-solver-validation.v1
+schema_id: tsunami-surrogate.minimum-established-solver-validation.v2
 artifact_kind: minimum-established-solver-validation-candidate
 
 prerequisites:
   require_level_a_pass: true
-  require_unchanged_code_state: true
+  require_unchanged_code_state: false
+  require_completed_level_a_replay: true
+  code_state_policy: freeze_current_bundle_code_and_record_scoped_post_level_a_changes
+  allowed_post_level_a_scopes:
+    - completed_level_a_raw_csv_newline_validator
+    - established_solver_bundle_preparation_and_evaluation
+  forbidden_post_level_a_scopes:
+    - solver_numerics
+    - dataset_generation_semantics
+    - level_a_scientific_tasks_thresholds_or_metrics
 
 external_comparator:
   implementation: GeoClaw
@@ -82,7 +91,25 @@ cases:
     generator: level_a_canaries
     count: 3
     grids: [64]
-    boundary: open
+    boundary: radiation
+    buffered_domain:
+      core_grid: 64
+      inhouse_total_grid: 96
+      external_total_grid: 192
+      source_taper_cells: 8
+      bathymetry_extension: edge
+      output_crop: central
+      inhouse_sponge:
+        enabled: true
+        width: 16
+        min_factor: 0.8
+        axes: xy
+        profile: cosine
+        time_mode: elapsed_time_consistent
+        reference_dt: 0.0035
+      external_sponge: disabled
+      external_boundary: open_extrapolation
+      return_time_safety_factor: 1.10
     pairings:
       - [swe_hydrostatic, geoclaw_swe]
       - [swe_muscl_hr, geoclaw_swe]
@@ -127,5 +154,5 @@ aggregation:
 interpretation:
   external_solver_is_truth: false
   boussinesq_scope: small_amplitude_flat_or_smooth_fully_wet_regime
-  production_case_scope: shared_input_swe_comparison_without_sponge
+  production_case_scope: exact_96x96_inhouse_pipeline_crop_against_boundary_safe_padded_geoclaw_swe
   threshold_rationale: conservative pre-result engineering limits on the normalized unit-domain benchmark; any revision creates a new candidate contract

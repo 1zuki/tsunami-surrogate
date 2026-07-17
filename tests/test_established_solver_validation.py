@@ -8,14 +8,18 @@ import pytest
 import yaml
 
 from src.data_gen.common_time_v2 import stable_hash_payload
+from src.data_gen.simulate_dataset import BufferedDomainConfig, _prepare_buffered_domain
+from src.evaluation.buffered_crop_benchmark import prepare_buffered_case
 from src.evaluation.established_solver_validation import (
     EXTERNAL_RESULT_SCHEMA_ID,
     SCHEMA_ID,
     _comparison_metrics,
+    _build_cases,
     _load_external_result,
     _validate_config,
     _verify_level_a,
     _write_checksums,
+    established_solver_status,
     evaluate_minimum_established_solver_validation,
 )
 
@@ -75,6 +79,91 @@ def test_identical_fields_pass_metric_identity() -> None:
     assert metrics["peak_relative_error_max"] == 0.0
     assert metrics["time_to_peak_abs_max"] == 0.0
     assert metrics["waveform_lag_steps_max"] == 0
+
+
+def test_production_cases_use_dataset_exact_source_preparation(monkeypatch) -> None:
+    bathymetry = np.full((64, 64), -1.0, dtype=np.float32)
+    source = np.random.default_rng(17).normal(size=(64, 64)).astype(np.float32)
+    strength = float(np.float32(0.7312345))
+    monkeypatch.setattr(
+        "src.evaluation.established_solver_validation._load_canary_arrays",
+        lambda _canary: (
+            bathymetry,
+            source,
+            np.asarray([strength], dtype=np.float32),
+            strength,
+            {},
+        ),
+    )
+    buffered = {
+        "core_grid": 64,
+        "inhouse_total_grid": 96,
+        "external_total_grid": 192,
+        "source_taper_cells": 8,
+        "bathymetry_extension": "edge",
+        "output_crop": "central",
+        "inhouse_sponge": {
+            "enabled": True,
+            "width": 16,
+            "min_factor": 0.8,
+            "axes": "xy",
+            "profile": "cosine",
+            "time_mode": "elapsed_time_consistent",
+            "reference_dt": 0.0035,
+        },
+        "external_sponge": "disabled",
+        "external_boundary": "open_extrapolation",
+        "return_time_safety_factor": 1.1,
+    }
+    config = {
+        "gauges": {"fractional_cell_locations": [[0.5, 0.5]]},
+        "inhouse": {"gravity": 9.81},
+        "requested_times": {"horizon": 0.175},
+        "cases": [
+            {
+                "case_id": "production_input_canaries",
+                "category": "production_input",
+                "generator": "level_a_canaries",
+                "count": 1,
+                "grids": [64],
+                "boundary": "radiation",
+                "buffered_domain": buffered,
+                "pairings": [["swe_hydrostatic", "geoclaw_swe"]],
+            }
+        ],
+    }
+    cases = _build_cases(
+        config,
+        {
+            "canaries": [
+                {"qualified_id": "train:test", "input_fingerprint": "x"}
+            ]
+        },
+    )
+    _record, inhouse, _external = cases[0]
+    expected = _prepare_buffered_domain(
+        bathymetry,
+        source,
+        strength,
+        0.0,
+        BufferedDomainConfig(
+            enabled=True,
+            buffer_cells=16,
+            source_taper_cells=8,
+            bathymetry_extension="edge",
+            output_crop="central",
+        ),
+    )
+    assert np.array_equal(inhouse["eta0"], expected["solver_eta0"])
+
+    old_eta0 = np.asarray(strength * source, dtype=np.float32)
+    old = prepare_buffered_case(
+        bathymetry,
+        old_eta0,
+        buffer_cells=16,
+        source_taper_cells=8,
+    )
+    assert not np.array_equal(inhouse["eta0"], old["eta0"])
 
 
 def test_external_result_identity_and_shape_are_strict(tmp_path: Path) -> None:
@@ -230,6 +319,12 @@ def test_evaluator_accepts_complete_identical_fixture(tmp_path: Path) -> None:
         times=times,
         eta=eta,
     )
+    status = established_solver_status(
+        bundle_root=bundle,
+        external_root=tmp_path / "external",
+    )
+    assert status["complete"] is True
+    assert status["valid"] == status["total"] == 1
     output = evaluate_minimum_established_solver_validation(
         bundle_root=bundle,
         external_root=tmp_path / "external",

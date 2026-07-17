@@ -20,11 +20,17 @@ def main() -> None:
     parser.add_argument("--bundle-root", type=Path, required=True)
     parser.add_argument("--external-root", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
+    parser.add_argument("--quiet-progress", action="store_true")
     args = parser.parse_args()
     path = evaluate_minimum_established_solver_validation(
         bundle_root=args.bundle_root,
         external_root=args.external_root,
         output_root=args.output_root,
+        progress=(
+            None
+            if args.quiet_progress
+            else lambda message: print(message, flush=True)
+        ),
     )
     print(path)
 
