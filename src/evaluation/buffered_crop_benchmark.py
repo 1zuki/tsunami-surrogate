@@ -26,6 +26,16 @@ from src.solver.operator_time import build_sponge_mask
 SOLVERS = ("swe_hydrostatic", "swe_muscl_hr", "boussinesq")
 
 
+def _resolved_target_cfl(solver_name: str, target_cfl: float | None) -> float:
+    if solver_name not in SOLVERS:
+        raise ValueError(f"unsupported solver: {solver_name}")
+    default = 0.35 if solver_name == "boussinesq" else 0.45
+    resolved = default if target_cfl is None else float(target_cfl)
+    if not math.isfinite(resolved) or resolved <= 0.0:
+        raise ValueError("target_cfl must be finite and positive")
+    return resolved
+
+
 def cosine_core_window(shape: Sequence[int], taper_cells: int) -> np.ndarray:
     if len(shape) != 2 or min(int(value) for value in shape) <= 1:
         raise ValueError("shape must contain two valid axes")
@@ -117,7 +127,9 @@ def _make_solver(
     dx: float,
     sponge_width: int,
     sponge_min_factor: float,
+    target_cfl: float | None = None,
 ) -> Any:
+    resolved_cfl = _resolved_target_cfl(solver_name, target_cfl)
     use_sponge = sponge_width > 0
     common = dict(
         nx=grid,
@@ -139,7 +151,7 @@ def _make_solver(
     if solver_name == "swe_hydrostatic":
         return HydrostaticShallowWaterSolver(
             **common,
-            cfl=0.45,
+            cfl=resolved_cfl,
             boundary="radiation",
             dry_tolerance=1.0e-6,
             max_velocity=30.0,
@@ -147,17 +159,15 @@ def _make_solver(
     if solver_name == "swe_muscl_hr":
         return MUSCLHRShallowWaterSolver(
             **common,
-            cfl=0.45,
+            cfl=resolved_cfl,
             boundary="radiation",
             dry_tolerance=1.0e-6,
             max_velocity=30.0,
             reconstruction_limiter="minmod",
         )
-    if solver_name != "boussinesq":
-        raise ValueError(f"unsupported solver: {solver_name}")
     return BoussinesqSolver(
         **common,
-        cfl=0.35,
+        cfl=resolved_cfl,
         boundary="open",
         alpha=1.0 / 3.0,
         min_depth=1.0e-4,
@@ -182,6 +192,7 @@ def run_buffered_case(
     source_taper_cells: int = 8,
     sponge_min_factor: float = 0.8,
     sponge_width_cells: int | None = None,
+    target_cfl: float | None = None,
 ) -> tuple[dict[str, Any], np.ndarray]:
     row, core_eta, _details = run_buffered_case_detailed(
         record,
@@ -191,6 +202,7 @@ def run_buffered_case(
         source_taper_cells=source_taper_cells,
         sponge_min_factor=sponge_min_factor,
         sponge_width_cells=sponge_width_cells,
+        target_cfl=target_cfl,
     )
     return row, core_eta
 
@@ -204,6 +216,7 @@ def run_buffered_case_detailed(
     source_taper_cells: int = 8,
     sponge_min_factor: float = 0.8,
     sponge_width_cells: int | None = None,
+    target_cfl: float | None = None,
 ) -> tuple[dict[str, Any], np.ndarray, dict[str, Any]]:
     """Run the candidate production pipeline and retain evaluation-only details.
 
@@ -222,6 +235,7 @@ def run_buffered_case_detailed(
     )
     if sponge_width < 0 or sponge_width > buffer_cells:
         raise ValueError("sponge width must fit entirely inside the exterior buffer")
+    resolved_cfl = _resolved_target_cfl(solver_name, target_cfl)
     # Imported lazily to keep the reusable buffered-domain helpers independent
     # of the Level A module that also consumes this runner.
     from src.evaluation.common_time_v2_level_a import _load_canary_arrays
@@ -248,6 +262,7 @@ def run_buffered_case_detailed(
         dx=1.0 / core_grid,
         sponge_width=sponge_width,
         sponge_min_factor=sponge_min_factor,
+        target_cfl=resolved_cfl,
     )
     mask = external_sponge_mask(
         prepared["solver_bathymetry"].shape,
@@ -262,14 +277,12 @@ def run_buffered_case_detailed(
             prepared["solver_eta0"],
             eta_t0=np.zeros_like(prepared["solver_eta0"]),
         )
-        target_cfl = 0.35
     else:
         solver.set_initial_condition(
             prepared["solver_h0"],
             hu0=np.zeros_like(prepared["solver_h0"]),
             hv0=np.zeros_like(prepared["solver_h0"]),
         )
-        target_cfl = 0.45
 
     times = candidate_requested_times()
     started = time.monotonic()
@@ -278,7 +291,7 @@ def run_buffered_case_detailed(
         n_steps=1,
         save_every=1,
         auto_dt=True,
-        target_cfl=target_cfl,
+        target_cfl=resolved_cfl,
         include_initial_state=False,
         requested_times=times,
         max_natural_steps=20_000,
@@ -318,6 +331,7 @@ def run_buffered_case_detailed(
         "bathymetry_type": str(record["bathymetry_type"]),
         "source_type": str(record["source_type"]),
         "solver": solver_name,
+        "target_cfl": float(resolved_cfl),
         "core_grid": int(core_grid),
         "total_grid": int(total_grid),
         "buffer_cells": int(buffer_cells),
@@ -339,6 +353,7 @@ def run_buffered_case_detailed(
         "health": health,
     }
     details = {
+        "target_cfl": float(resolved_cfl),
         "requested_times": np.asarray(emitted, dtype=np.float64).copy(),
         "natural_dt_history": np.asarray(dt_history, dtype=np.float64).copy(),
         "diagnostics": {
