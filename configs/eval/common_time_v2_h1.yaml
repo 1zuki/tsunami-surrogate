@@ -1,0 +1,105 @@
+schema_id: tsunami-surrogate.common-time-v2.h1-config.v1
+stage: H1
+claim_scope: implementation_and_long_horizon_health_only
+
+prerequisites:
+  h0_contract_hash: 830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b
+  level_a_contract_hash: be1af7dce1f48942e6d20a96bb06b1359655903847c7580954901e2dcfa3332b
+  level_b_bundle_hash: 3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460
+  require_h0_pass: true
+  require_level_a_decision: pass_to_H1
+  require_level_b_decision: pass_to_H1
+
+selection:
+  split: train
+  expected_split_count: 10000
+  count_per_cell: 1
+  selection_seed: common-time-v2-h1-balanced-selection-v1
+  replay_selection_seed: common-time-v2-h1-replay-selection-v1
+  bathymetry_families:
+    - canyon
+    - continental
+    - island
+    - seamounts
+    - trench
+  source_families:
+    - dipole
+    - fault
+    - gaussian
+    - multi-gauss
+    - okada-like
+    - rough
+
+candidate:
+  solvers:
+    - swe_hydrostatic
+    - swe_muscl_hr
+    - boussinesq
+  computational_grid: 96
+  publication_grid: 64
+  buffer_cells_per_side: 16
+  source_taper_cells: 8
+  bathymetry_extension: edge
+  output_crop: central
+  dx: 0.015625
+  dy: 0.015625
+  requested_time_start: 0.0035
+  requested_time_step: 0.0035
+  requested_time_count: 50
+  horizon: 0.175
+  requested_state_dtype: float64
+  max_natural_steps: 20000
+  sponge_width_cells: 16
+  sponge_min_factor: 0.8
+  sponge_axes: xy
+  sponge_profile: cosine
+  sponge_time_mode: elapsed_time_consistent
+  sponge_reference_dt: 0.0035
+  swe_cfl: 0.45
+  swe_boundary: radiation
+  dry_tolerance: 1.0e-6
+  max_velocity: 30.0
+  muscl_limiter: minmod
+  boussinesq_cfl: 0.35
+  boussinesq_boundary: open
+  boussinesq_boundary_interpretation: zero_gradient_edge_padding
+  boussinesq_depth_scale: 1.0
+  boussinesq_mode: linear_variable_depth
+  boussinesq_filter_strength: 0.0
+  boussinesq_filter_time_mode: disabled
+  boussinesq_linear_solver_tol: 1.0e-10
+  boussinesq_linear_solver_abs_tol: 0.0
+  boussinesq_linear_solver_max_iter: 750
+  boussinesq_cg_failure_mode: strict_v2
+
+health_gates:
+  require_exact_requested_times: true
+  require_adjacent_bracket_provenance: true
+  require_no_missing_duplicate_or_extrapolated_outputs: true
+  require_complete_float64_natural_health: true
+  reject_nonfinite: true
+  min_h_tolerance: -1.0e-6
+  max_abs_eta_limit: 5.0
+  max_velocity_limit: 30.0
+  max_eta_over_depth: 1.0
+  require_cg_converged: true
+  require_two_cg_solves_per_natural_step: true
+  deterministic_replay_comparison: exact_scientific_digest
+
+replay:
+  selected_case_count: 1
+  runs_per_solver: 1
+  comparison: exact_scientific_digest
+
+execution:
+  requested_workers: 8
+  requested_max_in_flight: 8
+  process_start_method: spawn
+  numerical_library_threads: 1
+  resume_policy: validate_then_skip
+  corruption_policy: fail_closed
+
+decisions:
+  pass: pass_to_H2
+  health_failure: blocked_h1_implementation_health
+  implementation_failure: implementation_failure

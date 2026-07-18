@@ -15,6 +15,7 @@ from src.data_gen.simulate_dataset import (
     _prepare_buffered_domain,
     _simulate_one_local,
 )
+from src.data_gen.common_time_v2 import candidate_requested_times, hash_array
 from src.evaluation.finite_horizon_boundary_study import comparison_metrics
 from src.solver.boussinesq import BoussinesqSolver
 from src.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
@@ -182,6 +183,37 @@ def run_buffered_case(
     sponge_min_factor: float = 0.8,
     sponge_width_cells: int | None = None,
 ) -> tuple[dict[str, Any], np.ndarray]:
+    row, core_eta, _details = run_buffered_case_detailed(
+        record,
+        solver_name=solver_name,
+        total_grid=total_grid,
+        core_grid=core_grid,
+        source_taper_cells=source_taper_cells,
+        sponge_min_factor=sponge_min_factor,
+        sponge_width_cells=sponge_width_cells,
+    )
+    return row, core_eta
+
+
+def run_buffered_case_detailed(
+    record: Mapping[str, Any],
+    *,
+    solver_name: str,
+    total_grid: int,
+    core_grid: int = 64,
+    source_taper_cells: int = 8,
+    sponge_min_factor: float = 0.8,
+    sponge_width_cells: int | None = None,
+) -> tuple[dict[str, Any], np.ndarray, dict[str, Any]]:
+    """Run the candidate production pipeline and retain evaluation-only details.
+
+    The existing :func:`run_buffered_case` API intentionally remains a compact
+    row-plus-trajectory interface.  H1 additionally needs the internal float64
+    requested-state and natural-step provenance, so this opt-in entry point
+    exposes copies of those diagnostics without changing publication dtypes or
+    solver stepping.
+    """
+
     if total_grid < core_grid or (total_grid - core_grid) % 2:
         raise ValueError("total_grid must add an equal integer buffer around the core")
     buffer_cells = (total_grid - core_grid) // 2
@@ -239,7 +271,7 @@ def run_buffered_case(
         )
         target_cfl = 0.45
 
-    times = np.arange(1, 51, dtype=np.float64) * 0.0035
+    times = candidate_requested_times()
     started = time.monotonic()
     states, emitted, dt_history, diagnostics = _simulate_one_local(
         solver,
@@ -306,7 +338,16 @@ def run_buffered_case(
         "external_sponge": bool(sponge_width > 0),
         "health": health,
     }
-    return row, core_eta
+    details = {
+        "requested_times": np.asarray(emitted, dtype=np.float64).copy(),
+        "natural_dt_history": np.asarray(dt_history, dtype=np.float64).copy(),
+        "diagnostics": {
+            str(key): np.asarray(values).copy()
+            for key, values in diagnostics.items()
+        },
+        "full_requested_state_hash": hash_array(states),
+    }
+    return row, core_eta, details
 
 
 def _metric_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
