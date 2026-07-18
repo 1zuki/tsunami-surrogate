@@ -338,7 +338,12 @@ def test_v3_external_result_is_bound_to_manifest_and_ksp_health(
     }
     path = tmp_path / "result.npz"
 
-    def write(reason: str = "CONVERGED_RTOL") -> None:
+    def write(
+        reason: str = "CONVERGED_RTOL",
+        *,
+        actual_times: np.ndarray = times,
+    ) -> None:
+        time_error = float(np.max(np.abs(actual_times - times)))
         np.savez_compressed(
             path,
             schema_id=np.asarray(EXTERNAL_RESULT_SCHEMA_ID_V3),
@@ -350,11 +355,11 @@ def test_v3_external_result_is_bound_to_manifest_and_ksp_health(
             petsc_commit=np.asarray("petsc"),
             adapter_hash=np.asarray("adapter"),
             times=times,
-            actual_times=times,
+            actual_times=actual_times,
             eta=np.zeros((2, 1, 1), dtype=np.float64),
             runtime_seconds=np.asarray(1.0),
             initial_state_max_abs_error=np.asarray(0.0),
-            requested_time_max_abs_error=np.asarray(0.0),
+            requested_time_max_abs_error=np.asarray(time_error),
             nominal_eta_max_abs_difference=np.asarray(0.0),
             nominal_eta_consistency_floor=np.asarray(1.0e-7),
             solver_health_status=np.asarray("passed"),
@@ -370,6 +375,17 @@ def test_v3_external_result_is_bound_to_manifest_and_ksp_health(
     )
     assert eta.shape == (2, 1, 1)
     assert metadata["ksp_solve_count"] == 2
+
+    roundoff_times = times.copy()
+    roundoff_times[-1] = np.nextafter(roundoff_times[-1], np.inf)
+    write(actual_times=roundoff_times)
+    _load_external_result(path, requirement, times, manifest)
+
+    invalid_times = times.copy()
+    invalid_times[-1] += 1.0e-12
+    write(actual_times=invalid_times)
+    with pytest.raises(RuntimeError, match="actual-time mismatch"):
+        _load_external_result(path, requirement, times, manifest)
 
     write("DIVERGED_ITS")
     with pytest.raises(RuntimeError, match="KSP health"):

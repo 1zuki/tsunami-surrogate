@@ -41,6 +41,7 @@ EXTERNAL_RESULT_SCHEMA_ID = (
 EXTERNAL_RESULT_SCHEMA_ID_V3 = (
     "tsunami-surrogate.minimum-established-solver-external-result.v3"
 )
+EXTERNAL_ACTUAL_TIME_ABS_TOLERANCE = 5.0e-14
 SOLVERS = ("swe_hydrostatic", "swe_muscl_hr", "boussinesq")
 COMPARATORS = ("geoclaw_swe", "geoclaw_sgn")
 
@@ -1126,8 +1127,17 @@ def _load_external_result(
         raise RuntimeError(f"External result {path} eta shape mismatch: {eta.shape}")
     if not np.array_equal(times, requested_times):
         raise RuntimeError(f"External result {path} requested-time mismatch")
-    if not np.array_equal(actual_times, requested_times):
-        raise RuntimeError(f"External result {path} actual-time mismatch")
+    if actual_times.shape != requested_times.shape:
+        raise RuntimeError(f"External result {path} actual-time shape mismatch")
+    actual_time_error = float(
+        np.max(np.abs(actual_times - requested_times))
+    )
+    if actual_time_error > EXTERNAL_ACTUAL_TIME_ABS_TOLERANCE:
+        raise RuntimeError(
+            f"External result {path} actual-time mismatch: "
+            f"{actual_time_error:.3e} > "
+            f"{EXTERNAL_ACTUAL_TIME_ABS_TOLERANCE:.3e}"
+        )
     if not np.isfinite(eta).all():
         raise RuntimeError(f"External result {path} contains nonfinite eta")
     if expected_metadata["schema_id"] == EXTERNAL_RESULT_SCHEMA_ID_V3:
