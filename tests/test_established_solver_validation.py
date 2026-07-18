@@ -12,16 +12,23 @@ from src.data_gen.simulate_dataset import BufferedDomainConfig, _prepare_buffere
 from src.evaluation.buffered_crop_benchmark import prepare_buffered_case
 from src.evaluation.established_solver_validation import (
     EXTERNAL_RESULT_SCHEMA_ID,
+    EXTERNAL_RESULT_SCHEMA_ID_V3,
     SCHEMA_ID,
+    SCHEMA_ID_V3,
     _comparison_metrics,
+    _comparison_metrics_v3,
     _build_cases,
+    _flat_linear_swe_reference,
     _load_external_result,
+    _normalized_waveform_lag_steps,
+    _validate_external_checksums,
     _validate_config,
     _verify_level_a,
     _write_checksums,
     established_solver_status,
     evaluate_minimum_established_solver_validation,
 )
+from src.evaluation.geoclaw_adapter import _write_external_checksums
 
 
 def test_candidate_config_is_complete() -> None:
@@ -32,6 +39,33 @@ def test_candidate_config_is_complete() -> None:
         )
     )
     _validate_config(config)
+
+
+def test_v3_candidate_config_matches_boussinesq_only_in_long_wave_regime() -> None:
+    root = Path(__file__).resolve().parents[1]
+    config = yaml.safe_load(
+        (
+            root
+            / "configs/eval/minimum_established_solver_validation_v3.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    _validate_config(config)
+    assert config["schema_id"] == SCHEMA_ID_V3
+    bouss_cases = [
+        case
+        for case in config["cases"]
+        if ["boussinesq", "geoclaw_sgn"] in case["pairings"]
+    ]
+    assert len(bouss_cases) == 1
+    case = bouss_cases[0]
+    assert case["generator"] == "flat_linear_mode"
+    assert 2.0 * np.pi * case["mode"] * case["depth"] <= 0.35
+    assert case["amplitude"] / case["depth"] <= 1.0e-3
+
+    invalid = json.loads(json.dumps(config))
+    invalid["cases"][0]["pairings"].append(["boussinesq", "geoclaw_sgn"])
+    with pytest.raises(ValueError, match="matched constant-depth long-wave"):
+        _validate_config(invalid)
 
 
 def test_failed_level_a_cannot_prepare_minimum_package(tmp_path: Path) -> None:
@@ -79,6 +113,54 @@ def test_identical_fields_pass_metric_identity() -> None:
     assert metrics["peak_relative_error_max"] == 0.0
     assert metrics["time_to_peak_abs_max"] == 0.0
     assert metrics["waveform_lag_steps_max"] == 0
+
+
+def test_v3_metrics_bound_low_signal_denominators_and_stabilize_peak_time() -> None:
+    times = np.arange(1, 7, dtype=np.float64) * 0.1
+    reference_signal = np.asarray([0.1, 1.0, 0.995, 0.2, 0.01, 0.0])
+    candidate_signal = np.asarray([0.1, 0.995, 1.0, 0.2, 0.01, 1.0e-3])
+    reference = reference_signal[:, None, None]
+    candidate = candidate_signal[:, None, None]
+    metrics = _comparison_metrics_v3(
+        candidate,
+        reference,
+        times,
+        np.asarray([[0, 0]], dtype=np.int64),
+        inactive_floor=1.0e-12,
+        per_time_signal_floor_fraction=0.05,
+        peak_plateau_fraction=0.99,
+        lag_minimum_overlap_fraction=0.5,
+    )
+    assert metrics["per_time_denominator_floor"] == pytest.approx(0.05)
+    assert metrics["per_time_scaled_l2_p95"] < 0.02
+    assert metrics["peak_plateau_time_abs_max"] == 0.0
+    assert metrics["arrival_metric_eligible"] is False
+    assert metrics["arrival_time_abs_max"] is None
+
+
+def test_v3_lag_uses_normalized_overlap_and_prefers_zero_on_ties() -> None:
+    waveform = np.sin(np.linspace(0.0, 2.0 * np.pi, 50, endpoint=False))
+    assert (
+        _normalized_waveform_lag_steps(
+            waveform,
+            waveform,
+            minimum_overlap_fraction=0.5,
+        )
+        == 0
+    )
+
+
+def test_flat_linear_swe_reference_preserves_initial_mode_at_zero_time() -> None:
+    nx, ny = 32, 4
+    x = (np.arange(nx, dtype=np.float64) + 0.5) / nx
+    eta0 = np.cos(2.0 * np.pi * x)[:, None] * np.ones((1, ny))
+    reference = _flat_linear_swe_reference(
+        eta0,
+        np.asarray([0.0], dtype=np.float64),
+        depth=1.0,
+        gravity=9.81,
+    )
+    np.testing.assert_allclose(reference[0], eta0, rtol=0.0, atol=5.0e-16)
 
 
 def test_production_cases_use_dataset_exact_source_preparation(monkeypatch) -> None:
@@ -210,6 +292,106 @@ def test_external_result_identity_and_shape_are_strict(tmp_path: Path) -> None:
     )
     with pytest.raises(RuntimeError, match="case_hash mismatch"):
         _load_external_result(path, requirement, times)
+
+
+def test_v3_external_result_is_bound_to_manifest_and_ksp_health(
+    tmp_path: Path,
+) -> None:
+    times = np.asarray([0.1, 0.2], dtype=np.float64)
+    requirement = {
+        "case_hash": "case-hash",
+        "comparator_id": "geoclaw_sgn",
+        "comparator_version": "5.14.0",
+        "result_schema_id": EXTERNAL_RESULT_SCHEMA_ID_V3,
+        "eta_shape": [2, 1, 1],
+        "required_npz_keys": [
+            "schema_id",
+            "case_hash",
+            "comparator_id",
+            "comparator_version",
+            "comparator_commit",
+            "clawpack_commit",
+            "petsc_commit",
+            "adapter_hash",
+            "times",
+            "actual_times",
+            "eta",
+            "runtime_seconds",
+            "initial_state_max_abs_error",
+            "requested_time_max_abs_error",
+            "nominal_eta_max_abs_difference",
+            "nominal_eta_consistency_floor",
+            "solver_health_status",
+            "ksp_solve_count",
+            "ksp_iteration_max",
+            "ksp_iteration_mean",
+            "ksp_convergence_reasons",
+        ],
+    }
+    manifest = {
+        "adapter_hash": "adapter",
+        "revisions": {
+            "geoclaw_commit": "geo",
+            "clawpack_commit": "claw",
+            "petsc_commit": "petsc",
+        },
+    }
+    path = tmp_path / "result.npz"
+
+    def write(reason: str = "CONVERGED_RTOL") -> None:
+        np.savez_compressed(
+            path,
+            schema_id=np.asarray(EXTERNAL_RESULT_SCHEMA_ID_V3),
+            case_hash=np.asarray("case-hash"),
+            comparator_id=np.asarray("geoclaw_sgn"),
+            comparator_version=np.asarray("5.14.0"),
+            comparator_commit=np.asarray("geo"),
+            clawpack_commit=np.asarray("claw"),
+            petsc_commit=np.asarray("petsc"),
+            adapter_hash=np.asarray("adapter"),
+            times=times,
+            actual_times=times,
+            eta=np.zeros((2, 1, 1), dtype=np.float64),
+            runtime_seconds=np.asarray(1.0),
+            initial_state_max_abs_error=np.asarray(0.0),
+            requested_time_max_abs_error=np.asarray(0.0),
+            nominal_eta_max_abs_difference=np.asarray(0.0),
+            nominal_eta_consistency_floor=np.asarray(1.0e-7),
+            solver_health_status=np.asarray("passed"),
+            ksp_solve_count=np.asarray(2),
+            ksp_iteration_max=np.asarray(7),
+            ksp_iteration_mean=np.asarray(6.0),
+            ksp_convergence_reasons=np.asarray([reason]),
+        )
+
+    write()
+    eta, metadata = _load_external_result(
+        path, requirement, times, manifest
+    )
+    assert eta.shape == (2, 1, 1)
+    assert metadata["ksp_solve_count"] == 2
+
+    write("DIVERGED_ITS")
+    with pytest.raises(RuntimeError, match="KSP health"):
+        _load_external_result(path, requirement, times, manifest)
+
+
+def test_v3_external_checksum_manifest_has_exact_coverage(
+    tmp_path: Path,
+) -> None:
+    frozen = {
+        "external_results": [{"relative_path": "case/geoclaw_swe.npz"}]
+    }
+    (tmp_path / "case").mkdir()
+    (tmp_path / "RUN_MANIFEST.json").write_text("{}\n", encoding="utf-8")
+    result = tmp_path / "case/geoclaw_swe.npz"
+    result.write_bytes(b"canonical-result")
+    _write_external_checksums(tmp_path, frozen)
+    _validate_external_checksums(tmp_path, frozen)
+
+    result.write_bytes(b"corrupted-result")
+    with pytest.raises(RuntimeError, match="checksum mismatch"):
+        _validate_external_checksums(tmp_path, frozen)
 
 
 def test_evaluator_accepts_complete_identical_fixture(tmp_path: Path) -> None:

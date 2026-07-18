@@ -10,7 +10,8 @@ import yaml
 
 from src.evaluation.geoclaw_adapter import GeoClawEnvironment, run_geoclaw_bundle
 from src.evaluation.established_solver_validation import (
-    SCHEMA_ID,
+    EXTERNAL_RESULT_SCHEMA_ID_V3,
+    SCHEMA_ID_V3,
     _write_checksums,
     established_solver_status,
 )
@@ -25,9 +26,10 @@ pytestmark = pytest.mark.skipif(
 def test_installed_geoclaw_swe_and_sgn_smoke(tmp_path: Path) -> None:
     repo = Path(__file__).resolve().parents[1]
     config = yaml.safe_load(
-        (repo / "configs/eval/minimum_established_solver_validation.yaml").read_text(
-            encoding="utf-8"
-        )
+        (
+            repo
+            / "configs/eval/minimum_established_solver_validation_v3.yaml"
+        ).read_text(encoding="utf-8")
     )
     nx, ny = 16, 4
     x = (np.arange(nx, dtype=np.float64) + 0.5) / nx
@@ -55,31 +57,53 @@ def test_installed_geoclaw_swe_and_sgn_smoke(tmp_path: Path) -> None:
         output_crop=np.asarray([0, nx, 0, ny], dtype=np.int64),
         domain_bounds=np.asarray([0.0, 1.0, 0.0, 1.0], dtype=np.float64),
     )
-    requirements = [
-        {
-            "case_id": case_id,
-            "case_hash": case_hash,
-            "comparator_id": comparator_id,
-            "comparator_version": "5.14.0",
-            "relative_path": f"{case_id}/{comparator_id}.npz",
-            "required_npz_keys": [
-                "schema_id",
-                "case_hash",
-                "comparator_id",
-                "comparator_version",
-                "comparator_commit",
-                "times",
-                "eta",
-            ],
-            "eta_shape": [times.size, nx, ny],
-            "computational_shape": [nx, ny],
-            "output_crop": [0, nx, 0, ny],
-            "computational_domain_bounds": [0.0, 1.0, 0.0, 1.0],
-        }
-        for comparator_id in ("geoclaw_swe", "geoclaw_sgn")
-    ]
+    requirements = []
+    for comparator_id in ("geoclaw_swe", "geoclaw_sgn"):
+        required_keys = [
+            "schema_id",
+            "case_hash",
+            "comparator_id",
+            "comparator_version",
+            "comparator_commit",
+            "clawpack_commit",
+            "petsc_commit",
+            "adapter_hash",
+            "times",
+            "actual_times",
+            "eta",
+            "runtime_seconds",
+            "initial_state_max_abs_error",
+            "requested_time_max_abs_error",
+            "nominal_eta_max_abs_difference",
+            "nominal_eta_consistency_floor",
+            "solver_health_status",
+        ]
+        if comparator_id == "geoclaw_sgn":
+            required_keys.extend(
+                [
+                    "ksp_solve_count",
+                    "ksp_iteration_max",
+                    "ksp_iteration_mean",
+                    "ksp_convergence_reasons",
+                ]
+            )
+        requirements.append(
+            {
+                "case_id": case_id,
+                "case_hash": case_hash,
+                "comparator_id": comparator_id,
+                "comparator_version": "5.14.0",
+                "result_schema_id": EXTERNAL_RESULT_SCHEMA_ID_V3,
+                "relative_path": f"{case_id}/{comparator_id}.npz",
+                "required_npz_keys": required_keys,
+                "eta_shape": [times.size, nx, ny],
+                "computational_shape": [nx, ny],
+                "output_crop": [0, nx, 0, ny],
+                "computational_domain_bounds": [0.0, 1.0, 0.0, 1.0],
+            }
+        )
     frozen = {
-        "schema_id": SCHEMA_ID,
+        "schema_id": SCHEMA_ID_V3,
         "bundle_hash": "integration-bundle",
         "source_config": config,
         "requested_times": times.tolist(),
@@ -121,3 +145,10 @@ def test_installed_geoclaw_swe_and_sgn_smoke(tmp_path: Path) -> None:
             assert float(payload["initial_state_max_abs_error"]) <= 5.0e-13
             np.testing.assert_array_equal(payload["times"], times)
             assert np.isfinite(payload["eta"]).all()
+            assert str(payload["solver_health_status"]) == "passed"
+            if comparator_id == "geoclaw_sgn":
+                assert int(payload["ksp_solve_count"]) > 0
+                assert all(
+                    str(reason).startswith("CONVERGED_")
+                    for reason in payload["ksp_convergence_reasons"]
+                )

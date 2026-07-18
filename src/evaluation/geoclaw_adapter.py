@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -17,13 +18,17 @@ from src.data_gen.common_time_v2 import sha256_file, stable_hash_payload
 from src.evaluation.common_time_v2_level_a import validate_checksums
 from src.evaluation.established_solver_validation import (
     EXTERNAL_RESULT_SCHEMA_ID,
+    EXTERNAL_RESULT_SCHEMA_ID_V3,
     SCHEMA_ID,
+    SCHEMA_ID_V3,
+    SUPPORTED_SCHEMA_IDS,
     _load_external_result,
     _read_json,
 )
 
 
 ADAPTER_SCHEMA_ID = "tsunami-surrogate.geoclaw-external-adapter.v1"
+ADAPTER_SCHEMA_ID_V2 = "tsunami-surrogate.geoclaw-external-adapter.v2"
 
 
 @dataclass(frozen=True)
@@ -351,11 +356,25 @@ def validate_geoclaw_environment(environment: GeoClawEnvironment) -> dict[str, s
     }
 
 
-def _subprocess_environment(environment: GeoClawEnvironment) -> dict[str, str]:
+def _subprocess_environment(
+    environment: GeoClawEnvironment,
+    *,
+    fail_closed_ksp: bool = False,
+) -> dict[str, str]:
     env = dict(os.environ)
     claw_root = str(environment.claw_root.resolve())
     petsc_dir = str(environment.petsc_dir.resolve())
     petsc_lib = str(Path(petsc_dir) / environment.petsc_arch / "lib")
+    petsc_options = (
+        "-options_file "
+        + str(Path(claw_root) / "geoclaw/examples/bouss/petscMPIoptions")
+    )
+    if fail_closed_ksp:
+        petsc_options += (
+            " -ksp_converged_reason"
+            " -ksp_error_if_not_converged"
+            " -on_error_abort"
+        )
     env.update(
         {
             "CLAW": claw_root,
@@ -363,10 +382,7 @@ def _subprocess_environment(environment: GeoClawEnvironment) -> dict[str, str]:
             "PYTHONPATH": claw_root + os.pathsep + env.get("PYTHONPATH", ""),
             "PETSC_DIR": petsc_dir,
             "PETSC_ARCH": environment.petsc_arch,
-            "PETSC_OPTIONS": (
-                "-options_file "
-                + str(Path(claw_root) / "geoclaw/examples/bouss/petscMPIoptions")
-            ),
+            "PETSC_OPTIONS": petsc_options,
             "PKG_CONFIG_PATH": (
                 str(Path(petsc_lib) / "pkgconfig")
                 + os.pathsep
@@ -388,14 +404,28 @@ def _subprocess_environment(environment: GeoClawEnvironment) -> dict[str, str]:
 
 
 def _adapter_hash(
-    *, execution: Mapping[str, Any], revisions: Mapping[str, str]
+    *,
+    execution: Mapping[str, Any],
+    revisions: Mapping[str, str],
+    bundle_schema_id: str = SCHEMA_ID,
 ) -> str:
+    adapter_schema_id = (
+        ADAPTER_SCHEMA_ID_V2
+        if bundle_schema_id == SCHEMA_ID_V3
+        else ADAPTER_SCHEMA_ID
+    )
+    implementation = (
+        {"python_source_sha256": sha256_file(Path(__file__).resolve())}
+        if bundle_schema_id == SCHEMA_ID_V3
+        else {}
+    )
     return stable_hash_payload(
         artifact_kind="geoclaw-external-adapter",
         payload={
-            "schema_id": ADAPTER_SCHEMA_ID,
+            "schema_id": adapter_schema_id,
             "execution": dict(execution),
             "revisions": dict(revisions),
+            "implementation": implementation,
             "templates": {
                 "state_module": FROZEN_STATE_MODULE,
                 "setaux": CUSTOM_SETAUX,
@@ -406,7 +436,7 @@ def _adapter_hash(
                 "sgn_makefile": _makefile("geoclaw_sgn"),
             },
         },
-        schema_id=ADAPTER_SCHEMA_ID,
+        schema_id=adapter_schema_id,
     )
 
 
@@ -786,6 +816,70 @@ def _task_boundary(case: Mapping[str, Any]) -> str:
     raise RuntimeError(f"Unsupported GeoClaw boundary mapping: {boundary!r}")
 
 
+_KSP_REASON_PATTERN = re.compile(
+    r"Linear solve (?P<status>converged|did not converge) due to "
+    r"(?P<reason>[A-Z0-9_]+) iterations (?P<iterations>[0-9]+)"
+)
+
+
+def _parse_ksp_health(run_log: Path) -> dict[str, Any]:
+    records = [
+        (
+            match.group("status"),
+            match.group("reason"),
+            int(match.group("iterations")),
+        )
+        for match in _KSP_REASON_PATTERN.finditer(
+            run_log.read_text(encoding="utf-8", errors="replace")
+        )
+    ]
+    if not records:
+        raise RuntimeError(
+            f"GeoClaw SGN emitted no PETSc convergence records; inspect {run_log}"
+        )
+    failed = [
+        reason
+        for status, reason, _iterations in records
+        if status != "converged" or not reason.startswith("CONVERGED_")
+    ]
+    if failed:
+        raise RuntimeError(
+            f"GeoClaw SGN PETSc solve did not converge ({failed[0]}); "
+            f"inspect {run_log}"
+        )
+    iterations = np.asarray(
+        [value for _status, _reason, value in records], dtype=np.int64
+    )
+    return {
+        "solver_health_status": "passed",
+        "ksp_solve_count": int(iterations.size),
+        "ksp_iteration_max": int(np.max(iterations)),
+        "ksp_iteration_mean": float(np.mean(iterations)),
+        "ksp_convergence_reasons": sorted(
+            {reason for _status, reason, _iterations in records}
+        ),
+    }
+
+
+def _write_external_checksums(
+    external_root: Path,
+    frozen: Mapping[str, Any],
+) -> None:
+    paths = [external_root / "RUN_MANIFEST.json"]
+    paths.extend(
+        external_root / str(row["relative_path"])
+        for row in frozen["external_results"]
+    )
+    rows = [
+        f"{sha256_file(path)}  {path.relative_to(external_root).as_posix()}"
+        for path in paths
+        if path.is_file()
+    ]
+    (external_root / "SHA256SUMS.txt").write_text(
+        "\n".join(rows) + "\n", encoding="utf-8"
+    )
+
+
 def _run_task(
     *,
     bundle_root: Path,
@@ -797,6 +891,8 @@ def _run_task(
     execution: Mapping[str, Any],
     revisions: Mapping[str, str],
     adapter_hash: str,
+    bundle_schema_id: str,
+    run_manifest: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     case_id = str(requirement["case_id"])
     comparator_id = str(requirement["comparator_id"])
@@ -832,7 +928,12 @@ def _run_task(
     (run_dir / "run_spec.json").write_text(
         json.dumps(run_spec, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    env = _subprocess_environment(environment)
+    fail_closed_ksp = (
+        bundle_schema_id == SCHEMA_ID_V3 and comparator_id == "geoclaw_sgn"
+    )
+    env = _subprocess_environment(
+        environment, fail_closed_ksp=fail_closed_ksp
+    )
     setup_log = run_dir / "setrun.log"
     with setup_log.open("w", encoding="utf-8") as log:
         setup = subprocess.run(
@@ -869,6 +970,10 @@ def _run_task(
     runtime = time.monotonic() - started
     if completed.returncode != 0:
         raise RuntimeError(f"GeoClaw run failed; inspect {run_log}")
+    if fail_closed_ksp:
+        health = _parse_ksp_health(run_log)
+    else:
+        health = {"solver_health_status": "passed"}
     eta, actual_times, diagnostics = _collect_output(
         run_dir=run_dir,
         arrays=arrays,
@@ -881,7 +986,11 @@ def _run_task(
     with temporary.open("wb") as handle:
         np.savez_compressed(
             handle,
-            schema_id=np.asarray(EXTERNAL_RESULT_SCHEMA_ID),
+            schema_id=np.asarray(
+                requirement.get(
+                    "result_schema_id", EXTERNAL_RESULT_SCHEMA_ID
+                )
+            ),
             case_hash=np.asarray(str(requirement["case_hash"])),
             comparator_id=np.asarray(comparator_id),
             comparator_version=np.asarray(str(requirement["comparator_version"])),
@@ -905,18 +1014,41 @@ def _run_task(
             nominal_eta_consistency_floor=np.asarray(
                 diagnostics["nominal_eta_consistency_floor"], dtype=np.float64
             ),
+            solver_health_status=np.asarray(
+                health["solver_health_status"]
+            ),
+            **(
+                {
+                    "ksp_solve_count": np.asarray(
+                        health["ksp_solve_count"], dtype=np.int64
+                    ),
+                    "ksp_iteration_max": np.asarray(
+                        health["ksp_iteration_max"], dtype=np.int64
+                    ),
+                    "ksp_iteration_mean": np.asarray(
+                        health["ksp_iteration_mean"], dtype=np.float64
+                    ),
+                    "ksp_convergence_reasons": np.asarray(
+                        health["ksp_convergence_reasons"]
+                    ),
+                }
+                if fail_closed_ksp
+                else {}
+            ),
         )
     os.replace(temporary, output_path)
     _load_external_result(
         output_path,
         requirement,
         np.asarray(arrays["requested_times"], dtype=np.float64),
+        run_manifest,
     )
     return {
         "case_id": case_id,
         "comparator_id": comparator_id,
         "runtime_seconds": runtime,
         **diagnostics,
+        **health,
         "output_path": str(output_path),
         "run_directory": str(run_dir),
     }
@@ -940,13 +1072,28 @@ def run_geoclaw_bundle(
         raise ValueError("workers must be positive")
     validate_checksums(bundle_root)
     frozen = _read_json(bundle_root / "frozen_contract.json")
-    if frozen.get("schema_id") != SCHEMA_ID:
+    bundle_schema_id = str(frozen.get("schema_id", ""))
+    if bundle_schema_id not in SUPPORTED_SCHEMA_IDS:
         raise RuntimeError("Frozen established-solver bundle schema mismatch")
     execution = frozen["source_config"].get("external_execution")
     if not isinstance(execution, Mapping):
         raise RuntimeError("Frozen bundle predates the complete external execution policy")
     revisions = validate_geoclaw_environment(environment)
-    adapter_hash = _adapter_hash(execution=execution, revisions=revisions)
+    if bundle_schema_id == SCHEMA_ID_V3:
+        expected_revisions = frozen["source_config"]["external_comparator"][
+            "expected_revisions"
+        ]
+        for key, expected in expected_revisions.items():
+            if revisions.get(key) != expected:
+                raise RuntimeError(
+                    f"Installed external solver {key} mismatch: "
+                    f"{revisions.get(key)!r} != {expected!r}"
+                )
+    adapter_hash = _adapter_hash(
+        execution=execution,
+        revisions=revisions,
+        bundle_schema_id=bundle_schema_id,
+    )
     selected_cases = set(case_ids or [])
     selected_comparators = set(comparator_ids or [])
     requirements = [
@@ -967,7 +1114,11 @@ def run_geoclaw_bundle(
     case_by_id = {str(case["case_id"]): case for case in frozen["cases"]}
     external_root.mkdir(parents=True, exist_ok=True)
     run_manifest = {
-        "schema_id": ADAPTER_SCHEMA_ID,
+        "schema_id": (
+            ADAPTER_SCHEMA_ID_V2
+            if bundle_schema_id == SCHEMA_ID_V3
+            else ADAPTER_SCHEMA_ID
+        ),
         "bundle_hash": frozen["bundle_hash"],
         "adapter_hash": adapter_hash,
         "revisions": revisions,
@@ -988,7 +1139,12 @@ def run_geoclaw_bundle(
     for requirement in requirements:
         output_path = external_root / str(requirement["relative_path"])
         if output_path.is_file() and resume:
-            _load_external_result(output_path, requirement, requested_times)
+            _load_external_result(
+                output_path,
+                requirement,
+                requested_times,
+                run_manifest if bundle_schema_id == SCHEMA_ID_V3 else None,
+            )
             skipped.append(str(requirement["relative_path"]))
         elif output_path.exists():
             raise FileExistsError(f"Refusing to overwrite external result: {output_path}")
@@ -1026,6 +1182,10 @@ def run_geoclaw_bundle(
             execution=execution,
             revisions=revisions,
             adapter_hash=adapter_hash,
+            bundle_schema_id=bundle_schema_id,
+            run_manifest=(
+                run_manifest if bundle_schema_id == SCHEMA_ID_V3 else None
+            ),
         )
 
     completed_count = len(skipped)
@@ -1034,6 +1194,8 @@ def run_geoclaw_bundle(
             result = submit_one(requirement)
             results.append(result)
             completed_count += 1
+            if bundle_schema_id == SCHEMA_ID_V3:
+                _write_external_checksums(external_root, frozen)
             if progress is not None:
                 progress(
                     f"[geoclaw-run] done {completed_count}/{len(requirements)} "
@@ -1047,6 +1209,8 @@ def run_geoclaw_bundle(
                 result = future.result()
                 results.append(result)
                 completed_count += 1
+                if bundle_schema_id == SCHEMA_ID_V3:
+                    _write_external_checksums(external_root, frozen)
                 if progress is not None:
                     progress(
                         f"[geoclaw-run] done {completed_count}/{len(requirements)} "
@@ -1055,6 +1219,8 @@ def run_geoclaw_bundle(
                     )
     if progress is not None:
         progress(f"[geoclaw-run] complete {completed_count}/{len(requirements)}")
+    if bundle_schema_id == SCHEMA_ID_V3:
+        _write_external_checksums(external_root, frozen)
     return {
         "bundle_hash": frozen["bundle_hash"],
         "adapter_hash": adapter_hash,

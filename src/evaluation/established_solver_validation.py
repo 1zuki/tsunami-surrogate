@@ -33,8 +33,13 @@ from src.evaluation.common_time_v2_level_a import (
 
 
 SCHEMA_ID = "tsunami-surrogate.minimum-established-solver-validation.v2"
+SCHEMA_ID_V3 = "tsunami-surrogate.minimum-established-solver-validation.v3"
+SUPPORTED_SCHEMA_IDS = (SCHEMA_ID, SCHEMA_ID_V3)
 EXTERNAL_RESULT_SCHEMA_ID = (
     "tsunami-surrogate.minimum-established-solver-external-result.v2"
+)
+EXTERNAL_RESULT_SCHEMA_ID_V3 = (
+    "tsunami-surrogate.minimum-established-solver-external-result.v3"
 )
 SOLVERS = ("swe_hydrostatic", "swe_muscl_hr", "boussinesq")
 COMPARATORS = ("geoclaw_swe", "geoclaw_sgn")
@@ -101,13 +106,42 @@ def _requested_times(config: Mapping[str, Any]) -> np.ndarray:
     return values
 
 
-def _validate_config(config: Mapping[str, Any]) -> None:
-    if config.get("schema_id") != SCHEMA_ID:
+def _config_schema_id(config: Mapping[str, Any]) -> str:
+    schema_id = str(config.get("schema_id", ""))
+    if schema_id not in SUPPORTED_SCHEMA_IDS:
         raise ValueError("Established-solver validation schema mismatch")
+    return schema_id
+
+
+def _external_result_schema_id(schema_id: str) -> str:
+    if schema_id == SCHEMA_ID:
+        return EXTERNAL_RESULT_SCHEMA_ID
+    if schema_id == SCHEMA_ID_V3:
+        return EXTERNAL_RESULT_SCHEMA_ID_V3
+    raise ValueError(f"Unsupported established-solver schema: {schema_id}")
+
+
+def _validate_config(config: Mapping[str, Any]) -> None:
+    schema_id = _config_schema_id(config)
     if config.get("artifact_kind") != "minimum-established-solver-validation-candidate":
         raise ValueError("Established-solver validation artifact kind mismatch")
     if config["external_comparator"].get("version") != "5.14.0":
         raise ValueError("The minimum package must pin Clawpack 5.14.0")
+    if schema_id == SCHEMA_ID_V3:
+        revisions = config["external_comparator"].get("expected_revisions")
+        if not isinstance(revisions, Mapping) or set(revisions) != {
+            "clawpack_commit",
+            "geoclaw_commit",
+            "petsc_commit",
+            "petsc_options_sha256",
+        }:
+            raise ValueError("v3 external revision pins are incomplete")
+        if any(
+            len(str(value)) != 40
+            for key, value in revisions.items()
+            if key != "petsc_options_sha256"
+        ) or len(str(revisions["petsc_options_sha256"])) != 64:
+            raise ValueError("v3 external revision pins are malformed")
     if not bool(config["prerequisites"].get("require_level_a_pass")):
         raise ValueError("The minimum package must require a passing Level A")
     prerequisites = config["prerequisites"]
@@ -180,6 +214,13 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         "mpi_processes": 2,
         "omp_threads": 1,
     }
+    if schema_id == SCHEMA_ID_V3:
+        expected_sgn.update(
+            {
+                "petsc_report_converged_reason": True,
+                "petsc_fail_on_nonconvergence": True,
+            }
+        )
     if dict(execution.get("sgn", {})) != expected_sgn:
         raise ValueError("Established-solver SGN execution policy changed")
     _requested_times(config)
@@ -199,6 +240,30 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         for pairing in case.get("pairings", []):
             if len(pairing) != 2 or pairing[0] not in SOLVERS or pairing[1] not in COMPARATORS:
                 raise ValueError(f"Invalid pairing for case {case_id}: {pairing}")
+            if (
+                schema_id == SCHEMA_ID_V3
+                and pairing == ["boussinesq", "geoclaw_sgn"]
+            ):
+                if str(case.get("generator")) != "flat_linear_mode":
+                    raise ValueError(
+                        "v3 Boussinesq/SGN comparisons require the matched "
+                        "constant-depth long-wave generator"
+                    )
+                depth = float(case.get("depth", 0.0))
+                amplitude = float(case.get("amplitude", 0.0))
+                mode = int(case.get("mode", 0))
+                max_kh = 2.0 * math.pi * mode * depth
+                if (
+                    depth <= 0.0
+                    or amplitude <= 0.0
+                    or mode <= 0
+                    or max_kh > 0.35
+                    or amplitude / depth > 1.0e-3
+                ):
+                    raise ValueError(
+                        "v3 Boussinesq/SGN case is outside the frozen "
+                        "small-amplitude long-wave regime"
+                    )
         if str(case.get("generator")) == "level_a_canaries":
             buffered = case.get("buffered_domain")
             if not isinstance(buffered, Mapping):
@@ -221,15 +286,36 @@ def _validate_config(config: Mapping[str, Any]) -> None:
             if float(buffered.get("return_time_safety_factor", 0.0)) < 1.0:
                 raise ValueError("External reference requires a return-time safety factor")
 
-    required_thresholds = {
-        "trajectory_relative_l2",
-        "per_time_relative_l2_p95",
-        "gauge_nrmse_max",
-        "arrival_time_abs_max",
-        "peak_relative_error_max",
-        "time_to_peak_abs_max",
-        "waveform_lag_steps_max",
-    }
+    if schema_id == SCHEMA_ID:
+        required_thresholds = {
+            "trajectory_relative_l2",
+            "per_time_relative_l2_p95",
+            "gauge_nrmse_max",
+            "arrival_time_abs_max",
+            "peak_relative_error_max",
+            "time_to_peak_abs_max",
+            "waveform_lag_steps_max",
+        }
+    else:
+        metric_policy = config.get("metric_policy")
+        if not isinstance(metric_policy, Mapping):
+            raise ValueError("v3 metric policy is missing")
+        if not 0.0 < float(metric_policy.get("per_time_signal_floor_fraction", 0.0)) < 1.0:
+            raise ValueError("v3 per-time signal floor must lie in (0, 1)")
+        if not 0.0 < float(metric_policy.get("peak_plateau_fraction", 0.0)) < 1.0:
+            raise ValueError("v3 peak plateau fraction must lie in (0, 1)")
+        if not 0.0 < float(metric_policy.get("lag_minimum_overlap_fraction", 0.0)) <= 1.0:
+            raise ValueError("v3 lag overlap fraction must lie in (0, 1]")
+        if metric_policy.get("arrival_metric") != "disabled_initially_supported_fields":
+            raise ValueError("v3 must not use the invalid initially-active arrival gate")
+        required_thresholds = {
+            "trajectory_relative_l2",
+            "per_time_scaled_l2_p95",
+            "gauge_nrmse_max",
+            "peak_relative_error_max",
+            "peak_plateau_time_abs_max",
+            "waveform_lag_steps_max",
+        }
     for category in categories:
         values = config["thresholds"][category]
         if set(values) != required_thresholds:
@@ -303,6 +389,14 @@ def _synthetic_arrays(case: Mapping[str, Any], nx: int, ny: int) -> dict[str, np
             -0.5 * (distance / float(case["sigma"])) ** 2
         )
         eta0 -= float(np.mean(eta0))
+    elif generator == "flat_linear_mode":
+        bathymetry = -depth * np.ones((nx, ny), dtype=np.float64)
+        eta0 = amplitude * np.cos(
+            2.0
+            * np.pi
+            * int(case["mode"])
+            * (x - float(case.get("phase_origin", 0.25)))
+        )
     elif generator == "smooth_periodic_bathymetry":
         bathymetry = -depth + float(case["bathymetry_amplitude"]) * (
             np.cos(2.0 * np.pi * x) * np.cos(2.0 * np.pi * y)
@@ -337,6 +431,7 @@ def _case_record(
     pairings: Sequence[Sequence[str]],
     gauges: np.ndarray,
     source: Mapping[str, Any],
+    schema_id: str = SCHEMA_ID,
 ) -> dict[str, Any]:
     identity = {
         "case_id": case_id,
@@ -354,7 +449,7 @@ def _case_record(
     identity["case_hash"] = stable_hash_payload(
         artifact_kind="minimum-established-solver-case",
         payload=identity,
-        schema_id=SCHEMA_ID,
+        schema_id=schema_id,
     )
     return identity
 
@@ -365,6 +460,7 @@ def _build_cases(
     cases: list[
         tuple[dict[str, Any], dict[str, np.ndarray], dict[str, np.ndarray]]
     ] = []
+    schema_id = str(config.get("schema_id", SCHEMA_ID))
     fractions = config["gauges"]["fractional_cell_locations"]
     for spec in config["cases"]:
         generator = str(spec["generator"])
@@ -382,6 +478,7 @@ def _build_cases(
                     pairings=spec["pairings"],
                     gauges=_gauge_indices(nx, ny, fractions),
                     source={"generator": generator, "parameters": dict(spec)},
+                    schema_id=schema_id,
                 )
                 cases.append((record, arrays, arrays))
             continue
@@ -478,6 +575,7 @@ def _build_cases(
                     "qualified_id": canary["qualified_id"],
                     "input_fingerprint": canary["input_fingerprint"],
                 },
+                schema_id=schema_id,
             )
             record["inhouse_domain"] = {
                 "shape": [inhouse_total, inhouse_total],
@@ -512,7 +610,7 @@ def _build_cases(
             record["case_hash"] = stable_hash_payload(
                 artifact_kind="minimum-established-solver-case",
                 payload=case_identity,
-                schema_id=SCHEMA_ID,
+                schema_id=schema_id,
             )
             cases.append((record, inhouse_arrays, external_arrays))
     return cases
@@ -598,6 +696,8 @@ def prepare_minimum_established_solver_validation(
     if workers <= 0:
         raise ValueError("workers must be positive")
     config = _load_config(config_path)
+    schema_id = _config_schema_id(config)
+    external_result_schema_id = _external_result_schema_id(schema_id)
     level_a_contract, level_a_decision, current_code = _verify_level_a(
         repo_root, level_a_root
     )
@@ -625,21 +725,47 @@ def prepare_minimum_established_solver_validation(
     for record in case_records:
         for solver_name, comparator_id in record["pairings"]:
             key = (str(record["case_id"]), str(comparator_id))
+            required_npz_keys = [
+                "schema_id",
+                "case_hash",
+                "comparator_id",
+                "comparator_version",
+                "comparator_commit",
+                "times",
+                "eta",
+            ]
+            if schema_id == SCHEMA_ID_V3:
+                required_npz_keys.extend(
+                    [
+                        "clawpack_commit",
+                        "petsc_commit",
+                        "adapter_hash",
+                        "actual_times",
+                        "runtime_seconds",
+                        "initial_state_max_abs_error",
+                        "requested_time_max_abs_error",
+                        "nominal_eta_max_abs_difference",
+                        "nominal_eta_consistency_floor",
+                        "solver_health_status",
+                    ]
+                )
+                if comparator_id == "geoclaw_sgn":
+                    required_npz_keys.extend(
+                        [
+                            "ksp_solve_count",
+                            "ksp_iteration_max",
+                            "ksp_iteration_mean",
+                            "ksp_convergence_reasons",
+                        ]
+                    )
             external_requirements[key] = {
                 "case_id": record["case_id"],
                 "case_hash": record["case_hash"],
                 "comparator_id": comparator_id,
                 "comparator_version": config["external_comparator"]["version"],
+                "result_schema_id": external_result_schema_id,
                 "relative_path": _external_result_relative_path(*key),
-                "required_npz_keys": [
-                    "schema_id",
-                    "case_hash",
-                    "comparator_id",
-                    "comparator_version",
-                    "comparator_commit",
-                    "times",
-                    "eta",
-                ],
+                "required_npz_keys": required_npz_keys,
                 "eta_shape": [int(times.size), int(record["nx"]), int(record["ny"])],
                 "computational_shape": list(
                     record.get("external_domain", {}).get(
@@ -669,7 +795,7 @@ def prepare_minimum_established_solver_validation(
             )
 
     frozen = {
-        "schema_id": SCHEMA_ID,
+        "schema_id": schema_id,
         "artifact_kind": "minimum-established-solver-validation-frozen-contract",
         "source_config": _json_safe(config),
         "source_config_sha256": sha256_file(config_path),
@@ -693,7 +819,7 @@ def prepare_minimum_established_solver_validation(
     bundle_hash = stable_hash_payload(
         artifact_kind="minimum-established-solver-validation-contract",
         payload=frozen,
-        schema_id=SCHEMA_ID,
+        schema_id=schema_id,
     )
     frozen["bundle_hash"] = bundle_hash
     base = output_root or repo_root / "artifacts/common_time_v2/level_b_minimum"
@@ -709,7 +835,7 @@ def prepare_minimum_established_solver_validation(
         _write_json(
             staging / "external_results_manifest.json",
             {
-                "schema_id": EXTERNAL_RESULT_SCHEMA_ID,
+                "schema_id": external_result_schema_id,
                 "bundle_hash": bundle_hash,
                 "results": list(external_requirements.values()),
             },
@@ -853,11 +979,71 @@ def _npz_scalar(payload: Mapping[str, np.ndarray], key: str) -> str:
     return str(np.asarray(payload[key]).reshape(-1)[0])
 
 
+def _load_external_run_manifest(
+    external_root: Path,
+    frozen: Mapping[str, Any],
+) -> dict[str, Any]:
+    manifest = _read_json(external_root / "RUN_MANIFEST.json")
+    config = frozen["source_config"]
+    if manifest.get("schema_id") != (
+        "tsunami-surrogate.geoclaw-external-adapter.v2"
+    ):
+        raise RuntimeError("External run manifest adapter schema mismatch")
+    if manifest.get("bundle_hash") != frozen.get("bundle_hash"):
+        raise RuntimeError("External run manifest bundle identity mismatch")
+    if manifest.get("execution") != config.get("external_execution"):
+        raise RuntimeError("External run manifest execution policy mismatch")
+    if not str(manifest.get("adapter_hash", "")).strip():
+        raise RuntimeError("External run manifest has no adapter hash")
+    revisions = manifest.get("revisions")
+    if not isinstance(revisions, Mapping):
+        raise RuntimeError("External run manifest revisions are missing")
+    expected_revisions = config["external_comparator"].get("expected_revisions", {})
+    for key, expected in expected_revisions.items():
+        if revisions.get(key) != expected:
+            raise RuntimeError(
+                f"External run manifest {key} mismatch: "
+                f"{revisions.get(key)!r} != {expected!r}"
+            )
+    return manifest
+
+
+def _validate_external_checksums(
+    external_root: Path,
+    frozen: Mapping[str, Any],
+) -> None:
+    checksum_path = external_root / "SHA256SUMS.txt"
+    if not checksum_path.is_file():
+        raise RuntimeError("External canonical checksum manifest is missing")
+    expected_paths = {
+        "RUN_MANIFEST.json",
+        *(str(row["relative_path"]) for row in frozen["external_results"]),
+    }
+    recorded: dict[str, str] = {}
+    for line in checksum_path.read_text(encoding="utf-8").splitlines():
+        digest, separator, relative = line.partition("  ")
+        if (
+            not separator
+            or len(digest) != 64
+            or relative in recorded
+            or relative not in expected_paths
+        ):
+            raise RuntimeError("External canonical checksum manifest is invalid")
+        recorded[relative] = digest
+    if set(recorded) != expected_paths:
+        raise RuntimeError("External canonical checksum coverage mismatch")
+    for relative, expected_digest in recorded.items():
+        path = external_root / relative
+        if not path.is_file() or sha256_file(path) != expected_digest:
+            raise RuntimeError(f"External checksum mismatch: {relative}")
+
+
 def _load_external_result(
     path: Path,
     requirement: Mapping[str, Any],
     requested_times: np.ndarray,
-) -> tuple[np.ndarray, dict[str, str]]:
+    run_manifest: Mapping[str, Any] | None = None,
+) -> tuple[np.ndarray, dict[str, Any]]:
     if not path.is_file():
         raise FileNotFoundError(f"Missing external result: {path}")
     with np.load(path, allow_pickle=False) as payload:
@@ -876,8 +1062,55 @@ def _load_external_result(
         }
         eta = np.asarray(payload["eta"], dtype=np.float64)
         times = np.asarray(payload["times"], dtype=np.float64)
+        result_schema_id = str(
+            requirement.get("result_schema_id", EXTERNAL_RESULT_SCHEMA_ID)
+        )
+        if result_schema_id == EXTERNAL_RESULT_SCHEMA_ID_V3:
+            for key in (
+                "clawpack_commit",
+                "petsc_commit",
+                "adapter_hash",
+                "solver_health_status",
+            ):
+                metadata[key] = _npz_scalar(payload, key)
+            actual_times = np.asarray(payload["actual_times"], dtype=np.float64)
+            diagnostics = {
+                key: float(np.asarray(payload[key]).reshape(-1)[0])
+                for key in (
+                    "runtime_seconds",
+                    "initial_state_max_abs_error",
+                    "requested_time_max_abs_error",
+                    "nominal_eta_max_abs_difference",
+                    "nominal_eta_consistency_floor",
+                )
+            }
+            if str(requirement["comparator_id"]) == "geoclaw_sgn":
+                diagnostics.update(
+                    {
+                        "ksp_solve_count": int(
+                            np.asarray(payload["ksp_solve_count"]).reshape(-1)[0]
+                        ),
+                        "ksp_iteration_max": int(
+                            np.asarray(payload["ksp_iteration_max"]).reshape(-1)[0]
+                        ),
+                        "ksp_iteration_mean": float(
+                            np.asarray(payload["ksp_iteration_mean"]).reshape(-1)[0]
+                        ),
+                    }
+                )
+                metadata["ksp_convergence_reasons"] = [
+                    str(value)
+                    for value in np.asarray(
+                        payload["ksp_convergence_reasons"]
+                    ).reshape(-1)
+                ]
+        else:
+            actual_times = times
+            diagnostics = {}
     expected_metadata = {
-        "schema_id": EXTERNAL_RESULT_SCHEMA_ID,
+        "schema_id": str(
+            requirement.get("result_schema_id", EXTERNAL_RESULT_SCHEMA_ID)
+        ),
         "case_hash": str(requirement["case_hash"]),
         "comparator_id": str(requirement["comparator_id"]),
         "comparator_version": str(requirement["comparator_version"]),
@@ -893,8 +1126,49 @@ def _load_external_result(
         raise RuntimeError(f"External result {path} eta shape mismatch: {eta.shape}")
     if not np.array_equal(times, requested_times):
         raise RuntimeError(f"External result {path} requested-time mismatch")
+    if not np.array_equal(actual_times, requested_times):
+        raise RuntimeError(f"External result {path} actual-time mismatch")
     if not np.isfinite(eta).all():
         raise RuntimeError(f"External result {path} contains nonfinite eta")
+    if expected_metadata["schema_id"] == EXTERNAL_RESULT_SCHEMA_ID_V3:
+        if run_manifest is None:
+            raise RuntimeError("v3 external result requires its frozen run manifest")
+        manifest_revisions = run_manifest["revisions"]
+        for result_key, manifest_key in (
+            ("comparator_commit", "geoclaw_commit"),
+            ("clawpack_commit", "clawpack_commit"),
+            ("petsc_commit", "petsc_commit"),
+        ):
+            if metadata[result_key] != manifest_revisions[manifest_key]:
+                raise RuntimeError(
+                    f"External result {path} {result_key} does not match run manifest"
+                )
+        if metadata["adapter_hash"] != run_manifest["adapter_hash"]:
+            raise RuntimeError(
+                f"External result {path} adapter hash does not match run manifest"
+            )
+        if metadata["solver_health_status"] != "passed":
+            raise RuntimeError(f"External result {path} solver health did not pass")
+        if (
+            not all(math.isfinite(float(value)) for value in diagnostics.values())
+            or diagnostics["runtime_seconds"] < 0.0
+            or diagnostics["initial_state_max_abs_error"] > 5.0e-13
+            or diagnostics["requested_time_max_abs_error"] > 5.0e-14
+            or diagnostics["nominal_eta_max_abs_difference"]
+            > diagnostics["nominal_eta_consistency_floor"]
+        ):
+            raise RuntimeError(f"External result {path} diagnostics are invalid")
+        if str(requirement["comparator_id"]) == "geoclaw_sgn":
+            reasons = metadata["ksp_convergence_reasons"]
+            if (
+                diagnostics["ksp_solve_count"] <= 0
+                or diagnostics["ksp_iteration_max"] < 0
+                or diagnostics["ksp_iteration_mean"] < 0.0
+                or not reasons
+                or any(not reason.startswith("CONVERGED_") for reason in reasons)
+            ):
+                raise RuntimeError(f"External result {path} KSP health is invalid")
+    metadata.update(diagnostics)
     return eta, metadata
 
 
@@ -990,6 +1264,174 @@ def _comparison_metrics(
     }
 
 
+def _normalized_waveform_lag_steps(
+    candidate: np.ndarray,
+    reference: np.ndarray,
+    *,
+    minimum_overlap_fraction: float,
+) -> int:
+    candidate = np.asarray(candidate, dtype=np.float64)
+    reference = np.asarray(reference, dtype=np.float64)
+    minimum_overlap = max(
+        2, int(math.ceil(candidate.size * minimum_overlap_fraction))
+    )
+    candidates: list[tuple[float, int]] = []
+    for lag in range(-(candidate.size - minimum_overlap), candidate.size - minimum_overlap + 1):
+        if lag < 0:
+            left = candidate[:lag]
+            right = reference[-lag:]
+        elif lag > 0:
+            left = candidate[lag:]
+            right = reference[:-lag]
+        else:
+            left = candidate
+            right = reference
+        left = left - float(np.mean(left))
+        right = right - float(np.mean(right))
+        denominator = float(np.linalg.norm(left) * np.linalg.norm(right))
+        score = 0.0 if denominator <= 1.0e-30 else float(np.dot(left, right) / denominator)
+        candidates.append((score, lag))
+    best_score = max(score for score, _lag in candidates)
+    tied = [
+        lag
+        for score, lag in candidates
+        if math.isclose(score, best_score, rel_tol=0.0, abs_tol=1.0e-14)
+    ]
+    return min(tied, key=lambda value: (abs(value), value))
+
+
+def _peak_plateau_distance(
+    times: np.ndarray,
+    candidate: np.ndarray,
+    reference: np.ndarray,
+    *,
+    plateau_fraction: float,
+    inactive_floor: float,
+) -> float:
+    candidate_peak = float(np.max(np.abs(candidate)))
+    reference_peak = float(np.max(np.abs(reference)))
+    if candidate_peak <= inactive_floor or reference_peak <= inactive_floor:
+        return float(times[-1] - times[0] + times[0])
+    candidate_indices = np.flatnonzero(
+        np.abs(candidate) >= plateau_fraction * candidate_peak
+    )
+    reference_indices = np.flatnonzero(
+        np.abs(reference) >= plateau_fraction * reference_peak
+    )
+    candidate_times = times[candidate_indices]
+    reference_times = times[reference_indices]
+    return float(
+        np.min(
+            np.abs(
+                candidate_times[:, np.newaxis]
+                - reference_times[np.newaxis, :]
+            )
+        )
+    )
+
+
+def _comparison_metrics_v3(
+    inhouse: np.ndarray,
+    external: np.ndarray,
+    times: np.ndarray,
+    gauges: np.ndarray,
+    *,
+    inactive_floor: float,
+    per_time_signal_floor_fraction: float,
+    peak_plateau_fraction: float,
+    lag_minimum_overlap_fraction: float,
+) -> dict[str, Any]:
+    inhouse = np.asarray(inhouse, dtype=np.float64)
+    external = np.asarray(external, dtype=np.float64)
+    difference = inhouse - external
+    external_norm = max(float(np.linalg.norm(external)), inactive_floor)
+    reference_time_rms = np.sqrt(np.mean(external**2, axis=(1, 2)))
+    difference_time_rms = np.sqrt(np.mean(difference**2, axis=(1, 2)))
+    reference_signal_scale = max(
+        float(np.max(reference_time_rms)), inactive_floor
+    )
+    denominator_floor = per_time_signal_floor_fraction * reference_signal_scale
+    per_time_scaled = difference_time_rms / np.maximum(
+        reference_time_rms, denominator_floor
+    )
+
+    gauge_nrmse: list[float] = []
+    peak_errors: list[float] = []
+    peak_plateau_errors: list[float] = []
+    lags: list[int] = []
+    for i, j in np.asarray(gauges, dtype=np.int64):
+        candidate = np.asarray(inhouse[:, i, j], dtype=np.float64)
+        reference = np.asarray(external[:, i, j], dtype=np.float64)
+        reference_peak = float(np.max(np.abs(reference)))
+        if reference_peak <= inactive_floor:
+            continue
+        candidate_peak = float(np.max(np.abs(candidate)))
+        gauge_nrmse.append(
+            float(np.sqrt(np.mean((candidate - reference) ** 2)) / reference_peak)
+        )
+        peak_errors.append(abs(candidate_peak - reference_peak) / reference_peak)
+        peak_plateau_errors.append(
+            _peak_plateau_distance(
+                times,
+                candidate,
+                reference,
+                plateau_fraction=peak_plateau_fraction,
+                inactive_floor=inactive_floor,
+            )
+        )
+        lags.append(
+            abs(
+                _normalized_waveform_lag_steps(
+                    candidate,
+                    reference,
+                    minimum_overlap_fraction=lag_minimum_overlap_fraction,
+                )
+            )
+        )
+
+    return {
+        "active_gauge_count": len(gauge_nrmse),
+        "absolute_rms": float(np.sqrt(np.mean(difference**2))),
+        "absolute_linf": float(np.max(np.abs(difference))),
+        "trajectory_relative_l2": float(np.linalg.norm(difference) / external_norm),
+        "per_time_reference_rms_max": reference_signal_scale,
+        "per_time_denominator_floor": denominator_floor,
+        "per_time_scaled_l2_p95": float(np.quantile(per_time_scaled, 0.95)),
+        "gauge_nrmse_max": max(gauge_nrmse) if gauge_nrmse else None,
+        "arrival_metric_eligible": False,
+        "arrival_time_abs_max": None,
+        "peak_relative_error_max": max(peak_errors) if peak_errors else None,
+        "peak_plateau_time_abs_max": (
+            max(peak_plateau_errors) if peak_plateau_errors else None
+        ),
+        "waveform_lag_steps_max": max(lags) if lags else None,
+    }
+
+
+def _flat_linear_swe_reference(
+    eta0: np.ndarray,
+    times: np.ndarray,
+    *,
+    depth: float,
+    gravity: float,
+) -> np.ndarray:
+    eta0 = np.asarray(eta0, dtype=np.float64)
+    nx = eta0.shape[0]
+    wave_numbers = 2.0 * np.pi * np.fft.fftfreq(nx, d=1.0 / nx)
+    frequencies = math.sqrt(gravity * depth) * np.abs(wave_numbers)
+    coefficients = np.fft.fft(eta0, axis=0)
+    return np.stack(
+        [
+            np.fft.ifft(
+                coefficients * np.cos(frequencies * float(time_value))[:, None],
+                axis=0,
+            ).real
+            for time_value in times
+        ],
+        axis=0,
+    )
+
+
 def _metrics_pass(metrics: Mapping[str, Any], thresholds: Mapping[str, Any]) -> bool:
     if int(metrics["active_gauge_count"]) <= 0:
         return False
@@ -1011,25 +1453,30 @@ def evaluate_minimum_established_solver_validation(
     output_root = output_root.resolve()
     validate_checksums(bundle_root)
     frozen = _read_json(bundle_root / "frozen_contract.json")
-    if frozen.get("schema_id") != SCHEMA_ID:
+    schema_id = str(frozen.get("schema_id", ""))
+    if schema_id not in SUPPORTED_SCHEMA_IDS:
         raise RuntimeError("Frozen Level B schema mismatch")
     bundle_identity = dict(frozen)
     recorded_hash = bundle_identity.pop("bundle_hash", None)
     expected_hash = stable_hash_payload(
         artifact_kind="minimum-established-solver-validation-contract",
         payload=bundle_identity,
-        schema_id=SCHEMA_ID,
+        schema_id=schema_id,
     )
     if recorded_hash != expected_hash or bundle_root.name != expected_hash:
         raise RuntimeError("Frozen Level B content-addressed identity mismatch")
     config = frozen["source_config"]
+    run_manifest: Mapping[str, Any] | None = None
+    if schema_id == SCHEMA_ID_V3:
+        run_manifest = _load_external_run_manifest(external_root, frozen)
+        _validate_external_checksums(external_root, frozen)
     times = np.asarray(frozen["requested_times"], dtype=np.float64)
     case_by_id = {str(row["case_id"]): row for row in frozen["cases"]}
     requirement_by_key = {
         (str(row["case_id"]), str(row["comparator_id"])): row
         for row in frozen["external_results"]
     }
-    external_cache: dict[tuple[str, str], tuple[np.ndarray, dict[str, str]]] = {}
+    external_cache: dict[tuple[str, str], tuple[np.ndarray, dict[str, Any]]] = {}
     rows: list[dict[str, Any]] = []
     total_pairings = len(frozen["pairings"])
     for pairing_index, pairing in enumerate(frozen["pairings"], start=1):
@@ -1042,6 +1489,7 @@ def evaluate_minimum_established_solver_validation(
                 external_root / str(requirement["relative_path"]),
                 requirement,
                 times,
+                run_manifest,
             )
         external_eta, metadata = external_cache[key]
         solver_name = str(pairing["inhouse_solver"])
@@ -1061,17 +1509,85 @@ def evaluate_minimum_established_solver_validation(
             bundle_root / "cases" / case_id / "input.npz", allow_pickle=False
         ) as payload:
             gauges = np.asarray(payload["gauge_indices"], dtype=np.int64)
-        metrics = _comparison_metrics(
-            inhouse_eta,
-            external_eta,
-            times,
-            gauges,
-            arrival_fraction=float(
-                config["gauges"]["arrival_fraction_of_external_peak"]
-            ),
-            inactive_floor=float(config["gauges"]["inactive_external_peak_floor"]),
-        )
+            eta0 = (
+                np.asarray(payload["eta0"], dtype=np.float64)
+                if schema_id == SCHEMA_ID_V3
+                else None
+            )
+        if schema_id == SCHEMA_ID:
+            metrics = _comparison_metrics(
+                inhouse_eta,
+                external_eta,
+                times,
+                gauges,
+                arrival_fraction=float(
+                    config["gauges"]["arrival_fraction_of_external_peak"]
+                ),
+                inactive_floor=float(
+                    config["gauges"]["inactive_external_peak_floor"]
+                ),
+            )
+        else:
+            metric_policy = config["metric_policy"]
+            metrics = _comparison_metrics_v3(
+                inhouse_eta,
+                external_eta,
+                times,
+                gauges,
+                inactive_floor=float(
+                    config["gauges"]["inactive_external_peak_floor"]
+                ),
+                per_time_signal_floor_fraction=float(
+                    metric_policy["per_time_signal_floor_fraction"]
+                ),
+                peak_plateau_fraction=float(
+                    metric_policy["peak_plateau_fraction"]
+                ),
+                lag_minimum_overlap_fraction=float(
+                    metric_policy["lag_minimum_overlap_fraction"]
+                ),
+            )
+            source = case.get("source", {})
+            parameters = source.get("parameters", {})
+            if (
+                comparator_id == "geoclaw_swe"
+                and source.get("generator")
+                in {"flat_linear_packet", "flat_linear_mode"}
+            ):
+                analytical = _flat_linear_swe_reference(
+                    np.asarray(eta0, dtype=np.float64),
+                    times,
+                    depth=float(parameters["depth"]),
+                    gravity=float(config["inhouse"]["gravity"]),
+                )
+                analytical_norm = max(
+                    float(np.linalg.norm(analytical)),
+                    float(config["gauges"]["inactive_external_peak_floor"]),
+                )
+                metrics.update(
+                    {
+                        "analytical_inhouse_relative_l2": float(
+                            np.linalg.norm(inhouse_eta - analytical)
+                            / analytical_norm
+                        ),
+                        "analytical_external_relative_l2": float(
+                            np.linalg.norm(external_eta - analytical)
+                            / analytical_norm
+                        ),
+                    }
+                )
         thresholds = config["thresholds"][str(pairing["category"])]
+        external_health = (
+            {
+                "solver_health_status": metadata["solver_health_status"],
+                "external_runtime_seconds": metadata["runtime_seconds"],
+                "ksp_solve_count": metadata.get("ksp_solve_count"),
+                "ksp_iteration_max": metadata.get("ksp_iteration_max"),
+                "ksp_iteration_mean": metadata.get("ksp_iteration_mean"),
+            }
+            if schema_id == SCHEMA_ID_V3
+            else {}
+        )
         rows.append(
             {
                 **pairing,
@@ -1079,6 +1595,7 @@ def evaluate_minimum_established_solver_validation(
                 "ny": int(case["ny"]),
                 "comparator_version": metadata["comparator_version"],
                 "comparator_commit": metadata["comparator_commit"],
+                **external_health,
                 **metrics,
                 "passed": _metrics_pass(metrics, thresholds),
             }
@@ -1128,7 +1645,7 @@ def evaluate_minimum_established_solver_validation(
     comparison_passed = all(bool(row["passed"]) for row in rows)
     refinement_passed = all(bool(row["passed"]) for row in refinement_rows)
     decision = {
-        "schema_id": SCHEMA_ID,
+        "schema_id": schema_id,
         "bundle_hash": frozen["bundle_hash"],
         "minimum_level_b_passed": comparison_passed and refinement_passed,
         "decision": (
@@ -1168,6 +1685,15 @@ def established_solver_status(
     external_root = external_root.resolve()
     validate_checksums(bundle_root)
     frozen = _read_json(bundle_root / "frozen_contract.json")
+    schema_id = str(frozen.get("schema_id", ""))
+    run_manifest: Mapping[str, Any] | None = None
+    global_error: str | None = None
+    if schema_id == SCHEMA_ID_V3:
+        try:
+            run_manifest = _load_external_run_manifest(external_root, frozen)
+            _validate_external_checksums(external_root, frozen)
+        except Exception as exc:
+            global_error = str(exc)
     requested_times = np.asarray(frozen["requested_times"], dtype=np.float64)
     valid: list[str] = []
     missing: list[str] = []
@@ -1179,13 +1705,17 @@ def established_solver_status(
             missing.append(relative)
             continue
         try:
-            _load_external_result(path, requirement, requested_times)
+            if global_error is not None:
+                raise RuntimeError(global_error)
+            _load_external_result(
+                path, requirement, requested_times, run_manifest
+            )
         except Exception as exc:
             invalid.append({"relative_path": relative, "error": str(exc)})
         else:
             valid.append(relative)
     total = len(frozen["external_results"])
-    return {
+    status = {
         "bundle_hash": frozen["bundle_hash"],
         "valid": len(valid),
         "missing": len(missing),
@@ -1196,3 +1726,6 @@ def established_solver_status(
         "missing_paths": missing,
         "invalid_paths": invalid,
     }
+    if schema_id == SCHEMA_ID_V3:
+        status["external_provenance_error"] = global_error
+    return status

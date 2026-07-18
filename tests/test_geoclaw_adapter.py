@@ -8,10 +8,13 @@ import pytest
 import yaml
 
 from src.evaluation.geoclaw_adapter import (
+    GeoClawEnvironment,
     _adapter_hash,
     _collect_output,
     _load_case_input,
     _parse_ascii_frame,
+    _parse_ksp_health,
+    _subprocess_environment,
     _task_boundary,
     _write_state_file,
 )
@@ -276,3 +279,53 @@ def test_adapter_hash_and_boundary_mapping_are_deterministic() -> None:
         )
         == "extrap"
     )
+
+
+def test_v3_petsc_environment_requests_reason_and_fails_closed(
+    tmp_path: Path,
+) -> None:
+    claw = tmp_path / "claw"
+    options = claw / "geoclaw/examples/bouss/petscMPIoptions"
+    options.parent.mkdir(parents=True)
+    options.write_text("-ksp_type gmres\n", encoding="utf-8")
+    petsc = tmp_path / "petsc"
+    environment = GeoClawEnvironment(
+        claw_root=claw,
+        petsc_dir=petsc,
+        petsc_arch="arch",
+        python_executable=Path("/usr/bin/python"),
+    )
+    legacy = _subprocess_environment(environment)
+    strict = _subprocess_environment(environment, fail_closed_ksp=True)
+    assert "-ksp_converged_reason" not in legacy["PETSC_OPTIONS"]
+    assert "-ksp_converged_reason" in strict["PETSC_OPTIONS"]
+    assert "-ksp_error_if_not_converged" in strict["PETSC_OPTIONS"]
+    assert "-on_error_abort" in strict["PETSC_OPTIONS"]
+
+
+def test_ksp_health_parser_accepts_only_explicit_convergence(tmp_path: Path) -> None:
+    run_log = tmp_path / "run.log"
+    run_log.write_text(
+        "Linear solve converged due to CONVERGED_RTOL iterations 7\n"
+        "Linear solve converged due to CONVERGED_ATOL iterations 3\n",
+        encoding="utf-8",
+    )
+    health = _parse_ksp_health(run_log)
+    assert health["ksp_solve_count"] == 2
+    assert health["ksp_iteration_max"] == 7
+    assert health["ksp_iteration_mean"] == 5.0
+    assert health["ksp_convergence_reasons"] == [
+        "CONVERGED_ATOL",
+        "CONVERGED_RTOL",
+    ]
+
+    run_log.write_text(
+        "Linear solve did not converge due to DIVERGED_ITS iterations 200\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="did not converge"):
+        _parse_ksp_health(run_log)
+
+    run_log.write_text("PETSc was called 10 times\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="no PETSc convergence records"):
+        _parse_ksp_health(run_log)
