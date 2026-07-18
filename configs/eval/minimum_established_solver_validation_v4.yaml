@@ -1,0 +1,245 @@
+schema_id: tsunami-surrogate.minimum-established-solver-validation.v4
+artifact_kind: minimum-established-solver-validation-candidate
+
+prerequisites:
+  require_level_a_pass: true
+  require_unchanged_code_state: false
+  require_completed_level_a_replay: true
+  code_state_policy: freeze_current_bundle_code_and_record_scoped_post_level_a_changes
+  allowed_post_level_a_scopes:
+    - completed_level_a_raw_csv_newline_validator
+    - established_solver_bundle_preparation_and_evaluation
+  forbidden_post_level_a_scopes:
+    - solver_numerics
+    - dataset_generation_semantics
+    - level_a_scientific_tasks_thresholds_or_metrics
+
+external_comparator:
+  implementation: GeoClaw
+  package: Clawpack
+  version: 5.14.0
+  release_tag: v5.14.0
+  swe_mode: standard_single_level_cartesian_swe
+  dispersive_mode: serre_green_naghdi
+  dispersive_equation_id: 2
+  dispersive_pairing_scope: asymptotic_small_amplitude_constant_depth_long_wave
+  amr_levels: 1
+  friction: disabled
+  coriolis: disabled
+  fixed_grid_registration: cell_centers
+  output_time_policy: exact_requested_physical_times
+  boundary_mapping:
+    periodic: periodic
+    open: extrapolation
+  expected_revisions:
+    clawpack_commit: 5ce53b4814a3e03536fa17e8ae05e65960194c56
+    geoclaw_commit: 11479f675dd8bb19066a2430c28206999cebf299
+    petsc_commit: fd2ca03442be2a78130b411057f3b922130f6b1b
+    petsc_options_sha256: e7494f0405490bdf6529976490ee9dba1900872569e27b07af22e44ca102763f
+
+external_execution:
+  spatial_order: 2
+  dimensional_split: unsplit
+  transverse_waves: 2
+  limiter: mc
+  use_fwaves: true
+  source_split: godunov
+  cfl_desired: 0.75
+  cfl_max: 1.0
+  dt_initial: 1.0e-4
+  dt_max: 1.0e99
+  steps_max: 100000
+  num_ghost: 2
+  coordinate_system: 1
+  sea_level: 0.0
+  dry_tolerance: 1.0e-12
+  friction_forcing: false
+  coriolis_forcing: false
+  amr_levels: 1
+  output_format: ascii
+  output_t0_for_initial_state_verification: true
+  initial_state_mapping: exact_cell_centered_custom_qinit_and_setaux
+  initial_free_surface_definition: natural_depth_plus_bathymetry_float64
+  nominal_eta_consistency_floor: four_float32_eps_scaled
+  initial_state_abs_tolerance: 5.0e-13
+  sgn:
+    bouss_equations: 2
+    bouss_min_level: 1
+    bouss_max_level: 1
+    bouss_min_depth: 0.0
+    bouss_solver: 3
+    bouss_tstart: 0.0
+    petsc_ksp_type: gmres
+    petsc_ksp_rtol: 1.0e-9
+    petsc_ksp_max_it: 200
+    petsc_report_converged_reason: true
+    petsc_fail_on_nonconvergence: true
+    mpi_processes: 2
+    omp_threads: 1
+
+requested_times:
+  start: 0.0035
+  step: 0.0035
+  count: 50
+  horizon: 0.175
+
+inhouse:
+  gravity: 9.81
+  cfl:
+    swe_hydrostatic: 0.45
+    swe_muscl_hr: 0.45
+    boussinesq: 0.35
+  use_sponge: false
+  boussinesq_filter: disabled
+
+gauges:
+  fractional_cell_locations:
+    - [0.15, 0.50]
+    - [0.30, 0.50]
+    - [0.50, 0.50]
+    - [0.70, 0.50]
+    - [0.85, 0.50]
+  inactive_external_peak_floor: 1.0e-8
+
+metric_policy:
+  per_time_signal_floor_fraction: 0.05
+  peak_plateau_fraction: 0.99
+  lag_minimum_overlap_fraction: 0.50
+  arrival_metric: disabled_initially_supported_fields
+  absolute_errors: always_report
+  analytical_flat_swe_decomposition: always_report
+
+decision_policy:
+  threshold_float_rel_tolerance: 1.0e-12
+  threshold_float_abs_tolerance: 1.0e-15
+  diagnostic_boundary_band_cells: 8
+  category_roles:
+    flat_analytical:
+      comparison: descriptive_only
+      refinement: gate
+    matched_long_wave:
+      comparison: gate
+      descriptive_metrics:
+        - waveform_lag_steps_max
+      refinement: gate
+    production_input:
+      comparison: descriptive_only
+      identity_time_finite_health: gate
+  flat_analytical_verification:
+    finest_analytical_inhouse_relative_l2_max: 0.20
+    require_pairwise_strict_decrease: true
+    gated_error_series:
+      - trajectory_relative_l2
+      - analytical_inhouse_relative_l2
+      - analytical_external_relative_l2
+
+cases:
+  - case_id: flat_linear_packet
+    category: flat_analytical
+    generator: flat_linear_packet
+    grids: [32, 64, 128]
+    transverse_cells: 4
+    depth: 1.0
+    amplitude: 1.0e-5
+    center_x: 0.25
+    sigma: 0.06
+    boundary: periodic
+    pairings:
+      - [swe_hydrostatic, geoclaw_swe]
+      - [swe_muscl_hr, geoclaw_swe]
+
+  - case_id: matched_long_wave_mode
+    category: matched_long_wave
+    generator: flat_linear_mode
+    grids: [32, 64, 128]
+    transverse_cells: 8
+    depth: 0.05
+    amplitude: 1.0e-5
+    mode: 1
+    phase_origin: 0.25
+    boundary: periodic
+    pairings:
+      - [boussinesq, geoclaw_sgn]
+
+  - case_id: production_input_canaries
+    category: production_input
+    generator: level_a_canaries
+    count: 3
+    grids: [64]
+    boundary: radiation
+    buffered_domain:
+      core_grid: 64
+      inhouse_total_grid: 96
+      external_total_grid: 192
+      source_taper_cells: 8
+      bathymetry_extension: edge
+      output_crop: central
+      inhouse_sponge:
+        enabled: true
+        width: 16
+        min_factor: 0.8
+        axes: xy
+        profile: cosine
+        time_mode: elapsed_time_consistent
+        reference_dt: 0.0035
+      external_sponge: disabled
+      external_boundary: open_extrapolation
+      return_time_safety_factor: 1.10
+    pairings:
+      - [swe_hydrostatic, geoclaw_swe]
+      - [swe_muscl_hr, geoclaw_swe]
+
+thresholds:
+  flat_analytical:
+    trajectory_relative_l2: 0.20
+    per_time_scaled_l2_p95: 0.20
+    gauge_nrmse_max: 0.15
+    peak_relative_error_max: 0.15
+    peak_plateau_time_abs_max: 0.0070
+    waveform_lag_steps_max: 2
+  matched_long_wave:
+    trajectory_relative_l2: 0.20
+    per_time_scaled_l2_p95: 0.20
+    gauge_nrmse_max: 0.15
+    peak_relative_error_max: 0.15
+    peak_plateau_time_abs_max: 0.0070
+    waveform_lag_steps_max: 2
+  production_input:
+    trajectory_relative_l2: 0.35
+    per_time_scaled_l2_p95: 0.35
+    gauge_nrmse_max: 0.30
+    peak_relative_error_max: 0.30
+    peak_plateau_time_abs_max: 0.0140
+    waveform_lag_steps_max: 4
+  refinement:
+    finest_to_coarsest_error_ratio_max: 1.05
+    gated_pairings:
+      - swe_hydrostatic__geoclaw_swe
+      - swe_muscl_hr__geoclaw_swe
+      - boussinesq__geoclaw_sgn
+
+aggregation:
+  require_every_gated_comparison: true
+  require_every_descriptive_comparison: false
+  require_every_gated_refinement: true
+  require_every_gated_verification: true
+  production_compatibility_metrics: descriptive_only
+  missing_or_invalid_external_result: fail
+  threshold_changes_after_external_results: forbidden
+  external_checksums: exact_canonical_coverage
+  external_manifest_binding: required
+
+interpretation:
+  external_solver_is_truth: false
+  boussinesq_scope: asymptotic_small_amplitude_constant_depth_long_wave_only
+  unmatched_boussinesq_sgn_comparisons: forbidden
+  production_case_scope: exact_96x96_inhouse_pipeline_crop_against_boundary_safe_padded_geoclaw_swe
+  design_lineage_bundle: 5b872277129dc0c4503bd8fd7e3f6e1f4d2a60c49e25292919c005230673d72a
+  design_lineage_outcome: immutable_blocked_evidence_preserved_unchanged
+  threshold_rationale: v3 numerical limits carried forward exactly; v4 changes evidence roles, not limits
+  flat_verification_rationale: gate convergence plus finest analytical accuracy instead of requiring coarse grids to satisfy finest-resolution comparison limits
+  production_rationale: complex different-scheme outputs are mandatory compatibility diagnostics, not pointwise external truth
+  lag_rationale: standing periodic modes do not provide an identifiable translation-delay gate; lag remains reported
+  low_signal_rationale: per-time denominators use the preregistered five-percent trajectory signal floor
+  arrival_rationale: disabled because all frozen comparison fields have nonzero support at the first requested time
+  peak_time_rationale: compare 99-percent peak plateaus instead of unstable single-sample argmax indices

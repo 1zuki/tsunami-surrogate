@@ -15,12 +15,17 @@ from src.evaluation.established_solver_validation import (
     EXTERNAL_RESULT_SCHEMA_ID_V3,
     SCHEMA_ID,
     SCHEMA_ID_V3,
+    SCHEMA_ID_V4,
     _comparison_metrics,
     _comparison_metrics_v3,
+    _comparison_metrics_v4,
     _build_cases,
     _flat_linear_swe_reference,
     _load_external_result,
     _normalized_waveform_lag_steps,
+    _v4_at_or_below,
+    _v4_pairwise_refinement,
+    _v4_threshold_results,
     _validate_external_checksums,
     _validate_config,
     _verify_level_a,
@@ -65,6 +70,37 @@ def test_v3_candidate_config_matches_boussinesq_only_in_long_wave_regime() -> No
     invalid = json.loads(json.dumps(config))
     invalid["cases"][0]["pairings"].append(["boussinesq", "geoclaw_sgn"])
     with pytest.raises(ValueError, match="matched constant-depth long-wave"):
+        _validate_config(invalid)
+
+
+def test_v4_candidate_preserves_v3_thresholds_and_declares_roles() -> None:
+    root = Path(__file__).resolve().parents[1]
+    v3 = yaml.safe_load(
+        (
+            root
+            / "configs/eval/minimum_established_solver_validation_v3.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    v4 = yaml.safe_load(
+        (
+            root
+            / "configs/eval/minimum_established_solver_validation_v4.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    _validate_config(v4)
+    assert v4["schema_id"] == SCHEMA_ID_V4
+    assert v4["thresholds"] == v3["thresholds"]
+    roles = v4["decision_policy"]["category_roles"]
+    assert roles["flat_analytical"]["comparison"] == "descriptive_only"
+    assert roles["matched_long_wave"]["comparison"] == "gate"
+    assert roles["matched_long_wave"]["descriptive_metrics"] == [
+        "waveform_lag_steps_max"
+    ]
+    assert roles["production_input"]["comparison"] == "descriptive_only"
+
+    invalid = json.loads(json.dumps(v4))
+    invalid["aggregation"]["require_every_descriptive_comparison"] = True
+    with pytest.raises(ValueError, match="aggregation policy changed"):
         _validate_config(invalid)
 
 
@@ -148,6 +184,121 @@ def test_v3_lag_uses_normalized_overlap_and_prefers_zero_on_ties() -> None:
         )
         == 0
     )
+
+
+def test_v4_float_threshold_tolerance_is_tight_and_integer_limits_are_exact() -> None:
+    assert _v4_at_or_below(
+        0.007000000000000006,
+        0.007,
+        integer=False,
+        rel_tolerance=1.0e-12,
+        abs_tolerance=1.0e-15,
+    )
+    assert not _v4_at_or_below(
+        0.0070001,
+        0.007,
+        integer=False,
+        rel_tolerance=1.0e-12,
+        abs_tolerance=1.0e-15,
+    )
+    assert not _v4_at_or_below(
+        3,
+        2,
+        integer=True,
+        rel_tolerance=1.0,
+        abs_tolerance=1.0,
+    )
+
+
+def test_v4_standing_mode_lag_can_be_descriptive_without_hiding_field_gates() -> None:
+    metrics = {
+        "active_gauge_count": 1,
+        "trajectory_relative_l2": 0.01,
+        "per_time_scaled_l2_p95": 0.01,
+        "gauge_nrmse_max": 0.01,
+        "peak_relative_error_max": 0.01,
+        "peak_plateau_time_abs_max": 0.0,
+        "waveform_lag_steps_max": 3,
+    }
+    thresholds = {
+        "trajectory_relative_l2": 0.20,
+        "per_time_scaled_l2_p95": 0.20,
+        "gauge_nrmse_max": 0.15,
+        "peak_relative_error_max": 0.15,
+        "peak_plateau_time_abs_max": 0.007,
+        "waveform_lag_steps_max": 2,
+    }
+    results, passed = _v4_threshold_results(
+        metrics,
+        thresholds,
+        descriptive_metrics=["waveform_lag_steps_max"],
+        rel_tolerance=1.0e-12,
+        abs_tolerance=1.0e-15,
+    )
+    assert passed is True
+    assert results["waveform_lag_steps_max"] == {
+        "decision_role": "descriptive_only",
+        "limit": 2,
+        "passed": False,
+    }
+    metrics["trajectory_relative_l2"] = 0.21
+    _results, passed = _v4_threshold_results(
+        metrics,
+        thresholds,
+        descriptive_metrics=["waveform_lag_steps_max"],
+        rel_tolerance=1.0e-12,
+        abs_tolerance=1.0e-15,
+    )
+    assert passed is False
+
+
+def test_v4_metrics_separate_active_time_amplitude_shape_and_regions() -> None:
+    times = np.arange(1, 7, dtype=np.float64) * 0.1
+    reference = np.ones((6, 8, 8), dtype=np.float64)
+    candidate = 0.8 * reference
+    metrics = _comparison_metrics_v4(
+        candidate,
+        reference,
+        times,
+        np.asarray([[2, 2], [5, 5]], dtype=np.int64),
+        inactive_floor=1.0e-12,
+        per_time_signal_floor_fraction=0.05,
+        peak_plateau_fraction=0.99,
+        lag_minimum_overlap_fraction=0.5,
+        diagnostic_boundary_band_cells=2,
+    )
+    assert metrics["per_time_active_count"] == 6
+    assert metrics["per_time_inactive_count"] == 0
+    assert metrics["field_norm_ratio"] == pytest.approx(0.8)
+    assert metrics["optimal_amplitude_scale"] == pytest.approx(0.8)
+    assert metrics["field_cosine_similarity"] == pytest.approx(1.0)
+    assert metrics["shape_relative_l2_after_scale"] == pytest.approx(0.0)
+    assert metrics["boundary_band_relative_l2"] == pytest.approx(0.2)
+    assert metrics["interior_relative_l2"] == pytest.approx(0.2)
+
+
+def test_v4_refinement_requires_every_pair_to_decrease() -> None:
+    passing = _v4_pairwise_refinement(
+        [0.4, 0.2, 0.1],
+        [32, 64, 128],
+        ratio_limit=1.05,
+        require_strict_decrease=True,
+        rel_tolerance=1.0e-12,
+        abs_tolerance=1.0e-15,
+    )
+    assert passing["passed"] is True
+    assert passing["pairwise_orders"] == pytest.approx([1.0, 1.0])
+
+    nonmonotonic = _v4_pairwise_refinement(
+        [0.4, 0.45, 0.1],
+        [32, 64, 128],
+        ratio_limit=1.05,
+        require_strict_decrease=True,
+        rel_tolerance=1.0e-12,
+        abs_tolerance=1.0e-15,
+    )
+    assert nonmonotonic["finest_to_coarsest_error_ratio"] < 1.05
+    assert nonmonotonic["passed"] is False
 
 
 def test_flat_linear_swe_reference_preserves_initial_mode_at_zero_time() -> None:

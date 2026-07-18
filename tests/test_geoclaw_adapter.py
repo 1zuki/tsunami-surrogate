@@ -18,7 +18,11 @@ from src.evaluation.geoclaw_adapter import (
     _task_boundary,
     _write_state_file,
 )
-from src.evaluation.established_solver_validation import _validate_config
+from src.evaluation.established_solver_validation import (
+    SCHEMA_ID_V3,
+    SCHEMA_ID_V4,
+    _validate_config,
+)
 
 
 def _write_frame(path: Path, values: np.ndarray) -> None:
@@ -269,6 +273,17 @@ def test_adapter_hash_and_boundary_mapping_are_deterministic() -> None:
         revisions={"petsc_commit": "def", "geoclaw_commit": "abc"},
     )
     assert first == second
+    hardened_v3 = _adapter_hash(
+        execution={"nested": {"a": 1, "b": 2}},
+        revisions={"petsc_commit": "def", "geoclaw_commit": "abc"},
+        bundle_schema_id=SCHEMA_ID_V3,
+    )
+    hardened_v4 = _adapter_hash(
+        execution={"nested": {"a": 1, "b": 2}},
+        revisions={"petsc_commit": "def", "geoclaw_commit": "abc"},
+        bundle_schema_id=SCHEMA_ID_V4,
+    )
+    assert hardened_v4 == hardened_v3
     assert _task_boundary({"boundary": "periodic"}) == "periodic"
     assert (
         _task_boundary(

@@ -33,7 +33,7 @@ def main() -> None:
         "--config",
         type=Path,
         default=Path(
-            "configs/eval/minimum_established_solver_validation_v3.yaml"
+            "configs/eval/minimum_established_solver_validation_v4.yaml"
         ),
     )
     parser.add_argument("--output-root", type=Path)

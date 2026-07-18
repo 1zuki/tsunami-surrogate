@@ -34,7 +34,9 @@ from src.evaluation.common_time_v2_level_a import (
 
 SCHEMA_ID = "tsunami-surrogate.minimum-established-solver-validation.v2"
 SCHEMA_ID_V3 = "tsunami-surrogate.minimum-established-solver-validation.v3"
-SUPPORTED_SCHEMA_IDS = (SCHEMA_ID, SCHEMA_ID_V3)
+SCHEMA_ID_V4 = "tsunami-surrogate.minimum-established-solver-validation.v4"
+SUPPORTED_SCHEMA_IDS = (SCHEMA_ID, SCHEMA_ID_V3, SCHEMA_ID_V4)
+HARDENED_SCHEMA_IDS = (SCHEMA_ID_V3, SCHEMA_ID_V4)
 EXTERNAL_RESULT_SCHEMA_ID = (
     "tsunami-surrogate.minimum-established-solver-external-result.v2"
 )
@@ -117,7 +119,7 @@ def _config_schema_id(config: Mapping[str, Any]) -> str:
 def _external_result_schema_id(schema_id: str) -> str:
     if schema_id == SCHEMA_ID:
         return EXTERNAL_RESULT_SCHEMA_ID
-    if schema_id == SCHEMA_ID_V3:
+    if schema_id in HARDENED_SCHEMA_IDS:
         return EXTERNAL_RESULT_SCHEMA_ID_V3
     raise ValueError(f"Unsupported established-solver schema: {schema_id}")
 
@@ -128,7 +130,7 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         raise ValueError("Established-solver validation artifact kind mismatch")
     if config["external_comparator"].get("version") != "5.14.0":
         raise ValueError("The minimum package must pin Clawpack 5.14.0")
-    if schema_id == SCHEMA_ID_V3:
+    if schema_id in HARDENED_SCHEMA_IDS:
         revisions = config["external_comparator"].get("expected_revisions")
         if not isinstance(revisions, Mapping) or set(revisions) != {
             "clawpack_commit",
@@ -215,7 +217,7 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         "mpi_processes": 2,
         "omp_threads": 1,
     }
-    if schema_id == SCHEMA_ID_V3:
+    if schema_id in HARDENED_SCHEMA_IDS:
         expected_sgn.update(
             {
                 "petsc_report_converged_reason": True,
@@ -242,12 +244,12 @@ def _validate_config(config: Mapping[str, Any]) -> None:
             if len(pairing) != 2 or pairing[0] not in SOLVERS or pairing[1] not in COMPARATORS:
                 raise ValueError(f"Invalid pairing for case {case_id}: {pairing}")
             if (
-                schema_id == SCHEMA_ID_V3
+                schema_id in HARDENED_SCHEMA_IDS
                 and pairing == ["boussinesq", "geoclaw_sgn"]
             ):
                 if str(case.get("generator")) != "flat_linear_mode":
                     raise ValueError(
-                        "v3 Boussinesq/SGN comparisons require the matched "
+                        "Hardened Boussinesq/SGN comparisons require the matched "
                         "constant-depth long-wave generator"
                     )
                 depth = float(case.get("depth", 0.0))
@@ -262,7 +264,7 @@ def _validate_config(config: Mapping[str, Any]) -> None:
                     or amplitude / depth > 1.0e-3
                 ):
                     raise ValueError(
-                        "v3 Boussinesq/SGN case is outside the frozen "
+                        "Hardened Boussinesq/SGN case is outside the frozen "
                         "small-amplitude long-wave regime"
                     )
         if str(case.get("generator")) == "level_a_canaries":
@@ -300,15 +302,18 @@ def _validate_config(config: Mapping[str, Any]) -> None:
     else:
         metric_policy = config.get("metric_policy")
         if not isinstance(metric_policy, Mapping):
-            raise ValueError("v3 metric policy is missing")
+            raise ValueError("Hardened metric policy is missing")
         if not 0.0 < float(metric_policy.get("per_time_signal_floor_fraction", 0.0)) < 1.0:
-            raise ValueError("v3 per-time signal floor must lie in (0, 1)")
+            raise ValueError("Hardened per-time signal floor must lie in (0, 1)")
         if not 0.0 < float(metric_policy.get("peak_plateau_fraction", 0.0)) < 1.0:
-            raise ValueError("v3 peak plateau fraction must lie in (0, 1)")
+            raise ValueError("Hardened peak plateau fraction must lie in (0, 1)")
         if not 0.0 < float(metric_policy.get("lag_minimum_overlap_fraction", 0.0)) <= 1.0:
-            raise ValueError("v3 lag overlap fraction must lie in (0, 1]")
+            raise ValueError("Hardened lag overlap fraction must lie in (0, 1]")
         if metric_policy.get("arrival_metric") != "disabled_initially_supported_fields":
-            raise ValueError("v3 must not use the invalid initially-active arrival gate")
+            raise ValueError(
+                "Hardened protocols must not use the invalid initially-active "
+                "arrival gate"
+            )
         required_thresholds = {
             "trajectory_relative_l2",
             "per_time_scaled_l2_p95",
@@ -323,6 +328,79 @@ def _validate_config(config: Mapping[str, Any]) -> None:
             raise ValueError(f"Threshold schema mismatch for {category}")
         if any(float(value) <= 0.0 for value in values.values()):
             raise ValueError(f"Thresholds must be positive for {category}")
+    if schema_id == SCHEMA_ID_V4:
+        policy = config.get("decision_policy")
+        if not isinstance(policy, Mapping):
+            raise ValueError("v4 decision policy is missing")
+        if set(policy) != {
+            "threshold_float_rel_tolerance",
+            "threshold_float_abs_tolerance",
+            "diagnostic_boundary_band_cells",
+            "category_roles",
+            "flat_analytical_verification",
+        }:
+            raise ValueError("v4 decision policy keys changed")
+        if float(policy["threshold_float_rel_tolerance"]) != 1.0e-12:
+            raise ValueError("v4 relative threshold tolerance changed")
+        if float(policy["threshold_float_abs_tolerance"]) != 1.0e-15:
+            raise ValueError("v4 absolute threshold tolerance changed")
+        if int(policy["diagnostic_boundary_band_cells"]) != 8:
+            raise ValueError("v4 diagnostic boundary band changed")
+        expected_roles = {
+            "flat_analytical": {
+                "comparison": "descriptive_only",
+                "refinement": "gate",
+            },
+            "matched_long_wave": {
+                "comparison": "gate",
+                "descriptive_metrics": ["waveform_lag_steps_max"],
+                "refinement": "gate",
+            },
+            "production_input": {
+                "comparison": "descriptive_only",
+                "identity_time_finite_health": "gate",
+            },
+        }
+        if policy["category_roles"] != expected_roles:
+            raise ValueError("v4 category decision roles changed")
+        verification = policy["flat_analytical_verification"]
+        if verification != {
+            "finest_analytical_inhouse_relative_l2_max": 0.20,
+            "require_pairwise_strict_decrease": True,
+            "gated_error_series": [
+                "trajectory_relative_l2",
+                "analytical_inhouse_relative_l2",
+                "analytical_external_relative_l2",
+            ],
+        }:
+            raise ValueError("v4 flat analytical verification policy changed")
+        if (
+            float(
+                config["thresholds"]["flat_analytical"][
+                    "trajectory_relative_l2"
+                ]
+            )
+            != float(
+                verification["finest_analytical_inhouse_relative_l2_max"]
+            )
+        ):
+            raise ValueError(
+                "v4 finest analytical limit must carry forward the existing "
+                "flat trajectory limit"
+            )
+        expected_aggregation = {
+            "require_every_gated_comparison": True,
+            "require_every_descriptive_comparison": False,
+            "require_every_gated_refinement": True,
+            "require_every_gated_verification": True,
+            "production_compatibility_metrics": "descriptive_only",
+            "missing_or_invalid_external_result": "fail",
+            "threshold_changes_after_external_results": "forbidden",
+            "external_checksums": "exact_canonical_coverage",
+            "external_manifest_binding": "required",
+        }
+        if config.get("aggregation") != expected_aggregation:
+            raise ValueError("v4 aggregation policy changed")
 
 
 def _load_config(path: Path) -> dict[str, Any]:
@@ -735,7 +813,7 @@ def prepare_minimum_established_solver_validation(
                 "times",
                 "eta",
             ]
-            if schema_id == SCHEMA_ID_V3:
+            if schema_id in HARDENED_SCHEMA_IDS:
                 required_npz_keys.extend(
                     [
                         "clawpack_commit",
@@ -1274,12 +1352,12 @@ def _comparison_metrics(
     }
 
 
-def _normalized_waveform_lag_steps(
+def _normalized_waveform_lag_diagnostics(
     candidate: np.ndarray,
     reference: np.ndarray,
     *,
     minimum_overlap_fraction: float,
-) -> int:
+) -> dict[str, float | int]:
     candidate = np.asarray(candidate, dtype=np.float64)
     reference = np.asarray(reference, dtype=np.float64)
     minimum_overlap = max(
@@ -1307,7 +1385,28 @@ def _normalized_waveform_lag_steps(
         for score, lag in candidates
         if math.isclose(score, best_score, rel_tol=0.0, abs_tol=1.0e-14)
     ]
-    return min(tied, key=lambda value: (abs(value), value))
+    best_lag = min(tied, key=lambda value: (abs(value), value))
+    zero_lag_score = next(score for score, lag in candidates if lag == 0)
+    return {
+        "lag_steps": best_lag,
+        "best_correlation": best_score,
+        "zero_lag_correlation": zero_lag_score,
+        "score_advantage_over_zero": best_score - zero_lag_score,
+    }
+
+
+def _normalized_waveform_lag_steps(
+    candidate: np.ndarray,
+    reference: np.ndarray,
+    *,
+    minimum_overlap_fraction: float,
+) -> int:
+    diagnostics = _normalized_waveform_lag_diagnostics(
+        candidate,
+        reference,
+        minimum_overlap_fraction=minimum_overlap_fraction,
+    )
+    return int(diagnostics["lag_steps"])
 
 
 def _peak_plateau_distance(
@@ -1418,6 +1517,156 @@ def _comparison_metrics_v3(
     }
 
 
+def _relative_l2(
+    candidate: np.ndarray,
+    reference: np.ndarray,
+    *,
+    inactive_floor: float,
+) -> float:
+    return float(
+        np.linalg.norm(candidate - reference)
+        / max(float(np.linalg.norm(reference)), inactive_floor)
+    )
+
+
+def _comparison_metrics_v4(
+    inhouse: np.ndarray,
+    external: np.ndarray,
+    times: np.ndarray,
+    gauges: np.ndarray,
+    *,
+    inactive_floor: float,
+    per_time_signal_floor_fraction: float,
+    peak_plateau_fraction: float,
+    lag_minimum_overlap_fraction: float,
+    diagnostic_boundary_band_cells: int,
+) -> dict[str, Any]:
+    metrics = _comparison_metrics_v3(
+        inhouse,
+        external,
+        times,
+        gauges,
+        inactive_floor=inactive_floor,
+        per_time_signal_floor_fraction=per_time_signal_floor_fraction,
+        peak_plateau_fraction=peak_plateau_fraction,
+        lag_minimum_overlap_fraction=lag_minimum_overlap_fraction,
+    )
+    inhouse = np.asarray(inhouse, dtype=np.float64)
+    external = np.asarray(external, dtype=np.float64)
+    difference = inhouse - external
+    reference_time_rms = np.sqrt(np.mean(external**2, axis=(1, 2)))
+    difference_time_rms = np.sqrt(np.mean(difference**2, axis=(1, 2)))
+    reference_scale = max(float(np.max(reference_time_rms)), inactive_floor)
+    denominator_floor = per_time_signal_floor_fraction * reference_scale
+    active = reference_time_rms >= denominator_floor
+    per_time_scaled = difference_time_rms / np.maximum(
+        reference_time_rms, denominator_floor
+    )
+
+    candidate_flat = inhouse.reshape(-1)
+    reference_flat = external.reshape(-1)
+    reference_energy = float(np.dot(reference_flat, reference_flat))
+    candidate_energy = float(np.dot(candidate_flat, candidate_flat))
+    cross = float(np.dot(candidate_flat, reference_flat))
+    amplitude_scale = (
+        cross / reference_energy if reference_energy > inactive_floor**2 else 0.0
+    )
+    correlation_denominator = math.sqrt(candidate_energy * reference_energy)
+    correlation = (
+        cross / correlation_denominator
+        if correlation_denominator > inactive_floor**2
+        else 0.0
+    )
+    shape_residual = _relative_l2(
+        inhouse - amplitude_scale * external,
+        np.zeros_like(external),
+        inactive_floor=max(math.sqrt(reference_energy), inactive_floor),
+    )
+
+    nx, ny = external.shape[1:]
+    width = min(
+        int(diagnostic_boundary_band_cells),
+        max(0, (min(nx, ny) - 1) // 2),
+    )
+    ii, jj = np.indices((nx, ny))
+    edge_distance = np.minimum.reduce(
+        (ii, jj, nx - 1 - ii, ny - 1 - jj)
+    )
+    boundary_mask = edge_distance < width if width > 0 else np.zeros((nx, ny), bool)
+    interior_mask = ~boundary_mask
+
+    lag_diagnostics = []
+    for i, j in np.asarray(gauges, dtype=np.int64):
+        reference = np.asarray(external[:, i, j], dtype=np.float64)
+        if float(np.max(np.abs(reference))) <= inactive_floor:
+            continue
+        lag_diagnostics.append(
+            _normalized_waveform_lag_diagnostics(
+                np.asarray(inhouse[:, i, j], dtype=np.float64),
+                reference,
+                minimum_overlap_fraction=lag_minimum_overlap_fraction,
+            )
+        )
+
+    metrics.update(
+        {
+            "per_time_active_count": int(np.count_nonzero(active)),
+            "per_time_inactive_count": int(np.count_nonzero(~active)),
+            "per_time_scaled_l2_p95_active": (
+                float(np.quantile(per_time_scaled[active], 0.95))
+                if np.any(active)
+                else None
+            ),
+            "field_norm_ratio": (
+                math.sqrt(candidate_energy / reference_energy)
+                if reference_energy > inactive_floor**2
+                else None
+            ),
+            "optimal_amplitude_scale": amplitude_scale,
+            "field_cosine_similarity": correlation,
+            "shape_relative_l2_after_scale": shape_residual,
+            "diagnostic_boundary_band_cells": width,
+            "boundary_band_relative_l2": (
+                _relative_l2(
+                    inhouse[:, boundary_mask],
+                    external[:, boundary_mask],
+                    inactive_floor=inactive_floor,
+                )
+                if np.any(boundary_mask)
+                else None
+            ),
+            "interior_relative_l2": (
+                _relative_l2(
+                    inhouse[:, interior_mask],
+                    external[:, interior_mask],
+                    inactive_floor=inactive_floor,
+                )
+                if np.any(interior_mask)
+                else None
+            ),
+            "waveform_zero_lag_correlation_min": (
+                min(float(row["zero_lag_correlation"]) for row in lag_diagnostics)
+                if lag_diagnostics
+                else None
+            ),
+            "waveform_best_lag_correlation_min": (
+                min(float(row["best_correlation"]) for row in lag_diagnostics)
+                if lag_diagnostics
+                else None
+            ),
+            "waveform_lag_score_advantage_max": (
+                max(
+                    float(row["score_advantage_over_zero"])
+                    for row in lag_diagnostics
+                )
+                if lag_diagnostics
+                else None
+            ),
+        }
+    )
+    return metrics
+
+
 def _flat_linear_swe_reference(
     eta0: np.ndarray,
     times: np.ndarray,
@@ -1451,6 +1700,113 @@ def _metrics_pass(metrics: Mapping[str, Any], thresholds: Mapping[str, Any]) -> 
     )
 
 
+def _v4_at_or_below(
+    value: Any,
+    limit: Any,
+    *,
+    integer: bool,
+    rel_tolerance: float,
+    abs_tolerance: float,
+) -> bool:
+    if value is None:
+        return False
+    if integer:
+        return int(value) <= int(limit)
+    metric = float(value)
+    threshold = float(limit)
+    return metric <= threshold or math.isclose(
+        metric,
+        threshold,
+        rel_tol=rel_tolerance,
+        abs_tol=abs_tolerance,
+    )
+
+
+def _v4_threshold_results(
+    metrics: Mapping[str, Any],
+    thresholds: Mapping[str, Any],
+    *,
+    descriptive_metrics: Sequence[str],
+    rel_tolerance: float,
+    abs_tolerance: float,
+) -> tuple[dict[str, dict[str, Any]], bool]:
+    descriptive = set(str(value) for value in descriptive_metrics)
+    results: dict[str, dict[str, Any]] = {}
+    gated_passes: list[bool] = []
+    for key, limit in thresholds.items():
+        role = "descriptive_only" if key in descriptive else "gate"
+        passed = _v4_at_or_below(
+            metrics.get(key),
+            limit,
+            integer=key == "waveform_lag_steps_max",
+            rel_tolerance=rel_tolerance,
+            abs_tolerance=abs_tolerance,
+        )
+        results[str(key)] = {
+            "decision_role": role,
+            "limit": limit,
+            "passed": passed,
+        }
+        if role == "gate":
+            gated_passes.append(passed)
+    active_gauges = int(metrics.get("active_gauge_count", 0))
+    return results, active_gauges > 0 and all(gated_passes)
+
+
+def _v4_pairwise_refinement(
+    errors: Sequence[float],
+    grids: Sequence[int],
+    *,
+    ratio_limit: float,
+    require_strict_decrease: bool,
+    rel_tolerance: float,
+    abs_tolerance: float,
+) -> dict[str, Any]:
+    values = [float(value) for value in errors]
+    grid_values = [int(value) for value in grids]
+    pairwise_ratios = [
+        values[index + 1] / max(values[index], 1.0e-30)
+        for index in range(len(values) - 1)
+    ]
+    pairwise_orders = [
+        math.log(
+            max(values[index], 1.0e-30)
+            / max(values[index + 1], 1.0e-30)
+        )
+        / math.log(float(grid_values[index + 1]) / grid_values[index])
+        for index in range(len(values) - 1)
+    ]
+    pairwise_decreasing = all(
+        values[index + 1] < values[index]
+        and not math.isclose(
+            values[index + 1],
+            values[index],
+            rel_tol=rel_tolerance,
+            abs_tol=abs_tolerance,
+        )
+        for index in range(len(values) - 1)
+    )
+    overall_ratio = values[-1] / max(values[0], 1.0e-30)
+    ratio_passed = _v4_at_or_below(
+        overall_ratio,
+        ratio_limit,
+        integer=False,
+        rel_tolerance=rel_tolerance,
+        abs_tolerance=abs_tolerance,
+    )
+    return {
+        "grids": grid_values,
+        "errors": values,
+        "pairwise_error_ratios": pairwise_ratios,
+        "pairwise_orders": pairwise_orders,
+        "pairwise_strictly_decreasing": pairwise_decreasing,
+        "finest_to_coarsest_error_ratio": overall_ratio,
+        "ratio_limit": ratio_limit,
+        "passed": ratio_passed
+        and (pairwise_decreasing or not require_strict_decrease),
+    }
+
+
 def evaluate_minimum_established_solver_validation(
     *,
     bundle_root: Path,
@@ -1477,9 +1833,16 @@ def evaluate_minimum_established_solver_validation(
         raise RuntimeError("Frozen Level B content-addressed identity mismatch")
     config = frozen["source_config"]
     run_manifest: Mapping[str, Any] | None = None
-    if schema_id == SCHEMA_ID_V3:
+    if schema_id in HARDENED_SCHEMA_IDS:
         run_manifest = _load_external_run_manifest(external_root, frozen)
         _validate_external_checksums(external_root, frozen)
+    v4_policy = config.get("decision_policy", {}) if schema_id == SCHEMA_ID_V4 else {}
+    v4_rel_tolerance = float(
+        v4_policy.get("threshold_float_rel_tolerance", 0.0)
+    )
+    v4_abs_tolerance = float(
+        v4_policy.get("threshold_float_abs_tolerance", 0.0)
+    )
     times = np.asarray(frozen["requested_times"], dtype=np.float64)
     case_by_id = {str(row["case_id"]): row for row in frozen["cases"]}
     requirement_by_key = {
@@ -1515,13 +1878,20 @@ def evaluate_minimum_established_solver_validation(
             inhouse_times, times
         ):
             raise RuntimeError(f"Frozen in-house result identity mismatch: {case_id}")
+        if schema_id == SCHEMA_ID_V4 and (
+            inhouse_eta.shape != external_eta.shape
+            or not np.isfinite(inhouse_eta).all()
+        ):
+            raise RuntimeError(
+                f"Frozen in-house result shape/health mismatch: {case_id}"
+            )
         with np.load(
             bundle_root / "cases" / case_id / "input.npz", allow_pickle=False
         ) as payload:
             gauges = np.asarray(payload["gauge_indices"], dtype=np.int64)
             eta0 = (
                 np.asarray(payload["eta0"], dtype=np.float64)
-                if schema_id == SCHEMA_ID_V3
+                if schema_id in HARDENED_SCHEMA_IDS
                 else None
             )
         if schema_id == SCHEMA_ID:
@@ -1537,7 +1907,7 @@ def evaluate_minimum_established_solver_validation(
                     config["gauges"]["inactive_external_peak_floor"]
                 ),
             )
-        else:
+        elif schema_id == SCHEMA_ID_V3:
             metric_policy = config["metric_policy"]
             metrics = _comparison_metrics_v3(
                 inhouse_eta,
@@ -1557,6 +1927,30 @@ def evaluate_minimum_established_solver_validation(
                     metric_policy["lag_minimum_overlap_fraction"]
                 ),
             )
+        else:
+            metric_policy = config["metric_policy"]
+            metrics = _comparison_metrics_v4(
+                inhouse_eta,
+                external_eta,
+                times,
+                gauges,
+                inactive_floor=float(
+                    config["gauges"]["inactive_external_peak_floor"]
+                ),
+                per_time_signal_floor_fraction=float(
+                    metric_policy["per_time_signal_floor_fraction"]
+                ),
+                peak_plateau_fraction=float(
+                    metric_policy["peak_plateau_fraction"]
+                ),
+                lag_minimum_overlap_fraction=float(
+                    metric_policy["lag_minimum_overlap_fraction"]
+                ),
+                diagnostic_boundary_band_cells=int(
+                    v4_policy["diagnostic_boundary_band_cells"]
+                ),
+            )
+        if schema_id in HARDENED_SCHEMA_IDS:
             source = case.get("source", {})
             parameters = source.get("parameters", {})
             if (
@@ -1595,9 +1989,58 @@ def evaluate_minimum_established_solver_validation(
                 "ksp_iteration_max": metadata.get("ksp_iteration_max"),
                 "ksp_iteration_mean": metadata.get("ksp_iteration_mean"),
             }
-            if schema_id == SCHEMA_ID_V3
+            if schema_id in HARDENED_SCHEMA_IDS
             else {}
         )
+        if schema_id == SCHEMA_ID_V4:
+            category_role = v4_policy["category_roles"][
+                str(pairing["category"])
+            ]
+            comparison_role = str(category_role["comparison"])
+            descriptive_metrics = (
+                list(thresholds)
+                if comparison_role == "descriptive_only"
+                else category_role.get("descriptive_metrics", [])
+            )
+            threshold_results, gated_thresholds_passed = (
+                _v4_threshold_results(
+                    metrics,
+                    thresholds,
+                    descriptive_metrics=descriptive_metrics,
+                    rel_tolerance=v4_rel_tolerance,
+                    abs_tolerance=v4_abs_tolerance,
+                )
+            )
+            thresholds_satisfied = all(
+                bool(result["passed"]) for result in threshold_results.values()
+            )
+            row_passed = (
+                gated_thresholds_passed
+                if comparison_role == "gate"
+                else True
+            )
+            decision_fields = {
+                "decision_role": comparison_role,
+                "decision_reason": (
+                    "matched-regime field and amplitude comparison"
+                    if comparison_role == "gate"
+                    else (
+                        "flat-grid comparison supports refinement evidence"
+                        if str(pairing["category"]) == "flat_analytical"
+                        else (
+                            "complex production comparison is a compatibility "
+                            "diagnostic, not pointwise external truth"
+                        )
+                    )
+                ),
+                "threshold_results": threshold_results,
+                "thresholds_satisfied": thresholds_satisfied,
+                "passed": row_passed,
+            }
+        else:
+            decision_fields = {
+                "passed": _metrics_pass(metrics, thresholds),
+            }
         rows.append(
             {
                 **pairing,
@@ -1607,7 +2050,7 @@ def evaluate_minimum_established_solver_validation(
                 "comparator_commit": metadata["comparator_commit"],
                 **external_health,
                 **metrics,
-                "passed": _metrics_pass(metrics, thresholds),
+                **decision_fields,
             }
         )
         if progress is not None:
@@ -1618,6 +2061,7 @@ def evaluate_minimum_established_solver_validation(
             )
 
     refinement_rows: list[dict[str, Any]] = []
+    verification_rows: list[dict[str, Any]] = []
     gated_pairings = set(
         str(value)
         for value in config["thresholds"]["refinement"]["gated_pairings"]
@@ -1635,6 +2079,82 @@ def evaluate_minimum_established_solver_validation(
         ordered = sorted(group, key=lambda row: int(row["nx"]))
         if len(ordered) < 2:
             continue
+        if schema_id == SCHEMA_ID_V4:
+            category = str(ordered[0]["category"])
+            category_role = v4_policy["category_roles"][category]
+            refinement_role = str(category_role.get("refinement", "descriptive_only"))
+            error_metrics = (
+                list(
+                    v4_policy["flat_analytical_verification"][
+                        "gated_error_series"
+                    ]
+                )
+                if category == "flat_analytical"
+                else ["trajectory_relative_l2"]
+            )
+            for error_metric in error_metrics:
+                if any(row.get(error_metric) is None for row in ordered):
+                    raise RuntimeError(
+                        f"Missing v4 refinement metric {error_metric}: "
+                        f"{base_case} {pairing_id}"
+                    )
+                refinement = _v4_pairwise_refinement(
+                    [float(row[error_metric]) for row in ordered],
+                    [int(row["nx"]) for row in ordered],
+                    ratio_limit=ratio_limit,
+                    require_strict_decrease=bool(
+                        v4_policy["flat_analytical_verification"][
+                            "require_pairwise_strict_decrease"
+                        ]
+                    ),
+                    rel_tolerance=v4_rel_tolerance,
+                    abs_tolerance=v4_abs_tolerance,
+                )
+                refinement_rows.append(
+                    {
+                        "base_case": base_case,
+                        "pairing_id": pairing_id,
+                        "error_metric": error_metric,
+                        "decision_role": refinement_role,
+                        **refinement,
+                        "passed": (
+                            bool(refinement["passed"])
+                            if refinement_role == "gate"
+                            else True
+                        ),
+                    }
+                )
+            if category == "flat_analytical":
+                finest = ordered[-1]
+                limit = float(
+                    v4_policy["flat_analytical_verification"][
+                        "finest_analytical_inhouse_relative_l2_max"
+                    ]
+                )
+                value = finest.get("analytical_inhouse_relative_l2")
+                passed = _v4_at_or_below(
+                    value,
+                    limit,
+                    integer=False,
+                    rel_tolerance=v4_rel_tolerance,
+                    abs_tolerance=v4_abs_tolerance,
+                )
+                verification_rows.append(
+                    {
+                        "base_case": base_case,
+                        "pairing_id": pairing_id,
+                        "verification": (
+                            "finest_analytical_inhouse_relative_l2"
+                        ),
+                        "finest_nx": int(finest["nx"]),
+                        "value": value,
+                        "limit": limit,
+                        "decision_role": "gate",
+                        "passed": passed,
+                    }
+                )
+            continue
+
         coarse = float(ordered[0]["trajectory_relative_l2"])
         fine = float(ordered[-1]["trajectory_relative_l2"])
         ratio = fine / max(coarse, 1e-30)
@@ -1654,13 +2174,19 @@ def evaluate_minimum_established_solver_validation(
         )
     comparison_passed = all(bool(row["passed"]) for row in rows)
     refinement_passed = all(bool(row["passed"]) for row in refinement_rows)
+    verification_passed = all(
+        bool(row["passed"]) for row in verification_rows
+    )
+    level_b_passed = (
+        comparison_passed and refinement_passed and verification_passed
+    )
     decision = {
         "schema_id": schema_id,
         "bundle_hash": frozen["bundle_hash"],
-        "minimum_level_b_passed": comparison_passed and refinement_passed,
+        "minimum_level_b_passed": level_b_passed,
         "decision": (
             "pass_to_H1"
-            if comparison_passed and refinement_passed
+            if level_b_passed
             else "blocked_established_solver_validation"
         ),
         "comparison_count": len(rows),
@@ -1670,6 +2196,42 @@ def evaluate_minimum_established_solver_validation(
         ],
         "external_solver_is_truth": False,
     }
+    if schema_id == SCHEMA_ID_V4:
+        descriptive_failures = []
+        for row in rows:
+            if (
+                row["decision_role"] == "descriptive_only"
+                and not row["thresholds_satisfied"]
+            ):
+                descriptive_failures.append(
+                    {
+                        "case_id": row["case_id"],
+                        "pairing_id": row["pairing_id"],
+                        "failed_descriptive_metrics": [
+                            key
+                            for key, result in row["threshold_results"].items()
+                            if not result["passed"]
+                        ],
+                    }
+                )
+        decision.update(
+            {
+                "gated_comparison_count": sum(
+                    row["decision_role"] == "gate" for row in rows
+                ),
+                "descriptive_comparison_count": sum(
+                    row["decision_role"] == "descriptive_only" for row in rows
+                ),
+                "descriptive_threshold_failure_count": len(
+                    descriptive_failures
+                ),
+                "descriptive_threshold_failures": descriptive_failures,
+                "verification_count": len(verification_rows),
+                "failed_verifications": [
+                    row for row in verification_rows if not row["passed"]
+                ],
+            }
+        )
     if output_root.exists():
         raise FileExistsError(f"Refusing to overwrite Level B evaluation: {output_root}")
     output_root.mkdir(parents=True, exist_ok=False)
@@ -1678,12 +2240,56 @@ def evaluate_minimum_established_solver_validation(
     _write_json(output_root / "refinement_rows.json", refinement_rows)
     _write_csv(output_root / "comparison_rows.csv", rows)
     _write_csv(output_root / "refinement_rows.csv", refinement_rows)
-    (output_root / "REPORT.md").write_text(
-        "# Minimum established-solver validation\n\n"
-        f"Decision: `{decision['decision']}`\n\n"
-        "GeoClaw is an independent comparator, not automatic physical truth.\n",
-        encoding="utf-8",
-    )
+    if schema_id == SCHEMA_ID_V4:
+        _write_json(output_root / "verification_rows.json", verification_rows)
+        _write_csv(output_root / "verification_rows.csv", verification_rows)
+    if schema_id == SCHEMA_ID_V4:
+        production_rows = [
+            row for row in rows if row["category"] == "production_input"
+        ]
+        production_lines = [
+            (
+                f"- `{row['case_id']}` / `{row['pairing_id']}`: "
+                f"trajectory={row['trajectory_relative_l2']:.6f}, "
+                f"active-time-p95="
+                f"{row['per_time_scaled_l2_p95_active']:.6f}, "
+                f"norm-ratio={row['field_norm_ratio']:.6f}, "
+                f"cosine={row['field_cosine_similarity']:.6f}, "
+                f"boundary-band={row['boundary_band_relative_l2']:.6f}, "
+                f"interior={row['interior_relative_l2']:.6f}, "
+                f"legacy-limits-satisfied={row['thresholds_satisfied']}"
+            )
+            for row in production_rows
+        ]
+        report = (
+            "# Minimum established-solver validation\n\n"
+            f"Decision: `{decision['decision']}`\n\n"
+            "GeoClaw is an independent comparator, not automatic physical "
+            "truth. Version 4 gates analytical/refinement verification and "
+            "matched-regime comparisons. Complex production comparisons are "
+            "mandatory compatibility diagnostics; their numerical limits are "
+            "still evaluated and reported below.\n\n"
+            "## Decision evidence\n\n"
+            f"- Gated comparisons: {decision['gated_comparison_count']}\n"
+            f"- Verification gates: {decision['verification_count']}\n"
+            f"- Refinement gates: "
+            f"{sum(row['decision_role'] == 'gate' for row in refinement_rows)}\n"
+            f"- Descriptive rows outside legacy limits: "
+            f"{decision['descriptive_threshold_failure_count']}\n\n"
+            "## Production compatibility diagnostics\n\n"
+            + "\n".join(production_lines)
+            + "\n\n"
+            "These production discrepancies remain documented limitations. A "
+            "`pass_to_H1` decision does not claim that the 96x96 SWE pipeline "
+            "is pointwise equivalent to GeoClaw or boundary-independent.\n"
+        )
+    else:
+        report = (
+            "# Minimum established-solver validation\n\n"
+            f"Decision: `{decision['decision']}`\n\n"
+            "GeoClaw is an independent comparator, not automatic physical truth.\n"
+        )
+    (output_root / "REPORT.md").write_text(report, encoding="utf-8")
     _write_checksums(output_root)
     return output_root
 
@@ -1698,7 +2304,7 @@ def established_solver_status(
     schema_id = str(frozen.get("schema_id", ""))
     run_manifest: Mapping[str, Any] | None = None
     global_error: str | None = None
-    if schema_id == SCHEMA_ID_V3:
+    if schema_id in HARDENED_SCHEMA_IDS:
         try:
             run_manifest = _load_external_run_manifest(external_root, frozen)
             _validate_external_checksums(external_root, frozen)
@@ -1736,6 +2342,6 @@ def established_solver_status(
         "missing_paths": missing,
         "invalid_paths": invalid,
     }
-    if schema_id == SCHEMA_ID_V3:
+    if schema_id in HARDENED_SCHEMA_IDS:
         status["external_provenance_error"] = global_error
     return status

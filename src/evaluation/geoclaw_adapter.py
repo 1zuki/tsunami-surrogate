@@ -19,8 +19,8 @@ from src.evaluation.common_time_v2_level_a import validate_checksums
 from src.evaluation.established_solver_validation import (
     EXTERNAL_RESULT_SCHEMA_ID,
     EXTERNAL_RESULT_SCHEMA_ID_V3,
+    HARDENED_SCHEMA_IDS,
     SCHEMA_ID,
-    SCHEMA_ID_V3,
     SUPPORTED_SCHEMA_IDS,
     _load_external_result,
     _read_json,
@@ -411,12 +411,12 @@ def _adapter_hash(
 ) -> str:
     adapter_schema_id = (
         ADAPTER_SCHEMA_ID_V2
-        if bundle_schema_id == SCHEMA_ID_V3
+        if bundle_schema_id in HARDENED_SCHEMA_IDS
         else ADAPTER_SCHEMA_ID
     )
     implementation = (
         {"python_source_sha256": sha256_file(Path(__file__).resolve())}
-        if bundle_schema_id == SCHEMA_ID_V3
+        if bundle_schema_id in HARDENED_SCHEMA_IDS
         else {}
     )
     return stable_hash_payload(
@@ -929,7 +929,8 @@ def _run_task(
         json.dumps(run_spec, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     fail_closed_ksp = (
-        bundle_schema_id == SCHEMA_ID_V3 and comparator_id == "geoclaw_sgn"
+        bundle_schema_id in HARDENED_SCHEMA_IDS
+        and comparator_id == "geoclaw_sgn"
     )
     env = _subprocess_environment(
         environment, fail_closed_ksp=fail_closed_ksp
@@ -1079,7 +1080,7 @@ def run_geoclaw_bundle(
     if not isinstance(execution, Mapping):
         raise RuntimeError("Frozen bundle predates the complete external execution policy")
     revisions = validate_geoclaw_environment(environment)
-    if bundle_schema_id == SCHEMA_ID_V3:
+    if bundle_schema_id in HARDENED_SCHEMA_IDS:
         expected_revisions = frozen["source_config"]["external_comparator"][
             "expected_revisions"
         ]
@@ -1116,7 +1117,7 @@ def run_geoclaw_bundle(
     run_manifest = {
         "schema_id": (
             ADAPTER_SCHEMA_ID_V2
-            if bundle_schema_id == SCHEMA_ID_V3
+            if bundle_schema_id in HARDENED_SCHEMA_IDS
             else ADAPTER_SCHEMA_ID
         ),
         "bundle_hash": frozen["bundle_hash"],
@@ -1143,7 +1144,7 @@ def run_geoclaw_bundle(
                 output_path,
                 requirement,
                 requested_times,
-                run_manifest if bundle_schema_id == SCHEMA_ID_V3 else None,
+                run_manifest if bundle_schema_id in HARDENED_SCHEMA_IDS else None,
             )
             skipped.append(str(requirement["relative_path"]))
         elif output_path.exists():
@@ -1184,7 +1185,7 @@ def run_geoclaw_bundle(
             adapter_hash=adapter_hash,
             bundle_schema_id=bundle_schema_id,
             run_manifest=(
-                run_manifest if bundle_schema_id == SCHEMA_ID_V3 else None
+                run_manifest if bundle_schema_id in HARDENED_SCHEMA_IDS else None
             ),
         )
 
@@ -1194,7 +1195,7 @@ def run_geoclaw_bundle(
             result = submit_one(requirement)
             results.append(result)
             completed_count += 1
-            if bundle_schema_id == SCHEMA_ID_V3:
+            if bundle_schema_id in HARDENED_SCHEMA_IDS:
                 _write_external_checksums(external_root, frozen)
             if progress is not None:
                 progress(
@@ -1209,7 +1210,7 @@ def run_geoclaw_bundle(
                 result = future.result()
                 results.append(result)
                 completed_count += 1
-                if bundle_schema_id == SCHEMA_ID_V3:
+                if bundle_schema_id in HARDENED_SCHEMA_IDS:
                     _write_external_checksums(external_root, frozen)
                 if progress is not None:
                     progress(
@@ -1219,7 +1220,7 @@ def run_geoclaw_bundle(
                     )
     if progress is not None:
         progress(f"[geoclaw-run] complete {completed_count}/{len(requirements)}")
-    if bundle_schema_id == SCHEMA_ID_V3:
+    if bundle_schema_id in HARDENED_SCHEMA_IDS:
         _write_external_checksums(external_root, frozen)
     return {
         "bundle_hash": frozen["bundle_hash"],
