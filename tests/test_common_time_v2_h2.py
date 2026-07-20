@@ -10,7 +10,9 @@ import pytest
 from src.data_gen.common_time_v2 import stable_hash_payload
 from src.evaluation.common_time_v2_h2 import (
     SCHEMA_ID,
+    _begin_execution_timing,
     _build_tasks,
+    _checkpoint_execution_timing,
     _find_replay_mismatches,
     _load_config,
     _paired_stratified_bootstrap,
@@ -131,6 +133,48 @@ def test_h2_selection_fails_closed_on_bad_h1_exclusion() -> None:
             inventory_sha256="inventory",
             h1_selected=mismatched,
         )
+
+
+def test_h2_v2_selection_excludes_prior_viewed_h2() -> None:
+    rows, h1_selected = _inventory(per_cell=10)
+    prior_h2_selected: list[dict[str, object]] = []
+    by_cell: dict[tuple[str, str], list[dict[str, object]]] = {}
+    h1_ids = {
+        str(entry["record"]["qualified_id"]) for entry in h1_selected
+    }
+    for row in rows:
+        if row["qualified_id"] in h1_ids:
+            continue
+        cell = (str(row["bathymetry_type"]), str(row["source_type"]))
+        by_cell.setdefault(cell, []).append(row)
+    for cell in sorted(by_cell):
+        for record in by_cell[cell][:4]:
+            prior_h2_selected.append({"record": deepcopy(record)})
+    config = _selection_config(len(rows))
+    config.update(
+        {
+            "selection_seed": "selection-v2",
+            "replay_selection_seed": "replay-v2",
+            "exclude_prior_h2_contract_hash": "prior-h2",
+            "expected_prior_h2_exclusion_count": 120,
+        }
+    )
+    selected, summary = select_h2_scenarios(
+        rows,
+        selection_config=config,
+        inventory_sha256="inventory",
+        h1_selected=h1_selected,
+        prior_h2_selected=prior_h2_selected,
+    )
+    selected_ids = {
+        str(entry["record"]["qualified_id"]) for entry in selected
+    }
+    prior_ids = {
+        str(entry["record"]["qualified_id"]) for entry in prior_h2_selected
+    }
+    assert len(selected) == 120
+    assert not selected_ids & prior_ids
+    assert summary["excluded_prior_h2_count"] == 120
 
 
 def test_h2_task_plan_has_360_primary_and_three_replay_pairs() -> None:
@@ -459,6 +503,41 @@ def test_h2_config_and_frozen_checksum_contract() -> None:
     assert config["selection"]["count_per_cell"] == 4
     assert config["comparison"]["reference_cfl_factor"] == 0.5
     assert config["threshold_basis"]["h2_outcomes_viewed"] is False
+    v2 = _load_config(Path("configs/eval/common_time_v2_h2_v2.yaml"))
+    assert v2["comparison"]["production_cfl"] == {
+        "swe_hydrostatic": 0.1125,
+        "swe_muscl_hr": 0.225,
+        "boussinesq": 0.35,
+    }
+    assert v2["thresholds"] == config["thresholds"]
+    assert v2["selection"]["expected_prior_h2_exclusion_count"] == 120
+
+
+def test_h2_resume_timing_accumulates_successful_checkpoint_time(
+    tmp_path: Path,
+) -> None:
+    first_base, first_invocation = _begin_execution_timing(tmp_path)
+    assert first_base == 0.0
+    assert first_invocation == 1
+    first_total = _checkpoint_execution_timing(
+        tmp_path,
+        cumulative_before_invocation_s=first_base,
+        invocation_count=first_invocation,
+        invocation_elapsed_s=12.5,
+        active=True,
+    )
+    assert first_total == 12.5
+    second_base, second_invocation = _begin_execution_timing(tmp_path)
+    assert second_base == 12.5
+    assert second_invocation == 2
+    second_total = _checkpoint_execution_timing(
+        tmp_path,
+        cumulative_before_invocation_s=second_base,
+        invocation_count=second_invocation,
+        invocation_elapsed_s=7.25,
+        active=False,
+    )
+    assert second_total == 19.75
 
 
 def test_h2_frozen_checksums_ignore_resumable_execution(

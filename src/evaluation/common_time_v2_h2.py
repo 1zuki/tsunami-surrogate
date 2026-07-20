@@ -38,6 +38,7 @@ from src.evaluation.common_time_v2_level_a import _load_canary_arrays
 
 SCHEMA_ID = "tsunami-surrogate.common-time-v2.h2.v1"
 CONFIG_SCHEMA_ID = "tsunami-surrogate.common-time-v2.h2-config.v1"
+CONFIG_SCHEMA_ID_V2 = "tsunami-surrogate.common-time-v2.h2-config.v2"
 FROZEN_FILENAMES = (
     "preregistered_contract.json",
     "selected_scenarios.json",
@@ -231,6 +232,16 @@ def _expected_candidate() -> dict[str, Any]:
     }
 
 
+def _expected_candidate_v2() -> dict[str, Any]:
+    candidate = _expected_candidate()
+    candidate.pop("swe_cfl")
+    candidate["swe_cfl_by_solver"] = {
+        "swe_hydrostatic": 0.1125,
+        "swe_muscl_hr": 0.225,
+    }
+    return candidate
+
+
 def _expected_thresholds() -> dict[str, dict[str, float]]:
     return {
         "swe_hydrostatic": {
@@ -290,6 +301,17 @@ def _load_config(path: Path) -> dict[str, Any]:
 
 
 def _validate_config(config: Mapping[str, Any]) -> None:
+    schema_id = config.get("schema_id")
+    if schema_id == CONFIG_SCHEMA_ID:
+        _validate_config_v1(config)
+        return
+    if schema_id == CONFIG_SCHEMA_ID_V2:
+        _validate_config_v2(config)
+        return
+    raise ValueError("H2 config schema/stage mismatch")
+
+
+def _validate_config_v1(config: Mapping[str, Any]) -> None:
     if config.get("schema_id") != CONFIG_SCHEMA_ID or config.get("stage") != "H2":
         raise ValueError("H2 config schema/stage mismatch")
     if config.get("claim_scope") != (
@@ -466,6 +488,197 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         raise ValueError("H2 canonical requested-time vector changed")
 
 
+def _validate_config_v2(config: Mapping[str, Any]) -> None:
+    prior_evidence = config.get("prior_evidence")
+    expected_prior_evidence = {
+        "failed_h2_contract_hash": (
+            "b0a91373ea8dc6ba4304a2b2d319cbeb551d5e211279b8fb799228b811058be9"
+        ),
+        "failed_h2_decision": "blocked_h2_temporal_operator_sensitivity",
+        "swe_cfl_diagnostic_hash": (
+            "1a29fea6ee28afb528e844abb55a6988249c09ed507e655e5aad1f657e2da138"
+        ),
+        "hydro_cfl_continuation_hash": (
+            "55c1766cefa2300299ab6067bda09b2ddfeac51be16c00a68619aa058ef02272"
+        ),
+        "selected_h2_outcomes_viewed_before_freeze": False,
+        "prior_h2_outcomes_viewed_before_freeze": True,
+        "validation_or_test_outcomes_inspected": False,
+        "h1_reuse_rationale": (
+            "passing_h1_was_health_only_at_more_aggressive_swe_cfl_and_"
+            "fresh_h2_rechecks_both_lower_cfl_variants"
+        ),
+    }
+    if prior_evidence != expected_prior_evidence:
+        raise ValueError("H2 v2 prior diagnostic evidence changed")
+
+    expected_selection = {
+        "split": "train",
+        "expected_split_count": 10_000,
+        "count_per_cell": 4,
+        "selection_seed": "common-time-v2-h2-balanced-selection-v2",
+        "replay_selection_seed": "common-time-v2-h2-replay-selection-v2",
+        "exclude_h1_contract_hash": (
+            "ef96c24f62a0eb0884f5384436a50802c0d8dd644946552d9c462b225334bc7d"
+        ),
+        "expected_h1_exclusion_count": 30,
+        "exclude_prior_h2_contract_hash": (
+            "b0a91373ea8dc6ba4304a2b2d319cbeb551d5e211279b8fb799228b811058be9"
+        ),
+        "expected_prior_h2_exclusion_count": 120,
+        "bathymetry_families": [
+            "canyon",
+            "continental",
+            "island",
+            "seamounts",
+            "trench",
+        ],
+        "source_families": [
+            "dipole",
+            "fault",
+            "gaussian",
+            "multi-gauss",
+            "okada-like",
+            "rough",
+        ],
+    }
+    if config.get("selection") != expected_selection:
+        raise ValueError("H2 v2 fresh balanced selection policy changed")
+    if config.get("candidate") != _expected_candidate_v2():
+        raise ValueError("H2 v2 candidate differs from diagnostic evidence")
+
+    expected_comparison = {
+        "production_cfl": {
+            "swe_hydrostatic": 0.1125,
+            "swe_muscl_hr": 0.225,
+            "boussinesq": 0.35,
+        },
+        "reference_cfl": {
+            "swe_hydrostatic": 0.05625,
+            "swe_muscl_hr": 0.1125,
+            "boussinesq": 0.175,
+        },
+        "reference_cfl_factor": 0.5,
+        "pair_execution_order": ["production", "reference"],
+        "requested_state_dtype": "float64",
+        "requested_time_comparison": "exact",
+        "interpretation": (
+            "total_temporal_discretization_and_production_operator_sensitivity"
+        ),
+    }
+    if config.get("comparison") != expected_comparison:
+        raise ValueError("H2 v2 production/reference CFL comparison changed")
+
+    expected_basis = {
+        "source": "post_h2_targeted_cfl_refinement_evidence",
+        "h2_outcomes_viewed": True,
+        "thresholds_changed_after_prior_h2": False,
+        "historical_stage_c_thresholds_inherited": False,
+        "rationale": (
+            "unchanged_level_a_envelopes_with_solver_specific_cfls_selected_"
+            "from_frozen_post_h2_refinement_diagnostics"
+        ),
+        "diagnostic_evidence": {
+            "swe_cfl_diagnostic_hash": (
+                "1a29fea6ee28afb528e844abb55a6988249c09ed507e655e5aad1f657e2da138"
+            ),
+            "hydro_cfl_continuation_hash": (
+                "55c1766cefa2300299ab6067bda09b2ddfeac51be16c00a68619aa058ef02272"
+            ),
+            "muscl_candidate_production_cfl": 0.225,
+            "hydro_candidate_production_cfl": 0.1125,
+            "boussinesq_candidate_production_cfl": 0.35,
+        },
+        "level_a_reference_values": {
+            "swe_hydrostatic": {
+                "trajectory_relative_l2": 0.09154451641975392,
+                "final_time_relative_l2": 0.14783067322587945,
+                "half_to_quarter_relative_l2": 0.038784078426468596,
+                "interpretation": "within_measured_spatial_discretization",
+            },
+            "swe_muscl_hr": {
+                "trajectory_relative_l2": 0.015438463507426866,
+                "final_time_relative_l2": 0.021283674184236958,
+                "interpretation": (
+                    "elapsed_time_consistent_production_operator"
+                ),
+            },
+            "boussinesq": {
+                "trajectory_relative_l2": 5.496894119819191e-5,
+                "final_time_relative_l2": 1.4916557046687503e-4,
+                "interpretation": (
+                    "elapsed_time_consistent_no_filter_operator"
+                ),
+            },
+        },
+    }
+    if config.get("threshold_basis") != expected_basis:
+        raise ValueError("H2 v2 threshold or diagnostic provenance changed")
+
+    baseline = dict(config)
+    baseline.pop("prior_evidence", None)
+    baseline["schema_id"] = CONFIG_SCHEMA_ID
+    baseline["selection"] = {
+        "split": "train",
+        "expected_split_count": 10_000,
+        "count_per_cell": 4,
+        "selection_seed": "common-time-v2-h2-balanced-selection-v1",
+        "replay_selection_seed": "common-time-v2-h2-replay-selection-v1",
+        "exclude_h1_contract_hash": (
+            "ef96c24f62a0eb0884f5384436a50802c0d8dd644946552d9c462b225334bc7d"
+        ),
+        "expected_h1_exclusion_count": 30,
+        "bathymetry_families": [
+            "canyon",
+            "continental",
+            "island",
+            "seamounts",
+            "trench",
+        ],
+        "source_families": [
+            "dipole",
+            "fault",
+            "gaussian",
+            "multi-gauss",
+            "okada-like",
+            "rough",
+        ],
+    }
+    baseline["candidate"] = _expected_candidate()
+    baseline["comparison"] = {
+        "production_cfl": {
+            "swe_hydrostatic": 0.45,
+            "swe_muscl_hr": 0.45,
+            "boussinesq": 0.35,
+        },
+        "reference_cfl": {
+            "swe_hydrostatic": 0.225,
+            "swe_muscl_hr": 0.225,
+            "boussinesq": 0.175,
+        },
+        "reference_cfl_factor": 0.5,
+        "pair_execution_order": ["production", "reference"],
+        "requested_state_dtype": "float64",
+        "requested_time_comparison": "exact",
+        "interpretation": (
+            "total_temporal_discretization_and_production_operator_sensitivity"
+        ),
+    }
+    baseline["threshold_basis"] = {
+        "source": "frozen_level_a_be1af7d",
+        "h2_outcomes_viewed": False,
+        "historical_stage_c_thresholds_inherited": False,
+        "rationale": (
+            "solver_specific_envelopes_from_level_a_production_to_half_cfl_"
+            "and_spatial_controls"
+        ),
+        "level_a_reference_values": config["threshold_basis"][
+            "level_a_reference_values"
+        ],
+    }
+    _validate_config_v1(baseline)
+
+
 def _verify_prerequisites(
     *,
     config: Mapping[str, Any],
@@ -551,6 +764,7 @@ def select_h2_scenarios(
     selection_config: Mapping[str, Any],
     inventory_sha256: str,
     h1_selected: Sequence[Mapping[str, Any]],
+    prior_h2_selected: Sequence[Mapping[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     split = str(selection_config["split"])
     expected_count = int(selection_config["expected_split_count"])
@@ -589,6 +803,34 @@ def select_h2_scenarios(
         ):
             raise RuntimeError("H2 H1 exclusion identity/fingerprint mismatch")
 
+    prior_entries = [] if prior_h2_selected is None else list(prior_h2_selected)
+    expected_prior_exclusions = int(
+        selection_config.get("expected_prior_h2_exclusion_count", 0)
+    )
+    prior_records = [dict(entry["record"]) for entry in prior_entries]
+    prior_ids = {str(record["qualified_id"]) for record in prior_records}
+    prior_fingerprints = {
+        str(record["input_fingerprint"]) for record in prior_records
+    }
+    if (
+        len(prior_records) != expected_prior_exclusions
+        or len(prior_ids) != expected_prior_exclusions
+        or len(prior_fingerprints) != expected_prior_exclusions
+    ):
+        raise RuntimeError(
+            "H2 prior-contract exclusion count or uniqueness changed"
+        )
+    if excluded_ids & prior_ids or excluded_fingerprints & prior_fingerprints:
+        raise RuntimeError("H2 H1 and prior-H2 exclusion sets overlap")
+    for record in prior_records:
+        authoritative = inventory_by_id.get(str(record["qualified_id"]))
+        if authoritative is None or (
+            authoritative.get("input_fingerprint") != record.get("input_fingerprint")
+        ):
+            raise RuntimeError("H2 prior exclusion identity/fingerprint mismatch")
+
+    all_excluded_ids = excluded_ids | prior_ids
+    all_excluded_fingerprints = excluded_fingerprints | prior_fingerprints
     expected_cells = {
         (bathymetry, source)
         for bathymetry in bathymetry_families
@@ -597,14 +839,23 @@ def select_h2_scenarios(
     cell_rows: dict[tuple[str, str], list[dict[str, Any]]] = {
         cell: [] for cell in expected_cells
     }
+    cell_counts_after_h1: dict[tuple[str, str], int] = {
+        cell: 0 for cell in expected_cells
+    }
     unexpected_cells: set[tuple[str, str]] = set()
     for row in training:
+        cell = (str(row["bathymetry_type"]), str(row["source_type"]))
         if (
-            str(row["qualified_id"]) in excluded_ids
-            or str(row["input_fingerprint"]) in excluded_fingerprints
+            str(row["qualified_id"]) not in excluded_ids
+            and str(row["input_fingerprint"]) not in excluded_fingerprints
+            and cell in cell_counts_after_h1
+        ):
+            cell_counts_after_h1[cell] += 1
+        if (
+            str(row["qualified_id"]) in all_excluded_ids
+            or str(row["input_fingerprint"]) in all_excluded_fingerprints
         ):
             continue
-        cell = (str(row["bathymetry_type"]), str(row["source_type"]))
         if cell not in cell_rows:
             unexpected_cells.add(cell)
             continue
@@ -643,7 +894,10 @@ def select_h2_scenarios(
                     "within_cell_ordinal": within_cell_ordinal,
                     "bathymetry_type": cell[0],
                     "source_type": cell[1],
-                    "cell_candidate_count_after_h1_exclusion": len(ranked),
+                    "cell_candidate_count_after_h1_exclusion": (
+                        cell_counts_after_h1[cell]
+                    ),
+                    "cell_candidate_count_after_all_exclusions": len(ranked),
                     "selection_rank": rank,
                     "record": record,
                 }
@@ -664,11 +918,11 @@ def select_h2_scenarios(
     )
     replay_selection_ordinal = replay_ranked[0][1]
     if any(
-        entry["record"]["qualified_id"] in excluded_ids
-        or entry["record"]["input_fingerprint"] in excluded_fingerprints
+        entry["record"]["qualified_id"] in all_excluded_ids
+        or entry["record"]["input_fingerprint"] in all_excluded_fingerprints
         for entry in selected
     ):
-        raise RuntimeError("H2 selection overlaps H1")
+        raise RuntimeError("H2 selection overlaps a frozen exclusion set")
     summary = {
         "split": split,
         "authoritative_split_count": len(training),
@@ -684,6 +938,9 @@ def select_h2_scenarios(
         "excluded_h1_count": len(excluded_ids),
         "excluded_h1_qualified_ids": sorted(excluded_ids),
         "excluded_h1_input_fingerprints": sorted(excluded_fingerprints),
+        "excluded_prior_h2_count": len(prior_ids),
+        "excluded_prior_h2_qualified_ids": sorted(prior_ids),
+        "excluded_prior_h2_input_fingerprints": sorted(prior_fingerprints),
         "replay_selection_ordinal": replay_selection_ordinal,
         "replay_qualified_id": selected[replay_selection_ordinal]["record"][
             "qualified_id"
@@ -817,6 +1074,98 @@ def _validate_contract_identity(contract: Mapping[str, Any]) -> None:
     h2_ids = set(contract["selection_summary"]["selected_qualified_ids"])
     if h1_ids & h2_ids:
         raise RuntimeError("H2 contract overlaps passing H1")
+    prior_h2_ids = set(
+        contract["selection_summary"].get(
+            "excluded_prior_h2_qualified_ids", []
+        )
+    )
+    if prior_h2_ids & h2_ids:
+        raise RuntimeError("H2 contract overlaps the prior viewed H2 selection")
+
+
+def _verify_post_h2_diagnostic_evidence(
+    *,
+    config: Mapping[str, Any],
+    prior_h2_root: Path,
+    swe_diagnostic_root: Path,
+    hydro_continuation_root: Path,
+) -> dict[str, Any]:
+    from src.evaluation.h2_hydro_cfl_continuation import (
+        validate_continuation_checksums,
+    )
+    from src.evaluation.h2_swe_cfl_diagnostic import (
+        validate_diagnostic_checksums,
+    )
+
+    expected = config["prior_evidence"]
+    validate_h2_checksums(prior_h2_root)
+    validate_diagnostic_checksums(swe_diagnostic_root)
+    validate_continuation_checksums(hydro_continuation_root)
+    prior_contract = _read_json(prior_h2_root / "preregistered_contract.json")
+    prior_result = _read_json(prior_h2_root / "execution" / "result.json")
+    swe_contract = _read_json(swe_diagnostic_root / "diagnostic_contract.json")
+    swe_result = _read_json(swe_diagnostic_root / "execution" / "result.json")
+    hydro_contract = _read_json(
+        hydro_continuation_root / "continuation_contract.json"
+    )
+    hydro_result = _read_json(
+        hydro_continuation_root / "execution" / "result.json"
+    )
+    if (
+        prior_h2_root.name != expected["failed_h2_contract_hash"]
+        or prior_contract.get("contract_hash") != prior_h2_root.name
+        or prior_result.get("contract_hash") != prior_h2_root.name
+        or prior_result.get("decision") != expected["failed_h2_decision"]
+    ):
+        raise RuntimeError("Prior failed H2 identity or decision mismatch")
+    if (
+        swe_diagnostic_root.name != expected["swe_cfl_diagnostic_hash"]
+        or swe_contract.get("study_hash") != swe_diagnostic_root.name
+        or swe_result.get("study_hash") != swe_diagnostic_root.name
+        or swe_result["summary"].get("all_tasks_healthy_and_replayed") is not True
+    ):
+        raise RuntimeError("SWE CFL diagnostic identity or health mismatch")
+    if (
+        hydro_continuation_root.name
+        != expected["hydro_cfl_continuation_hash"]
+        or hydro_contract.get("study_hash") != hydro_continuation_root.name
+        or hydro_result.get("study_hash") != hydro_continuation_root.name
+        or hydro_result.get("all_tasks_healthy_and_replayed") is not True
+        or hydro_result.get("screening_passed") is not True
+    ):
+        raise RuntimeError("Hydro CFL continuation identity or screening mismatch")
+    return {
+        "prior_h2": {
+            "root": str(prior_h2_root),
+            "contract_hash": prior_h2_root.name,
+            "decision": str(prior_result["decision"]),
+            "selected_scenarios_sha256": sha256_file(
+                prior_h2_root / "selected_scenarios.json"
+            ),
+            "result_sha256": sha256_file(
+                prior_h2_root / "execution" / "result.json"
+            ),
+        },
+        "swe_cfl_diagnostic": {
+            "root": str(swe_diagnostic_root),
+            "study_hash": swe_diagnostic_root.name,
+            "result_sha256": sha256_file(
+                swe_diagnostic_root / "execution" / "result.json"
+            ),
+            "all_tasks_healthy_and_replayed": True,
+            "selection_is_outcome_targeted": True,
+        },
+        "hydro_cfl_continuation": {
+            "root": str(hydro_continuation_root),
+            "study_hash": hydro_continuation_root.name,
+            "result_sha256": sha256_file(
+                hydro_continuation_root / "execution" / "result.json"
+            ),
+            "all_tasks_healthy_and_replayed": True,
+            "screening_passed": True,
+            "selection_is_outcome_targeted": True,
+        },
+    }
 
 
 def freeze_h2_contract(
@@ -829,6 +1178,9 @@ def freeze_h2_contract(
     level_b_evaluation_root: Path,
     h1_root: Path,
     output_base: Path,
+    prior_h2_root: Path | None = None,
+    swe_diagnostic_root: Path | None = None,
+    hydro_continuation_root: Path | None = None,
 ) -> Path:
     repo_root = repo_root.resolve()
     config_path = config_path.resolve()
@@ -839,6 +1191,28 @@ def freeze_h2_contract(
     h1_root = h1_root.resolve()
     output_base = output_base.resolve()
     config = _load_config(config_path)
+    is_v2 = config["schema_id"] == CONFIG_SCHEMA_ID_V2
+    diagnostic_evidence: dict[str, Any] | None = None
+    prior_h2_selected: Sequence[Mapping[str, Any]] | None = None
+    if is_v2:
+        if (
+            prior_h2_root is None
+            or swe_diagnostic_root is None
+            or hydro_continuation_root is None
+        ):
+            raise ValueError("H2 v2 freeze requires all post-H2 evidence roots")
+        prior_h2_root = prior_h2_root.resolve()
+        swe_diagnostic_root = swe_diagnostic_root.resolve()
+        hydro_continuation_root = hydro_continuation_root.resolve()
+        diagnostic_evidence = _verify_post_h2_diagnostic_evidence(
+            config=config,
+            prior_h2_root=prior_h2_root,
+            swe_diagnostic_root=swe_diagnostic_root,
+            hydro_continuation_root=hydro_continuation_root,
+        )
+        prior_h2_selected = _read_json(
+            prior_h2_root / "selected_scenarios.json"
+        )["selected_scenarios"]
     current_code = code_state(repo_root)
     if config["execution"]["require_clean_git_at_freeze"] and current_code["dirty"]:
         raise RuntimeError(
@@ -864,6 +1238,7 @@ def freeze_h2_contract(
         selection_config=config["selection"],
         inventory_sha256=inventory_sha256,
         h1_selected=h1_selected,
+        prior_h2_selected=prior_h2_selected,
     )
     for selection in selected:
         _load_canary_arrays(selection["record"])
@@ -884,9 +1259,12 @@ def freeze_h2_contract(
         "stage": "H2",
         "status": "frozen_unexecuted",
         "claim_scope": config["claim_scope"],
-        "scientific_outcome_viewed_before_freeze": False,
+        "scientific_outcome_viewed_before_freeze": bool(is_v2),
+        "selected_scenario_outcomes_viewed_before_freeze": False,
+        "prior_h2_outcomes_viewed_before_freeze": bool(is_v2),
         "validation_or_test_outcomes_inspected": False,
         "prerequisites": prerequisite_evidence,
+        "post_h2_diagnostic_evidence": diagnostic_evidence,
         "code_state": current_code,
         "code_state_policy": {
             "clean_committed_source_required": True,
@@ -2025,6 +2403,57 @@ def _report_text(result: Mapping[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _begin_execution_timing(execution_root: Path) -> tuple[float, int]:
+    path = execution_root / "timing.json"
+    previous = _read_json(path) if path.is_file() else {}
+    cumulative = float(previous.get("cumulative_successful_wall_s", 0.0))
+    invocation_count = int(previous.get("invocation_count", 0)) + 1
+    _write_json(
+        path,
+        {
+            "schema_id": SCHEMA_ID,
+            "timing_semantics": (
+                "cumulative active wall time through the most recent completed "
+                "task checkpoint; interrupted work after the last checkpoint is "
+                "excluded because it must be repeated"
+            ),
+            "invocation_count": invocation_count,
+            "cumulative_successful_wall_s": cumulative,
+            "active_invocation": True,
+            "active_invocation_started_unix_ns": time.time_ns(),
+        },
+    )
+    return cumulative, invocation_count
+
+
+def _checkpoint_execution_timing(
+    execution_root: Path,
+    *,
+    cumulative_before_invocation_s: float,
+    invocation_count: int,
+    invocation_elapsed_s: float,
+    active: bool,
+) -> float:
+    cumulative = float(cumulative_before_invocation_s + invocation_elapsed_s)
+    _write_json(
+        execution_root / "timing.json",
+        {
+            "schema_id": SCHEMA_ID,
+            "timing_semantics": (
+                "cumulative active wall time through the most recent completed "
+                "task checkpoint; interrupted work after the last checkpoint is "
+                "excluded because it must be repeated"
+            ),
+            "invocation_count": int(invocation_count),
+            "cumulative_successful_wall_s": cumulative,
+            "last_invocation_elapsed_s": float(invocation_elapsed_s),
+            "active_invocation": bool(active),
+            "last_checkpoint_unix_ns": time.time_ns(),
+        },
+    )
+    return cumulative
+
+
 def execute_h2_contract(
     *,
     repo_root: Path,
@@ -2051,6 +2480,20 @@ def execute_h2_contract(
         level_b_evaluation_root=Path(prerequisites["level_b"]["evaluation_root"]),
         h1_root=Path(prerequisites["h1"]["root"]),
     )
+    if contract["resolved_config"]["schema_id"] == CONFIG_SCHEMA_ID_V2:
+        diagnostic_evidence = contract.get("post_h2_diagnostic_evidence")
+        if not isinstance(diagnostic_evidence, Mapping):
+            raise RuntimeError("H2 v2 diagnostic evidence is missing")
+        _verify_post_h2_diagnostic_evidence(
+            config=contract["resolved_config"],
+            prior_h2_root=Path(diagnostic_evidence["prior_h2"]["root"]),
+            swe_diagnostic_root=Path(
+                diagnostic_evidence["swe_cfl_diagnostic"]["root"]
+            ),
+            hydro_continuation_root=Path(
+                diagnostic_evidence["hydro_cfl_continuation"]["root"]
+            ),
+        )
 
     worker_policy = contract["worker_policy"]
     frozen_workers = int(worker_policy["requested_workers"])
@@ -2091,6 +2534,9 @@ def execute_h2_contract(
     pending = [task for task in tasks if str(task["task_id"]) not in completed]
     (execution_root / "tasks").mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
+    cumulative_before_invocation, invocation_count = _begin_execution_timing(
+        execution_root
+    )
     initial_completed = len(completed)
     if progress is not None:
         progress(
@@ -2140,8 +2586,15 @@ def execute_h2_contract(
                 )
                 _write_json(_task_path(contract_root, task), payload)
                 completed[str(task["task_id"])] = payload
+                elapsed = time.monotonic() - started
+                _checkpoint_execution_timing(
+                    execution_root,
+                    cumulative_before_invocation_s=cumulative_before_invocation,
+                    invocation_count=invocation_count,
+                    invocation_elapsed_s=elapsed,
+                    active=True,
+                )
                 if progress is not None:
-                    elapsed = time.monotonic() - started
                     completed_this_run = len(completed) - initial_completed
                     remaining = len(tasks) - len(completed)
                     eta_s = (
@@ -2179,6 +2632,14 @@ def execute_h2_contract(
         decision = contract["decision_policy"]["sensitivity_failure"]
     else:
         decision = contract["decision_policy"]["pass"]
+    invocation_elapsed = time.monotonic() - started
+    cumulative_wall_duration = _checkpoint_execution_timing(
+        execution_root,
+        cumulative_before_invocation_s=cumulative_before_invocation,
+        invocation_count=invocation_count,
+        invocation_elapsed_s=invocation_elapsed,
+        active=False,
+    )
     result: dict[str, Any] = {
         "schema_id": SCHEMA_ID,
         "artifact_kind": "common-time-v2-h2-result",
@@ -2198,7 +2659,13 @@ def execute_h2_contract(
         "failed_gates": failed_gates,
         "gates": gates,
         "replay_mismatches": replay_mismatches,
-        "wall_duration_s": float(time.monotonic() - started),
+        "wall_duration_s": cumulative_wall_duration,
+        "wall_duration_this_invocation_s": float(invocation_elapsed),
+        "execution_invocation_count": invocation_count,
+        "wall_duration_semantics": (
+            "cumulative active wall time through successful task checkpoints "
+            "across resume invocations"
+        ),
         "sum_task_runtime_s": float(
             math.fsum(float(row["runtime_s"]) for row in ordered)
         ),

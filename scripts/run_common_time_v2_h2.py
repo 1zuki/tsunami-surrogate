@@ -20,7 +20,7 @@ from src.evaluation.common_time_v2_h2 import (
 )
 
 
-DEFAULT_CONFIG = Path("configs/eval/common_time_v2_h2.yaml")
+DEFAULT_CONFIG = Path("configs/eval/common_time_v2_h2_v2.yaml")
 DEFAULT_H0 = Path(
     "artifacts/common_time_v2/h0/"
     "830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b"
@@ -42,6 +42,18 @@ DEFAULT_H1 = Path(
     "ef96c24f62a0eb0884f5384436a50802c0d8dd644946552d9c462b225334bc7d"
 )
 DEFAULT_OUTPUT_BASE = Path("artifacts/common_time_v2/h2")
+DEFAULT_PRIOR_H2 = Path(
+    "artifacts/common_time_v2/h2/"
+    "b0a91373ea8dc6ba4304a2b2d319cbeb551d5e211279b8fb799228b811058be9"
+)
+DEFAULT_SWE_DIAGNOSTIC = Path(
+    "artifacts/common_time_v2/h2_diagnostics/swe_cfl_refinement_v1/"
+    "1a29fea6ee28afb528e844abb55a6988249c09ed507e655e5aad1f657e2da138"
+)
+DEFAULT_HYDRO_CONTINUATION = Path(
+    "artifacts/common_time_v2/h2_diagnostics/hydro_cfl_continuation_v1/"
+    "55c1766cefa2300299ab6067bda09b2ddfeac51be16c00a68619aa058ef02272"
+)
 
 
 def _configure_threads(workers: int) -> None:
@@ -119,6 +131,15 @@ def main() -> None:
         default=DEFAULT_LEVEL_B_EVALUATION,
     )
     parser.add_argument("--h1-root", type=Path, default=DEFAULT_H1)
+    parser.add_argument("--prior-h2-root", type=Path, default=DEFAULT_PRIOR_H2)
+    parser.add_argument(
+        "--swe-diagnostic-root", type=Path, default=DEFAULT_SWE_DIAGNOSTIC
+    )
+    parser.add_argument(
+        "--hydro-continuation-root",
+        type=Path,
+        default=DEFAULT_HYDRO_CONTINUATION,
+    )
     parser.add_argument("--output-base", type=Path, default=DEFAULT_OUTPUT_BASE)
     parser.add_argument("--contract-root", type=Path)
     parser.add_argument("--workers", type=int, default=8)
@@ -139,6 +160,9 @@ def main() -> None:
             level_b_evaluation_root=args.level_b_evaluation_root,
             h1_root=args.h1_root,
             output_base=args.output_base,
+            prior_h2_root=args.prior_h2_root,
+            swe_diagnostic_root=args.swe_diagnostic_root,
+            hydro_continuation_root=args.hydro_continuation_root,
         )
         print(path)
         return

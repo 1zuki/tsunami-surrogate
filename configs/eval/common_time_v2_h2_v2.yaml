@@ -1,0 +1,234 @@
+schema_id: tsunami-surrogate.common-time-v2.h2-config.v2
+stage: H2
+claim_scope: total_temporal_discretization_and_production_operator_sensitivity
+
+prerequisites:
+  h0_contract_hash: 830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b
+  level_a_contract_hash: be1af7dce1f48942e6d20a96bb06b1359655903847c7580954901e2dcfa3332b
+  level_b_bundle_hash: 3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460
+  h1_contract_hash: ef96c24f62a0eb0884f5384436a50802c0d8dd644946552d9c462b225334bc7d
+  require_h0_pass: true
+  require_level_a_decision: pass_to_H1
+  require_level_b_decision: pass_to_H1
+  require_h1_decision: pass_to_H2
+
+prior_evidence:
+  failed_h2_contract_hash: b0a91373ea8dc6ba4304a2b2d319cbeb551d5e211279b8fb799228b811058be9
+  failed_h2_decision: blocked_h2_temporal_operator_sensitivity
+  swe_cfl_diagnostic_hash: 1a29fea6ee28afb528e844abb55a6988249c09ed507e655e5aad1f657e2da138
+  hydro_cfl_continuation_hash: 55c1766cefa2300299ab6067bda09b2ddfeac51be16c00a68619aa058ef02272
+  selected_h2_outcomes_viewed_before_freeze: false
+  prior_h2_outcomes_viewed_before_freeze: true
+  validation_or_test_outcomes_inspected: false
+  h1_reuse_rationale: passing_h1_was_health_only_at_more_aggressive_swe_cfl_and_fresh_h2_rechecks_both_lower_cfl_variants
+
+selection:
+  split: train
+  expected_split_count: 10000
+  count_per_cell: 4
+  selection_seed: common-time-v2-h2-balanced-selection-v2
+  replay_selection_seed: common-time-v2-h2-replay-selection-v2
+  exclude_h1_contract_hash: ef96c24f62a0eb0884f5384436a50802c0d8dd644946552d9c462b225334bc7d
+  expected_h1_exclusion_count: 30
+  exclude_prior_h2_contract_hash: b0a91373ea8dc6ba4304a2b2d319cbeb551d5e211279b8fb799228b811058be9
+  expected_prior_h2_exclusion_count: 120
+  bathymetry_families:
+    - canyon
+    - continental
+    - island
+    - seamounts
+    - trench
+  source_families:
+    - dipole
+    - fault
+    - gaussian
+    - multi-gauss
+    - okada-like
+    - rough
+
+candidate:
+  solvers:
+    - swe_hydrostatic
+    - swe_muscl_hr
+    - boussinesq
+  computational_grid: 96
+  publication_grid: 64
+  buffer_cells_per_side: 16
+  source_taper_cells: 8
+  bathymetry_extension: edge
+  output_crop: central
+  dx: 0.015625
+  dy: 0.015625
+  requested_time_start: 0.0035
+  requested_time_step: 0.0035
+  requested_time_count: 50
+  horizon: 0.175
+  requested_state_dtype: float64
+  max_natural_steps: 20000
+  sponge_width_cells: 16
+  sponge_min_factor: 0.8
+  sponge_axes: xy
+  sponge_profile: cosine
+  sponge_time_mode: elapsed_time_consistent
+  sponge_reference_dt: 0.0035
+  swe_cfl_by_solver:
+    swe_hydrostatic: 0.1125
+    swe_muscl_hr: 0.225
+  swe_boundary: radiation
+  dry_tolerance: 1.0e-6
+  max_velocity: 30.0
+  muscl_limiter: minmod
+  boussinesq_cfl: 0.35
+  boussinesq_boundary: open
+  boussinesq_boundary_interpretation: zero_gradient_edge_padding
+  boussinesq_depth_scale: 1.0
+  boussinesq_mode: linear_variable_depth
+  boussinesq_filter_strength: 0.0
+  boussinesq_filter_time_mode: disabled
+  boussinesq_linear_solver_tol: 1.0e-10
+  boussinesq_linear_solver_abs_tol: 0.0
+  boussinesq_linear_solver_max_iter: 750
+  boussinesq_cg_failure_mode: strict_v2
+
+comparison:
+  production_cfl:
+    swe_hydrostatic: 0.1125
+    swe_muscl_hr: 0.225
+    boussinesq: 0.35
+  reference_cfl:
+    swe_hydrostatic: 0.05625
+    swe_muscl_hr: 0.1125
+    boussinesq: 0.175
+  reference_cfl_factor: 0.5
+  pair_execution_order:
+    - production
+    - reference
+  requested_state_dtype: float64
+  requested_time_comparison: exact
+  interpretation: total_temporal_discretization_and_production_operator_sensitivity
+
+health_gates:
+  require_exact_requested_times: true
+  require_adjacent_bracket_provenance: true
+  require_no_missing_duplicate_or_extrapolated_outputs: true
+  require_complete_float64_natural_health: true
+  reject_nonfinite: true
+  min_h_tolerance: -1.0e-6
+  max_abs_eta_limit: 5.0
+  max_velocity_limit: 30.0
+  max_eta_over_depth: 1.0
+  require_cg_converged: true
+  require_two_cg_solves_per_natural_step: true
+  require_both_cfl_variants_healthy: true
+  deterministic_replay_comparison: exact_scientific_digest
+
+metrics:
+  trajectory_reference: smaller_cfl_replay
+  relative_denominator: full_reference_trajectory_rms
+  relative_floor_absolute_rms: 1.0e-12
+  relative_floor_rationale: above_float64_roundoff_but_below_intended_eta_resolution
+  per_time_relative_denominator: full_reference_trajectory_rms
+  boundary_band_cells: 8
+  amplitude_metric: peak_absolute_eta_over_full_trajectory
+  phase_metric: centered_waveform_correlation_loss
+  phase_activity_floor_absolute_rms: 1.0e-10
+  minimum_phase_applicable_fraction: 0.95
+  stable_reduction: sorted_values_math_fsum_linear_quantile
+  family_cell_rule: trajectory_every_cell_median_and_max_amplitude_phase_reported
+  bootstrap:
+    seed: common-time-v2-h2-paired-stratified-bootstrap-v1
+    resamples: 2000
+    confidence_level: 0.95
+    method: paired_within_family_cell
+    decision_role: informational_uncertainty_not_gate
+
+threshold_basis:
+  source: post_h2_targeted_cfl_refinement_evidence
+  h2_outcomes_viewed: true
+  thresholds_changed_after_prior_h2: false
+  historical_stage_c_thresholds_inherited: false
+  rationale: unchanged_level_a_envelopes_with_solver_specific_cfls_selected_from_frozen_post_h2_refinement_diagnostics
+  diagnostic_evidence:
+    swe_cfl_diagnostic_hash: 1a29fea6ee28afb528e844abb55a6988249c09ed507e655e5aad1f657e2da138
+    hydro_cfl_continuation_hash: 55c1766cefa2300299ab6067bda09b2ddfeac51be16c00a68619aa058ef02272
+    muscl_candidate_production_cfl: 0.225
+    hydro_candidate_production_cfl: 0.1125
+    boussinesq_candidate_production_cfl: 0.35
+  level_a_reference_values:
+    swe_hydrostatic:
+      trajectory_relative_l2: 0.09154451641975392
+      final_time_relative_l2: 0.14783067322587945
+      half_to_quarter_relative_l2: 0.038784078426468596
+      interpretation: within_measured_spatial_discretization
+    swe_muscl_hr:
+      trajectory_relative_l2: 0.015438463507426866
+      final_time_relative_l2: 0.021283674184236958
+      interpretation: elapsed_time_consistent_production_operator
+    boussinesq:
+      trajectory_relative_l2: 5.496894119819191e-5
+      final_time_relative_l2: 1.4916557046687503e-4
+      interpretation: elapsed_time_consistent_no_filter_operator
+
+thresholds:
+  swe_hydrostatic:
+    trajectory_relative_l2_median: 0.12
+    trajectory_relative_l2_p95: 0.20
+    trajectory_relative_l2_max: 0.30
+    per_time_normalized_rmse_p95: 0.25
+    per_time_normalized_rmse_max: 0.50
+    peak_amplitude_relative_error_median: 0.15
+    peak_amplitude_relative_error_p95: 0.25
+    peak_amplitude_relative_error_max: 0.40
+    phase_correlation_loss_median: 0.05
+    phase_correlation_loss_p95: 0.15
+    phase_correlation_loss_max: 0.30
+    family_cell_trajectory_median_max: 0.20
+    family_cell_trajectory_case_max: 0.30
+  swe_muscl_hr:
+    trajectory_relative_l2_median: 0.03
+    trajectory_relative_l2_p95: 0.06
+    trajectory_relative_l2_max: 0.10
+    per_time_normalized_rmse_p95: 0.08
+    per_time_normalized_rmse_max: 0.15
+    peak_amplitude_relative_error_median: 0.05
+    peak_amplitude_relative_error_p95: 0.10
+    peak_amplitude_relative_error_max: 0.15
+    phase_correlation_loss_median: 0.02
+    phase_correlation_loss_p95: 0.05
+    phase_correlation_loss_max: 0.10
+    family_cell_trajectory_median_max: 0.06
+    family_cell_trajectory_case_max: 0.10
+  boussinesq:
+    trajectory_relative_l2_median: 0.001
+    trajectory_relative_l2_p95: 0.0025
+    trajectory_relative_l2_max: 0.005
+    per_time_normalized_rmse_p95: 0.005
+    per_time_normalized_rmse_max: 0.01
+    peak_amplitude_relative_error_median: 0.0025
+    peak_amplitude_relative_error_p95: 0.005
+    peak_amplitude_relative_error_max: 0.01
+    phase_correlation_loss_median: 0.001
+    phase_correlation_loss_p95: 0.0025
+    phase_correlation_loss_max: 0.005
+    family_cell_trajectory_median_max: 0.0025
+    family_cell_trajectory_case_max: 0.005
+
+replay:
+  selected_case_count: 1
+  runs_per_solver: 1
+  comparison: exact_scientific_digest
+
+execution:
+  requested_workers: 8
+  requested_max_in_flight: 8
+  process_start_method: spawn
+  numerical_library_threads: 1
+  resume_policy: validate_then_skip
+  corruption_policy: fail_closed
+  require_clean_git_at_freeze: true
+
+decisions:
+  pass: pass_to_common_time_v2_contract_freeze
+  sensitivity_failure: blocked_h2_temporal_operator_sensitivity
+  health_failure: blocked_h2_solver_health
+  implementation_failure: implementation_failure
