@@ -1,0 +1,84 @@
+schema_id: tsunami-surrogate.common-time-v2.h2-swe-cfl-diagnostic-config.v1
+study: h2_swe_cfl_refinement_v1
+decision_role: non_decisional_post_h2_diagnosis
+source_h2_contract_hash: b0a91373ea8dc6ba4304a2b2d319cbeb551d5e211279b8fb799228b811058be9
+source_h2_decision: blocked_h2_temporal_operator_sensitivity
+selection_is_outcome_targeted: true
+validation_or_test_outcomes_inspected: false
+
+solvers:
+  - swe_hydrostatic
+  - swe_muscl_hr
+
+cfl_ladder:
+  swe_hydrostatic:
+    - 0.45
+    - 0.225
+    - 0.1125
+  swe_muscl_hr:
+    - 0.45
+    - 0.225
+    - 0.1125
+
+cases:
+  - qualified_id: train:scenario_009741
+    input_fingerprint: 6a3c6551447fd07e8192b3dc81c08df72356bfe811e9b12879be85afe300abc8
+    bathymetry_type: island
+    source_type: rough
+    selection_role: worst_both_swe
+  - qualified_id: train:scenario_007436
+    input_fingerprint: 70ebe193be396a7aca40020fbb15188254671c03268652c71f77b687c2a3b28d
+    bathymetry_type: continental
+    source_type: rough
+    selection_role: worst_hydrostatic_and_high_muscl
+  - qualified_id: train:scenario_009695
+    input_fingerprint: b885e505ac94fb29d4531f7debef99f372c4dbe2cc129ce4108b6cdffc8ee1c5
+    bathymetry_type: seamounts
+    source_type: rough
+    selection_role: worst_hydrostatic_and_high_muscl
+  - qualified_id: train:scenario_009861
+    input_fingerprint: da496f4c0ccd347c2962ded27608a2beb92e6fc7b04c34f64c55664a9f999c52
+    bathymetry_type: island
+    source_type: fault
+    selection_role: worst_muscl
+  - qualified_id: train:scenario_009666
+    input_fingerprint: ae0c2a0c30ccfb3329b63e2072bc03b2b7dd6f9af8cb6116e6fbaeeb3a392cf6
+    bathymetry_type: island
+    source_type: fault
+    selection_role: worst_muscl
+  - qualified_id: train:scenario_001778
+    input_fingerprint: a8d7cc6af8186456cd43f6c1d91344615f1c59402d95d99cf0e5191d1eac83f8
+    bathymetry_type: trench
+    source_type: okada-like
+    selection_role: low_sensitivity_control_both_swe
+  - qualified_id: train:scenario_005221
+    input_fingerprint: 6afb66c6a3d684392d4747f8611e6d61af3ec3c7dfdf85970f50ca413fac10cb
+    bathymetry_type: continental
+    source_type: gaussian
+    selection_role: median_sensitivity_control_both_swe
+  - qualified_id: train:scenario_008959
+    input_fingerprint: a8838e33c27eb04b97d15b82e436c389b32e0c7cd1118702297ab6700b982150
+    bathymetry_type: island
+    source_type: multi-gauss
+    selection_role: median_sensitivity_control_muscl
+
+analysis:
+  comparisons:
+    - production_to_half
+    - half_to_quarter
+    - production_to_quarter
+  observed_order_from: absolute_trajectory_rms
+  expected_first_order_contraction_ratio: 0.5
+  expected_second_order_contraction_ratio: 0.25
+  h2_metric_replay_relative_tolerance: 2.0e-15
+  h2_metric_replay_absolute_tolerance: 1.0e-18
+  hypothetical_half_cfl_role: diagnostic_candidate_only
+  threshold_source: frozen_source_h2
+
+execution:
+  workers: 8
+  max_in_flight: 8
+  process_start_method: spawn
+  numerical_library_threads: 1
+  resume_policy: validate_then_skip
+  corruption_policy: fail_closed

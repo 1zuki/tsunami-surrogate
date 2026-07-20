@@ -1,0 +1,37 @@
+schema_id: tsunami-surrogate.common-time-v2.h2-hydro-cfl-continuation-config.v1
+study: h2_hydro_cfl_continuation_v1
+decision_role: non_decisional_post_h2_diagnosis
+source_diagnostic_hash: 1a29fea6ee28afb528e844abb55a6988249c09ed507e655e5aad1f657e2da138
+selection_is_outcome_targeted: true
+validation_or_test_outcomes_inspected: false
+
+solver: swe_hydrostatic
+cfl_pair:
+  candidate_production: 0.1125
+  candidate_reference: 0.05625
+
+cases:
+  - qualified_id: train:scenario_009741
+    input_fingerprint: 6a3c6551447fd07e8192b3dc81c08df72356bfe811e9b12879be85afe300abc8
+    selection_role: worst_half_to_quarter_per_time_max
+  - qualified_id: train:scenario_007436
+    input_fingerprint: 70ebe193be396a7aca40020fbb15188254671c03268652c71f77b687c2a3b28d
+    selection_role: second_worst_half_to_quarter_per_time_max
+  - qualified_id: train:scenario_009695
+    input_fingerprint: b885e505ac94fb29d4531f7debef99f372c4dbe2cc129ce4108b6cdffc8ee1c5
+    selection_role: third_worst_half_to_quarter_per_time_max
+
+analysis:
+  prior_comparison: half_to_quarter
+  current_comparison: quarter_to_eighth
+  observed_order_from: absolute_trajectory_rms
+  exact_candidate_production_array_replay: true
+  threshold_source: frozen_source_h2
+
+execution:
+  workers: 3
+  max_in_flight: 3
+  process_start_method: spawn
+  numerical_library_threads: 1
+  resume_policy: validate_then_skip
+  corruption_policy: fail_closed
