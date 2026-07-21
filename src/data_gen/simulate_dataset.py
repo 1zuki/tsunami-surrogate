@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import sys
+import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
 from multiprocessing import get_context
@@ -35,6 +36,7 @@ try:
         stable_hash_payload,
         validate_publication,
     )
+    from src.data_gen.operational_timing import GenerationTimingRecorder
 except ImportError:
     from common_time_v2 import (
         ETA_SAMPLE_SCHEMA_ID,
@@ -51,6 +53,7 @@ except ImportError:
         stable_hash_payload,
         validate_publication,
     )
+    from operational_timing import GenerationTimingRecorder
 
 try:
     from src.data_gen.generate_bathymetry import BathymetryGenerator
@@ -151,6 +154,48 @@ class BufferedDomainConfig:
         }
 
 
+@dataclass(frozen=True)
+class OperationalConfig:
+    """Nondeterministic execution metadata kept outside scientific samples."""
+
+    enabled: bool = True
+    progress_every: int = 1
+    solver_progress: bool = True
+    max_in_flight: int | None = None
+    cloud_provider: str | None = None
+    cloud_zone: str | None = None
+    machine_type: str | None = None
+    storage_class: str | None = None
+    hourly_cost_usd: float | None = None
+
+    def metadata(self) -> dict[str, Any]:
+        return {
+            "solver_progress": self.solver_progress,
+            "cloud_provider": self.cloud_provider,
+            "cloud_zone": self.cloud_zone,
+            "machine_type": self.machine_type,
+            "storage_class": self.storage_class,
+            "hourly_cost_usd": self.hourly_cost_usd,
+        }
+
+
+@dataclass(frozen=True)
+class AuthoritativeInputsConfig:
+    inventory_path: Path
+    inventory_sha256: str
+    h0_contract_hash: str
+    require_exact_arrays: bool = True
+    allow_input_generation: bool = False
+
+    def semantics(self) -> dict[str, Any]:
+        return {
+            "inventory_sha256": self.inventory_sha256,
+            "h0_contract_hash": self.h0_contract_hash,
+            "require_exact_arrays": self.require_exact_arrays,
+            "allow_input_generation": self.allow_input_generation,
+        }
+
+
 @dataclass
 class DatasetConfig:
     """Convenience wrapper for the top-level dataset config."""
@@ -174,6 +219,7 @@ class DatasetConfig:
     primary_fde: str
     quality_policy: QualityPolicy
     requested_output: RequestedOutputConfig | None
+    authoritative_inputs: AuthoritativeInputsConfig | None = None
     solver_profiles: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     buffered_domain: BufferedDomainConfig = field(default_factory=BufferedDomainConfig)
 
@@ -1380,6 +1426,81 @@ def _requested_input_fingerprint(
     )
 
 
+def _validate_authoritative_input(
+    *,
+    record: Mapping[str, Any],
+    split: str,
+    sample_idx: int,
+    scenario_id: str,
+    bathymetry: np.ndarray,
+    source_field: np.ndarray,
+    source_strength_array: np.ndarray,
+    bathymetry_type: str,
+    source_type: str,
+    sea_level_offset: float,
+    config: AuthoritativeInputsConfig,
+) -> dict[str, Any]:
+    identity = split_qualified_identity(split, scenario_id)
+    for key, expected in (
+        ("qualified_id", identity["qualified_id"]),
+        ("scenario_id", scenario_id),
+        ("split", identity["split"]),
+    ):
+        if str(record.get(key)) != str(expected):
+            raise RuntimeError(f"Authoritative input {key} mismatch")
+    if int(record.get("sample_index", -1)) != int(sample_idx):
+        raise RuntimeError("Authoritative input sample_index mismatch")
+    if str(record.get("bathymetry_type")) != str(bathymetry_type):
+        raise RuntimeError("Authoritative input bathymetry family mismatch")
+    if str(record.get("source_type")) != str(source_type):
+        raise RuntimeError("Authoritative input source family mismatch")
+
+    strength_array = np.asarray(source_strength_array)
+    strength = float(strength_array.reshape(-1)[0])
+    if np.float32(record.get("source_strength")) != np.float32(strength):
+        raise RuntimeError("Authoritative input source strength mismatch")
+    raw_bathymetry = np.asarray(bathymetry, dtype=np.float32)
+    raw_source = np.asarray(source_field, dtype=np.float32)
+    rest_depth = np.maximum(
+        -raw_bathymetry + float(sea_level_offset), 0.0
+    ).astype(np.float32, copy=False)
+    eta0 = np.asarray(strength * raw_source, dtype=np.float32)
+    initial_depth = np.asarray(np.maximum(rest_depth + eta0, 0.0), dtype=np.float32)
+    free_surface0 = np.asarray(initial_depth + raw_bathymetry, dtype=np.float32)
+    arrays = {
+        "bathymetry": raw_bathymetry,
+        "source_field": raw_source,
+        "rest_depth": rest_depth,
+        "eta0": eta0,
+        "initial_depth": initial_depth,
+        "free_surface0": free_surface0,
+    }
+    expected_hashes = record.get("array_hashes")
+    if not isinstance(expected_hashes, Mapping):
+        raise RuntimeError("Authoritative input array hashes are missing")
+    if config.require_exact_arrays:
+        for name, values in arrays.items():
+            if hash_array(values) != expected_hashes.get(name):
+                raise RuntimeError(f"Authoritative input array hash mismatch: {name}")
+    fingerprint = authoritative_input_fingerprint(
+        split=split,
+        sample_index=sample_idx,
+        scenario_id=scenario_id,
+        bathymetry_type=bathymetry_type,
+        source_type=source_type,
+        source_strength=strength_array,
+        arrays=arrays,
+    )
+    if fingerprint != str(record.get("input_fingerprint")):
+        raise RuntimeError("Authoritative input fingerprint mismatch")
+    return {
+        "h0_contract_hash": config.h0_contract_hash,
+        "inventory_sha256": config.inventory_sha256,
+        "qualified_id": identity["qualified_id"],
+        "input_fingerprint": fingerprint,
+    }
+
+
 def _requested_health_summary(
     diagnostics: Dict[str, np.ndarray], health: Dict[str, Any], *, fde_name: str
 ) -> dict[str, Any]:
@@ -1455,6 +1576,8 @@ def _write_requested_publication(
     health: Dict[str, Any],
     quality_status: str,
     quality_violations: list[str],
+    authoritative_input: Mapping[str, Any] | None = None,
+    source_code: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     requested = dataset.requested_output
     if requested is None:
@@ -1487,9 +1610,14 @@ def _write_requested_publication(
             "eta_primary": requested.eta_primary,
             "debug_full_states": requested.debug_full_states,
             "buffered_domain": dataset.buffered_domain.semantics(),
+            "authoritative_inputs": (
+                None
+                if dataset.authoritative_inputs is None
+                else dataset.authoritative_inputs.semantics()
+            ),
         },
     )
-    code = code_state(ROOT)
+    code = dict(source_code) if source_code is not None else code_state(ROOT)
     diagnostics = rollout.diagnostics or {}
     summary = _requested_health_summary(diagnostics, health, fde_name=fde_name)
 
@@ -1551,6 +1679,8 @@ def _write_requested_publication(
             "quality_violations": quality_violations,
             "health_summary": summary,
         }
+        if authoritative_input is not None:
+            meta["authoritative_input"] = dict(authoritative_input)
         with (staging / "meta.json").open("w", encoding="utf-8") as handle:
             json.dump(meta, handle, indent=2, sort_keys=True)
 
@@ -1578,6 +1708,20 @@ def _write_requested_publication(
             "quality_status": quality_status,
             "files": files,
         }
+        if authoritative_input is not None:
+            publication.update(
+                {
+                    "authoritative_input_fingerprint": str(
+                        authoritative_input["input_fingerprint"]
+                    ),
+                    "authoritative_inventory_sha256": str(
+                        authoritative_input["inventory_sha256"]
+                    ),
+                    "h0_contract_hash": str(
+                        authoritative_input["h0_contract_hash"]
+                    ),
+                }
+            )
         with (staging / "publication.json").open("w", encoding="utf-8") as handle:
             json.dump(publication, handle, indent=2, sort_keys=True)
         validate_publication(
@@ -1587,6 +1731,16 @@ def _write_requested_publication(
             expected_config_hash=config_hash,
             expected_code_state_hash=code["code_state_hash"],
             expected_input_fingerprint=input_fingerprint,
+            expected_authoritative_input_fingerprint=(
+                None
+                if authoritative_input is None
+                else str(authoritative_input["input_fingerprint"])
+            ),
+            expected_authoritative_inventory_sha256=(
+                None
+                if authoritative_input is None
+                else str(authoritative_input["inventory_sha256"])
+            ),
             expected_times=requested.requested_times,
         )
         atomic_replace_directory(staging, sample_dir)
@@ -1608,8 +1762,13 @@ def _generate_sample_worker(
     bathymetry_dir: str,
     source_dir: str,
     fde_samples_dirs: Dict[str, str],
+    authoritative_record: Mapping[str, Any] | None = None,
+    source_code: Mapping[str, Any] | None = None,
+    emit_solver_progress: bool = False,
     allow_override: bool = False,
 ) -> Dict[str, Any]:
+    worker_started = time.monotonic()
+    input_load_started = time.monotonic()
     bathy_path = _bathymetry_file_path(bathymetry_dir, sample_idx)
     source_path = _source_file_path(source_dir, sample_idx)
 
@@ -1630,7 +1789,33 @@ def _generate_sample_worker(
     with np.load(source_path) as src_npz:
         source_field = np.asarray(src_npz["source_field"], dtype=np.float32)
         source_type = str(np.asarray(src_npz["source_type"]).reshape(-1)[0])
-        source_strength = float(np.asarray(src_npz["source_strength"]).reshape(-1)[0])
+        source_strength_array = np.asarray(src_npz["source_strength"])
+        source_strength = float(source_strength_array.reshape(-1)[0])
+
+    scenario_id = f"scenario_{sample_idx:06d}"
+    authoritative_input: dict[str, Any] | None = None
+    if dataset.authoritative_inputs is not None:
+        if authoritative_record is None:
+            raise RuntimeError(
+                f"Missing authoritative inventory row for {scenario_id}"
+            )
+        authoritative_input = _validate_authoritative_input(
+            record=authoritative_record,
+            split=(
+                dataset.requested_output.split
+                if dataset.requested_output is not None
+                else str(authoritative_record.get("split", ""))
+            ),
+            sample_idx=sample_idx,
+            scenario_id=scenario_id,
+            bathymetry=bathymetry,
+            source_field=source_field,
+            source_strength_array=source_strength_array,
+            bathymetry_type=bathy_type,
+            source_type=source_type,
+            sea_level_offset=dataset.sea_level_offset,
+            config=dataset.authoritative_inputs,
+        )
 
     if dataset.buffered_domain.enabled:
         prepared = _prepare_buffered_domain(
@@ -1673,10 +1858,17 @@ def _generate_sample_worker(
             "(swe_hydrostatic, swe_muscl_hr, boussinesq)."
         )
 
-    scenario_id = f"scenario_{sample_idx:06d}"
     solver_records: list[Dict[str, Any]] = []
+    solver_timings: list[dict[str, Any]] = []
+    input_load_s = max(0.0, time.monotonic() - input_load_started)
 
     for fde_name in runnable_fdes:
+        solver_worker_started = time.monotonic()
+        if emit_solver_progress:
+            print(
+                f"[solver-start] sample={sample_idx:06d} solver={fde_name}",
+                flush=True,
+            )
         solver_cfg_for_fde = _resolved_solver_cfg_for_fde(
             solver_cfg, dataset.solver_profiles, fde_name
         )
@@ -1686,6 +1878,7 @@ def _generate_sample_worker(
         sample_dir = Path(fde_samples_dirs[fde_name]) / f"sample_{sample_idx:06d}"
         if dataset.requested_output is not None:
             if sample_dir.exists():
+                validation_started = time.monotonic()
                 try:
                     expected_input_fingerprint = _requested_input_fingerprint(
                         split=dataset.requested_output.split,
@@ -1715,9 +1908,18 @@ def _generate_sample_worker(
                             "eta_primary": dataset.requested_output.eta_primary,
                             "debug_full_states": dataset.requested_output.debug_full_states,
                             "buffered_domain": dataset.buffered_domain.semantics(),
+                            "authoritative_inputs": (
+                                None
+                                if dataset.authoritative_inputs is None
+                                else dataset.authoritative_inputs.semantics()
+                            ),
                         },
                     )
-                    expected_code_hash = code_state(ROOT)["code_state_hash"]
+                    expected_code_hash = (
+                        code_state(ROOT)["code_state_hash"]
+                        if source_code is None
+                        else str(source_code["code_state_hash"])
+                    )
                     publication = validate_publication(
                         sample_dir,
                         expected_identity=split_qualified_identity(
@@ -1730,6 +1932,16 @@ def _generate_sample_worker(
                         expected_times=dataset.requested_output.requested_times,
                         expected_solver_name=fde_name,
                         expected_sample_index=sample_idx,
+                        expected_authoritative_input_fingerprint=(
+                            None
+                            if authoritative_input is None
+                            else str(authoritative_input["input_fingerprint"])
+                        ),
+                        expected_authoritative_inventory_sha256=(
+                            None
+                            if authoritative_input is None
+                            else str(authoritative_input["inventory_sha256"])
+                        ),
                     )
                 except Exception as exc:
                     raise RuntimeError(
@@ -1747,6 +1959,29 @@ def _generate_sample_worker(
                     payload=publication,
                     schema_id=PUBLICATION_SCHEMA_ID,
                 )
+                solver_timings.append(
+                    {
+                        "solver": fde_name,
+                        "status": "reused",
+                        "solve_s": 0.0,
+                        "serialization_s": 0.0,
+                        "validation_s": max(
+                            0.0, time.monotonic() - validation_started
+                        ),
+                        "worker_s": max(
+                            0.0, time.monotonic() - solver_worker_started
+                        ),
+                        "natural_steps": 0,
+                    }
+                )
+                if emit_solver_progress:
+                    timing = solver_timings[-1]
+                    print(
+                        f"[solver-done] sample={sample_idx:06d} "
+                        f"solver={fde_name} status=reused "
+                        f"validation={timing['validation_s']:.1f}s",
+                        flush=True,
+                    )
                 continue
         elif sample_dir.exists() and not allow_override:
             if _sample_output_complete(sample_dir):
@@ -1768,6 +2003,7 @@ def _generate_sample_worker(
             dataset,
             target_cfl=float(solver_cfg_for_fde.get("cfl", dataset.target_cfl)),
         )
+        solve_started = time.monotonic()
         full_rollout = _run_fde_rollout(
             fde_name=fde_name,
             solver_cfg=solver_cfg_for_fde,
@@ -1791,6 +2027,7 @@ def _generate_sample_worker(
                 else dataset.requested_output.collect_natural_step_health
             ),
         )
+        solve_s = max(0.0, time.monotonic() - solve_started)
 
         effective_depth = None
         if fde_name == "boussinesq":
@@ -1833,6 +2070,7 @@ def _generate_sample_worker(
         )
 
         if dataset.requested_output is not None:
+            serialization_started = time.monotonic()
             publication_result = _write_requested_publication(
                 sample_dir=sample_dir,
                 rollout=rollout,
@@ -1853,6 +2091,8 @@ def _generate_sample_worker(
                 health=health,
                 quality_status=quality_status,
                 quality_violations=quality_violations,
+                authoritative_input=authoritative_input,
+                source_code=source_code,
             )
             meta = publication_result["meta"]
             solver_records.append(
@@ -1877,10 +2117,40 @@ def _generate_sample_worker(
                     "resolved_config_hash": meta["resolved_config_hash"],
                     "input_fingerprint": meta["input_fingerprint"],
                     "code_state_hash": meta["code_state_hash"],
+                    "authoritative_input_fingerprint": (
+                        None
+                        if authoritative_input is None
+                        else authoritative_input["input_fingerprint"]
+                    ),
                     "reused_existing": False,
                     **health,
                 }
             )
+            solver_timings.append(
+                {
+                    "solver": fde_name,
+                    "status": "generated",
+                    "solve_s": solve_s,
+                    "serialization_s": max(
+                        0.0, time.monotonic() - serialization_started
+                    ),
+                    "validation_s": 0.0,
+                    "worker_s": max(
+                        0.0, time.monotonic() - solver_worker_started
+                    ),
+                    "natural_steps": int(health.get("total_natural_steps", 0)),
+                }
+            )
+            if emit_solver_progress:
+                timing = solver_timings[-1]
+                print(
+                    f"[solver-done] sample={sample_idx:06d} "
+                    f"solver={fde_name} status=generated "
+                    f"solve={timing['solve_s']:.1f}s "
+                    f"serialize={timing['serialization_s']:.1f}s "
+                    f"steps={timing['natural_steps']}",
+                    flush=True,
+                )
             continue
 
         if allow_override and sample_dir.exists():
@@ -2004,14 +2274,27 @@ def _generate_sample_worker(
         "scenario_id": scenario_id,
         "scenario_record": scenario_record,
         "solver_records": solver_records,
+        "_operational": {
+            "sample_index": int(sample_idx),
+            "scenario_id": scenario_id,
+            "worker_pid": os.getpid(),
+            "input_load_s": input_load_s,
+            "worker_total_s": max(0.0, time.monotonic() - worker_started),
+            "solvers": solver_timings,
+        },
     }
 
 
 class TsunamiDatasetBuilder:
     """Generate raw tsunami surrogate samples."""
 
-    def __init__(self, config_path: str) -> None:
+    def __init__(
+        self, config_path: str, *, provenance_config_path: str | Path | None = None
+    ) -> None:
         self.config_path = Path(config_path)
+        self.provenance_config_path = Path(
+            config_path if provenance_config_path is None else provenance_config_path
+        )
         if not self.config_path.exists():
             raise FileNotFoundError(
                 f"Could not find {config_path}, is the path correct"
@@ -2024,6 +2307,11 @@ class TsunamiDatasetBuilder:
 
         self.cfg = cfg
         self.dataset = self._parse_dataset_section(cfg)
+        self.operations = self._parse_operational_section(
+            cfg, requested_workers=self.dataset.num_workers
+        )
+        self.source_code = code_state(ROOT)
+        self.authoritative_records = self._load_authoritative_records()
         self.solver_cfg = self._parse_solver_section(cfg)
         self.bathy_cfg_path = self._require_path(cfg, ["configs", "bathymetry"])
         self.source_cfg_path = self._require_path(cfg, ["configs", "source"])
@@ -2138,6 +2426,148 @@ class TsunamiDatasetBuilder:
         if arr[0] > arr[1]:
             raise ValueError(f"{name} must have min <= max")
         return float(arr[0]), float(arr[1])
+
+    @staticmethod
+    def _parse_operational_section(
+        cfg: Mapping[str, Any], *, requested_workers: int
+    ) -> OperationalConfig:
+        raw = cfg.get("operations", {})
+        if raw is None:
+            raw = {}
+        if not isinstance(raw, Mapping):
+            raise ValueError("operations section must be a mapping")
+        allowed = {
+            "enabled",
+            "progress_every",
+            "solver_progress",
+            "max_in_flight",
+            "cloud_provider",
+            "cloud_zone",
+            "machine_type",
+            "storage_class",
+            "hourly_cost_usd",
+        }
+        unknown = sorted(set(str(key) for key in raw) - allowed)
+        if unknown:
+            raise ValueError(f"Unknown operations keys: {unknown}")
+
+        progress_every = int(raw.get("progress_every", 1))
+        if progress_every <= 0:
+            raise ValueError("operations.progress_every must be positive")
+        max_in_flight_raw = raw.get("max_in_flight")
+        max_in_flight = (
+            None if max_in_flight_raw is None else int(max_in_flight_raw)
+        )
+        if max_in_flight is not None and max_in_flight < requested_workers:
+            raise ValueError(
+                "operations.max_in_flight must be at least dataset.num_workers"
+            )
+        hourly_cost_raw = raw.get("hourly_cost_usd")
+        hourly_cost = None if hourly_cost_raw is None else float(hourly_cost_raw)
+        if hourly_cost is not None and (
+            not np.isfinite(hourly_cost) or hourly_cost < 0.0
+        ):
+            raise ValueError("operations.hourly_cost_usd must be finite and nonnegative")
+
+        def _optional_text(name: str) -> str | None:
+            value = raw.get(name)
+            if value is None:
+                return None
+            text = str(value).strip()
+            return text or None
+
+        return OperationalConfig(
+            enabled=bool(raw.get("enabled", True)),
+            progress_every=progress_every,
+            solver_progress=bool(raw.get("solver_progress", True)),
+            max_in_flight=max_in_flight,
+            cloud_provider=_optional_text("cloud_provider"),
+            cloud_zone=_optional_text("cloud_zone"),
+            machine_type=_optional_text("machine_type"),
+            storage_class=_optional_text("storage_class"),
+            hourly_cost_usd=hourly_cost,
+        )
+
+    @staticmethod
+    def _parse_authoritative_inputs_section(
+        cfg: Mapping[str, Any], requested: RequestedOutputConfig | None
+    ) -> AuthoritativeInputsConfig | None:
+        raw = cfg.get("authoritative_inputs")
+        if raw is None:
+            return None
+        if requested is None:
+            raise ValueError(
+                "authoritative_inputs requires requested_output generation"
+            )
+        if not isinstance(raw, Mapping):
+            raise ValueError("authoritative_inputs section must be a mapping")
+        allowed = {
+            "inventory_path",
+            "inventory_sha256",
+            "h0_contract_hash",
+            "require_exact_arrays",
+            "allow_input_generation",
+        }
+        unknown = sorted(set(str(key) for key in raw) - allowed)
+        if unknown:
+            raise ValueError(f"Unknown authoritative_inputs keys: {unknown}")
+        for key in ("inventory_path", "inventory_sha256", "h0_contract_hash"):
+            if not str(raw.get(key, "")).strip():
+                raise ValueError(f"authoritative_inputs.{key} is required")
+        inventory_path = Path(str(raw["inventory_path"]))
+        if not inventory_path.is_absolute():
+            inventory_path = ROOT / inventory_path
+        require_exact = bool(raw.get("require_exact_arrays", True))
+        allow_generation = bool(raw.get("allow_input_generation", False))
+        if not require_exact:
+            raise ValueError("authoritative_inputs.require_exact_arrays must be true")
+        if allow_generation:
+            raise ValueError("authoritative_inputs.allow_input_generation must be false")
+        return AuthoritativeInputsConfig(
+            inventory_path=inventory_path.resolve(),
+            inventory_sha256=str(raw["inventory_sha256"]),
+            h0_contract_hash=str(raw["h0_contract_hash"]),
+            require_exact_arrays=require_exact,
+            allow_input_generation=allow_generation,
+        )
+
+    def _load_authoritative_records(self) -> dict[int, dict[str, Any]]:
+        config = self.dataset.authoritative_inputs
+        if config is None:
+            return {}
+        if not config.inventory_path.is_file():
+            raise FileNotFoundError(config.inventory_path)
+        if sha256_file(config.inventory_path) != config.inventory_sha256:
+            raise RuntimeError("Authoritative input inventory checksum mismatch")
+        requested = self.dataset.requested_output
+        if requested is None:
+            raise RuntimeError("Authoritative inputs require requested-output mode")
+        records: dict[int, dict[str, Any]] = {}
+        with config.inventory_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                text = line.strip()
+                if not text:
+                    continue
+                record = json.loads(text)
+                if str(record.get("split")) != requested.split:
+                    continue
+                index = int(record["sample_index"])
+                if index in records:
+                    raise RuntimeError(
+                        f"Duplicate authoritative sample index: {index}"
+                    )
+                records[index] = record
+        missing = [
+            index
+            for index in range(1, self.dataset.num_samples + 1)
+            if index not in records
+        ]
+        if missing:
+            raise RuntimeError(
+                "Authoritative inventory is missing configured sample indices: "
+                f"{missing[:10]}"
+            )
+        return records
 
     @staticmethod
     def _parse_buffered_domain_section(cfg: Mapping[str, Any]) -> BufferedDomainConfig:
@@ -2301,6 +2731,7 @@ class TsunamiDatasetBuilder:
         if target_cfl <= 0:
             raise ValueError("dataset.target_cfl must be positive")
 
+        requested_output = parse_requested_output_config(cfg.get("requested_output"))
         return DatasetConfig(
             num_samples=num_samples,
             seed=seed,
@@ -2320,7 +2751,12 @@ class TsunamiDatasetBuilder:
             enabled_fdes=tuple(enabled_fdes),
             primary_fde=primary_fde,
             quality_policy=quality_policy,
-            requested_output=parse_requested_output_config(cfg.get("requested_output")),
+            requested_output=requested_output,
+            authoritative_inputs=(
+                TsunamiDatasetBuilder._parse_authoritative_inputs_section(
+                    cfg, requested_output
+                )
+            ),
             solver_profiles={
                 _canonical_fde_name(str(name)): dict(profile)
                 for name, profile in dict(cfg.get("solver_profiles", {})).items()
@@ -2599,6 +3035,11 @@ class TsunamiDatasetBuilder:
                 "[dataset] phase 1/3 bathymetry cache already complete for this range"
             )
             return
+        if self.dataset.authoritative_inputs is not None:
+            raise RuntimeError(
+                "Authoritative bathymetry caches are missing; input regeneration "
+                "is forbidden for common-time-v2"
+            )
 
         print(
             f"[dataset] phase 1/3 generate bathymetry: pending={len(pending)}, "
@@ -2657,6 +3098,11 @@ class TsunamiDatasetBuilder:
         if not pending:
             print("[dataset] phase 2/3 source cache already complete for this range")
             return
+        if self.dataset.authoritative_inputs is not None:
+            raise RuntimeError(
+                "Authoritative source caches are missing; input regeneration is "
+                "forbidden for common-time-v2"
+            )
 
         print(
             f"[dataset] phase 2/3 generate sources: pending={len(pending)}, "
@@ -2713,79 +3159,138 @@ class TsunamiDatasetBuilder:
         )
 
         records: list[Dict[str, Any]] = []
+        phase_started = time.monotonic()
+        recorder = getattr(self, "_operational_recorder", None)
+
+        def record_complete(rec: Dict[str, Any], done: int) -> None:
+            if recorder is not None:
+                recorder.record_sample(rec)
+                progress = recorder.progress(completed=done, total=len(indices))
+            else:
+                elapsed = max(0.0, time.monotonic() - phase_started)
+                rate = done / elapsed if done > 0 and elapsed > 0.0 else None
+                progress = {
+                    "elapsed_s": elapsed,
+                    "rate_per_s": rate,
+                    "eta_s": (
+                        (len(indices) - done) / rate
+                        if rate is not None and done < len(indices)
+                        else 0.0 if done >= len(indices) else None
+                    ),
+                }
+            if done % self.operations.progress_every != 0 and done != len(indices):
+                return
+            solver_status = {
+                str(row.get("solver")): str(row.get("status"))
+                for row in rec.get("_operational", {}).get("solvers", [])
+            }
+            elapsed_s = float(progress["elapsed_s"] or 0.0)
+            eta_value = progress["eta_s"]
+            eta_text = "unknown" if eta_value is None else f"{float(eta_value):.1f}s"
+            rate_value = progress["rate_per_s"]
+            rate_text = (
+                "unknown"
+                if rate_value is None
+                else f"{float(rate_value) * 3600.0:.2f} scenarios/h"
+            )
+            print(
+                f"[rollout {done:06d}/{len(indices):06d}] "
+                f"sample={int(rec['sample_index']):06d} "
+                f"scenario={rec['scenario_id']} status={solver_status} "
+                f"elapsed={elapsed_s:.1f}s rate={rate_text} ETA={eta_text}",
+                flush=True,
+            )
+
         if self.dataset.num_workers <= 1:
             done = 0
             for idx in indices:
-                rec = _generate_sample_worker(
-                    sample_idx=idx,
-                    run_seed=self.run_seed,
-                    dataset=self.dataset,
-                    solver_cfg=self.solver_cfg,
-                    source_cfg_path=str(self.source_cfg_path),
-                    config_path=str(self.config_path),
-                    bathy_cfg_path=str(self.bathy_cfg_path),
-                    bathymetry_dir=str(self.bathymetry_dir),
-                    source_dir=str(self.source_dir),
-                    fde_samples_dirs={
-                        k: str(v) for k, v in self.fde_samples_dirs.items()
-                    },
-                    allow_override=allow_override,
-                )
+                try:
+                    rec = _generate_sample_worker(
+                        sample_idx=idx,
+                        run_seed=self.run_seed,
+                        dataset=self.dataset,
+                        solver_cfg=self.solver_cfg,
+                        source_cfg_path=str(self.source_cfg_path),
+                        config_path=str(self.config_path),
+                        bathy_cfg_path=str(self.bathy_cfg_path),
+                        bathymetry_dir=str(self.bathymetry_dir),
+                        source_dir=str(self.source_dir),
+                        fde_samples_dirs={
+                            k: str(v) for k, v in self.fde_samples_dirs.items()
+                        },
+                        authoritative_record=self.authoritative_records.get(idx),
+                        source_code=self.source_code,
+                        emit_solver_progress=(
+                            self.operations.enabled and self.operations.solver_progress
+                        ),
+                        allow_override=allow_override,
+                    )
+                except BaseException as exc:
+                    if recorder is not None:
+                        recorder.record_failure(idx, exc)
+                    raise
                 records.append(rec)
                 done += 1
-                solver_names = [
-                    str(s.get("solver_name", "unknown"))
-                    for s in rec.get("solver_records", [])
-                ]
-                print(
-                    f"[{done:06d}/{len(indices):06d}] sample={idx:06d} "
-                    f"scenario={rec['scenario_id']} solvers={solver_names}"
-                )
+                record_complete(rec, done)
             return records
 
         workers = min(self.dataset.num_workers, max(1, os.cpu_count() or 1))
+        max_in_flight = self.operations.max_in_flight or 2 * workers
+        max_in_flight = min(len(indices), max(workers, int(max_in_flight)))
         mp_ctx = get_context("spawn")
         done = 0
         with ProcessPoolExecutor(max_workers=workers, mp_context=mp_ctx) as ex:
-            futures = {
-                ex.submit(
-                    _generate_sample_worker,
-                    idx,
-                    self.run_seed,
-                    self.dataset,
-                    self.solver_cfg,
-                    str(self.source_cfg_path),
-                    str(self.config_path),
-                    str(self.bathy_cfg_path),
-                    str(self.bathymetry_dir),
-                    str(self.source_dir),
-                    {k: str(v) for k, v in self.fde_samples_dirs.items()},
-                    allow_override,
-                ): idx
-                for idx in indices
-            }
+            pending = iter(indices)
+            futures: dict[Any, int] = {}
 
-            for fut in as_completed(futures):
-                rec = fut.result()
+            def submit_until_full() -> None:
+                while len(futures) < max_in_flight:
+                    try:
+                        idx = next(pending)
+                    except StopIteration:
+                        return
+                    future = ex.submit(
+                        _generate_sample_worker,
+                        idx,
+                        self.run_seed,
+                        self.dataset,
+                        self.solver_cfg,
+                        str(self.source_cfg_path),
+                        str(self.config_path),
+                        str(self.bathy_cfg_path),
+                        str(self.bathymetry_dir),
+                        str(self.source_dir),
+                        {k: str(v) for k, v in self.fde_samples_dirs.items()},
+                        self.authoritative_records.get(idx),
+                        self.source_code,
+                        self.operations.enabled and self.operations.solver_progress,
+                        allow_override,
+                    )
+                    futures[future] = idx
+
+            submit_until_full()
+            while futures:
+                fut = next(as_completed(tuple(futures)))
+                idx = futures.pop(fut)
+                try:
+                    rec = fut.result()
+                except BaseException as exc:
+                    if recorder is not None:
+                        recorder.record_failure(idx, exc)
+                    raise
                 records.append(rec)
                 done += 1
-                solver_names = [
-                    str(s.get("solver_name", "unknown"))
-                    for s in rec.get("solver_records", [])
-                ]
-                print(
-                    f"[{done:06d}/{len(indices):06d}] sample={rec['sample_index']:06d} "
-                    f"scenario={rec['scenario_id']} solvers={solver_names}"
-                )
+                record_complete(rec, done)
+                submit_until_full()
 
         return records
 
     def _write_operational_shard_manifest(
         self, records: list[Dict[str, Any]], indices: list[int]
-    ) -> None:
+    ) -> Path | None:
         requested = self.dataset.requested_output
         if requested is None or not records:
-            return
+            return None
         from src.data_gen.common_time_v2 import write_operational_shard_manifest
 
         publication_hashes: dict[str, str] = {}
@@ -2842,7 +3347,7 @@ class TsunamiDatasetBuilder:
                 or not bool(existing.get("complete", False))
             ):
                 raise RuntimeError(f"Operational shard manifest mismatch: {path}")
-            return
+            return path
         write_operational_shard_manifest(
             path,
             split=requested.split,
@@ -2855,8 +3360,63 @@ class TsunamiDatasetBuilder:
             resolved_config_hashes=resolved_config_hashes,
             code_state_hash=code_hash,
         )
+        return path
 
     def run(
+        self,
+        continue_from_last: bool = False,
+        start_at: int | None = None,
+        stop_at: int | None = None,
+        allow_override: bool = False,
+        rebuild_manifests: bool = False,
+        acknowledge_provisional: bool = False,
+    ) -> None:
+        """Generate samples and checkpoint requested-output operational timing."""
+        requested = self.dataset.requested_output
+        recorder: GenerationTimingRecorder | None = None
+        if (
+            requested is not None
+            and self.operations.enabled
+            and not rebuild_manifests
+        ):
+            current_code = code_state(ROOT)
+            if current_code != self.source_code:
+                raise RuntimeError("Code state changed after dataset builder initialization")
+            recorder = GenerationTimingRecorder(
+                output_dir=self.output_dir,
+                split=requested.split,
+                contract_hash=requested.contract_hash,
+                code_state_hash=str(self.source_code["code_state_hash"]),
+                config_path=self.provenance_config_path,
+                config_sha256=sha256_file(self.config_path),
+                solver_names=self.dataset.enabled_fdes,
+                requested_workers=self.dataset.num_workers,
+                requested_max_in_flight=self.operations.max_in_flight,
+                operational_config=self.operations.metadata(),
+            )
+        self._operational_recorder = recorder
+        try:
+            self._run_impl(
+                continue_from_last=continue_from_last,
+                start_at=start_at,
+                stop_at=stop_at,
+                allow_override=allow_override,
+                rebuild_manifests=rebuild_manifests,
+                acknowledge_provisional=acknowledge_provisional,
+            )
+            if code_state(ROOT) != self.source_code:
+                raise RuntimeError("Code state changed during dataset generation")
+        except BaseException as exc:
+            if recorder is not None:
+                recorder.finalize(status="failed", error=exc)
+            raise
+        else:
+            if recorder is not None:
+                recorder.finalize(status="complete")
+        finally:
+            self._operational_recorder = None
+
+    def _run_impl(
         self,
         continue_from_last: bool = False,
         start_at: int | None = None,
@@ -2877,6 +3437,10 @@ class TsunamiDatasetBuilder:
         if rebuild_manifests:
             self.rebuild_manifests_from_existing_outputs()
             return
+        if allow_override and self.dataset.authoritative_inputs is not None:
+            raise RuntimeError(
+                "--allow-override is forbidden for authoritative common-time-v2 inputs"
+            )
 
         if start_at is not None and start_at < 1:
             raise ValueError("--start-at must be >= 1")
@@ -2913,6 +3477,15 @@ class TsunamiDatasetBuilder:
         if range_stop < start_idx:
             raise ValueError("--stop-at must be >= the resolved start index")
         planned_indices = list(range(start_idx, range_stop + 1))
+        recorder = getattr(self, "_operational_recorder", None)
+        if recorder is not None:
+            recorder.begin_range(
+                start_index=start_idx,
+                stop_index=range_stop,
+                planned_scenarios=len(planned_indices),
+                resume=continue_from_last,
+                allow_override=allow_override,
+            )
         if allow_override:
             to_generate = planned_indices
             existing_in_range = len(
@@ -2947,27 +3520,69 @@ class TsunamiDatasetBuilder:
                 f"range=[{to_generate[0]}, {to_generate[-1]}], seed={self.run_seed}"
             )
 
-            self._phase_generate_bathymetry(to_generate, allow_override=allow_override)
-            self._phase_generate_sources(to_generate, allow_override=allow_override)
+            if recorder is not None:
+                recorder.start_phase("bathymetry")
+            try:
+                self._phase_generate_bathymetry(
+                    to_generate, allow_override=allow_override
+                )
+            finally:
+                if recorder is not None:
+                    recorder.end_phase("bathymetry")
+            if recorder is not None:
+                recorder.start_phase("sources")
+            try:
+                self._phase_generate_sources(
+                    to_generate, allow_override=allow_override
+                )
+            finally:
+                if recorder is not None:
+                    recorder.end_phase("sources")
 
-        records = self._phase_generate_rollouts(
-            planned_indices, allow_override=allow_override
-        )
-        self._write_operational_shard_manifest(records, planned_indices)
+        if recorder is not None:
+            recorder.start_phase("rollouts")
+        try:
+            records = self._phase_generate_rollouts(
+                planned_indices, allow_override=allow_override
+            )
+        finally:
+            if recorder is not None:
+                recorder.end_phase("rollouts")
+        if recorder is not None:
+            recorder.start_phase("publication_audit_and_shard")
+        try:
+            shard_path = self._write_operational_shard_manifest(
+                records, planned_indices
+            )
+        finally:
+            if recorder is not None:
+                recorder.end_phase("publication_audit_and_shard")
+        if recorder is not None and shard_path is not None:
+            recorder.set_shard_manifest(shard_path)
 
+        if recorder is not None:
+            recorder.start_phase("manifest_update")
         records.sort(key=lambda r: int(r["sample_index"]))
-        if allow_override or not clean_run:
-            sample_indices = set(int(r["sample_index"]) for r in records)
-            self._purge_manifest_indices(self.scenario_manifest_path, sample_indices)
-            for manifest_path in self.fde_manifest_paths.values():
-                self._purge_manifest_indices(manifest_path, sample_indices)
+        try:
+            if allow_override or not clean_run:
+                sample_indices = set(int(r["sample_index"]) for r in records)
+                self._purge_manifest_indices(self.scenario_manifest_path, sample_indices)
+                for manifest_path in self.fde_manifest_paths.values():
+                    self._purge_manifest_indices(manifest_path, sample_indices)
 
-        for rec in records:
-            self._append_manifest(self.scenario_manifest_path, rec["scenario_record"])
-            for srec in rec.get("solver_records", []):
-                solver_name = str(srec.get("solver_name", "unknown"))
-                if solver_name in self.fde_manifest_paths:
-                    self._append_manifest(self.fde_manifest_paths[solver_name], srec)
+            for rec in records:
+                self._append_manifest(
+                    self.scenario_manifest_path, rec["scenario_record"]
+                )
+                for srec in rec.get("solver_records", []):
+                    solver_name = str(srec.get("solver_name", "unknown"))
+                    if solver_name in self.fde_manifest_paths:
+                        self._append_manifest(
+                            self.fde_manifest_paths[solver_name], srec
+                        )
+        finally:
+            if recorder is not None:
+                recorder.end_phase("manifest_update")
 
 
 def _build_argparser() -> argparse.ArgumentParser:

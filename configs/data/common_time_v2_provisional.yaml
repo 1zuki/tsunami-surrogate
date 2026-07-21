@@ -29,11 +29,18 @@ requested_output:
   step: 0.0035
   count: 50
   horizon: 0.175
-  max_natural_steps: 1000
+  max_natural_steps: 20000
   collect_natural_step_health: true
   eta_primary: true
   debug_full_states: false
   acknowledge_provisional: false
+
+authoritative_inputs:
+  inventory_path: artifacts/common_time_v2/h0/830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b/h0_input_inventory.jsonl
+  inventory_sha256: c4f34bc504ca60d4b1c74fc88b7c6c239ae1dbbaa0f15f3bf2c501038eb438e3
+  h0_contract_hash: 830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b
+  require_exact_arrays: true
+  allow_input_generation: false
 
 # Provisional 96x96 computational domain with a source-compatible 64x64
 # publication crop. The explicit taper changes edge-touching raw sources and
@@ -51,12 +58,12 @@ fdes:
 
 solver_profiles:
   swe_hydrostatic:
-    cfl: 0.45
+    cfl: 0.1125
     boundary: radiation
     sponge_time_mode: elapsed_time_consistent
     sponge_reference_dt: 0.0035
   swe_muscl_hr:
-    cfl: 0.45
+    cfl: 0.225
     boundary: radiation
     sponge_time_mode: elapsed_time_consistent
     sponge_reference_dt: 0.0035
@@ -69,6 +76,18 @@ solver_profiles:
     filter_time_mode: disabled
     filter_reference_dt: 0.0035
     cg_failure_mode: strict_v2
+
+# Operational fields are deliberately excluded from scientific publication
+# hashes. Replace the local labels with the measured cloud allocation during
+# the bounded rehearsal; do not freeze the final generation contract first.
+operations:
+  enabled: true
+  progress_every: 1
+  solver_progress: true
+  max_in_flight: 1
+  cloud_provider: local
+  machine_type: local-rehearsal
+  storage_class: local-filesystem
 
 quality:
   on_violation: fail

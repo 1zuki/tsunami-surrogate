@@ -11,17 +11,26 @@ import numpy as np
 import pytest
 
 from src.data_gen.common_time_v2 import (
+    authoritative_input_fingerprint,
     candidate_requested_times,
+    hash_array,
     parse_requested_output_config,
     validate_operational_shard,
     validate_publication,
     write_operational_shard_manifest,
 )
 from src.data_gen.simulate_dataset import (
+    AuthoritativeInputsConfig,
     DatasetConfig,
     QualityPolicy,
     RolloutResult,
+    _validate_authoritative_input,
     _write_requested_publication,
+)
+from src.data_gen.operational_timing import (
+    GenerationTimingRecorder,
+    summarize_generation_timings,
+    validate_generation_timing,
 )
 
 
@@ -214,3 +223,158 @@ def test_publication_refuses_overwrite(tmp_path: Path) -> None:
     _publish(tmp_path)
     with pytest.raises(FileExistsError):
         _publish(tmp_path)
+
+
+def test_generation_timing_is_separate_and_fails_closed_on_shard_corruption(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "raw"
+    output.mkdir()
+    shard = output / "operational_shards" / "train_000001_000001.json"
+    write_operational_shard_manifest(
+        shard,
+        split="train",
+        start_index=1,
+        stop_index=1,
+        contract_hash_value="contract",
+        publication_hashes={"train:scenario_000001:swe_hydrostatic": "publication"},
+        complete=True,
+        solver_names=["swe_hydrostatic"],
+        resolved_config_hashes={"swe_hydrostatic": "config"},
+        code_state_hash="code",
+    )
+    recorder = GenerationTimingRecorder(
+        output_dir=output,
+        split="train",
+        contract_hash="contract",
+        code_state_hash="code",
+        config_path=tmp_path / "config.yaml",
+        config_sha256="config-sha256",
+        solver_names=["swe_hydrostatic"],
+        requested_workers=1,
+        requested_max_in_flight=1,
+        operational_config={"storage_class": "test"},
+    )
+    recorder.begin_range(
+        start_index=1,
+        stop_index=1,
+        planned_scenarios=1,
+        resume=False,
+        allow_override=False,
+    )
+    recorder.record_sample(
+        {
+            "_operational": {
+                "sample_index": 1,
+                "scenario_id": "scenario_000001",
+                "worker_pid": 1,
+                "input_load_s": 0.01,
+                "worker_total_s": 0.25,
+                "solvers": [
+                    {
+                        "solver": "swe_hydrostatic",
+                        "status": "generated",
+                        "solve_s": 0.2,
+                        "serialization_s": 0.04,
+                        "validation_s": 0.0,
+                        "worker_s": 0.24,
+                        "natural_steps": 12,
+                    }
+                ],
+            }
+        }
+    )
+    recorder.set_shard_manifest(shard)
+    path = recorder.finalize(status="complete")
+    assert path is not None
+    payload = validate_generation_timing(path)
+    assert payload["counts"]["generated_solver_rollouts"] == 1
+    assert payload["per_solver"]["swe_hydrostatic"]["natural_steps"] == 12
+    summary = summarize_generation_timings(output)
+    assert summary["complete_invocations"] == 1
+    assert summary["counts"]["accepted_solver_rollouts"] == 1
+    assert summary["accepted_artifacts"] == {
+        "unique_shards": 1,
+        "unique_scenarios": 1,
+        "unique_solver_rollouts": 1,
+    }
+    assert summary["aggregate_solver_worker_hours"] > 0.0
+
+    shard.write_bytes(shard.read_bytes() + b"corrupt")
+    with pytest.raises(RuntimeError, match="manifest hash mismatch"):
+        validate_generation_timing(path)
+
+
+def test_authoritative_input_validation_is_exact_and_fail_closed(
+    tmp_path: Path,
+) -> None:
+    bathymetry = np.full((2, 2), -1.0, dtype=np.float32)
+    source = np.asarray([[0.1, 0.2], [0.3, 0.4]], dtype=np.float32)
+    strength = np.asarray([0.5], dtype=np.float32)
+    rest_depth = np.maximum(-bathymetry, 0.0).astype(np.float32)
+    eta0 = np.asarray(float(strength[0]) * source, dtype=np.float32)
+    initial_depth = np.asarray(np.maximum(rest_depth + eta0, 0.0), dtype=np.float32)
+    free_surface0 = np.asarray(initial_depth + bathymetry, dtype=np.float32)
+    arrays = {
+        "bathymetry": bathymetry,
+        "source_field": source,
+        "rest_depth": rest_depth,
+        "eta0": eta0,
+        "initial_depth": initial_depth,
+        "free_surface0": free_surface0,
+    }
+    record = {
+        "split": "train",
+        "scenario_id": "scenario_000001",
+        "qualified_id": "train:scenario_000001",
+        "sample_index": 1,
+        "bathymetry_type": "slope",
+        "source_type": "gaussian",
+        "source_strength": float(strength[0]),
+        "array_hashes": {name: hash_array(value) for name, value in arrays.items()},
+        "input_fingerprint": authoritative_input_fingerprint(
+            split="train",
+            sample_index=1,
+            scenario_id="scenario_000001",
+            bathymetry_type="slope",
+            source_type="gaussian",
+            source_strength=strength,
+            arrays=arrays,
+        ),
+    }
+    config = AuthoritativeInputsConfig(
+        inventory_path=tmp_path / "inventory.jsonl",
+        inventory_sha256="inventory",
+        h0_contract_hash="h0",
+    )
+    provenance = _validate_authoritative_input(
+        record=record,
+        split="train",
+        sample_idx=1,
+        scenario_id="scenario_000001",
+        bathymetry=bathymetry,
+        source_field=source,
+        source_strength_array=strength,
+        bathymetry_type="slope",
+        source_type="gaussian",
+        sea_level_offset=0.0,
+        config=config,
+    )
+    assert provenance["input_fingerprint"] == record["input_fingerprint"]
+
+    corrupted = source.copy()
+    corrupted[0, 0] += np.float32(0.01)
+    with pytest.raises(RuntimeError, match="array hash mismatch: source_field"):
+        _validate_authoritative_input(
+            record=record,
+            split="train",
+            sample_idx=1,
+            scenario_id="scenario_000001",
+            bathymetry=bathymetry,
+            source_field=corrupted,
+            source_strength_array=strength,
+            bathymetry_type="slope",
+            source_type="gaussian",
+            sea_level_offset=0.0,
+            config=config,
+        )

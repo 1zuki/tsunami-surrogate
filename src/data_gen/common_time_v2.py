@@ -372,6 +372,8 @@ def validate_publication(
     expected_times: Sequence[float] | None = None,
     expected_solver_name: str | None = None,
     expected_sample_index: int | None = None,
+    expected_authoritative_input_fingerprint: str | None = None,
+    expected_authoritative_inventory_sha256: str | None = None,
 ) -> dict[str, Any]:
     directory = Path(sample_dir)
     publication_path = directory / "publication.json"
@@ -412,6 +414,10 @@ def validate_publication(
         "resolved_config_hash": expected_config_hash,
         "code_state_hash": expected_code_state_hash,
         "input_fingerprint": expected_input_fingerprint,
+        "authoritative_input_fingerprint": (
+            expected_authoritative_input_fingerprint
+        ),
+        "authoritative_inventory_sha256": expected_authoritative_inventory_sha256,
     }
     for key, expected in checks.items():
         if expected is not None and publication.get(key) != expected:
