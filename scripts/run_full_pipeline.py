@@ -227,7 +227,13 @@ class Pipeline:
 
 
 def _data_command(args: argparse.Namespace, config: str, samples: int | None = None) -> list[str]:
-    cmd = [args.python, "scripts/make_dataset.py", "--config", config]
+    cmd = [
+        args.python,
+        "scripts/make_dataset.py",
+        "legacy-v1",
+        "--config",
+        config,
+    ]
     if samples is not None:
         cmd.extend(["--num-samples", str(samples)])
     if args.n_steps is not None:
@@ -389,13 +395,23 @@ def _solver_compare_pairs(args: argparse.Namespace) -> list[tuple[str, str, Path
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Thin wrapper around the README tsunami surrogate pipeline.")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Legacy-v1 training/evaluation pipeline wrapper. It is not the "
+            "common-time production generator."
+        )
+    )
     parser.add_argument("--python", default=_env("PYTHON_BIN", sys.executable))
     parser.add_argument("--run-root", default=_env("RUN_ROOT", f"experiments/cloudrun/{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"))
     parser.add_argument("--logs-dir", default=_env("LOG_DIR", ""), help="Console/stage log directory. Defaults to RUN_ROOT/logs.")
     parser.add_argument("--metrics-dir", default=_env("METRICS_DIR", ""), help="Copied metrics directory. Defaults to RUN_ROOT/metrics.")
 
-    parser.add_argument("--data-config", default=_env("DATA_CONFIG", "configs/data/dataset.yaml"))
+    parser.add_argument(
+        "--data-config",
+        default=_env(
+            "DATA_CONFIG", "configs/data/legacy/dataset_saved_step_v1.yaml"
+        ),
+    )
     parser.add_argument("--preprocess-config", default=_env("PREPROCESS_CONFIG", "configs/data/preprocess.yaml"))
     parser.add_argument("--model-config", default=_env("MODEL_CONFIG", "configs/model/fno.yaml"))
     parser.add_argument("--model-configs", default=_env("MODEL_CONFIGS", DEFAULT_MODEL_CONFIGS))

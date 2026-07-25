@@ -1,3 +1,4 @@
+# LEGACY SAVED-STEP AUXILIARY CONFIG. Not common-time production.
 configs:
   bathymetry: configs/data/bathymetry.yaml
   source: configs/data/real_bathymetry/real_bathymetry_source.yaml

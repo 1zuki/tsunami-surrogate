@@ -221,6 +221,7 @@ def test_real_requested_range_interrupt_resume_is_stable_and_fail_closed(
         [
             sys.executable,
             "scripts/make_dataset.py",
+            "generate",
             "--config",
             str(config),
             "--stop-at",
@@ -236,6 +237,7 @@ def test_real_requested_range_interrupt_resume_is_stable_and_fail_closed(
         [
             sys.executable,
             "scripts/make_dataset.py",
+            "generate",
             "--config",
             str(config),
             "--stop-at",
@@ -285,6 +287,7 @@ def test_real_requested_range_interrupt_resume_is_stable_and_fail_closed(
         [
             sys.executable,
             "scripts/make_dataset.py",
+            "generate",
             "--config",
             str(config),
             "--stop-at",

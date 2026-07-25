@@ -58,7 +58,7 @@ def test_candidate_contract_rejects_wrong_grid(times: np.ndarray) -> None:
 
 def test_requested_config_yaml_and_unknown_key_rejection() -> None:
     cfg = yaml.safe_load(
-        Path("configs/data/common_time_v2_provisional.yaml").read_text(encoding="utf-8")
+        Path("configs/data/dataset.yaml").read_text(encoding="utf-8")
     )
     requested = parse_requested_output_config(cfg["requested_output"])
     assert requested is not None

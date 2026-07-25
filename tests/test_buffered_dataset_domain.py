@@ -90,7 +90,7 @@ def test_rollout_crop_preserves_time_and_diagnostics_without_dtype_change() -> N
 def test_provisional_config_resolves_the_96_to_64_policy() -> None:
     root = Path(__file__).resolve().parents[1]
     builder = TsunamiDatasetBuilder(
-        str(root / "configs/data/common_time_v2_provisional.yaml")
+        str(root / "configs/data/dataset.yaml")
     )
 
     assert (builder.solver_cfg["nx"], builder.solver_cfg["ny"]) == (96, 96)
