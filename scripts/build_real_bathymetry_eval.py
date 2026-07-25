@@ -217,7 +217,7 @@ def main() -> None:
     )
     p.add_argument(
         "--base-config",
-        default="configs/data/legacy/dataset_saved_step_v1.yaml",
+        default="configs/data/real_bathymetry/main_morphology_dataset.yaml",
     )
     p.add_argument("--out-root", default="data/real_bathymetry")
     p.add_argument("--processed-root", default="data/processed_real_bathymetry")
@@ -240,23 +240,9 @@ def main() -> None:
         "--coastline-fully-wet-suite", default="appendix_coastline_fully_wet"
     )
     p.add_argument("--allow-override", action="store_true")
-    p.add_argument(
-        "--legacy-v1",
-        action="store_true",
-        help=(
-            "Acknowledge that these auxiliary suites use archived saved-step "
-            "semantics rather than the common-time production contract."
-        ),
-    )
     p.add_argument("--skip-generate", action="store_true")
     p.add_argument("--skip-preprocess", action="store_true")
     args = p.parse_args()
-
-    if not args.skip_generate and not args.legacy_v1:
-        raise SystemExit(
-            "Real-bathymetry raw generation is an archived saved-step auxiliary "
-            "workflow. Pass --legacy-v1 only when intentionally reproducing it."
-        )
 
     raw_root = Path(args.raw_root)
     base_config_path = Path(args.base_config)
@@ -331,7 +317,6 @@ def main() -> None:
             command = [
                 sys.executable,
                 str(ROOT / "scripts/make_dataset.py"),
-                "legacy-v1",
                 "--config",
                 str(ds_cfg_path),
                 "--continue",

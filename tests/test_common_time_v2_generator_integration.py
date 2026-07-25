@@ -221,7 +221,6 @@ def test_real_requested_range_interrupt_resume_is_stable_and_fail_closed(
         [
             sys.executable,
             "scripts/make_dataset.py",
-            "generate",
             "--config",
             str(config),
             "--stop-at",
@@ -237,7 +236,6 @@ def test_real_requested_range_interrupt_resume_is_stable_and_fail_closed(
         [
             sys.executable,
             "scripts/make_dataset.py",
-            "generate",
             "--config",
             str(config),
             "--stop-at",
@@ -287,7 +285,6 @@ def test_real_requested_range_interrupt_resume_is_stable_and_fail_closed(
         [
             sys.executable,
             "scripts/make_dataset.py",
-            "generate",
             "--config",
             str(config),
             "--stop-at",
@@ -528,6 +525,42 @@ def test_authoritative_inventory_is_bound_into_publications_and_inputs_cannot_dr
             acknowledge_provisional=True,
             stop_at=1,
         )
+
+
+def test_current_config_regenerates_and_verifies_exact_h0_inputs(
+    tmp_path: Path,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    cfg = yaml.safe_load(
+        (root / "configs/data/dataset.yaml").read_text(encoding="utf-8")
+    )
+    cfg["dataset"].update(
+        {
+            "num_samples": 1,
+            "num_workers": 1,
+            "bathymetry_dir": str(tmp_path / "data/train/bathymetry"),
+            "source_dir": str(tmp_path / "data/train/sources"),
+            "output_dir": str(tmp_path / "data/train/raw"),
+            "manifest_path": str(
+                tmp_path / "data/train/synthetic/scenario_manifest.jsonl"
+            ),
+            "copy_configs": False,
+        }
+    )
+    cfg["requested_output"]["split"] = "train"
+    cfg["operations"]["enabled"] = False
+    cfg["operations"]["max_in_flight"] = 1
+    config = tmp_path / "dataset.yaml"
+    config.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+
+    builder = TsunamiDatasetBuilder(str(config))
+    builder._phase_generate_bathymetry([1])
+    builder._phase_generate_sources([1])
+    builder._validate_authoritative_caches([1])
+
+    assert (tmp_path / "data/train/bathymetry/sample_000001.npz").is_file()
+    assert (tmp_path / "data/train/sources/sample_000001.npz").is_file()
+    assert not any((tmp_path / "data/train/raw").rglob("*.npz"))
 
 
 def test_full_legacy_generation_and_preprocess_contract(

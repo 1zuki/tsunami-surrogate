@@ -16,9 +16,6 @@ CONTRACT_SCHEMA_ID = "tsunami-surrogate.common-time-v2.contract.v1"
 ETA_SAMPLE_SCHEMA_ID = "tsunami-surrogate.common-time-v2.eta-sample.v1"
 PUBLICATION_SCHEMA_ID = "tsunami-surrogate.common-time-v2.publication.v1"
 OPERATIONAL_SHARD_SCHEMA_ID = "tsunami-surrogate.common-time-v2.operational-shard.v1"
-GENERATION_CONTRACT_SCHEMA_ID = (
-    "tsunami-surrogate.common-time-v2.generation-contract.v1"
-)
 PROVISIONAL_STATUS = "provisional"
 ACCEPTED_STATUS = "accepted"
 CANDIDATE_START = 0.0035
@@ -274,46 +271,6 @@ def parse_requested_output_config(raw: Any) -> RequestedOutputConfig | None:
     )
 
 
-def generation_contract_hash(payload: Mapping[str, Any]) -> str:
-    content = dict(payload)
-    content.pop("contract_hash", None)
-    return stable_hash_payload(
-        artifact_kind="accepted-generation-contract",
-        payload=content,
-        schema_id=GENERATION_CONTRACT_SCHEMA_ID,
-    )
-
-
-def validate_generation_contract_artifact(
-    path: str | Path, *, expected_hash: str | None = None
-) -> dict[str, Any]:
-    artifact_path = Path(path)
-    if not artifact_path.is_file():
-        raise FileNotFoundError(artifact_path)
-    with artifact_path.open("r", encoding="utf-8") as handle:
-        payload = json.load(handle)
-    if not isinstance(payload, Mapping):
-        raise RuntimeError("Generation contract artifact must contain an object")
-    artifact = dict(payload)
-    if artifact.get("schema_id") != GENERATION_CONTRACT_SCHEMA_ID:
-        raise RuntimeError("Generation contract schema mismatch")
-    if artifact.get("artifact_kind") != "accepted-generation-contract":
-        raise RuntimeError("Generation contract artifact kind mismatch")
-    observed_hash = generation_contract_hash(artifact)
-    if artifact.get("contract_hash") != observed_hash:
-        raise RuntimeError("Generation contract content hash mismatch")
-    if expected_hash is not None and observed_hash != str(expected_hash):
-        raise RuntimeError("Generation contract expected hash mismatch")
-    decision = artifact.get("decision")
-    if not isinstance(decision, Mapping):
-        raise RuntimeError("Generation contract decision is missing")
-    if not bool(decision.get("accepted_contract_frozen", False)):
-        raise RuntimeError("Generation contract is not frozen")
-    if not bool(decision.get("mass_generation_authorized", False)):
-        raise RuntimeError("Generation contract does not authorize mass generation")
-    return artifact
-
-
 def resolved_config_hash(
     *,
     solver_name: str,
@@ -433,7 +390,6 @@ def validate_publication(
     expected_sample_index: int | None = None,
     expected_authoritative_input_fingerprint: str | None = None,
     expected_authoritative_inventory_sha256: str | None = None,
-    expected_generation_contract_hash: str | None = None,
 ) -> dict[str, Any]:
     directory = Path(sample_dir)
     publication_path = directory / "publication.json"
@@ -478,7 +434,6 @@ def validate_publication(
             expected_authoritative_input_fingerprint
         ),
         "authoritative_inventory_sha256": expected_authoritative_inventory_sha256,
-        "generation_contract_hash": expected_generation_contract_hash,
     }
     for key, expected in checks.items():
         if expected is not None and publication.get(key) != expected:
@@ -517,7 +472,6 @@ def validate_operational_shard(
     expected_solver_names: Sequence[str] | None = None,
     expected_config_hashes: Mapping[str, str] | None = None,
     expected_code_state_hash: str | None = None,
-    expected_generation_contract_hash: str | None = None,
 ) -> dict[str, Any]:
     path = Path(manifest_path)
     if not path.is_file():
@@ -533,7 +487,6 @@ def validate_operational_shard(
         "start_index": expected_start_index,
         "stop_index": expected_stop_index,
         "code_state_hash": expected_code_state_hash,
-        "generation_contract_hash": expected_generation_contract_hash,
     }
     for key, expected in optional_checks.items():
         if expected is not None and manifest.get(key) != expected:
@@ -571,7 +524,6 @@ def write_operational_shard_manifest(
     solver_names: Sequence[str] = (),
     resolved_config_hashes: Mapping[str, str] | None = None,
     code_state_hash: str | None = None,
-    generation_contract_hash: str | None = None,
 ) -> dict[str, Any]:
     if start_index < 1 or stop_index < start_index:
         raise ValueError("Invalid operational shard range")
@@ -592,7 +544,6 @@ def write_operational_shard_manifest(
             for key, value in sorted((resolved_config_hashes or {}).items())
         },
         "code_state_hash": code_state_hash,
-        "generation_contract_hash": generation_contract_hash,
         "complete": bool(complete),
         "publications": [
             {"qualified_id": str(key), "publication_hash": str(value)}

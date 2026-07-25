@@ -107,7 +107,6 @@ class GenerationTimingRecorder:
         requested_workers: int,
         requested_max_in_flight: int | None,
         operational_config: Mapping[str, Any],
-        generation_contract_hash: str | None = None,
     ) -> None:
         self.output_dir = output_dir.resolve()
         self.split = str(split)
@@ -132,7 +131,6 @@ class GenerationTimingRecorder:
             "start_index": None,
             "stop_index": None,
             "contract_hash": str(contract_hash),
-            "generation_contract_hash": generation_contract_hash,
             "code_state_hash": str(code_state_hash),
             "solver_names": sorted(str(value) for value in solver_names),
             "worker_policy": {
@@ -467,13 +465,6 @@ def summarize_generation_timings(output_dir: str | Path) -> dict[str, Any]:
             "unique_solver_rollouts": len(accepted_publications),
         },
         "contract_hashes": sorted({str(row["contract_hash"]) for row in rows}),
-        "generation_contract_hashes": sorted(
-            {
-                str(row["generation_contract_hash"])
-                for row in rows
-                if row.get("generation_contract_hash") is not None
-            }
-        ),
         "code_state_hashes": sorted({str(row["code_state_hash"]) for row in rows}),
         "counts": {},
         "per_solver": {},

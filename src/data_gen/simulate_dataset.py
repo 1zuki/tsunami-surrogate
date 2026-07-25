@@ -33,7 +33,6 @@ try:
         sha256_file,
         split_qualified_identity,
         stable_hash_payload,
-        validate_generation_contract_artifact,
         validate_publication,
     )
     from src.data_gen.operational_timing import GenerationTimingRecorder
@@ -51,7 +50,6 @@ except ImportError:
         sha256_file,
         split_qualified_identity,
         stable_hash_payload,
-        validate_generation_contract_artifact,
         validate_publication,
     )
     from operational_timing import GenerationTimingRecorder
@@ -197,16 +195,6 @@ class AuthoritativeInputsConfig:
         }
 
 
-@dataclass(frozen=True)
-class GenerationContractConfig:
-    path: Path
-    contract_hash: str
-    artifact: Mapping[str, Any]
-
-    def semantics(self) -> dict[str, str]:
-        return {"contract_hash": self.contract_hash}
-
-
 @dataclass
 class DatasetConfig:
     """Convenience wrapper for the top-level dataset config."""
@@ -231,7 +219,6 @@ class DatasetConfig:
     quality_policy: QualityPolicy
     requested_output: RequestedOutputConfig | None
     authoritative_inputs: AuthoritativeInputsConfig | None = None
-    generation_contract: GenerationContractConfig | None = None
     solver_profiles: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     buffered_domain: BufferedDomainConfig = field(default_factory=BufferedDomainConfig)
 
@@ -1680,14 +1667,6 @@ def _write_requested_publication(
             split=np.asarray([requested.split], dtype="U16"),
             schema_id=np.asarray([ETA_SAMPLE_SCHEMA_ID], dtype="U96"),
             contract_hash=np.asarray([requested.contract_hash], dtype="U64"),
-            generation_contract_hash=np.asarray(
-                [
-                    ""
-                    if dataset.generation_contract is None
-                    else dataset.generation_contract.contract_hash
-                ],
-                dtype="U64",
-            ),
         )
         np.savez_compressed(
             staging / "provenance.npz",
@@ -1709,11 +1688,6 @@ def _write_requested_publication(
             "source_strength": float(source_strength),
             "input_fingerprint": input_fingerprint,
             "contract_hash": requested.contract_hash,
-            "generation_contract_hash": (
-                None
-                if dataset.generation_contract is None
-                else dataset.generation_contract.contract_hash
-            ),
             "resolved_config_hash": config_hash,
             **code,
             "timestamps_shape": list(map(int, rollout.timestamps.shape)),
@@ -1752,11 +1726,6 @@ def _write_requested_publication(
             "solver_name": fde_name,
             "input_fingerprint": input_fingerprint,
             "contract_hash": requested.contract_hash,
-            "generation_contract_hash": (
-                None
-                if dataset.generation_contract is None
-                else dataset.generation_contract.contract_hash
-            ),
             "resolved_config_hash": config_hash,
             "code_state_hash": code["code_state_hash"],
             "quality_status": quality_status,
@@ -1794,11 +1763,6 @@ def _write_requested_publication(
                 None
                 if authoritative_input is None
                 else str(authoritative_input["inventory_sha256"])
-            ),
-            expected_generation_contract_hash=(
-                None
-                if dataset.generation_contract is None
-                else dataset.generation_contract.contract_hash
             ),
             expected_times=requested.requested_times,
         )
@@ -2173,9 +2137,6 @@ def _generate_sample_worker(
                     "quality_status": quality_status,
                     "quality_violations": quality_violations,
                     "contract_hash": dataset.requested_output.contract_hash,
-                    "generation_contract_hash": meta[
-                        "generation_contract_hash"
-                    ],
                     "resolved_config_hash": meta["resolved_config_hash"],
                     "input_fingerprint": meta["input_fingerprint"],
                     "code_state_hash": meta["code_state_hash"],
@@ -2375,7 +2336,6 @@ class TsunamiDatasetBuilder:
         self.source_code = code_state(ROOT)
         self.authoritative_records = self._load_authoritative_records()
         self.solver_cfg = self._parse_solver_section(cfg)
-        self._validate_generation_contract_binding()
         self.bathy_cfg_path = self._require_path(cfg, ["configs", "bathymetry"])
         self.source_cfg_path = self._require_path(cfg, ["configs", "source"])
 
@@ -2584,8 +2544,6 @@ class TsunamiDatasetBuilder:
         allow_generation = bool(raw.get("allow_input_generation", False))
         if not require_exact:
             raise ValueError("authoritative_inputs.require_exact_arrays must be true")
-        if allow_generation:
-            raise ValueError("authoritative_inputs.allow_input_generation must be false")
         return AuthoritativeInputsConfig(
             inventory_path=inventory_path.resolve(),
             inventory_sha256=str(raw["inventory_sha256"]),
@@ -2631,97 +2589,6 @@ class TsunamiDatasetBuilder:
                 f"{missing[:10]}"
             )
         return records
-
-    @staticmethod
-    def _parse_generation_contract_section(
-        cfg: Mapping[str, Any], requested: RequestedOutputConfig | None
-    ) -> GenerationContractConfig | None:
-        raw = cfg.get("generation_contract")
-        requested_status = None if requested is None else requested.status
-        if raw is None:
-            if requested_status == "accepted":
-                raise ValueError(
-                    "accepted requested_output requires generation_contract binding"
-                )
-            return None
-        if requested is None:
-            raise ValueError("generation_contract requires requested_output generation")
-        if requested_status != "accepted":
-            raise ValueError(
-                "generation_contract is allowed only for accepted production output"
-            )
-        if not isinstance(raw, Mapping):
-            raise ValueError("generation_contract section must be a mapping")
-        allowed = {"path", "contract_hash"}
-        unknown = sorted(set(str(key) for key in raw) - allowed)
-        if unknown:
-            raise ValueError(f"Unknown generation_contract keys: {unknown}")
-        for key in allowed:
-            if not str(raw.get(key, "")).strip():
-                raise ValueError(f"generation_contract.{key} is required")
-        path = Path(str(raw["path"]))
-        if not path.is_absolute():
-            path = ROOT / path
-        expected_hash = str(raw["contract_hash"])
-        artifact = validate_generation_contract_artifact(
-            path, expected_hash=expected_hash
-        )
-        if artifact.get("accepted_output_contract_hash") != requested.contract_hash:
-            raise RuntimeError(
-                "Generation contract accepted output-contract hash mismatch"
-            )
-        return GenerationContractConfig(
-            path=path.resolve(),
-            contract_hash=expected_hash,
-            artifact=artifact,
-        )
-
-    def _validate_generation_contract_binding(self) -> None:
-        binding = self.dataset.generation_contract
-        if binding is None:
-            return
-        artifact = binding.artifact
-        expected_code_hash = str(artifact.get("code_state_hash", ""))
-        if expected_code_hash != str(self.source_code["code_state_hash"]):
-            raise RuntimeError("Generation contract code-state hash mismatch")
-        split_policy = artifact.get("split_policy")
-        if not isinstance(split_policy, Mapping):
-            raise RuntimeError("Generation contract split policy is missing")
-        requested = self.dataset.requested_output
-        if requested is None:
-            raise RuntimeError("Generation contract requires requested output")
-        expected_h0 = (
-            None
-            if self.dataset.authoritative_inputs is None
-            else self.dataset.authoritative_inputs.semantics()
-        )
-        if artifact.get("h0") != expected_h0:
-            raise RuntimeError("Generation contract H0 binding mismatch")
-        policy = split_policy.get(requested.split)
-        if not isinstance(policy, Mapping):
-            raise RuntimeError(
-                f"Generation contract has no policy for split {requested.split}"
-            )
-        if int(policy.get("num_samples", -1)) != self.dataset.num_samples:
-            raise RuntimeError("Generation contract split sample-count mismatch")
-        if int(policy.get("seed", -1)) != self.dataset.seed:
-            raise RuntimeError("Generation contract split seed mismatch")
-        expected_config_hashes = artifact.get("resolved_config_hashes")
-        observed_config_hashes = _generation_resolved_config_hashes(
-            self.dataset, self.solver_cfg
-        )
-        if expected_config_hashes != observed_config_hashes:
-            raise RuntimeError("Generation contract resolved-config hashes mismatch")
-        execution = artifact.get("execution_policy")
-        if not isinstance(execution, Mapping):
-            raise RuntimeError("Generation contract execution policy is missing")
-        observed_execution = {
-            "num_workers": self.dataset.num_workers,
-            "max_in_flight": self.operations.max_in_flight,
-            **self.operations.metadata(),
-        }
-        if execution != observed_execution:
-            raise RuntimeError("Generation contract execution policy mismatch")
 
     @staticmethod
     def _parse_buffered_domain_section(cfg: Mapping[str, Any]) -> BufferedDomainConfig:
@@ -2908,11 +2775,6 @@ class TsunamiDatasetBuilder:
             requested_output=requested_output,
             authoritative_inputs=(
                 TsunamiDatasetBuilder._parse_authoritative_inputs_section(
-                    cfg, requested_output
-                )
-            ),
-            generation_contract=(
-                TsunamiDatasetBuilder._parse_generation_contract_section(
                     cfg, requested_output
                 )
             ),
@@ -3194,10 +3056,11 @@ class TsunamiDatasetBuilder:
                 "[dataset] phase 1/3 bathymetry cache already complete for this range"
             )
             return
-        if self.dataset.authoritative_inputs is not None:
+        authoritative = self.dataset.authoritative_inputs
+        if authoritative is not None and not authoritative.allow_input_generation:
             raise RuntimeError(
                 "Authoritative bathymetry caches are missing; input regeneration "
-                "is forbidden for common-time-v2"
+                "is disabled"
             )
 
         print(
@@ -3257,10 +3120,11 @@ class TsunamiDatasetBuilder:
         if not pending:
             print("[dataset] phase 2/3 source cache already complete for this range")
             return
-        if self.dataset.authoritative_inputs is not None:
+        authoritative = self.dataset.authoritative_inputs
+        if authoritative is not None and not authoritative.allow_input_generation:
             raise RuntimeError(
                 "Authoritative source caches are missing; input regeneration is "
-                "forbidden for common-time-v2"
+                "disabled"
             )
 
         print(
@@ -3308,6 +3172,58 @@ class TsunamiDatasetBuilder:
                     f"[source {done:06d}/{len(pending):06d}] "
                     f"sample={rec['sample_index']:06d} type={rec['source_type']:<11} amp={rec['source_strength']:.4f}"
                 )
+
+    def _validate_authoritative_caches(self, indices: list[int]) -> None:
+        config = self.dataset.authoritative_inputs
+        requested = self.dataset.requested_output
+        if config is None:
+            return
+        if requested is None:
+            raise RuntimeError("Authoritative inputs require requested-output mode")
+        for sample_idx in indices:
+            bathymetry_path = _bathymetry_file_path(
+                str(self.bathymetry_dir), sample_idx
+            )
+            source_path = _source_file_path(str(self.source_dir), sample_idx)
+            with np.load(bathymetry_path, allow_pickle=False) as payload:
+                bathymetry = np.asarray(payload["bathymetry"], dtype=np.float32)
+                bathymetry_type = str(
+                    np.asarray(payload["bathymetry_type"]).reshape(-1)[0]
+                )
+                bathymetry_seed = int(
+                    np.asarray(payload["sample_seed"]).reshape(-1)[0]
+                )
+            with np.load(source_path, allow_pickle=False) as payload:
+                source_field = np.asarray(payload["source_field"], dtype=np.float32)
+                source_type = str(
+                    np.asarray(payload["source_type"]).reshape(-1)[0]
+                )
+                source_strength = np.asarray(payload["source_strength"])
+                source_seed = int(
+                    np.asarray(payload["sample_seed"]).reshape(-1)[0]
+                )
+            expected_seed = _seed_for_sample(self.run_seed, sample_idx)
+            if bathymetry_seed != expected_seed or source_seed != expected_seed:
+                raise RuntimeError(
+                    f"Authoritative input seed mismatch for sample {sample_idx}"
+                )
+            _validate_authoritative_input(
+                record=self.authoritative_records[sample_idx],
+                split=requested.split,
+                sample_idx=sample_idx,
+                scenario_id=f"scenario_{sample_idx:06d}",
+                bathymetry=bathymetry,
+                source_field=source_field,
+                source_strength_array=source_strength,
+                bathymetry_type=bathymetry_type,
+                source_type=source_type,
+                sea_level_offset=self.dataset.sea_level_offset,
+                config=config,
+            )
+        print(
+            f"[dataset] exact H0 input verification passed: "
+            f"split={requested.split} samples={len(indices)}"
+        )
 
     def _phase_generate_rollouts(
         self, indices: list[int], allow_override: bool = False
@@ -3473,11 +3389,6 @@ class TsunamiDatasetBuilder:
                         requested.split, scenario_id
                     ),
                     expected_contract_hash=requested.contract_hash,
-                    expected_generation_contract_hash=(
-                        None
-                        if self.dataset.generation_contract is None
-                        else self.dataset.generation_contract.contract_hash
-                    ),
                     expected_times=requested.requested_times,
                 )
                 key = f"{requested.split}:{scenario_id}:{solver}"
@@ -3507,12 +3418,6 @@ class TsunamiDatasetBuilder:
                 or existing.get("solver_names") != sorted(solver_names)
                 or existing.get("resolved_config_hashes") != resolved_config_hashes
                 or existing.get("code_state_hash") != code_hash
-                or existing.get("generation_contract_hash")
-                != (
-                    None
-                    if self.dataset.generation_contract is None
-                    else self.dataset.generation_contract.contract_hash
-                )
                 or observed != publication_hashes
                 or not bool(existing.get("complete", False))
             ):
@@ -3529,11 +3434,6 @@ class TsunamiDatasetBuilder:
             solver_names=sorted(solver_names),
             resolved_config_hashes=resolved_config_hashes,
             code_state_hash=code_hash,
-            generation_contract_hash=(
-                None
-                if self.dataset.generation_contract is None
-                else self.dataset.generation_contract.contract_hash
-            ),
         )
         return path
 
@@ -3568,11 +3468,6 @@ class TsunamiDatasetBuilder:
                 requested_workers=self.dataset.num_workers,
                 requested_max_in_flight=self.operations.max_in_flight,
                 operational_config=self.operations.metadata(),
-                generation_contract_hash=(
-                    None
-                    if self.dataset.generation_contract is None
-                    else self.dataset.generation_contract.contract_hash
-                ),
             )
         self._operational_recorder = recorder
         try:
@@ -3722,6 +3617,8 @@ class TsunamiDatasetBuilder:
             finally:
                 if recorder is not None:
                     recorder.end_phase("sources")
+
+        self._validate_authoritative_caches(planned_indices)
 
         if recorder is not None:
             recorder.start_phase("rollouts")

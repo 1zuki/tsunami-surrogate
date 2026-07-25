@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 import subprocess
 import sys
+
+import yaml
+
+from scripts.make_dataset import _apply_overrides, _build_parser, _load_config
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,58 +24,78 @@ def _run(*arguments: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_cli_has_one_explicit_generation_entrypoint() -> None:
+def test_cli_is_flat_and_keeps_the_original_entrypoint_shape() -> None:
     result = _run("--help")
     assert result.returncode == 0
-    assert "production" in result.stdout
-    assert "generate" in result.stdout
-    assert "legacy-v1" in result.stdout
-
-    old_invocation = _run("--config", "configs/data/dataset.yaml")
-    assert old_invocation.returncode != 0
-    assert "invalid choice" in old_invocation.stderr
+    assert "--config" in result.stdout
+    assert "--split" not in result.stdout
+    assert "production" not in result.stdout
+    assert "prepare-inputs" not in result.stdout
+    assert "legacy-v1" not in result.stdout
 
 
-def test_common_time_and_legacy_modes_cannot_be_mixed() -> None:
-    legacy_as_current = _run(
-        "generate",
-        "--config",
-        "configs/data/legacy/dataset_saved_step_v1.yaml",
-    )
-    assert legacy_as_current.returncode != 0
-    assert "requires common-time requested_output" in legacy_as_current.stderr
+def test_config_owns_dataset_identity_and_layout(tmp_path: Path) -> None:
+    config_path = tmp_path / "custom.yaml"
+    expected = {
+        "dataset": {
+            "seed": 123,
+            "num_samples": 17,
+            "num_workers": 1,
+            "bathymetry_dir": "data/custom/bathymetry",
+            "source_dir": "data/custom/sources",
+            "output_dir": "data/custom/raw",
+            "manifest_path": "data/custom/synthetic/scenario_manifest.jsonl",
+        },
+        "requested_output": {"enabled": True, "split": "custom"},
+        "operations": {"max_in_flight": 7},
+    }
+    config_path.write_text(yaml.safe_dump(expected), encoding="utf-8")
+    args = _build_parser().parse_args(["--config", str(config_path)])
+    cfg = _load_config(config_path)
+    before = deepcopy(cfg)
 
-    current_as_legacy = _run(
-        "legacy-v1", "--config", "configs/data/dataset.yaml"
-    )
-    assert current_as_legacy.returncode != 0
-    assert "refuses requested-output configs" in current_as_legacy.stderr
+    _apply_overrides(cfg, args)
+
+    assert cfg == before
+    assert cfg["operations"]["max_in_flight"] == 7
+    assert not hasattr(args, "split")
 
 
-def test_production_rejects_unresolved_cloud_labels(tmp_path: Path) -> None:
-    result = _run(
-        "production",
-        "--stage",
-        "rehearsal",
-        "--input-root",
-        str(tmp_path / "inputs"),
-        "--run-root",
-        str(tmp_path / "run"),
-        "--workers",
-        "1",
-        "--max-in-flight",
-        "1",
-        "--cloud-provider",
-        "google-cloud",
-        "--cloud-zone",
-        "REPLACE_WITH_ZONE",
-        "--machine-type",
-        "c4-highcpu-8",
-        "--storage-class",
-        "pd-ssd",
-    )
-    assert result.returncode != 0
-    assert "cloud_zone must identify the real cloud allocation" in result.stderr
+def test_common_time_configs_define_split_seed_count_and_paths() -> None:
+    expected = {
+        "dataset.yaml": ("train", 42, 10000),
+        "dataset_eval.yaml": ("eval", 69, 1000),
+        "dataset_test.yaml": ("test", 367, 2500),
+    }
+    for name, (split, seed, count) in expected.items():
+        cfg = _load_config(ROOT / "configs/data" / name)
+        dataset = cfg["dataset"]
+        root = f"data/{split}"
+        assert cfg["requested_output"]["split"] == split
+        assert dataset["seed"] == seed
+        assert dataset["num_samples"] == count
+        assert dataset["bathymetry_dir"] == f"{root}/bathymetry"
+        assert dataset["source_dir"] == f"{root}/sources"
+        assert dataset["output_dir"] == f"{root}/raw"
+        assert dataset["manifest_path"] == (
+            f"{root}/synthetic/scenario_manifest.jsonl"
+        )
+
+
+def test_saved_step_configs_do_not_target_canonical_split_data() -> None:
+    canonical = tuple(Path("data") / split for split in ("train", "eval", "test"))
+    for path in sorted((ROOT / "configs/data").rglob("*.yaml")):
+        cfg = _load_config(path)
+        dataset = cfg.get("dataset")
+        if not isinstance(dataset, dict) or "output_dir" not in dataset:
+            continue
+        requested = cfg.get("requested_output")
+        if isinstance(requested, dict) and requested.get("enabled") is True:
+            continue
+        output = Path(str(dataset["output_dir"]))
+        assert not any(
+            output == root or root in output.parents for root in canonical
+        ), f"saved-step config targets canonical split data: {path}"
 
 
 def test_internal_simulation_module_refuses_direct_execution() -> None:

@@ -1,5 +1,4 @@
-# LEGACY SAVED-STEP DIAGNOSTIC. Not common-time production. Invoke only with
-# `python scripts/make_dataset.py legacy-v1 --config ...`.
+# Saved-step Boussinesq diagnostic configuration.
 configs:
   bathymetry: "configs/data/bathymetry_boussinesq.yaml"
   source: "configs/data/source_boussinesq.yaml"

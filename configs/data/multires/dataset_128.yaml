@@ -1,5 +1,4 @@
-# LEGACY SAVED-STEP AUXILIARY CONFIG. Not common-time production. Invoke only
-# through `scripts/make_dataset.py legacy-v1` for archived reproduction.
+# Saved-step 128x128 resolution study.
 configs:
   bathymetry: "configs/data/multires/bathymetry_128.yaml"
   source: "configs/data/multires/source_128.yaml"
