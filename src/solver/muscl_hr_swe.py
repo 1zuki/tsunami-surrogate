@@ -214,6 +214,108 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
             "hv_w": h_w * v_w, "hv_e": h_e * v_e, "hv_s": h_s * v_s, "hv_n": h_n * v_n,
         }
 
+    def _reconstructed_x_interface_states(
+        self,
+        rec: Mapping[str, np.ndarray],
+        h: np.ndarray,
+        hu: np.ndarray,
+        hv: np.ndarray,
+        b: np.ndarray,
+    ) -> tuple[np.ndarray, ...]:
+        """Return reconstructed left/right states at all x interfaces."""
+        shape = (self.nx + 1, self.ny)
+        left = [np.empty(shape, dtype=float) for _ in range(4)]
+        right = [np.empty(shape, dtype=float) for _ in range(4)]
+        east = (rec["h_e"], rec["hu_e"], rec["hv_e"], rec["b_e"])
+        west = (rec["h_w"], rec["hu_w"], rec["hv_w"], rec["b_w"])
+
+        for target, values in zip(left, east):
+            target[1:, :] = values
+        for target, values in zip(right, west):
+            target[:-1, :] = values
+
+        for j in range(self.ny):
+            if self.boundary_x == "periodic":
+                left_boundary = tuple(values[-1, j] for values in east)
+                right_boundary = tuple(values[0, j] for values in west)
+            elif self.boundary_x == "radiation":
+                left_boundary = radiation_boundary_state_x(
+                    *(values[0, j] for values in west),
+                    side="left",
+                    g=self.g,
+                    dry_tolerance=self.dry_tolerance,
+                )
+                right_boundary = radiation_boundary_state_x(
+                    *(values[-1, j] for values in east),
+                    side="right",
+                    g=self.g,
+                    dry_tolerance=self.dry_tolerance,
+                )
+            else:
+                left_boundary = self._boundary_state_x(
+                    h, hu, hv, b, j, side="left"
+                )
+                right_boundary = self._boundary_state_x(
+                    h, hu, hv, b, j, side="right"
+                )
+            for target, value in zip(left, left_boundary):
+                target[0, j] = value
+            for target, value in zip(right, right_boundary):
+                target[-1, j] = value
+
+        return (*left, *right)
+
+    def _reconstructed_y_interface_states(
+        self,
+        rec: Mapping[str, np.ndarray],
+        h: np.ndarray,
+        hu: np.ndarray,
+        hv: np.ndarray,
+        b: np.ndarray,
+    ) -> tuple[np.ndarray, ...]:
+        """Return reconstructed bottom/top states at all y interfaces."""
+        shape = (self.nx, self.ny + 1)
+        bottom = [np.empty(shape, dtype=float) for _ in range(4)]
+        top = [np.empty(shape, dtype=float) for _ in range(4)]
+        north = (rec["h_n"], rec["hu_n"], rec["hv_n"], rec["b_n"])
+        south = (rec["h_s"], rec["hu_s"], rec["hv_s"], rec["b_s"])
+
+        for target, values in zip(bottom, north):
+            target[:, 1:] = values
+        for target, values in zip(top, south):
+            target[:, :-1] = values
+
+        for i in range(self.nx):
+            if self.boundary_y == "periodic":
+                bottom_boundary = tuple(values[i, -1] for values in north)
+                top_boundary = tuple(values[i, 0] for values in south)
+            elif self.boundary_y == "radiation":
+                bottom_boundary = radiation_boundary_state_y(
+                    *(values[i, 0] for values in south),
+                    side="bottom",
+                    g=self.g,
+                    dry_tolerance=self.dry_tolerance,
+                )
+                top_boundary = radiation_boundary_state_y(
+                    *(values[i, -1] for values in north),
+                    side="top",
+                    g=self.g,
+                    dry_tolerance=self.dry_tolerance,
+                )
+            else:
+                bottom_boundary = self._boundary_state_y(
+                    h, hu, hv, b, i, side="bottom"
+                )
+                top_boundary = self._boundary_state_y(
+                    h, hu, hv, b, i, side="top"
+                )
+            for target, value in zip(bottom, bottom_boundary):
+                target[i, 0] = value
+            for target, value in zip(top, top_boundary):
+                target[i, -1] = value
+
+        return (*bottom, *top)
+
     def _euler_step_from_state(self, U: np.ndarray, dt: float) -> np.ndarray:
         h_old = np.maximum(U[0], 0.0)
         hu_old = U[1]
@@ -222,124 +324,53 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
 
         rec = self._reconstructed_faces(h_old, hu_old, hv_old, b)
 
-        h_new = h_old.copy()
-        hu_new = hu_old.copy()
-        hv_new = hv_old.copy()
+        x_states = self._reconstructed_x_interface_states(
+            rec, h_old, hu_old, hv_old, b
+        )
+        x_flux, x_left_correction, x_right_correction = (
+            self._hydrostatic_interface_fluxes(*x_states, axis="x")
+        )
+        flux_x_left = x_flux[:, :-1, :].copy()
+        flux_x_right = x_flux[:, 1:, :].copy()
+        flux_x_left[1] += x_right_correction[:-1, :]
+        flux_x_right[1] += x_left_correction[1:, :]
 
-        for i in range(self.nx):
-            for j in range(self.ny):
-                # left x-face
-                hC, huC, hvC, bC = rec["h_w"][i, j], rec["hu_w"][i, j], rec["hv_w"][i, j], rec["b_w"][i, j]
+        y_states = self._reconstructed_y_interface_states(
+            rec, h_old, hu_old, hv_old, b
+        )
+        y_flux, y_bottom_correction, y_top_correction = (
+            self._hydrostatic_interface_fluxes(*y_states, axis="y")
+        )
+        flux_y_bottom = y_flux[:, :, :-1].copy()
+        flux_y_top = y_flux[:, :, 1:].copy()
+        flux_y_bottom[2] += y_top_correction[:, :-1]
+        flux_y_top[2] += y_bottom_correction[:, 1:]
 
-                if i == 0:
-                    if self.boundary_x == "periodic":
-                        hL, huL, hvL, bL = rec["h_e"][-1, j], rec["hu_e"][-1, j], rec["hv_e"][-1, j], rec["b_e"][-1, j]
-                    elif self.boundary_x == "radiation":
-                        hL, huL, hvL, bL = radiation_boundary_state_x(
-                            hC,
-                            huC,
-                            hvC,
-                            bC,
-                            side="left",
-                            g=self.g,
-                            dry_tolerance=self.dry_tolerance,
-                        )
-                    else:
-                        hL, huL, hvL, bL = self._boundary_state_x(h_old, hu_old, hv_old, b, j, side="left")
-                else:
-                    hL, huL, hvL, bL = rec["h_e"][i - 1, j], rec["hu_e"][i - 1, j], rec["hv_e"][i - 1, j], rec["b_e"][i - 1, j]
+        h_new = (
+            h_old
+            - (dt / self.dx) * (flux_x_right[0] - flux_x_left[0])
+            - (dt / self.dy) * (flux_y_top[0] - flux_y_bottom[0])
+        )
+        hu_new = (
+            hu_old
+            - (dt / self.dx) * (flux_x_right[1] - flux_x_left[1])
+            - (dt / self.dy) * (flux_y_top[1] - flux_y_bottom[1])
+        )
+        hv_new = (
+            hv_old
+            - (dt / self.dx) * (flux_x_right[2] - flux_x_left[2])
+            - (dt / self.dy) * (flux_y_top[2] - flux_y_bottom[2])
+        )
 
-                FxL = self._hydro_face_x(hL, huL, hvL, bL, hC, huC, hvC, bC, use_left_correction=False)
-
-                # right x-face
-                hC, huC, hvC, bC = rec["h_e"][i, j], rec["hu_e"][i, j], rec["hv_e"][i, j], rec["b_e"][i, j]
-
-                if i == self.nx - 1:
-                    if self.boundary_x == "periodic":
-                        hR, huR, hvR, bR = rec["h_w"][0, j], rec["hu_w"][0, j], rec["hv_w"][0, j], rec["b_w"][0, j]
-                    elif self.boundary_x == "radiation":
-                        hR, huR, hvR, bR = radiation_boundary_state_x(
-                            hC,
-                            huC,
-                            hvC,
-                            bC,
-                            side="right",
-                            g=self.g,
-                            dry_tolerance=self.dry_tolerance,
-                        )
-                    else:
-                        hR, huR, hvR, bR = self._boundary_state_x(h_old, hu_old, hv_old, b, j, side="right")
-                else:
-                    hR, huR, hvR, bR = rec["h_w"][i + 1, j], rec["hu_w"][i + 1, j], rec["hv_w"][i + 1, j], rec["b_w"][i + 1, j]
-
-                FxR = self._hydro_face_x(hC, huC, hvC, bC, hR, huR, hvR, bR, use_left_correction=True)
-
-                # bottom y-face
-                hC, huC, hvC, bC = rec["h_s"][i, j], rec["hu_s"][i, j], rec["hv_s"][i, j], rec["b_s"][i, j]
-
-                if j == 0:
-                    if self.boundary_y == "periodic":
-                        hB, huB, hvB, bB = rec["h_n"][i, -1], rec["hu_n"][i, -1], rec["hv_n"][i, -1], rec["b_n"][i, -1]
-                    elif self.boundary_y == "radiation":
-                        hB, huB, hvB, bB = radiation_boundary_state_y(
-                            hC,
-                            huC,
-                            hvC,
-                            bC,
-                            side="bottom",
-                            g=self.g,
-                            dry_tolerance=self.dry_tolerance,
-                        )
-                    else:
-                        hB, huB, hvB, bB = self._boundary_state_y(h_old, hu_old, hv_old, b, i, side="bottom")
-                else:
-                    hB, huB, hvB, bB = rec["h_n"][i, j - 1], rec["hu_n"][i, j - 1], rec["hv_n"][i, j - 1], rec["b_n"][i, j - 1]
-
-                FyB = self._hydro_face_y(hB, huB, hvB, bB, hC, huC, hvC, bC, use_left_correction=False)
-
-                # top y-face
-                hC, huC, hvC, bC = rec["h_n"][i, j], rec["hu_n"][i, j], rec["hv_n"][i, j], rec["b_n"][i, j]
-
-                if j == self.ny - 1:
-                    if self.boundary_y == "periodic":
-                        hT, huT, hvT, bT = rec["h_s"][i, 0], rec["hu_s"][i, 0], rec["hv_s"][i, 0], rec["b_s"][i, 0]
-                    elif self.boundary_y == "radiation":
-                        hT, huT, hvT, bT = radiation_boundary_state_y(
-                            hC,
-                            huC,
-                            hvC,
-                            bC,
-                            side="top",
-                            g=self.g,
-                            dry_tolerance=self.dry_tolerance,
-                        )
-                    else:
-                        hT, huT, hvT, bT = self._boundary_state_y(h_old, hu_old, hv_old, b, i, side="top")
-                else:
-                    hT, huT, hvT, bT = rec["h_s"][i, j + 1], rec["hu_s"][i, j + 1], rec["hv_s"][i, j + 1], rec["b_s"][i, j + 1]
-
-                FyT = self._hydro_face_y(hC, huC, hvC, bC, hT, huT, hvT, bT, use_left_correction=True)
-
-                h_new[i, j] = h_old[i, j] - (dt / self.dx) * (FxR[0] - FxL[0]) - (dt / self.dy) * (FyT[0] - FyB[0])
-                hu_new[i, j] = hu_old[i, j] - (dt / self.dx) * (FxR[1] - FxL[1]) - (dt / self.dy) * (FyT[1] - FyB[1])
-                hv_new[i, j] = hv_old[i, j] - (dt / self.dx) * (FxR[2] - FxL[2]) - (dt / self.dy) * (FyT[2] - FyB[2])
-
-                """
-                IMPORTANT: DO NOT REMOVE ANY OF THOSE LINE BELOW
-                THIS IS IMPORTANT FOR LAKE-AT-REST STABILITY
-
-                TESTED FOR 500 STEPS AT DIFF GRIDS, BATHYMETRY, BOUNDARIES AND THE DRIFT IS MINIMAL ~2e-16 -> 4e-16
-                """
-                S_hu = -self.g * 0.5 * (rec["h_e"][i, j] + rec["h_w"][i, j]) * (
-                    rec["b_e"][i, j] - rec["b_w"][i, j]
-                ) / self.dx
-
-                S_hv = -self.g * 0.5 * (rec["h_n"][i, j] + rec["h_s"][i, j]) * (
-                    rec["b_n"][i, j] - rec["b_s"][i, j]
-                ) / self.dy
-
-                hu_new[i, j] += dt * S_hu
-                hv_new[i, j] += dt * S_hv
+        # Keep the well-balanced bathymetry source correction unchanged.
+        source_hu = -self.g * 0.5 * (rec["h_e"] + rec["h_w"]) * (
+            rec["b_e"] - rec["b_w"]
+        ) / self.dx
+        source_hv = -self.g * 0.5 * (rec["h_n"] + rec["h_s"]) * (
+            rec["b_n"] - rec["b_s"]
+        ) / self.dy
+        hu_new += dt * source_hu
+        hv_new += dt * source_hv
 
         self.operator_diagnostics["positivity_projection_count"] = int(
             self.operator_diagnostics["positivity_projection_count"]

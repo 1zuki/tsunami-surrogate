@@ -90,24 +90,17 @@ def test_periodic_interfaces_use_reconstructed_opposite_faces(limiter: str) -> N
     bathymetry, state = _smooth_state(solver.nx, solver.ny)
     solver.set_bathymetry(bathymetry)
     rec = solver._reconstructed_faces(state[0], state[1], state[2], bathymetry)
-    calls: list[tuple[float, ...]] = []
-    original = solver._hydro_face_x
-
-    def capture(*args: float, **kwargs: bool) -> np.ndarray:
-        calls.append(tuple(float(value) for value in args))
-        return original(*args, **kwargs)
-
-    solver._hydro_face_x = capture  # type: ignore[method-assign]
-    solver._euler_step_from_state(state, 1.0e-5)
-
-    left = calls[0]
-    right = calls[2 * (solver.nx - 1) * solver.ny + 1]
+    interface_states = solver._reconstructed_x_interface_states(
+        rec, state[0], state[1], state[2], bathymetry
+    )
+    left = [values[0, 0] for values in interface_states[:4]]
+    right = [values[-1, 0] for values in interface_states[4:]]
     np.testing.assert_allclose(
-        left[:4],
+        left,
         [rec["h_e"][-1, 0], rec["hu_e"][-1, 0], rec["hv_e"][-1, 0], rec["b_e"][-1, 0]],
     )
     np.testing.assert_allclose(
-        right[4:8],
+        right,
         [rec["h_w"][0, 0], rec["hu_w"][0, 0], rec["hv_w"][0, 0], rec["b_w"][0, 0]],
     )
 

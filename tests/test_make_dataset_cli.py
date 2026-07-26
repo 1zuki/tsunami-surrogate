@@ -80,6 +80,12 @@ def test_common_time_configs_define_split_seed_count_and_paths() -> None:
         assert dataset["manifest_path"] == (
             f"{root}/synthetic/scenario_manifest.jsonl"
         )
+        assert (
+            cfg["solver_profiles"]["boussinesq"][
+                "linear_solver_preconditioner"
+            ]
+            == "sparse_lu"
+        )
 
 
 def test_saved_step_configs_do_not_target_canonical_split_data() -> None:

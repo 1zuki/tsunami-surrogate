@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from src.solver.boundary_conditions import pad_scalar_field
 from src.solver.boussinesq import BoussinesqSolver, simulate_rollout
 
 
@@ -27,6 +28,52 @@ def test_boussinesq_initial_state_shape() -> None:
     assert state.shape == (2, 8, 6)
     assert np.allclose(state[0], eta0)
     assert np.allclose(state[1], 0.0)
+
+
+@pytest.mark.parametrize(
+    "boundary",
+    ["open", "reflective", "periodic", ("periodic", "open")],
+)
+def test_boussinesq_cached_face_operator_matches_padded_form(boundary) -> None:
+    solver = BoussinesqSolver(
+        nx=9,
+        ny=7,
+        dx=1.0 / 9.0,
+        dy=1.0 / 7.0,
+        dt=1.0e-4,
+        boundary=boundary,
+        use_sponge=False,
+    )
+    rng = np.random.default_rng(20260726)
+    field = rng.normal(size=(solver.nx, solver.ny))
+    coefficient = rng.uniform(0.2, 1.4, size=(solver.nx, solver.ny))
+    coeff_x, coeff_y = solver._face_coefficients(coefficient)
+
+    field_padded = pad_scalar_field(
+        field, solver.boundary_x, solver.boundary_y
+    )
+    flux_x = coeff_x * (
+        field_padded[1:, 1:-1] - field_padded[:-1, 1:-1]
+    ) / solver.dx
+    flux_y = coeff_y * (
+        field_padded[1:-1, 1:] - field_padded[1:-1, :-1]
+    ) / solver.dy
+    expected = (
+        (flux_x[1:, :] - flux_x[:-1, :]) / solver.dx
+        + (flux_y[:, 1:] - flux_y[:, :-1]) / solver.dy
+    )
+    observed = solver._flux_divergence_from_faces(field, coeff_x, coeff_y)
+    np.testing.assert_array_equal(observed, expected)
+
+    bathymetry = -rng.uniform(0.4, 1.3, size=(solver.nx, solver.ny))
+    solver.set_bathymetry(bathymetry)
+    np.testing.assert_array_equal(
+        solver.rhs(field), solver.g * solver._flux_divergence(field, solver.H)
+    )
+    np.testing.assert_array_equal(
+        solver.apply_mass_operator(field),
+        field - solver.alpha * solver._flux_divergence(field, solver.H * solver.H),
+    )
 
 
 def test_boussinesq_flat_surface_remains_flat_after_one_step() -> None:
@@ -118,6 +165,16 @@ def test_boussinesq_absolute_cg_floor_defaults_to_disabled() -> None:
             dt=1.0e-3,
             linear_solver_abs_tol=-1.0,
         )
+    assert solver.linear_solver_preconditioner == "jacobi"
+    with pytest.raises(ValueError, match="linear_solver_preconditioner"):
+        BoussinesqSolver(
+            nx=4,
+            ny=4,
+            dx=0.25,
+            dy=0.25,
+            dt=1.0e-3,
+            linear_solver_preconditioner="unknown",
+        )
 
 
 def test_explicit_zero_absolute_cg_floor_matches_legacy_default() -> None:
@@ -143,6 +200,59 @@ def test_explicit_zero_absolute_cg_floor_matches_legacy_default() -> None:
         solver.step()
     np.testing.assert_array_equal(default.get_state(), explicit.get_state())
     assert default.last_step_cg_solve_iterations == explicit.last_step_cg_solve_iterations
+
+
+@pytest.mark.parametrize(
+    "boundary",
+    ["open", "reflective", "periodic", ("periodic", "open")],
+)
+def test_sparse_lu_preconditioned_cg_matches_jacobi_solution(boundary) -> None:
+    nx, ny = 16, 10
+    x = np.arange(nx, dtype=np.float64)[:, None] / nx
+    y = np.arange(ny, dtype=np.float64)[None, :] / ny
+    bathymetry = -(
+        1.0 + 0.15 * np.sin(2.0 * np.pi * x) * np.cos(2.0 * np.pi * y)
+    )
+    eta = 2.0e-3 * np.exp(-((x - 0.37) ** 2 + (y - 0.61) ** 2) / 0.02)
+    common = dict(
+        nx=nx,
+        ny=ny,
+        dx=1.0 / nx,
+        dy=1.0 / ny,
+        dt=1.0e-4,
+        boundary=boundary,
+        use_sponge=False,
+        linear_solver_tol=1.0e-10,
+        linear_solver_max_iter=500,
+        cg_failure_mode="strict_v2",
+    )
+    jacobi = BoussinesqSolver(**common, linear_solver_preconditioner="jacobi")
+    sparse_lu = BoussinesqSolver(
+        **common, linear_solver_preconditioner="sparse_lu"
+    )
+    for solver in (jacobi, sparse_lu):
+        solver.set_bathymetry(bathymetry)
+
+    expected = jacobi.solve_acceleration(eta)
+    observed = sparse_lu.solve_acceleration(eta)
+    assert jacobi.last_cg_converged
+    assert sparse_lu.last_cg_converged
+    assert sparse_lu.last_cg_iterations <= 2
+    assert sparse_lu.last_cg_final_residual <= (
+        sparse_lu.linear_solver_tol * sparse_lu.last_cg_initial_residual * 1.01
+    )
+    np.testing.assert_allclose(observed, expected, rtol=2.0e-9, atol=2.0e-11)
+
+    diagnostics = sparse_lu.get_operator_diagnostics()
+    assert diagnostics["linear_solver_preconditioner"] == "sparse_lu"
+    assert diagnostics["linear_solver_factorization_count"] == 1
+    assert int(diagnostics["linear_solver_factorization_nnz"]) > nx * ny
+    repeated = sparse_lu.solve_acceleration(eta)
+    np.testing.assert_array_equal(repeated, observed)
+    assert (
+        sparse_lu.get_operator_diagnostics()["linear_solver_factorization_count"]
+        == 1
+    )
 
 
 def test_boussinesq_alpha_zero_matches_face_flux_wave_operator() -> None:

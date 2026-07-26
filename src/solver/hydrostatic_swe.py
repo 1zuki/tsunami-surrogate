@@ -653,6 +653,232 @@ class ShallowWaterSolver:
             dry_tolerance=self.dry_tolerance,
         )
 
+    def _x_interface_states(
+        self,
+        h: np.ndarray,
+        hu: np.ndarray,
+        hv: np.ndarray,
+        b: np.ndarray,
+    ) -> tuple[np.ndarray, ...]:
+        """Return left/right states at all x interfaces."""
+        shape = (self.nx + 1, self.ny)
+        left = [np.empty(shape, dtype=float) for _ in range(4)]
+        right = [np.empty(shape, dtype=float) for _ in range(4)]
+
+        for target, values in zip(left, (h, hu, hv, b)):
+            target[1:, :] = values
+        for target, values in zip(right, (h, hu, hv, b)):
+            target[:-1, :] = values
+
+        for j in range(self.ny):
+            for target, value in zip(
+                left,
+                self._boundary_state_x(h, hu, hv, b, j, side="left"),
+            ):
+                target[0, j] = value
+            for target, value in zip(
+                right,
+                self._boundary_state_x(h, hu, hv, b, j, side="right"),
+            ):
+                target[-1, j] = value
+
+        return (*left, *right)
+
+    def _y_interface_states(
+        self,
+        h: np.ndarray,
+        hu: np.ndarray,
+        hv: np.ndarray,
+        b: np.ndarray,
+    ) -> tuple[np.ndarray, ...]:
+        """Return bottom/top states at all y interfaces."""
+        shape = (self.nx, self.ny + 1)
+        bottom = [np.empty(shape, dtype=float) for _ in range(4)]
+        top = [np.empty(shape, dtype=float) for _ in range(4)]
+
+        for target, values in zip(bottom, (h, hu, hv, b)):
+            target[:, 1:] = values
+        for target, values in zip(top, (h, hu, hv, b)):
+            target[:, :-1] = values
+
+        for i in range(self.nx):
+            for target, value in zip(
+                bottom,
+                self._boundary_state_y(h, hu, hv, b, i, side="bottom"),
+            ):
+                target[i, 0] = value
+            for target, value in zip(
+                top,
+                self._boundary_state_y(h, hu, hv, b, i, side="top"),
+            ):
+                target[i, -1] = value
+
+        return (*bottom, *top)
+
+    def _hydrostatic_interface_fluxes(
+        self,
+        h_left: np.ndarray,
+        hu_left: np.ndarray,
+        hv_left: np.ndarray,
+        b_left: np.ndarray,
+        h_right: np.ndarray,
+        hu_right: np.ndarray,
+        hv_right: np.ndarray,
+        b_right: np.ndarray,
+        *,
+        axis: Literal["x", "y"],
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Vectorized hydrostatic Rusanov flux and cell-side corrections."""
+        z = np.maximum(b_left, b_right)
+        h_left_reconstructed = np.maximum(0.0, h_left + b_left - z)
+        h_right_reconstructed = np.maximum(0.0, h_right + b_right - z)
+
+        u_left = np.zeros_like(h_left)
+        v_left = np.zeros_like(h_left)
+        u_right = np.zeros_like(h_right)
+        v_right = np.zeros_like(h_right)
+        np.divide(
+            hu_left,
+            h_left,
+            out=u_left,
+            where=h_left > self.dry_tolerance,
+        )
+        np.divide(
+            hv_left,
+            h_left,
+            out=v_left,
+            where=h_left > self.dry_tolerance,
+        )
+        np.divide(
+            hu_right,
+            h_right,
+            out=u_right,
+            where=h_right > self.dry_tolerance,
+        )
+        np.divide(
+            hv_right,
+            h_right,
+            out=v_right,
+            where=h_right > self.dry_tolerance,
+        )
+
+        q_left = np.stack(
+            [
+                h_left_reconstructed,
+                h_left_reconstructed * u_left,
+                h_left_reconstructed * v_left,
+            ],
+            axis=0,
+        )
+        q_right = np.stack(
+            [
+                h_right_reconstructed,
+                h_right_reconstructed * u_right,
+                h_right_reconstructed * v_right,
+            ],
+            axis=0,
+        )
+
+        reconstructed_u_left = np.zeros_like(h_left_reconstructed)
+        reconstructed_v_left = np.zeros_like(h_left_reconstructed)
+        reconstructed_u_right = np.zeros_like(h_right_reconstructed)
+        reconstructed_v_right = np.zeros_like(h_right_reconstructed)
+        wet_left = h_left_reconstructed > self.dry_tolerance
+        wet_right = h_right_reconstructed > self.dry_tolerance
+        np.divide(
+            q_left[1],
+            h_left_reconstructed,
+            out=reconstructed_u_left,
+            where=wet_left,
+        )
+        np.divide(
+            q_left[2],
+            h_left_reconstructed,
+            out=reconstructed_v_left,
+            where=wet_left,
+        )
+        np.divide(
+            q_right[1],
+            h_right_reconstructed,
+            out=reconstructed_u_right,
+            where=wet_right,
+        )
+        np.divide(
+            q_right[2],
+            h_right_reconstructed,
+            out=reconstructed_v_right,
+            where=wet_right,
+        )
+
+        flux_left = np.zeros_like(q_left)
+        flux_right = np.zeros_like(q_right)
+        if axis == "x":
+            flux_left[0] = np.where(wet_left, q_left[1], 0.0)
+            flux_left[1] = np.where(
+                wet_left,
+                q_left[1] * reconstructed_u_left
+                + 0.5 * self.g * h_left_reconstructed * h_left_reconstructed,
+                0.0,
+            )
+            flux_left[2] = np.where(
+                wet_left, q_left[1] * reconstructed_v_left, 0.0
+            )
+            flux_right[0] = np.where(wet_right, q_right[1], 0.0)
+            flux_right[1] = np.where(
+                wet_right,
+                q_right[1] * reconstructed_u_right
+                + 0.5 * self.g * h_right_reconstructed * h_right_reconstructed,
+                0.0,
+            )
+            flux_right[2] = np.where(
+                wet_right, q_right[1] * reconstructed_v_right, 0.0
+            )
+            speed_left = reconstructed_u_left
+            speed_right = reconstructed_u_right
+        elif axis == "y":
+            flux_left[0] = np.where(wet_left, q_left[2], 0.0)
+            flux_left[1] = np.where(
+                wet_left, q_left[1] * reconstructed_v_left, 0.0
+            )
+            flux_left[2] = np.where(
+                wet_left,
+                q_left[2] * reconstructed_v_left
+                + 0.5 * self.g * h_left_reconstructed * h_left_reconstructed,
+                0.0,
+            )
+            flux_right[0] = np.where(wet_right, q_right[2], 0.0)
+            flux_right[1] = np.where(
+                wet_right, q_right[1] * reconstructed_v_right, 0.0
+            )
+            flux_right[2] = np.where(
+                wet_right,
+                q_right[2] * reconstructed_v_right
+                + 0.5 * self.g * h_right_reconstructed * h_right_reconstructed,
+                0.0,
+            )
+            speed_left = reconstructed_v_left
+            speed_right = reconstructed_v_right
+        else:
+            raise ValueError("axis must be 'x' or 'y'")
+
+        wave_speed = np.maximum(
+            np.abs(speed_left) + np.sqrt(self.g * h_left_reconstructed),
+            np.abs(speed_right) + np.sqrt(self.g * h_right_reconstructed),
+        )
+        base_flux = (
+            0.5 * (flux_left + flux_right)
+            - 0.5 * wave_speed[None, ...] * (q_right - q_left)
+        )
+        left_correction = 0.5 * self.g * (
+            h_left * h_left
+            - h_left_reconstructed * h_left_reconstructed
+        )
+        right_correction = 0.5 * self.g * (
+            h_right * h_right
+            - h_right_reconstructed * h_right_reconstructed
+        )
+        return base_flux, left_correction, right_correction
+
     def update(self, dt: float) -> None:
         """ advance the solution by one explicit finite-volume step """
         if dt <= 0:
@@ -663,65 +889,39 @@ class ShallowWaterSolver:
         hv_old = self.hv.copy()
         b = self.b
 
-        h_new = h_old.copy()
-        hu_new = hu_old.copy()
-        hv_new = hv_old.copy()
+        x_states = self._x_interface_states(h_old, hu_old, hv_old, b)
+        x_flux, x_left_correction, x_right_correction = (
+            self._hydrostatic_interface_fluxes(*x_states, axis="x")
+        )
+        flux_x_left = x_flux[:, :-1, :].copy()
+        flux_x_right = x_flux[:, 1:, :].copy()
+        flux_x_left[1] += x_right_correction[:-1, :]
+        flux_x_right[1] += x_left_correction[1:, :]
 
-        for i in range(self.nx):
-            for j in range(self.ny):
-                hC = h_old[i, j]
-                huC = hu_old[i, j]
-                hvC = hv_old[i, j]
-                bC = b[i, j]
+        y_states = self._y_interface_states(h_old, hu_old, hv_old, b)
+        y_flux, y_bottom_correction, y_top_correction = (
+            self._hydrostatic_interface_fluxes(*y_states, axis="y")
+        )
+        flux_y_bottom = y_flux[:, :, :-1].copy()
+        flux_y_top = y_flux[:, :, 1:].copy()
+        flux_y_bottom[2] += y_top_correction[:, :-1]
+        flux_y_top[2] += y_bottom_correction[:, 1:]
 
-                # x-direction fluxes
-                if i == 0:
-                    hL, huL, hvL, bL = self._boundary_state_x(h_old, hu_old, hv_old, b, j, side="left")
-                else:
-                    hL = h_old[i - 1, j]
-                    huL = hu_old[i - 1, j]
-                    hvL = hv_old[i - 1, j]
-                    bL = b[i - 1, j]
-
-                FxL = self._hydro_face_x (hL, huL, hvL, bL, hC, huC, hvC, bC, use_left_correction=False)
-
-                if i == self.nx - 1:
-                    hR, huR, hvR, bR = self._boundary_state_x(h_old, hu_old, hv_old, b, j, side="right")
-                else:
-                    hR = h_old[i + 1, j]
-                    huR = hu_old[i + 1, j]
-                    hvR = hv_old[i + 1, j]
-                    bR = b[i + 1, j]
-
-                FxR = self._hydro_face_x (hC, huC, hvC, bC, hR, huR, hvR, bR, use_left_correction=True)
-
-                # y-direction fluxes
-                if j == 0:
-                    hB, huB, hvB, bB = self._boundary_state_y(h_old, hu_old, hv_old, b, i, side="bottom")
-                else:
-                    hB = h_old[i, j - 1]
-                    huB = hu_old[i, j - 1]
-                    hvB = hv_old[i, j - 1]
-                    bB = b[i, j - 1]
-
-                FyB = self._hydro_face_y (hB, huB, hvB, bB, hC, huC, hvC, bC, use_left_correction=False)
-
-                if j == self.ny - 1:
-                    hT, huT, hvT, bT = self._boundary_state_y(h_old, hu_old, hv_old, b, i, side="top")
-                else:
-                    hT = h_old[i, j + 1]
-                    huT = hu_old[i, j + 1]
-                    hvT = hv_old[i, j + 1]
-                    bT = b[i, j + 1]
-
-                FyT = self._hydro_face_y (hC, huC, hvC, bC, hT, huT, hvT, bT, use_left_correction=True)
-
-                # finite-volume update
-                h_new[i, j] = (h_old[i, j] - (dt / self.dx) * (FxR[0] - FxL[0]) - (dt / self.dy) * (FyT[0] - FyB[0]))
-
-                hu_new[i, j] = (hu_old[i, j] - (dt / self.dx) * (FxR[1] - FxL[1]) - (dt / self.dy) * (FyT[1] - FyB[1]))
-
-                hv_new[i, j] = (hv_old[i, j] - (dt / self.dx) * (FxR[2] - FxL[2]) - (dt / self.dy) * (FyT[2] - FyB[2]))
+        h_new = (
+            h_old
+            - (dt / self.dx) * (flux_x_right[0] - flux_x_left[0])
+            - (dt / self.dy) * (flux_y_top[0] - flux_y_bottom[0])
+        )
+        hu_new = (
+            hu_old
+            - (dt / self.dx) * (flux_x_right[1] - flux_x_left[1])
+            - (dt / self.dy) * (flux_y_top[1] - flux_y_bottom[1])
+        )
+        hv_new = (
+            hv_old
+            - (dt / self.dx) * (flux_x_right[2] - flux_x_left[2])
+            - (dt / self.dy) * (flux_y_top[2] - flux_y_bottom[2])
+        )
 
         # dry-cell safety
         self.operator_diagnostics["positivity_projection_count"] = int(

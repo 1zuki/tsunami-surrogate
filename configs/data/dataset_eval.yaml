@@ -70,6 +70,7 @@ solver_profiles:
     cfl: 0.35
     boundary: open
     depth_scale: 1.0
+    linear_solver_preconditioner: sparse_lu
     sponge_time_mode: elapsed_time_consistent
     sponge_reference_dt: 0.0035
     filter_time_mode: disabled

@@ -115,6 +115,7 @@ BOUSSINESQ_SOLVER_KEYS = COMMON_SOLVER_KEYS | {
     "linear_solver_tol",
     "linear_solver_abs_tol",
     "linear_solver_max_iter",
+    "linear_solver_preconditioner",
     "check_finite",
     "filter_time_mode",
     "filter_reference_dt",
@@ -644,6 +645,9 @@ def _make_boussinesq_solver_from_cfg(sv: Dict[str, Any]) -> BoussinesqSolver:
         linear_solver_tol=float(cfg.get("linear_solver_tol", 1e-8)),
         linear_solver_abs_tol=float(cfg.get("linear_solver_abs_tol", 0.0)),
         linear_solver_max_iter=int(cfg.get("linear_solver_max_iter", 80)),
+        linear_solver_preconditioner=str(
+            cfg.get("linear_solver_preconditioner", "jacobi")
+        ),
         check_finite=bool(cfg.get("check_finite", True)),
         sponge_time_mode=str(cfg.get("sponge_time_mode", "legacy_per_step")),
         sponge_reference_dt=cfg.get("sponge_reference_dt", None),
@@ -764,6 +768,8 @@ def _finalize_dense_diagnostics(
         "cg_solve1_iterations",
         "natural_health_step_indices",
         "filter_application_count",
+        "operator_linear_solver_factorization_count",
+        "operator_linear_solver_factorization_nnz",
     }
     diagnostics: Dict[str, np.ndarray] = {}
     for key, values in buffers.items():

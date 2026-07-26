@@ -24,6 +24,7 @@ BoussinesqMode = Literal[
     "linear_variable_depth",
     "weakly_nonlinear_planned",
 ]
+LinearSolverPreconditioner = Literal["jacobi", "sparse_lu"]
 
 
 class BoussinesqInfo(NamedTuple):
@@ -85,6 +86,7 @@ class BoussinesqSolver:
         linear_solver_tol: float = 1e-8,
         linear_solver_abs_tol: float = 0.0,
         linear_solver_max_iter: int = 80,
+        linear_solver_preconditioner: LinearSolverPreconditioner = "jacobi",
         check_finite: bool = True,
         sponge_time_mode: str = "legacy_per_step",
         sponge_reference_dt: float | None = None,
@@ -124,6 +126,10 @@ class BoussinesqSolver:
             raise ValueError("linear_solver_abs_tol must be non-negative")
         if linear_solver_max_iter <= 0:
             raise ValueError("linear_solver_max_iter must be positive")
+        if linear_solver_preconditioner not in ("jacobi", "sparse_lu"):
+            raise ValueError(
+                "linear_solver_preconditioner must be 'jacobi' or 'sparse_lu'"
+            )
 
         self.nx = int(nx)
         self.ny = int(ny)
@@ -141,6 +147,7 @@ class BoussinesqSolver:
         self.linear_solver_tol = float(linear_solver_tol)
         self.linear_solver_abs_tol = float(linear_solver_abs_tol)
         self.linear_solver_max_iter = int(linear_solver_max_iter)
+        self.linear_solver_preconditioner = linear_solver_preconditioner
         self.check_finite = bool(check_finite)
         self.sponge_time_mode = validate_sponge_time_mode(
             sponge_time_mode, sponge_reference_dt
@@ -167,7 +174,13 @@ class BoussinesqSolver:
         self.eta_t = np.zeros((self.nx, self.ny), dtype=float)
         self.b = np.zeros((self.nx, self.ny), dtype=float)
         self.H = np.ones((self.nx, self.ny), dtype=float)
+        self._depth_coeff_x, self._depth_coeff_y = self._face_coefficients(self.H)
+        self._mass_coeff_x, self._mass_coeff_y = self._face_coefficients(
+            self.H * self.H
+        )
         self._mass_diag_inv = np.ones((self.nx, self.ny), dtype=float)
+        self._mass_sparse_factor: Any | None = None
+        self._mass_sparse_nnz = 0
 
         if use_sponge is None:
             self.use_sponge = "periodic" not in (self.boundary_x, self.boundary_y)
@@ -232,6 +245,7 @@ class BoussinesqSolver:
             self.H = np.full_like(H, max(H0, self.min_depth))
         else:
             self.H = H
+        self._update_operator_coefficients()
         self._update_mass_preconditioner()
 
     def set_initial_condition(
@@ -289,21 +303,60 @@ class BoussinesqSolver:
         d2y = (A[1:-1, 2:] - 2.0 * center + A[1:-1, :-2]) / (self.dy * self.dy)
         return d2x + d2y
 
+    def _face_coefficients(
+        self, coefficient: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Average a cell-centered coefficient onto x and y faces."""
+        coefficient = self._check_shape(coefficient, "coefficient")
+        C = self._pad_scalar(coefficient)
+        coeff_x = 0.5 * (C[1:, 1:-1] + C[:-1, 1:-1])
+        coeff_y = 0.5 * (C[1:-1, 1:] + C[1:-1, :-1])
+        return coeff_x, coeff_y
+
+    def _flux_divergence_from_faces(
+        self,
+        field: np.ndarray,
+        coeff_x: np.ndarray,
+        coeff_y: np.ndarray,
+    ) -> np.ndarray:
+        """Apply a divergence using precomputed face coefficients."""
+        field = self._check_shape(field, "field")
+        difference_x = np.empty((self.nx + 1, self.ny), dtype=float)
+        difference_x[1:-1, :] = field[1:, :] - field[:-1, :]
+        if self.boundary_x == "periodic":
+            seam = field[0, :] - field[-1, :]
+            difference_x[0, :] = seam
+            difference_x[-1, :] = seam
+        else:
+            difference_x[0, :] = 0.0
+            difference_x[-1, :] = 0.0
+
+        difference_y = np.empty((self.nx, self.ny + 1), dtype=float)
+        difference_y[:, 1:-1] = field[:, 1:] - field[:, :-1]
+        if self.boundary_y == "periodic":
+            seam = field[:, 0] - field[:, -1]
+            difference_y[:, 0] = seam
+            difference_y[:, -1] = seam
+        else:
+            difference_y[:, 0] = 0.0
+            difference_y[:, -1] = 0.0
+
+        q_x = coeff_x * difference_x / self.dx
+        q_y = coeff_y * difference_y / self.dy
+        return (q_x[1:, :] - q_x[:-1, :]) / self.dx + (q_y[:, 1:] - q_y[:, :-1]) / self.dy
+
     def _flux_divergence(self, field: np.ndarray, coefficient: np.ndarray) -> np.ndarray:
         """Compute div(coefficient * grad(field)) from face-centered fluxes."""
-        field = self._check_shape(field, "field")
-        coefficient = self._check_shape(coefficient, "coefficient")
+        coeff_x, coeff_y = self._face_coefficients(coefficient)
+        return self._flux_divergence_from_faces(field, coeff_x, coeff_y)
 
-        A = self._pad_scalar(field)
-        C = self._pad_scalar(coefficient)
-
-        coeff_x = 0.5 * (C[1:, 1:-1] + C[:-1, 1:-1])
-        q_x = coeff_x * (A[1:, 1:-1] - A[:-1, 1:-1]) / self.dx
-
-        coeff_y = 0.5 * (C[1:-1, 1:] + C[1:-1, :-1])
-        q_y = coeff_y * (A[1:-1, 1:] - A[1:-1, :-1]) / self.dy
-
-        return (q_x[1:, :] - q_x[:-1, :]) / self.dx + (q_y[:, 1:] - q_y[:, :-1]) / self.dy
+    def _update_operator_coefficients(self) -> None:
+        self._depth_coeff_x, self._depth_coeff_y = self._face_coefficients(self.H)
+        self._mass_coeff_x, self._mass_coeff_y = self._face_coefficients(
+            self.H * self.H
+        )
+        self._mass_sparse_factor = None
+        self._mass_sparse_nnz = 0
 
     def rhs(self, eta: Optional[np.ndarray] = None) -> np.ndarray:
         """Compute g * div(H * grad(eta))."""
@@ -312,14 +365,18 @@ class BoussinesqSolver:
         else:
             eta = self._check_shape(eta, "eta")
 
-        return self.g * self._flux_divergence(eta, self.H)
+        return self.g * self._flux_divergence_from_faces(
+            eta, self._depth_coeff_x, self._depth_coeff_y
+        )
 
     def apply_mass_operator(self, a: np.ndarray) -> np.ndarray:
         """Apply M(a) = a - alpha * div(H^2 * grad(a))."""
         a = self._check_shape(a, "a")
         if self.alpha == 0.0:
             return a.copy()
-        dispersive = self._flux_divergence(a, self.H * self.H)
+        dispersive = self._flux_divergence_from_faces(
+            a, self._mass_coeff_x, self._mass_coeff_y
+        )
         return a - self.alpha * dispersive
 
     def _update_mass_preconditioner(self) -> None:
@@ -328,16 +385,99 @@ class BoussinesqSolver:
             self._mass_diag_inv = np.ones_like(self.H)
             return
 
-        H2 = self.H * self.H
-        C = self._pad_scalar(H2)
-        coeff_x = 0.5 * (C[1:, 1:-1] + C[:-1, 1:-1])
-        coeff_y = 0.5 * (C[1:-1, 1:] + C[1:-1, :-1])
         diag = np.ones_like(self.H)
         diag += self.alpha * (
-            (coeff_x[1:, :] + coeff_x[:-1, :]) / (self.dx * self.dx)
-            + (coeff_y[:, 1:] + coeff_y[:, :-1]) / (self.dy * self.dy)
+            (self._mass_coeff_x[1:, :] + self._mass_coeff_x[:-1, :])
+            / (self.dx * self.dx)
+            + (self._mass_coeff_y[:, 1:] + self._mass_coeff_y[:, :-1])
+            / (self.dy * self.dy)
         )
         self._mass_diag_inv = 1.0 / np.maximum(diag, 1e-30)
+
+    def _build_mass_sparse_factor(self) -> Any:
+        """Factor the fixed dispersive mass matrix for CG preconditioning."""
+        try:
+            from scipy import sparse
+            from scipy.sparse.linalg import splu
+        except ImportError as exc:
+            raise RuntimeError(
+                "linear_solver_preconditioner='sparse_lu' requires SciPy"
+            ) from exc
+
+        cell_ids = np.arange(self.nx * self.ny, dtype=np.int64).reshape(
+            self.nx, self.ny
+        )
+        diagonal = np.ones(self.nx * self.ny, dtype=np.float64)
+        row_parts: list[np.ndarray] = []
+        column_parts: list[np.ndarray] = []
+        value_parts: list[np.ndarray] = []
+
+        def add_edges(
+            first: np.ndarray,
+            second: np.ndarray,
+            weights: np.ndarray,
+        ) -> None:
+            first_flat = np.asarray(first, dtype=np.int64).reshape(-1)
+            second_flat = np.asarray(second, dtype=np.int64).reshape(-1)
+            weight_flat = np.asarray(weights, dtype=np.float64).reshape(-1)
+            np.add.at(diagonal, first_flat, weight_flat)
+            np.add.at(diagonal, second_flat, weight_flat)
+            row_parts.extend((first_flat, second_flat))
+            column_parts.extend((second_flat, first_flat))
+            value_parts.extend((-weight_flat, -weight_flat))
+
+        add_edges(
+            cell_ids[:-1, :],
+            cell_ids[1:, :],
+            self.alpha * self._mass_coeff_x[1:self.nx, :] / (self.dx * self.dx),
+        )
+        if self.boundary_x == "periodic":
+            add_edges(
+                cell_ids[0, :],
+                cell_ids[-1, :],
+                self.alpha * self._mass_coeff_x[0, :] / (self.dx * self.dx),
+            )
+
+        add_edges(
+            cell_ids[:, :-1],
+            cell_ids[:, 1:],
+            self.alpha * self._mass_coeff_y[:, 1:self.ny] / (self.dy * self.dy),
+        )
+        if self.boundary_y == "periodic":
+            add_edges(
+                cell_ids[:, 0],
+                cell_ids[:, -1],
+                self.alpha * self._mass_coeff_y[:, 0] / (self.dy * self.dy),
+            )
+
+        flat_ids = cell_ids.reshape(-1)
+        rows = np.concatenate((flat_ids, *row_parts))
+        columns = np.concatenate((flat_ids, *column_parts))
+        values = np.concatenate((diagonal, *value_parts))
+        matrix = sparse.coo_matrix(
+            (values, (rows, columns)),
+            shape=(flat_ids.size, flat_ids.size),
+        ).tocsc()
+        self._mass_sparse_nnz = int(matrix.nnz)
+        self._mass_sparse_factor = splu(matrix)
+        self.operator_diagnostics["linear_solver_factorization_count"] = int(
+            self.operator_diagnostics["linear_solver_factorization_count"]
+        ) + 1
+        self.operator_diagnostics["linear_solver_factorization_nnz"] = int(
+            matrix.nnz
+        )
+        return self._mass_sparse_factor
+
+    def _apply_linear_preconditioner(self, residual: np.ndarray) -> np.ndarray:
+        if self.linear_solver_preconditioner == "jacobi":
+            return self._mass_diag_inv * residual
+        factor = self._mass_sparse_factor
+        if factor is None:
+            factor = self._build_mass_sparse_factor()
+        return np.asarray(
+            factor.solve(np.asarray(residual, dtype=np.float64).reshape(-1)),
+            dtype=np.float64,
+        ).reshape(self.nx, self.ny)
 
     def solve_acceleration(self, eta: Optional[np.ndarray] = None) -> np.ndarray:
         """Solve M(a) = rhs(eta) using a small matrix-free conjugate-gradient loop."""
@@ -352,7 +492,7 @@ class BoussinesqSolver:
 
         x = np.zeros_like(b)
         r = b - self.apply_mass_operator(x)
-        z = self._mass_diag_inv * r
+        z = self._apply_linear_preconditioner(r)
         p = z.copy()
         rs_old = float(np.sum(r * r))
         rz_old = float(np.sum(r * z))
@@ -391,7 +531,7 @@ class BoussinesqSolver:
                 self.last_cg_converged = True
                 break
 
-            z = self._mass_diag_inv * r
+            z = self._apply_linear_preconditioner(r)
             rz_new = float(np.sum(r * z))
             beta = rz_new / max(rz_old, eps)
             p = z + beta * p
@@ -445,6 +585,9 @@ class BoussinesqSolver:
             "filter_effective_coefficient_max": 0.0,
             "cg_failure_mode": self.cg_failure_mode,
             "cg_absolute_residual_tolerance": self.linear_solver_abs_tol,
+            "linear_solver_preconditioner": self.linear_solver_preconditioner,
+            "linear_solver_factorization_count": 0,
+            "linear_solver_factorization_nnz": int(self._mass_sparse_nnz),
             "cg_solve_count": 0,
             "cg_failure_count": 0,
             "cg_iterations_sum": 0,
@@ -813,6 +956,9 @@ def simulate_rollout(sample_inputs: Any, **kwargs: Any) -> np.ndarray:
         linear_solver_tol=float(kwargs.get("linear_solver_tol", 1e-8)),
         linear_solver_abs_tol=float(kwargs.get("linear_solver_abs_tol", 0.0)),
         linear_solver_max_iter=int(kwargs.get("linear_solver_max_iter", 80)),
+        linear_solver_preconditioner=str(
+            kwargs.get("linear_solver_preconditioner", "jacobi")
+        ),
         check_finite=bool(kwargs.get("check_finite", True)),
     )
     solver.set_bathymetry(bathymetry)
