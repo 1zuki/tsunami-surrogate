@@ -2,6 +2,7 @@ defaults:
   - fno_muscl_hr.yaml
 
 output_dir: experiments/fno_res64_muscl_hr
+seeds: [18, 36, 67]
 
 data:
   train_path: data/processed_res64/muscl_hr/train/eval_dataset.npz

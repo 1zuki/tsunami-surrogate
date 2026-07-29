@@ -2,6 +2,7 @@ defaults:
   - ../train/base.yaml
 
 output_dir: experiments/convlstm
+seeds: [18, 36, 67]
 
 data:
   batch_size: 8

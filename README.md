@@ -371,6 +371,24 @@ Train Boussinesq-label FNO:
 python scripts/train.py --config configs/model/fno_boussinesq.yaml
 ```
 
+To train replicated models sequentially, add a top-level seed list to the model
+config. The existing single `seed` behavior is unchanged when `seeds` is absent.
+
+```yaml
+seeds: [18, 36, 67, 72, 154]
+```
+
+For `output_dir: experiments/fno`, these runs are written to
+`experiments/fno/fno_seed_18`, `experiments/fno/fno_seed_36`, and so on. Each
+directory contains the complete run artifacts, including resolved config,
+metadata, history, and checkpoints.
+
+The headline Hydrostatic FNO and F-FNO configs use all five frozen seeds. Every
+other ordinary model config uses the shared three-seed subset `[18, 36, 67]`;
+the dedicated uncertainty-ensemble config retains its own member seeds. A seed
+list does not make legacy holdout or native-resolution data compatible with the
+common-time-v2 core, so run those configurations only under their own protocol.
+
 Optional training tracks:
 - Ensemble for uncertainty: `python scripts/train_ensemble.py --config configs/model/fno.yaml`
 - Experimental (not reported in the paper): a ConvLSTM baseline exists in the code
@@ -489,7 +507,15 @@ Prerequisites:
 - preprocess each resolution
 - use a checkpoint from `6.3` for cross-resolution evaluation
 
-Current native-resolution configs cover hydrostatic and MUSCL-HR. There is no Boussinesq native-resolution eval config yet, so keep Boussinesq resolution claims to the proxy study in `6.7` unless that config is added.
+The native-resolution configs use the common-time-v2 three-reference policy.
+Every resolution deterministically regenerates the same seed-763 `128 x 128`
+master bathymetry/source scenario and area-averages that master to the target
+grid. Before the first rollout, `make_dataset.py` freezes and verifies the full
+1,000-scenario input inventory under `data/res*/synthetic/`. Hydrostatic and
+MUSCL-HR use radiation boundaries; Boussinesq uses the accepted open-boundary,
+sparse-LU policy. All sponges remain outside the published crop.
+Raw generation and preprocessing cover all three references; dedicated
+Boussinesq native-resolution model/evaluation configs are not frozen yet.
 
 Generate native-grid raw datasets:
 
@@ -498,6 +524,12 @@ python scripts/make_dataset.py --config configs/data/multires/dataset_32.yaml
 python scripts/make_dataset.py --config configs/data/multires/dataset_64.yaml
 python scripts/make_dataset.py --config configs/data/multires/dataset_128.yaml
 ```
+
+On a new machine, run one fresh scenario first by adding `--stop-at 1`. After
+checking its 50 timestamps, quality status, crop, provenance, and peak memory,
+resume the exact same config with `--continue`. The conservative 128-grid
+default is eight single-thread workers; the local full-horizon canary for its
+actual `192 x 192` computational grid peaked near 208 MiB for one worker.
 
 Preprocess each native-grid dataset:
 

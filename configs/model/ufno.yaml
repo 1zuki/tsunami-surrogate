@@ -2,6 +2,7 @@ defaults:
   - fno.yaml
 
 output_dir: experiments/ufno
+seeds: [18, 36, 67]
 
 model:
   name: ufno2d

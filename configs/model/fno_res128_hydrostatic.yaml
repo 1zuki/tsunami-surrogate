@@ -2,6 +2,7 @@ defaults:
   - fno.yaml
 
 output_dir: experiments/fno_res128_hydrostatic
+seeds: [18, 36, 67]
 
 data:
   train_path: data/processed_crossres/res128/train/eval_dataset.npz

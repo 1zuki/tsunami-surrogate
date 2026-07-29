@@ -2,6 +2,7 @@ defaults:
   - fno.yaml
 
 output_dir: experiments/fno_full_on_holdout/bathymetry_continental
+seeds: [18, 36, 67]
 
 data:
   test_path: data/processed_strict_holdout/hydrostatic/bathymetry_holdout_continental/test_heldout

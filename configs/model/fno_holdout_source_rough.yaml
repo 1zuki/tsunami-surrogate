@@ -2,6 +2,7 @@ defaults:
   - fno.yaml
 
 output_dir: experiments/fno_holdout/source_rough
+seeds: [18, 36, 67]
 
 data:
   train_path: data/processed_strict_holdout/hydrostatic/source_holdout_rough/train

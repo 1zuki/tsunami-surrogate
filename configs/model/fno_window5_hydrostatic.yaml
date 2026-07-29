@@ -2,6 +2,7 @@ defaults:
   - ../train/base.yaml
 
 output_dir: experiments/fno_window5_hydrostatic
+seeds: [18, 36, 67]
 
 data:
   train_path: data/processed/hydrostatic/train/eval_dataset.npz
