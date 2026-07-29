@@ -1,47 +1,124 @@
-# Saved-step 128x128 resolution study.
+# Common-time-v2 native 128x128 auxiliary dataset.
 configs:
-  bathymetry: "configs/data/multires/bathymetry_128.yaml"
-  source: "configs/data/multires/source_128.yaml"
+  bathymetry: configs/data/multires/bathymetry_128.yaml
+  source: configs/data/multires/source_128.yaml
 
 dataset:
   num_samples: 1000
   seed: 763
-  num_workers: 10
+  # The full-horizon 192x192 local canary peaked near 208 MiB with one worker.
+  # Eight single-thread workers fit the verified 8-vCPU cloud policy.
+  num_workers: 8
   n_steps: 250
   save_every: 5
   auto_dt: true
-  target_cfl: 0.4
+  target_cfl: 0.45
   include_initial_state: true
   sea_level_offset: 0.0
   source_strength_range: [0.45, 0.85]
-  bathymetry_dir: "./data/res128/bathymetry"
-  source_dir: "./data/res128/sources"
-  output_dir: "./data/res128/raw"
-  manifest_path: "./data/res128/synthetic/scenario_manifest.jsonl"
+  bathymetry_dir: data/res128/bathymetry
+  source_dir: data/res128/sources
+  output_dir: data/res128/raw
+  manifest_path: data/res128/synthetic/scenario_manifest.jsonl
   copy_configs: true
 
+requested_output:
+  enabled: true
+  schema_id: tsunami-surrogate.common-time-v2.contract.v1
+  status: accepted
+  execution_scope: production
+  split: train
+  start: 0.0035
+  step: 0.0035
+  count: 50
+  horizon: 0.175
+  max_natural_steps: 20000
+  collect_natural_step_health: true
+  eta_primary: true
+  debug_full_states: false
+  acknowledge_provisional: false
+
+paired_inputs:
+  enabled: true
+  lineage_id: native-resolution-v2-seed763-master128
+  master_shape: [128, 128]
+  target_shape: [128, 128]
+  downsample_method: block_mean_float64_v1
+  master_bathymetry_config: configs/data/multires/bathymetry_128.yaml
+  master_source_config: configs/data/multires/source_128.yaml
+  inventory_path: data/res128/synthetic/native_input_inventory.jsonl
+
+computational_domain:
+  enabled: true
+  buffer_cells: 32
+  source_taper_cells: 16
+  bathymetry_extension: edge
+  output_crop: central
+
 fdes:
-  enabled: ["swe_hydrostatic", "swe_muscl_hr"]
-  primary: "swe_hydrostatic"
+  enabled: [swe_hydrostatic, swe_muscl_hr, boussinesq]
+  primary: swe_hydrostatic
+
+solver_profiles:
+  swe_hydrostatic:
+    cfl: 0.1125
+    boundary: radiation
+    sponge_time_mode: elapsed_time_consistent
+    sponge_reference_dt: 0.0035
+  swe_muscl_hr:
+    cfl: 0.225
+    boundary: radiation
+    sponge_time_mode: elapsed_time_consistent
+    sponge_reference_dt: 0.0035
+  boussinesq:
+    cfl: 0.35
+    boundary: open
+    depth_scale: 1.0
+    linear_solver_preconditioner: sparse_lu
+    sponge_time_mode: elapsed_time_consistent
+    sponge_reference_dt: 0.0035
+    filter_time_mode: disabled
+    filter_reference_dt: 0.0035
+    cg_failure_mode: strict_v2
+
+operations:
+  enabled: true
+  progress_every: 1
+  solver_progress: true
+  max_in_flight: 8
 
 quality:
   on_violation: fail
   reject_nonfinite: true
-  min_h_tolerance: -1e-6
-  max_abs_eta_limit: 10.0
-  max_velocity_limit: 50.0
+  min_h_tolerance: -1.0e-6
+  max_abs_eta_limit: 5.0
+  max_velocity_limit: 30.0
+  max_eta_over_depth: 1.0
+  require_cg_converged: true
 
 solver:
-  nx: 128
-  ny: 128
+  nx: 192
+  ny: 192
   dx: 0.0078125
   dy: 0.0078125
   dt: 0.001
   g: 9.81
-  cfl: 0.4
-  dry_tolerance: 1e-6
-  max_velocity: 50.0
-  boundary: "open"
+  rho: 1000
+  cfl: 0.45
+  dry_tolerance: 1.0e-6
+  max_velocity: 30.0
+  boundary: open
   use_sponge: true
-  sponge_width: 24
-  sponge_min_factor: 0.9
+  sponge_width: 32
+  sponge_min_factor: 0.8
+  sponge_axes: xy
+  sponge_profile: cosine
+  alpha: 0.3333333333333333
+  min_depth: 1.0e-4
+  depth_scale: 1.0
+  mode: linear_variable_depth
+  filter_strength: 0.0
+  linear_solver_tol: 1.0e-10
+  linear_solver_abs_tol: 0.0
+  linear_solver_max_iter: 750
+  check_finite: true

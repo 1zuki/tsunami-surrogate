@@ -30,14 +30,38 @@ def _dataset_num_samples(loader) -> int:
         return -1
 
 
+def _resolve_metrics_output_path(cfg, cli_output: str | None) -> Path:
+    if cli_output is not None:
+        output = str(cli_output).strip()
+        if not output:
+            raise ValueError("--output must be a non-empty path")
+        return Path(output)
+
+    eval_cfg = cfg.get("eval", cfg.get("evaluation", {}))
+    output_dir = str(eval_cfg.get("output_dir", "")).strip()
+    if not output_dir or output_dir == "experiments/eval":
+        output_dir = f"{cfg.get('output_dir', 'experiments/default')}/eval"
+    return Path(output_dir) / "metrics.json"
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--config", required=True)
     p.add_argument("--checkpoint", required=True)
     p.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None)
+    p.add_argument(
+        "--output",
+        default=None,
+        help=(
+            "Exact metrics JSON path. When omitted, the config's eval output "
+            "directory is used. Set this for per-seed evaluations to avoid "
+            "overwriting another seed's metrics."
+        ),
+    )
 
     args = p.parse_args()
     cfg = load_config(args.config)
+    metrics_output_path = _resolve_metrics_output_path(cfg, args.output)
     if args.device is not None:
         cfg["device"] = args.device
     seed_everything(int(cfg.get("seed", 42)))
@@ -94,7 +118,7 @@ def main():
         )
     validate_model_io_channels(cfg, loaders, preferred_splits=("test", "val", "train"))
     model = build_model(cfg).to(device)
-    load_checkpoint(args.checkpoint, model, map_location=device)
+    checkpoint = load_checkpoint(args.checkpoint, model, map_location=device)
     batch_transform = (
         normalization_bridge.transform if normalization_bridge is not None else None
     )
@@ -130,12 +154,15 @@ def main():
     if normalization_bridge is not None:
         metrics["normalization_bridge"] = normalization_bridge.metadata()
 
-    output_dir = str(eval_cfg.get("output_dir", "")).strip()
-    if not output_dir or output_dir == "experiments/eval":
-        output_dir = f"{cfg.get('output_dir', 'experiments/default')}/eval"
+    metrics["config_path"] = str(args.config)
+    metrics["checkpoint_path"] = str(args.checkpoint)
+    metrics["checkpoint_epoch"] = int(checkpoint.get("epoch", -1))
+    checkpoint_cfg = checkpoint.get("config")
+    if isinstance(checkpoint_cfg, dict) and "seed" in checkpoint_cfg:
+        metrics["checkpoint_seed"] = int(checkpoint_cfg["seed"])
 
     print(metrics)
-    save_json(metrics, f"{output_dir}/metrics.json")
+    save_json(metrics, metrics_output_path)
 
 
 if __name__ == "__main__":

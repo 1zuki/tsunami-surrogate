@@ -14,10 +14,16 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.data_gen.simulate_dataset import (
+    BufferedDomainConfig,
+    TsunamiDatasetBuilder,
     _make_boussinesq_solver_from_cfg,
     _make_hydrostatic_solver_from_cfg,
     _make_muscl_solver_from_cfg,
+    _prepare_buffered_domain,
+    _resolved_solver_cfg_for_fde,
+    _simulate_requested_times_local,
 )
+from src.data_gen.common_time_v2 import RequestedOutputConfig
 from src.utils.config import load_config
 from src.utils.device import hardware_info, resolve_device
 from src.utils.io import save_json
@@ -102,16 +108,17 @@ def _make_solver(solver_name: str, solver_cfg: Dict[str, Any]):
 def _setup_solver_for_scenario(
     solver_name: str,
     solver_cfg: Dict[str, Any],
-    sea_level_offset: float,
     scenario: Dict[str, Any],
 ):
-    bathymetry = np.asarray(scenario["bathymetry"])
-    source_field = np.asarray(scenario["source_field"])
-    source_strength = float(scenario["source_strength"])
-
-    eta0 = source_strength * source_field
-    rest_depth = np.maximum(-bathymetry + float(sea_level_offset), 0.0)
-    h0 = np.maximum(rest_depth + eta0, 0.0)
+    bathymetry = np.asarray(scenario["solver_bathymetry"])
+    eta0 = np.asarray(scenario["solver_eta0"])
+    h0 = np.asarray(scenario["solver_h0"])
+    expected_shape = (int(solver_cfg["nx"]), int(solver_cfg["ny"]))
+    if bathymetry.shape != expected_shape:
+        raise ValueError(
+            f"Prepared solver bathymetry must have shape {expected_shape}, "
+            f"got {bathymetry.shape}"
+        )
 
     solver = _make_solver(solver_name, solver_cfg)
     solver.set_bathymetry(bathymetry)
@@ -122,7 +129,70 @@ def _setup_solver_for_scenario(
     return solver
 
 
-def _rollout_solver(solver: Any, n_steps: int, auto_dt: bool, target_cfl: float) -> None:
+def _prepare_scenario(
+    scenario: Dict[str, Any],
+    *,
+    sea_level_offset: float,
+    buffered_domain: BufferedDomainConfig,
+) -> Dict[str, Any]:
+    bathymetry = np.asarray(scenario["bathymetry"])
+    source_field = np.asarray(scenario["source_field"])
+    source_strength = float(scenario["source_strength"])
+
+    if buffered_domain.enabled:
+        prepared = _prepare_buffered_domain(
+            bathymetry=bathymetry,
+            source_field=source_field,
+            source_strength=source_strength,
+            sea_level_offset=sea_level_offset,
+            config=buffered_domain,
+        )
+        solver_bathymetry = prepared["solver_bathymetry"]
+        solver_eta0 = prepared["solver_eta0"]
+        solver_h0 = prepared["solver_h0"]
+    else:
+        solver_bathymetry = bathymetry
+        solver_eta0 = source_strength * source_field
+        rest_depth = np.maximum(-bathymetry + float(sea_level_offset), 0.0)
+        solver_h0 = np.maximum(rest_depth + solver_eta0, 0.0)
+
+    return {
+        **scenario,
+        "input_shape": tuple(int(v) for v in bathymetry.shape),
+        "solver_shape": tuple(int(v) for v in solver_bathymetry.shape),
+        "solver_bathymetry": np.asarray(solver_bathymetry),
+        "solver_eta0": np.asarray(solver_eta0),
+        "solver_h0": np.asarray(solver_h0),
+    }
+
+
+def _rollout_solver(
+    solver: Any,
+    n_steps: int,
+    auto_dt: bool,
+    target_cfl: float,
+    requested_output: RequestedOutputConfig | None,
+) -> Dict[str, Any]:
+    if requested_output is not None:
+        _, timestamps, dt_history, diagnostics = _simulate_requested_times_local(
+            solver,
+            auto_dt=auto_dt,
+            target_cfl=target_cfl,
+            requested_times=requested_output.requested_times,
+            max_natural_steps=requested_output.max_natural_steps,
+            collect_natural_step_health=requested_output.collect_natural_step_health,
+        )
+        natural_steps = int(
+            np.asarray(diagnostics["total_natural_steps"]).reshape(-1)[0]
+        )
+        return {
+            "natural_steps": natural_steps,
+            "published_frames": int(timestamps.size),
+            "final_requested_time": float(timestamps[-1]),
+            "final_natural_time": float(np.sum(dt_history, dtype=np.float64)),
+        }
+
+    elapsed = 0.0
     for _ in range(int(n_steps)):
         if auto_dt:
             dt = float(solver.suggest_dt(target_cfl=float(target_cfl)))
@@ -130,6 +200,13 @@ def _rollout_solver(solver: Any, n_steps: int, auto_dt: bool, target_cfl: float)
         else:
             dt = float(solver.dt)
         solver.step(dt=dt, auto_dt=False)
+        elapsed += dt
+    return {
+        "natural_steps": int(n_steps),
+        "published_frames": 0,
+        "final_requested_time": None,
+        "final_natural_time": float(elapsed),
+    }
 
 
 def main() -> None:
@@ -158,20 +235,44 @@ def main() -> None:
         )
 
     cfg = load_config(args.config)
-    ds_cfg = dict(cfg.get("dataset", {}))
-    solver_cfg = dict(cfg.get("solver", {}))
-    if not solver_cfg:
-        raise KeyError("Dataset config missing `solver` section.")
+    dataset_cfg = TsunamiDatasetBuilder._parse_dataset_section(cfg)
+    base_solver_cfg = TsunamiDatasetBuilder._parse_solver_section(cfg)
 
     solver_name = _canonical_solver_name(args.solver)
     if solver_name not in {"swe_hydrostatic", "swe_muscl_hr", "boussinesq"}:
         raise ValueError(f"Unsupported solver: {solver_name}")
 
-    n_steps = int(args.n_steps if args.n_steps is not None else ds_cfg.get("n_steps", 200))
+    solver_cfg = _resolved_solver_cfg_for_fde(
+        base_solver_cfg, dataset_cfg.solver_profiles, solver_name
+    )
+    requested_output = dataset_cfg.requested_output
+    requested_overrides = {
+        "--n-steps": args.n_steps,
+        "--auto-dt": args.auto_dt,
+        "--target-cfl": args.target_cfl,
+    }
+    active_requested_overrides = [
+        name for name, value in requested_overrides.items() if value is not None
+    ]
+    if requested_output is not None and active_requested_overrides:
+        p.error(
+            "requested_output benchmarks use the frozen production stepping "
+            "contract; remove overrides: " + ", ".join(active_requested_overrides)
+        )
+
+    n_steps = int(
+        args.n_steps if args.n_steps is not None else dataset_cfg.n_steps
+    )
     if n_steps <= 0:
         raise ValueError("--n-steps must be positive")
-    target_cfl = float(args.target_cfl if args.target_cfl is not None else ds_cfg.get("target_cfl", 0.45))
-    auto_dt_raw = args.auto_dt if args.auto_dt is not None else ds_cfg.get("auto_dt", True)
+    target_cfl = float(
+        args.target_cfl
+        if args.target_cfl is not None
+        else solver_cfg.get("cfl", dataset_cfg.target_cfl)
+    )
+    auto_dt_raw = (
+        args.auto_dt if args.auto_dt is not None else dataset_cfg.auto_dt
+    )
     if isinstance(auto_dt_raw, bool):
         auto_dt = auto_dt_raw
     else:
@@ -180,9 +281,9 @@ def main() -> None:
             raise ValueError("--auto-dt must be true/false")
         auto_dt = txt in {"true", "1", "yes"}
 
-    sea_level_offset = float(ds_cfg.get("sea_level_offset", 0.0))
-    bathy_dir = Path(args.bathymetry_dir or ds_cfg.get("bathymetry_dir", "data/bathymetry"))
-    source_dir = Path(args.source_dir or ds_cfg.get("source_dir", "data/sources"))
+    sea_level_offset = float(dataset_cfg.sea_level_offset)
+    bathy_dir = Path(args.bathymetry_dir or dataset_cfg.bathymetry_dir)
+    source_dir = Path(args.source_dir or dataset_cfg.source_dir)
     if not bathy_dir.exists():
         raise FileNotFoundError(bathy_dir)
     if not source_dir.exists():
@@ -198,9 +299,21 @@ def main() -> None:
 
     requested_precision = str(args.precision)
     dtype = np.float64 if requested_precision == "float64" else np.float32
-    scenarios, scenario_load_total_s = _load_scenarios(sample_ids, bathy_dir=bathy_dir, source_dir=source_dir, dtype=dtype)
-    if not scenarios:
+    raw_scenarios, scenario_load_total_s = _load_scenarios(
+        sample_ids, bathy_dir=bathy_dir, source_dir=source_dir, dtype=dtype
+    )
+    if not raw_scenarios:
         raise RuntimeError("No scenarios loaded for solver benchmark.")
+    prepare_started = time.perf_counter()
+    scenarios = [
+        _prepare_scenario(
+            scenario,
+            sea_level_offset=sea_level_offset,
+            buffered_domain=dataset_cfg.buffered_domain,
+        )
+        for scenario in raw_scenarios
+    ]
+    scenario_prepare_total_s = float(time.perf_counter() - prepare_started)
 
     warmup = max(0, int(args.warmup))
     repeats = max(1, int(args.repeats))
@@ -208,12 +321,19 @@ def main() -> None:
     # warmup
     for i in range(warmup):
         s = scenarios[i % len(scenarios)]
-        solver = _setup_solver_for_scenario(solver_name, solver_cfg, sea_level_offset=sea_level_offset, scenario=s)
-        _rollout_solver(solver, n_steps=n_steps, auto_dt=auto_dt, target_cfl=target_cfl)
+        solver = _setup_solver_for_scenario(solver_name, solver_cfg, scenario=s)
+        _rollout_solver(
+            solver,
+            n_steps=n_steps,
+            auto_dt=auto_dt,
+            target_cfl=target_cfl,
+            requested_output=requested_output,
+        )
 
     setup_total_s = 0.0
     rollout_total_s = 0.0
     state_dtype = None
+    rollout_summaries: List[Dict[str, Any]] = []
 
     for _ in range(repeats):
         for s in scenarios:
@@ -221,7 +341,6 @@ def main() -> None:
             solver = _setup_solver_for_scenario(
                 solver_name=solver_name,
                 solver_cfg=solver_cfg,
-                sea_level_offset=sea_level_offset,
                 scenario=s,
             )
             if state_dtype is None:
@@ -230,17 +349,25 @@ def main() -> None:
                 except Exception:
                     state_dtype = "unknown"
             t1 = time.perf_counter()
-            _rollout_solver(solver, n_steps=n_steps, auto_dt=auto_dt, target_cfl=target_cfl)
+            rollout_summary = _rollout_solver(
+                solver,
+                n_steps=n_steps,
+                auto_dt=auto_dt,
+                target_cfl=target_cfl,
+                requested_output=requested_output,
+            )
             t2 = time.perf_counter()
 
             setup_total_s += float(t1 - t0)
             rollout_total_s += float(t2 - t1)
+            rollout_summaries.append(rollout_summary)
 
     total_timed_s = float(setup_total_s + rollout_total_s)
     num_samples_timed = int(len(scenarios) * repeats)
     per_sample_total = total_timed_s / float(max(1, num_samples_timed))
     per_sample_rollout = rollout_total_s / float(max(1, num_samples_timed))
     per_sample_setup = setup_total_s / float(max(1, num_samples_timed))
+    natural_steps = [int(row["natural_steps"]) for row in rollout_summaries]
 
     payload: Dict[str, Any] = {
         "evaluation_type": "solver_speed_benchmark",
@@ -252,14 +379,52 @@ def main() -> None:
         "precision_actual": state_dtype if state_dtype is not None else "unknown",
         "num_scenarios": int(len(scenarios)),
         "sample_ids": [int(s["sample_index"]) for s in scenarios],
-        "n_steps": int(n_steps),
+        "rollout_mode": (
+            "requested_times" if requested_output is not None else "fixed_steps"
+        ),
+        "n_steps": None if requested_output is not None else int(n_steps),
         "auto_dt": bool(auto_dt),
         "target_cfl": float(target_cfl),
+        "requested_output_count": (
+            0
+            if requested_output is None
+            else int(requested_output.requested_times.size)
+        ),
+        "requested_timestamps": (
+            []
+            if requested_output is None
+            else requested_output.requested_times.tolist()
+        ),
+        "requested_horizon": (
+            None
+            if requested_output is None
+            else float(requested_output.requested_times[-1])
+        ),
+        "max_natural_steps": (
+            None
+            if requested_output is None
+            else int(requested_output.max_natural_steps)
+        ),
+        "collect_natural_step_health": (
+            False
+            if requested_output is None
+            else bool(requested_output.collect_natural_step_health)
+        ),
+        "computational_domain": dataset_cfg.buffered_domain.semantics(),
+        "input_shape": list(scenarios[0]["input_shape"]),
+        "solver_shape": list(scenarios[0]["solver_shape"]),
+        "natural_steps_min": int(min(natural_steps)),
+        "natural_steps_max": int(max(natural_steps)),
+        "natural_steps_mean": float(np.mean(natural_steps)),
         "num_warmup": int(warmup),
         "num_repeats": int(repeats),
         "num_samples_timed": int(num_samples_timed),
         "scenario_load_time_total_s": float(scenario_load_total_s),
         "scenario_load_time_per_sample_s": float(scenario_load_total_s / max(1, len(scenarios))),
+        "scenario_prepare_time_total_s": float(scenario_prepare_total_s),
+        "scenario_prepare_time_per_sample_s": float(
+            scenario_prepare_total_s / max(1, len(scenarios))
+        ),
         "solver_setup_time_total_s": float(setup_total_s),
         "solver_setup_time_per_sample_s": float(per_sample_setup),
         "rollout_time_total_s": float(rollout_total_s),
@@ -268,7 +433,11 @@ def main() -> None:
         "time_per_sample_mean_s": float(per_sample_total),
         "samples_per_second": float(num_samples_timed / max(total_timed_s, 1e-12)),
         "hardware": hardware_info(dev),
-        "notes": "speedup denominator should use rollout_time_per_sample_s when comparing against model inference.",
+        "notes": (
+            "speedup denominator should use rollout_time_per_sample_s when "
+            "comparing against model inference; static-input loading, buffered-domain "
+            "preparation, and solver setup are reported separately."
+        ),
     }
 
     if requested_precision == "float32" and payload["precision_actual"] != "float32":

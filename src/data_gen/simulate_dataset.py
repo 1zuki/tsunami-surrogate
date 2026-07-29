@@ -81,6 +81,7 @@ FDE_ALIASES = {
 }
 KNOWN_FDES = {"swe_hydrostatic", "swe_muscl_hr", "boussinesq", *FDE_ALIASES.keys()}
 IMPLEMENTED_FDES = {"swe_hydrostatic", "swe_muscl_hr", "boussinesq"}
+NATIVE_INPUT_SCHEMA_ID = "tsunami-surrogate.native-resolution-inputs.v1"
 FDE_OUTPUT_DIRNAME = {
     "swe_hydrostatic": "hydrostatic",
     "swe_muscl_hr": "muscl_hr",
@@ -196,6 +197,35 @@ class AuthoritativeInputsConfig:
         }
 
 
+@dataclass(frozen=True)
+class PairedInputsConfig:
+    """Deterministic master-grid construction for paired native resolutions."""
+
+    enabled: bool = False
+    lineage_id: str = ""
+    master_shape: tuple[int, int] = (0, 0)
+    target_shape: tuple[int, int] = (0, 0)
+    downsample_method: str = "block_mean_float64_v1"
+    master_bathymetry_config: Path | None = None
+    master_source_config: Path | None = None
+    inventory_path: Path | None = None
+    lineage_hash: str = ""
+    target_contract_hash: str = ""
+
+    def semantics(self) -> dict[str, Any] | None:
+        if not self.enabled:
+            return None
+        return {
+            "schema_id": NATIVE_INPUT_SCHEMA_ID,
+            "lineage_id": self.lineage_id,
+            "master_shape": list(self.master_shape),
+            "target_shape": list(self.target_shape),
+            "downsample_method": self.downsample_method,
+            "lineage_hash": self.lineage_hash,
+            "target_contract_hash": self.target_contract_hash,
+        }
+
+
 @dataclass
 class DatasetConfig:
     """Convenience wrapper for the top-level dataset config."""
@@ -222,6 +252,8 @@ class DatasetConfig:
     authoritative_inputs: AuthoritativeInputsConfig | None = None
     solver_profiles: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     buffered_domain: BufferedDomainConfig = field(default_factory=BufferedDomainConfig)
+    paired_inputs: PairedInputsConfig = field(default_factory=PairedInputsConfig)
+    paired_input_inventory_sha256: str | None = None
 
 
 @dataclass
@@ -231,6 +263,28 @@ class RolloutResult:
     timestamps: np.ndarray
     dt_history: np.ndarray
     diagnostics: Dict[str, np.ndarray] | None = None
+
+
+def _block_mean_downsample(
+    values: np.ndarray, target_shape: tuple[int, int]
+) -> np.ndarray:
+    """Area-average an integer-ratio master grid with float64 accumulation."""
+
+    master = np.asarray(values, dtype=np.float32)
+    if master.ndim != 2:
+        raise ValueError("paired native inputs must be two-dimensional")
+    tx, ty = map(int, target_shape)
+    mx, my = master.shape
+    if tx <= 0 or ty <= 0 or mx % tx != 0 or my % ty != 0:
+        raise ValueError(
+            f"master shape {master.shape} must be integer-divisible by target "
+            f"shape {target_shape}"
+        )
+    if master.shape == (tx, ty):
+        return master.copy()
+    fx, fy = mx // tx, my // ty
+    reduced = master.reshape(tx, fx, ty, fy).mean(axis=(1, 3), dtype=np.float64)
+    return np.asarray(reduced, dtype=np.float32)
 
 
 def _cosine_source_window(shape: tuple[int, int], taper_cells: int) -> np.ndarray:
@@ -1365,6 +1419,60 @@ def _generate_bathymetry_worker(
     }
 
 
+def _write_npz_atomic(path: Path, **arrays: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staging = path.with_name(f".{path.name}.staging-{os.getpid()}")
+    if staging.exists():
+        staging.unlink()
+    try:
+        with staging.open("wb") as handle:
+            np.savez_compressed(handle, **arrays)
+        os.replace(staging, path)
+    finally:
+        staging.unlink(missing_ok=True)
+
+
+def _generate_paired_bathymetry_worker(
+    sample_idx: int,
+    run_seed: int,
+    master_config_path: str,
+    bathymetry_dir: str,
+    paired: PairedInputsConfig,
+) -> Dict[str, Any]:
+    sample_seed = _seed_for_sample(run_seed, sample_idx)
+    generator = BathymetryGenerator(master_config_path)
+    generator.rng = np.random.default_rng([sample_seed, 11])
+    master, bathy_type = generator.generate()
+    master = np.asarray(master, dtype=np.float32)
+    target = _block_mean_downsample(master, paired.target_shape)
+    master_hash = hash_array(master)["sha256"]
+    out_path = _bathymetry_file_path(bathymetry_dir, sample_idx)
+    _write_npz_atomic(
+        out_path,
+        bathymetry=target,
+        master_bathymetry=master,
+        bathymetry_type=np.asarray([str(bathy_type)], dtype="U64"),
+        sample_seed=np.asarray([sample_seed], dtype=np.int64),
+        native_input_schema_id=np.asarray([NATIVE_INPUT_SCHEMA_ID], dtype="U96"),
+        native_lineage_id=np.asarray([paired.lineage_id], dtype="U128"),
+        native_lineage_hash=np.asarray([paired.lineage_hash], dtype="U64"),
+        native_target_contract_hash=np.asarray(
+            [paired.target_contract_hash], dtype="U64"
+        ),
+        native_master_shape=np.asarray(paired.master_shape, dtype=np.int64),
+        native_target_shape=np.asarray(paired.target_shape, dtype=np.int64),
+        native_downsample_method=np.asarray(
+            [paired.downsample_method], dtype="U64"
+        ),
+        native_master_array_sha256=np.asarray([master_hash], dtype="U64"),
+    )
+    return {
+        "sample_index": sample_idx,
+        "bathymetry_type": str(bathy_type),
+        "bathymetry_path": str(out_path),
+    }
+
+
 def _generate_source_worker(
     sample_idx: int,
     run_seed: int,
@@ -1389,6 +1497,52 @@ def _generate_source_worker(
         source_type=np.array([str(source_type)], dtype="U64"),
         source_strength=np.array([source_strength], dtype=np.float32),
         sample_seed=np.array([sample_seed], dtype=np.int64),
+    )
+    return {
+        "sample_index": sample_idx,
+        "source_type": str(source_type),
+        "source_strength": source_strength,
+        "source_path": str(out_path),
+    }
+
+
+def _generate_paired_source_worker(
+    sample_idx: int,
+    run_seed: int,
+    master_config_path: str,
+    source_dir: str,
+    source_strength_range: Tuple[float, float],
+    paired: PairedInputsConfig,
+) -> Dict[str, Any]:
+    sample_seed = _seed_for_sample(run_seed, sample_idx)
+    generator = SourceGenerator(master_config_path)
+    generator.rng = np.random.default_rng([sample_seed, 23])
+    strength_rng = np.random.default_rng([sample_seed, 37])
+    master, source_type = generator.generate()
+    master = np.asarray(master, dtype=np.float32)
+    target = _block_mean_downsample(master, paired.target_shape)
+    source_strength = float(strength_rng.uniform(*source_strength_range))
+    master_hash = hash_array(master)["sha256"]
+    out_path = _source_file_path(source_dir, sample_idx)
+    _write_npz_atomic(
+        out_path,
+        source_field=target,
+        master_source_field=master,
+        source_type=np.asarray([str(source_type)], dtype="U64"),
+        source_strength=np.asarray([source_strength], dtype=np.float32),
+        sample_seed=np.asarray([sample_seed], dtype=np.int64),
+        native_input_schema_id=np.asarray([NATIVE_INPUT_SCHEMA_ID], dtype="U96"),
+        native_lineage_id=np.asarray([paired.lineage_id], dtype="U128"),
+        native_lineage_hash=np.asarray([paired.lineage_hash], dtype="U64"),
+        native_target_contract_hash=np.asarray(
+            [paired.target_contract_hash], dtype="U64"
+        ),
+        native_master_shape=np.asarray(paired.master_shape, dtype=np.int64),
+        native_target_shape=np.asarray(paired.target_shape, dtype=np.int64),
+        native_downsample_method=np.asarray(
+            [paired.downsample_method], dtype="U64"
+        ),
+        native_master_array_sha256=np.asarray([master_hash], dtype="U64"),
     )
     return {
         "sample_index": sample_idx,
@@ -1578,6 +1732,8 @@ def _requested_dataset_semantics(dataset: DatasetConfig) -> dict[str, Any]:
             if dataset.authoritative_inputs is None
             else dataset.authoritative_inputs.semantics()
         ),
+        "paired_inputs": dataset.paired_inputs.semantics(),
+        "paired_input_inventory_sha256": dataset.paired_input_inventory_sha256,
     }
 
 
@@ -1620,6 +1776,7 @@ def _write_requested_publication(
     quality_status: str,
     quality_violations: list[str],
     authoritative_input: Mapping[str, Any] | None = None,
+    input_lineage: Mapping[str, Any] | None = None,
     source_code: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     requested = dataset.requested_output
@@ -1710,6 +1867,8 @@ def _write_requested_publication(
         }
         if authoritative_input is not None:
             meta["authoritative_input"] = dict(authoritative_input)
+        if input_lineage is not None:
+            meta["input_lineage"] = dict(input_lineage)
         with (staging / "meta.json").open("w", encoding="utf-8") as handle:
             json.dump(meta, handle, indent=2, sort_keys=True)
 
@@ -1751,6 +1910,8 @@ def _write_requested_publication(
                     ),
                 }
             )
+        if input_lineage is not None:
+            publication["input_lineage"] = dict(input_lineage)
         with (staging / "publication.json").open("w", encoding="utf-8") as handle:
             json.dump(publication, handle, indent=2, sort_keys=True)
         validate_publication(
@@ -1811,18 +1972,29 @@ def _generate_sample_worker(
             f"Missing source cache for sample {sample_idx}: {source_path}"
         )
 
-    with np.load(bathy_path) as bathy_npz:
+    bathymetry_master_hash: str | None = None
+    source_master_hash: str | None = None
+    with np.load(bathy_path, allow_pickle=False) as bathy_npz:
         bathymetry = np.asarray(bathy_npz["bathymetry"], dtype=np.float32)
         bathy_type = str(np.asarray(bathy_npz["bathymetry_type"]).reshape(-1)[0])
+        if dataset.paired_inputs.enabled:
+            bathymetry_master_hash = str(
+                np.asarray(bathy_npz["native_master_array_sha256"]).reshape(-1)[0]
+            )
 
-    with np.load(source_path) as src_npz:
+    with np.load(source_path, allow_pickle=False) as src_npz:
         source_field = np.asarray(src_npz["source_field"], dtype=np.float32)
         source_type = str(np.asarray(src_npz["source_type"]).reshape(-1)[0])
         source_strength_array = np.asarray(src_npz["source_strength"])
         source_strength = float(source_strength_array.reshape(-1)[0])
+        if dataset.paired_inputs.enabled:
+            source_master_hash = str(
+                np.asarray(src_npz["native_master_array_sha256"]).reshape(-1)[0]
+            )
 
     scenario_id = f"scenario_{sample_idx:06d}"
     authoritative_input: dict[str, Any] | None = None
+    input_lineage: dict[str, Any] | None = None
     if dataset.authoritative_inputs is not None:
         if authoritative_record is None:
             raise RuntimeError(
@@ -1845,6 +2017,15 @@ def _generate_sample_worker(
             sea_level_offset=dataset.sea_level_offset,
             config=dataset.authoritative_inputs,
         )
+    if dataset.paired_inputs.enabled:
+        if not dataset.paired_input_inventory_sha256:
+            raise RuntimeError("paired input inventory was not frozen before rollout")
+        input_lineage = {
+            **(dataset.paired_inputs.semantics() or {}),
+            "inventory_sha256": dataset.paired_input_inventory_sha256,
+            "master_bathymetry_sha256": bathymetry_master_hash,
+            "master_source_sha256": source_master_hash,
+        }
 
     if dataset.buffered_domain.enabled:
         prepared = _prepare_buffered_domain(
@@ -1926,23 +2107,16 @@ def _generate_sample_worker(
                     expected_config_hash = resolved_config_hash(
                         solver_name=fde_name,
                         solver_config=solver_cfg_for_fde,
-                        dataset_semantics={
-                            "auto_dt": dataset.auto_dt,
-                            "target_cfl": float(
-                                solver_cfg_for_fde.get("cfl", dataset.target_cfl)
-                            ),
-                            "sea_level_offset": dataset.sea_level_offset,
-                            "max_natural_steps": dataset.requested_output.max_natural_steps,
-                            "quality_policy": dataset.quality_policy.__dict__,
-                            "eta_primary": dataset.requested_output.eta_primary,
-                            "debug_full_states": dataset.requested_output.debug_full_states,
-                            "buffered_domain": dataset.buffered_domain.semantics(),
-                            "authoritative_inputs": (
-                                None
-                                if dataset.authoritative_inputs is None
-                                else dataset.authoritative_inputs.semantics()
-                            ),
-                        },
+                        dataset_semantics=_requested_dataset_semantics(
+                            replace(
+                                dataset,
+                                target_cfl=float(
+                                    solver_cfg_for_fde.get(
+                                        "cfl", dataset.target_cfl
+                                    )
+                                ),
+                            )
+                        ),
                     )
                     expected_code_hash = (
                         code_state(ROOT)["code_state_hash"]
@@ -2121,6 +2295,7 @@ def _generate_sample_worker(
                 quality_status=quality_status,
                 quality_violations=quality_violations,
                 authoritative_input=authoritative_input,
+                input_lineage=input_lineage,
                 source_code=source_code,
             )
             meta = publication_result["meta"]
@@ -2297,6 +2472,8 @@ def _generate_sample_worker(
         "fdes_run": fdes_run_actual if fdes_run_actual else runnable_fdes,
         "fdes_skipped_unimplemented": skipped_unimplemented,
     }
+    if input_lineage is not None:
+        scenario_record["input_lineage"] = input_lineage
 
     return {
         "sample_index": sample_idx,
@@ -2336,6 +2513,13 @@ class TsunamiDatasetBuilder:
 
         self.cfg = cfg
         self.dataset = self._parse_dataset_section(cfg)
+        if (
+            self.dataset.authoritative_inputs is not None
+            and self.dataset.paired_inputs.enabled
+        ):
+            raise ValueError(
+                "authoritative_inputs and paired_inputs are mutually exclusive"
+            )
         self.operations = self._parse_operational_section(
             cfg, requested_workers=self.dataset.num_workers
         )
@@ -2344,6 +2528,10 @@ class TsunamiDatasetBuilder:
         self.solver_cfg = self._parse_solver_section(cfg)
         self.bathy_cfg_path = self._require_path(cfg, ["configs", "bathymetry"])
         self.source_cfg_path = self._require_path(cfg, ["configs", "source"])
+        if self.dataset.paired_inputs.enabled:
+            self.dataset.paired_inputs = self._resolve_paired_input_contract(
+                self.dataset.paired_inputs
+            )
 
         self.output_dir = self.dataset.output_dir
         self.bathymetry_dir = self.dataset.bathymetry_dir
@@ -2388,8 +2576,45 @@ class TsunamiDatasetBuilder:
 
         solver_nx = int(self.solver_cfg["nx"])
         solver_ny = int(self.solver_cfg["ny"])
-        input_shape = (self.bathy_generator.nx, self.bathy_generator.ny)
-        source_shape = (self.source_generator.nx, self.source_generator.ny)
+        configured_input_shape = (self.bathy_generator.nx, self.bathy_generator.ny)
+        configured_source_shape = (self.source_generator.nx, self.source_generator.ny)
+        input_shape = (
+            self.dataset.paired_inputs.target_shape
+            if self.dataset.paired_inputs.enabled
+            else configured_input_shape
+        )
+        source_shape = (
+            self.dataset.paired_inputs.target_shape
+            if self.dataset.paired_inputs.enabled
+            else configured_source_shape
+        )
+        if self.dataset.paired_inputs.enabled:
+            if configured_input_shape != input_shape:
+                raise ValueError(
+                    f"Target bathymetry config grid {configured_input_shape} must match "
+                    f"paired_inputs.target_shape {input_shape}"
+                )
+            if configured_source_shape != source_shape:
+                raise ValueError(
+                    f"Target source config grid {configured_source_shape} must match "
+                    f"paired_inputs.target_shape {source_shape}"
+                )
+            master_bathy = BathymetryGenerator(
+                str(self.dataset.paired_inputs.master_bathymetry_config)
+            )
+            master_source = SourceGenerator(
+                str(self.dataset.paired_inputs.master_source_config)
+            )
+            if (master_bathy.nx, master_bathy.ny) != (
+                self.dataset.paired_inputs.master_shape
+            ):
+                raise ValueError(
+                    "paired master bathymetry config does not match master_shape"
+                )
+            if (master_source.nx, master_source.ny) != (
+                self.dataset.paired_inputs.master_shape
+            ):
+                raise ValueError("paired master source config does not match master_shape")
         if source_shape != input_shape:
             raise ValueError(
                 f"Bathymetry grid {input_shape} must match source grid {source_shape}"
@@ -2446,6 +2671,61 @@ class TsunamiDatasetBuilder:
                 raise KeyError(f"missing config path: {'.'.join(keys)}")
             node = node[key]
         return Path(str(node))
+
+    def _resolve_paired_input_contract(
+        self, config: PairedInputsConfig
+    ) -> PairedInputsConfig:
+        if (
+            config.master_bathymetry_config is None
+            or config.master_source_config is None
+            or config.inventory_path is None
+        ):
+            raise ValueError("paired input paths were not resolved")
+        for path in (
+            config.master_bathymetry_config,
+            config.master_source_config,
+        ):
+            if not path.is_file():
+                raise FileNotFoundError(path)
+        generator_files = (
+            ROOT / "src/data_gen/generate_bathymetry.py",
+            ROOT / "src/data_gen/generate_sources.py",
+            ROOT / "src/data_gen/simulate_dataset.py",
+        )
+        lineage_hash = stable_hash_payload(
+            artifact_kind="native-resolution-master-input-lineage",
+            schema_id=NATIVE_INPUT_SCHEMA_ID,
+            payload={
+                "lineage_id": config.lineage_id,
+                "master_shape": list(config.master_shape),
+                "dataset_seed": self.dataset.seed,
+                "source_strength_range": list(self.dataset.source_strength_range),
+                "master_bathymetry_config_sha256": sha256_file(
+                    config.master_bathymetry_config
+                ),
+                "master_source_config_sha256": sha256_file(
+                    config.master_source_config
+                ),
+                "generator_source_sha256": {
+                    path.relative_to(ROOT).as_posix(): sha256_file(path)
+                    for path in generator_files
+                },
+            },
+        )
+        target_contract_hash = stable_hash_payload(
+            artifact_kind="native-resolution-target-input-contract",
+            schema_id=NATIVE_INPUT_SCHEMA_ID,
+            payload={
+                "lineage_hash": lineage_hash,
+                "target_shape": list(config.target_shape),
+                "downsample_method": config.downsample_method,
+            },
+        )
+        return replace(
+            config,
+            lineage_hash=lineage_hash,
+            target_contract_hash=target_contract_hash,
+        )
 
     @staticmethod
     def _parse_range(value: Any, name: str) -> Tuple[float, float]:
@@ -2556,6 +2836,70 @@ class TsunamiDatasetBuilder:
             h0_contract_hash=str(raw["h0_contract_hash"]),
             require_exact_arrays=require_exact,
             allow_input_generation=allow_generation,
+        )
+
+    @staticmethod
+    def _parse_paired_inputs_section(cfg: Mapping[str, Any]) -> PairedInputsConfig:
+        raw = cfg.get("paired_inputs")
+        if raw is None:
+            return PairedInputsConfig()
+        if not isinstance(raw, Mapping):
+            raise ValueError("paired_inputs section must be a mapping")
+        allowed = {
+            "enabled",
+            "lineage_id",
+            "master_shape",
+            "target_shape",
+            "downsample_method",
+            "master_bathymetry_config",
+            "master_source_config",
+            "inventory_path",
+        }
+        unknown = sorted(set(str(key) for key in raw) - allowed)
+        if unknown:
+            raise ValueError(f"Unknown paired_inputs keys: {unknown}")
+        if not bool(raw.get("enabled", False)):
+            raise ValueError("paired_inputs must be omitted unless enabled=true")
+
+        def _shape(name: str) -> tuple[int, int]:
+            values = tuple(int(value) for value in raw.get(name, ()))
+            if len(values) != 2 or min(values) <= 1:
+                raise ValueError(f"paired_inputs.{name} must contain two values > 1")
+            return values
+
+        lineage_id = str(raw.get("lineage_id", "")).strip()
+        if not lineage_id:
+            raise ValueError("paired_inputs.lineage_id is required")
+        master_shape = _shape("master_shape")
+        target_shape = _shape("target_shape")
+        if any(master % target for master, target in zip(master_shape, target_shape)):
+            raise ValueError(
+                "paired_inputs.master_shape must be integer-divisible by target_shape"
+            )
+        method = str(
+            raw.get("downsample_method", "block_mean_float64_v1")
+        ).strip()
+        if method != "block_mean_float64_v1":
+            raise ValueError(
+                "paired_inputs.downsample_method must be block_mean_float64_v1"
+            )
+
+        def _required_path(name: str) -> Path:
+            value = str(raw.get(name, "")).strip()
+            if not value:
+                raise ValueError(f"paired_inputs.{name} is required")
+            path = Path(value)
+            return (path if path.is_absolute() else ROOT / path).resolve()
+
+        return PairedInputsConfig(
+            enabled=True,
+            lineage_id=lineage_id,
+            master_shape=master_shape,
+            target_shape=target_shape,
+            downsample_method=method,
+            master_bathymetry_config=_required_path("master_bathymetry_config"),
+            master_source_config=_required_path("master_source_config"),
+            inventory_path=_required_path("inventory_path"),
         )
 
     def _load_authoritative_records(self) -> dict[int, dict[str, Any]]:
@@ -2759,6 +3103,14 @@ class TsunamiDatasetBuilder:
             raise ValueError("dataset.target_cfl must be positive")
 
         requested_output = parse_requested_output_config(cfg.get("requested_output"))
+        paired_inputs = TsunamiDatasetBuilder._parse_paired_inputs_section(cfg)
+        if paired_inputs.enabled:
+            if requested_output is None:
+                raise ValueError("paired_inputs requires requested_output generation")
+            if seed is None:
+                raise ValueError("paired_inputs requires a fixed dataset.seed")
+            if quality_policy.on_violation != "fail":
+                raise ValueError("paired_inputs requires quality.on_violation=fail")
         return DatasetConfig(
             num_samples=num_samples,
             seed=seed,
@@ -2789,6 +3141,7 @@ class TsunamiDatasetBuilder:
                 for name, profile in dict(cfg.get("solver_profiles", {})).items()
             },
             buffered_domain=TsunamiDatasetBuilder._parse_buffered_domain_section(cfg),
+            paired_inputs=paired_inputs,
         )
 
     @staticmethod
@@ -3077,12 +3430,23 @@ class TsunamiDatasetBuilder:
         if self.dataset.num_workers <= 1:
             done = 0
             for idx in pending:
-                rec = _generate_bathymetry_worker(
-                    idx,
-                    self.run_seed,
-                    str(self.bathy_cfg_path),
-                    str(self.bathymetry_dir),
-                )
+                if self.dataset.paired_inputs.enabled:
+                    rec = _generate_paired_bathymetry_worker(
+                        idx,
+                        self.run_seed,
+                        str(
+                            self.dataset.paired_inputs.master_bathymetry_config
+                        ),
+                        str(self.bathymetry_dir),
+                        self.dataset.paired_inputs,
+                    )
+                else:
+                    rec = _generate_bathymetry_worker(
+                        idx,
+                        self.run_seed,
+                        str(self.bathy_cfg_path),
+                        str(self.bathymetry_dir),
+                    )
                 done += 1
                 print(
                     f"[bathy {done:06d}/{len(pending):06d}] "
@@ -3094,16 +3458,31 @@ class TsunamiDatasetBuilder:
         mp_ctx = get_context("spawn")
         done = 0
         with ProcessPoolExecutor(max_workers=workers, mp_context=mp_ctx) as ex:
-            futures = {
-                ex.submit(
-                    _generate_bathymetry_worker,
-                    idx,
-                    self.run_seed,
-                    str(self.bathy_cfg_path),
-                    str(self.bathymetry_dir),
-                ): idx
-                for idx in pending
-            }
+            if self.dataset.paired_inputs.enabled:
+                futures = {
+                    ex.submit(
+                        _generate_paired_bathymetry_worker,
+                        idx,
+                        self.run_seed,
+                        str(
+                            self.dataset.paired_inputs.master_bathymetry_config
+                        ),
+                        str(self.bathymetry_dir),
+                        self.dataset.paired_inputs,
+                    ): idx
+                    for idx in pending
+                }
+            else:
+                futures = {
+                    ex.submit(
+                        _generate_bathymetry_worker,
+                        idx,
+                        self.run_seed,
+                        str(self.bathy_cfg_path),
+                        str(self.bathymetry_dir),
+                    ): idx
+                    for idx in pending
+                }
 
             for fut in as_completed(futures):
                 rec = fut.result()
@@ -3141,13 +3520,23 @@ class TsunamiDatasetBuilder:
         if self.dataset.num_workers <= 1:
             done = 0
             for idx in pending:
-                rec = _generate_source_worker(
-                    idx,
-                    self.run_seed,
-                    str(self.source_cfg_path),
-                    str(self.source_dir),
-                    self.dataset.source_strength_range,
-                )
+                if self.dataset.paired_inputs.enabled:
+                    rec = _generate_paired_source_worker(
+                        idx,
+                        self.run_seed,
+                        str(self.dataset.paired_inputs.master_source_config),
+                        str(self.source_dir),
+                        self.dataset.source_strength_range,
+                        self.dataset.paired_inputs,
+                    )
+                else:
+                    rec = _generate_source_worker(
+                        idx,
+                        self.run_seed,
+                        str(self.source_cfg_path),
+                        str(self.source_dir),
+                        self.dataset.source_strength_range,
+                    )
                 done += 1
                 print(
                     f"[source {done:06d}/{len(pending):06d}] "
@@ -3159,17 +3548,31 @@ class TsunamiDatasetBuilder:
         mp_ctx = get_context("spawn")
         done = 0
         with ProcessPoolExecutor(max_workers=workers, mp_context=mp_ctx) as ex:
-            futures = {
-                ex.submit(
-                    _generate_source_worker,
-                    idx,
-                    self.run_seed,
-                    str(self.source_cfg_path),
-                    str(self.source_dir),
-                    self.dataset.source_strength_range,
-                ): idx
-                for idx in pending
-            }
+            if self.dataset.paired_inputs.enabled:
+                futures = {
+                    ex.submit(
+                        _generate_paired_source_worker,
+                        idx,
+                        self.run_seed,
+                        str(self.dataset.paired_inputs.master_source_config),
+                        str(self.source_dir),
+                        self.dataset.source_strength_range,
+                        self.dataset.paired_inputs,
+                    ): idx
+                    for idx in pending
+                }
+            else:
+                futures = {
+                    ex.submit(
+                        _generate_source_worker,
+                        idx,
+                        self.run_seed,
+                        str(self.source_cfg_path),
+                        str(self.source_dir),
+                        self.dataset.source_strength_range,
+                    ): idx
+                    for idx in pending
+                }
 
             for fut in as_completed(futures):
                 rec = fut.result()
@@ -3230,6 +3633,208 @@ class TsunamiDatasetBuilder:
             f"[dataset] exact H0 input verification passed: "
             f"split={requested.split} samples={len(indices)}"
         )
+
+    def _validate_paired_cache(
+        self, sample_idx: int
+    ) -> dict[str, Any]:
+        paired = self.dataset.paired_inputs
+        if not paired.enabled:
+            raise RuntimeError("paired cache validation requires paired_inputs")
+        bathymetry_path = _bathymetry_file_path(self.bathymetry_dir, sample_idx)
+        source_path = _source_file_path(self.source_dir, sample_idx)
+        expected_seed = _seed_for_sample(self.run_seed, sample_idx)
+
+        def _text(payload: Mapping[str, np.ndarray], key: str) -> str:
+            if key not in payload:
+                raise RuntimeError(f"paired input cache is missing {key}")
+            return str(np.asarray(payload[key]).reshape(-1)[0])
+
+        def _validate_common(payload: Mapping[str, np.ndarray]) -> None:
+            if _text(payload, "native_input_schema_id") != NATIVE_INPUT_SCHEMA_ID:
+                raise RuntimeError("paired input schema mismatch")
+            if _text(payload, "native_lineage_id") != paired.lineage_id:
+                raise RuntimeError("paired input lineage id mismatch")
+            if _text(payload, "native_lineage_hash") != paired.lineage_hash:
+                raise RuntimeError("paired input lineage hash mismatch")
+            if (
+                _text(payload, "native_target_contract_hash")
+                != paired.target_contract_hash
+            ):
+                raise RuntimeError("paired input target contract mismatch")
+            if _text(payload, "native_downsample_method") != paired.downsample_method:
+                raise RuntimeError("paired input downsample method mismatch")
+            if tuple(np.asarray(payload["native_master_shape"], dtype=int)) != (
+                paired.master_shape
+            ):
+                raise RuntimeError("paired input master shape mismatch")
+            if tuple(np.asarray(payload["native_target_shape"], dtype=int)) != (
+                paired.target_shape
+            ):
+                raise RuntimeError("paired input target shape mismatch")
+            seed = int(np.asarray(payload["sample_seed"]).reshape(-1)[0])
+            if seed != expected_seed:
+                raise RuntimeError("paired input sample seed mismatch")
+
+        with np.load(bathymetry_path, allow_pickle=False) as payload:
+            _validate_common(payload)
+            bathymetry = np.asarray(payload["bathymetry"], dtype=np.float32)
+            master_bathymetry = np.asarray(
+                payload["master_bathymetry"], dtype=np.float32
+            )
+            bathymetry_type = _text(payload, "bathymetry_type")
+            bathymetry_master_hash = hash_array(master_bathymetry)["sha256"]
+            if bathymetry_master_hash != _text(
+                payload, "native_master_array_sha256"
+            ):
+                raise RuntimeError("paired master bathymetry hash mismatch")
+            expected_bathymetry = _block_mean_downsample(
+                master_bathymetry, paired.target_shape
+            )
+            if not np.array_equal(bathymetry, expected_bathymetry):
+                raise RuntimeError(
+                    "paired target bathymetry is not the exact master-grid reduction"
+                )
+
+        with np.load(source_path, allow_pickle=False) as payload:
+            _validate_common(payload)
+            source_field = np.asarray(payload["source_field"], dtype=np.float32)
+            master_source = np.asarray(
+                payload["master_source_field"], dtype=np.float32
+            )
+            source_type = _text(payload, "source_type")
+            source_strength_array = np.asarray(payload["source_strength"])
+            source_strength = float(source_strength_array.reshape(-1)[0])
+            source_master_hash = hash_array(master_source)["sha256"]
+            if source_master_hash != _text(
+                payload, "native_master_array_sha256"
+            ):
+                raise RuntimeError("paired master source hash mismatch")
+            expected_source = _block_mean_downsample(
+                master_source, paired.target_shape
+            )
+            if not np.array_equal(source_field, expected_source):
+                raise RuntimeError(
+                    "paired target source is not the exact master-grid reduction"
+                )
+        lo, hi = self.dataset.source_strength_range
+        if not np.isfinite(source_strength) or not lo <= source_strength <= hi:
+            raise RuntimeError("paired input source strength is out of range")
+
+        rest_depth = np.maximum(
+            -bathymetry + self.dataset.sea_level_offset, 0.0
+        ).astype(np.float32, copy=False)
+        eta0 = np.asarray(source_strength * source_field, dtype=np.float32)
+        initial_depth = np.maximum(rest_depth + eta0, 0.0).astype(
+            np.float32, copy=False
+        )
+        free_surface0 = np.asarray(initial_depth + bathymetry, dtype=np.float32)
+
+        master_rest_depth = np.maximum(
+            -master_bathymetry + self.dataset.sea_level_offset, 0.0
+        ).astype(np.float32, copy=False)
+        master_eta0 = np.asarray(source_strength * master_source, dtype=np.float32)
+        master_initial_depth = np.maximum(
+            master_rest_depth + master_eta0, 0.0
+        ).astype(np.float32, copy=False)
+        master_free_surface0 = np.asarray(
+            master_initial_depth + master_bathymetry, dtype=np.float32
+        )
+        requested = self.dataset.requested_output
+        if requested is None:
+            raise RuntimeError("paired native inputs require requested_output")
+        scenario_id = f"scenario_{sample_idx:06d}"
+        target_arrays = {
+            "bathymetry": bathymetry,
+            "source_field": source_field,
+            "rest_depth": rest_depth,
+            "eta0": eta0,
+            "initial_depth": initial_depth,
+            "free_surface0": free_surface0,
+        }
+        master_arrays = {
+            "bathymetry": master_bathymetry,
+            "source_field": master_source,
+            "rest_depth": master_rest_depth,
+            "eta0": master_eta0,
+            "initial_depth": master_initial_depth,
+            "free_surface0": master_free_surface0,
+        }
+        target_fingerprint = authoritative_input_fingerprint(
+            split=requested.split,
+            sample_index=sample_idx,
+            scenario_id=scenario_id,
+            bathymetry_type=bathymetry_type,
+            source_type=source_type,
+            source_strength=source_strength_array,
+            arrays=target_arrays,
+        )
+        master_fingerprint = authoritative_input_fingerprint(
+            split=requested.split,
+            sample_index=sample_idx,
+            scenario_id=scenario_id,
+            bathymetry_type=bathymetry_type,
+            source_type=source_type,
+            source_strength=source_strength_array,
+            arrays=master_arrays,
+        )
+        return {
+            "schema_id": NATIVE_INPUT_SCHEMA_ID,
+            "lineage_id": paired.lineage_id,
+            "lineage_hash": paired.lineage_hash,
+            "target_contract_hash": paired.target_contract_hash,
+            "master_shape": list(paired.master_shape),
+            "target_shape": list(paired.target_shape),
+            "downsample_method": paired.downsample_method,
+            "split": requested.split,
+            "qualified_id": f"{requested.split}:{scenario_id}",
+            "scenario_id": scenario_id,
+            "sample_index": sample_idx,
+            "sample_seed": expected_seed,
+            "bathymetry_type": bathymetry_type,
+            "source_type": source_type,
+            "source_strength": source_strength,
+            "target_input_fingerprint": target_fingerprint,
+            "master_input_fingerprint": master_fingerprint,
+            "target_array_hashes": {
+                name: hash_array(values) for name, values in target_arrays.items()
+            },
+            "master_array_hashes": {
+                name: hash_array(values) for name, values in master_arrays.items()
+            },
+            "bathymetry_cache_path": str(bathymetry_path),
+            "source_cache_path": str(source_path),
+        }
+
+    def _freeze_paired_input_inventory(self, indices: list[int]) -> str:
+        paired = self.dataset.paired_inputs
+        if not paired.enabled or paired.inventory_path is None:
+            raise RuntimeError("paired input inventory path is unavailable")
+        records = [self._validate_paired_cache(index) for index in indices]
+        content = "".join(
+            json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
+            for record in records
+        )
+        path = paired.inventory_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            if path.read_text(encoding="utf-8") != content:
+                raise RuntimeError(
+                    f"Frozen paired input inventory mismatch: {path}. "
+                    "Use a new lineage_id and empty output paths for an intentional new lineage."
+                )
+        else:
+            staging = path.with_name(f".{path.name}.staging-{os.getpid()}")
+            try:
+                staging.write_text(content, encoding="utf-8")
+                os.replace(staging, path)
+            finally:
+                staging.unlink(missing_ok=True)
+        checksum = sha256_file(path)
+        print(
+            f"[dataset] paired native input inventory frozen: "
+            f"samples={len(records)} sha256={checksum}"
+        )
+        return checksum
 
     def _phase_generate_rollouts(
         self, indices: list[int], allow_override: bool = False
@@ -3522,9 +4127,12 @@ class TsunamiDatasetBuilder:
         if rebuild_manifests:
             self.rebuild_manifests_from_existing_outputs()
             return
-        if allow_override and self.dataset.authoritative_inputs is not None:
+        if allow_override and (
+            self.dataset.authoritative_inputs is not None
+            or self.dataset.paired_inputs.enabled
+        ):
             raise RuntimeError(
-                "--allow-override is forbidden for authoritative common-time-v2 inputs"
+                "--allow-override is forbidden for frozen common-time-v2 inputs"
             )
 
         if start_at is not None and start_at < 1:
@@ -3605,11 +4213,17 @@ class TsunamiDatasetBuilder:
                 f"range=[{to_generate[0]}, {to_generate[-1]}], seed={self.run_seed}"
             )
 
+        static_indices = (
+            list(range(1, total + 1))
+            if self.dataset.paired_inputs.enabled
+            else to_generate
+        )
+        if static_indices:
             if recorder is not None:
                 recorder.start_phase("bathymetry")
             try:
                 self._phase_generate_bathymetry(
-                    to_generate, allow_override=allow_override
+                    static_indices, allow_override=allow_override
                 )
             finally:
                 if recorder is not None:
@@ -3618,11 +4232,15 @@ class TsunamiDatasetBuilder:
                 recorder.start_phase("sources")
             try:
                 self._phase_generate_sources(
-                    to_generate, allow_override=allow_override
+                    static_indices, allow_override=allow_override
                 )
             finally:
                 if recorder is not None:
                     recorder.end_phase("sources")
+
+        if self.dataset.paired_inputs.enabled:
+            inventory_sha256 = self._freeze_paired_input_inventory(static_indices)
+            self.dataset.paired_input_inventory_sha256 = inventory_sha256
 
         self._validate_authoritative_caches(planned_indices)
 

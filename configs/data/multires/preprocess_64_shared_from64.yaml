@@ -3,15 +3,17 @@ raw:
   fde_manifests:
     hydrostatic: ./data/res64/synthetic/hydrostatic_manifest.jsonl
     muscl_hr: ./data/res64/synthetic/muscl_hr_manifest.jsonl
+    boussinesq: ./data/res64/synthetic/boussinesq_manifest.jsonl
   raw_dirs:
     hydrostatic: ./data/res64/raw/hydrostatic/samples
     muscl_hr: ./data/res64/raw/muscl_hr/samples
+    boussinesq: ./data/res64/raw/boussinesq/samples
 
 processed_dir: data/processed_res64_shared_from64
 
 fde:
   mode: separate_all
-  targets: [hydrostatic, muscl_hr]
+  targets: [hydrostatic, muscl_hr, boussinesq]
   target_field: eta
 
 split:
@@ -43,6 +45,7 @@ normalization:
   reference_stats_by_fde:
     hydrostatic: data/processed_res64/hydrostatic/normalization_stats.json
     muscl_hr: data/processed_res64/muscl_hr/normalization_stats.json
+    boussinesq: data/processed_res64/boussinesq/normalization_stats.json
   eps: 1e-6
 
 saving:

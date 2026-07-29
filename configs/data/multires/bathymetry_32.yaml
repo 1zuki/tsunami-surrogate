@@ -22,7 +22,8 @@ ridges:
 noise:
   enabled: true
   scale_range: [0.005, 0.03]
-  smoothing_sigma: [2.5, 6.0]
+  # Cell-scaled counterpart of the canonical 64-grid [2.5, 6.0].
+  smoothing_sigma: [1.25, 3.0]
 
 normalization:
   depth_min: -10.0
@@ -30,5 +31,5 @@ normalization:
 
 terrain:
   warp_scale: 0.03
-  warp_sigma: 4.0
+  warp_sigma: 2.0
   bias_strength: 0.45
