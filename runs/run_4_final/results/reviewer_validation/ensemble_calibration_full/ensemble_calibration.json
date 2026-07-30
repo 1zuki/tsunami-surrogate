@@ -1,0 +1,595 @@
+{
+  "batch_size": 8,
+  "calibration_fit_split": "validation",
+  "calibration_status": "fit_validation_scalar_inflation",
+  "checkpoints": [
+    "experiments/ensemble/member_11/best.pt",
+    "experiments/ensemble/member_22/best.pt",
+    "experiments/ensemble/member_33/best.pt",
+    "experiments/ensemble/member_44/best.pt",
+    "experiments/ensemble/member_55/best.pt",
+    "experiments/ensemble/member_66/best.pt",
+    "experiments/ensemble/member_77/best.pt"
+  ],
+  "coverage_definition": "central Gaussian marginal per-element coverage over correlated pixels and frames",
+  "coverage_table_csv_path": "results/reviewer_validation/ensemble_calibration_full/coverage_table.csv",
+  "datasets": {
+    "bathymetry_holdout_trench": {
+      "coverage": [
+        {
+          "calibrated_coverage": 0.09568529918139293,
+          "nominal": 0.05,
+          "raw_coverage": 0.052366346965956344
+        },
+        {
+          "calibrated_coverage": 0.18899336912032225,
+          "nominal": 0.1,
+          "raw_coverage": 0.10451744412681913
+        },
+        {
+          "calibrated_coverage": 0.27780133348492725,
+          "nominal": 0.15,
+          "raw_coverage": 0.15616752005912163
+        },
+        {
+          "calibrated_coverage": 0.36047636353300416,
+          "nominal": 0.2,
+          "raw_coverage": 0.20704904536447505
+        },
+        {
+          "calibrated_coverage": 0.4361879141761954,
+          "nominal": 0.25,
+          "raw_coverage": 0.2570038514325624
+        },
+        {
+          "calibrated_coverage": 0.5046617459556912,
+          "nominal": 0.3,
+          "raw_coverage": 0.30581030324194386
+        },
+        {
+          "calibrated_coverage": 0.5660300298044438,
+          "nominal": 0.35,
+          "raw_coverage": 0.3533528375129938
+        },
+        {
+          "calibrated_coverage": 0.6205923836246102,
+          "nominal": 0.4,
+          "raw_coverage": 0.39954205106548857
+        },
+        {
+          "calibrated_coverage": 0.6690487753378378,
+          "nominal": 0.45,
+          "raw_coverage": 0.44434686038201665
+        },
+        {
+          "calibrated_coverage": 0.7121406615449585,
+          "nominal": 0.5,
+          "raw_coverage": 0.48772146244802494
+        },
+        {
+          "calibrated_coverage": 0.7504629129580301,
+          "nominal": 0.55,
+          "raw_coverage": 0.5297557680126039
+        },
+        {
+          "calibrated_coverage": 0.7847297601838618,
+          "nominal": 0.6,
+          "raw_coverage": 0.5705159437532484
+        },
+        {
+          "calibrated_coverage": 0.8154873777774169,
+          "nominal": 0.65,
+          "raw_coverage": 0.6100767342613046
+        },
+        {
+          "calibrated_coverage": 0.8433049027091996,
+          "nominal": 0.7,
+          "raw_coverage": 0.6486556734017671
+        },
+        {
+          "calibrated_coverage": 0.8686995578060032,
+          "nominal": 0.75,
+          "raw_coverage": 0.6866818700461279
+        },
+        {
+          "calibrated_coverage": 0.8920889910343035,
+          "nominal": 0.8,
+          "raw_coverage": 0.7245711652156964
+        },
+        {
+          "calibrated_coverage": 0.9139882122206341,
+          "nominal": 0.85,
+          "raw_coverage": 0.7630809227195946
+        },
+        {
+          "calibrated_coverage": 0.9351377034336019,
+          "nominal": 0.9,
+          "raw_coverage": 0.8038610662194646
+        },
+        {
+          "calibrated_coverage": 0.956977031493633,
+          "nominal": 0.95,
+          "raw_coverage": 0.851202247920998
+        }
+      ],
+      "error_uncertainty_corr_batch_mean": 0.6643385515838373,
+      "mean_abs_error": 0.09131402698723046,
+      "mean_variance": 0.013323578237248062,
+      "mse": 0.0662021322309847,
+      "n_elements": 98508800,
+      "n_samples": 481,
+      "path": "data/processed_ood/hydrostatic/bathymetry_holdout_trench"
+    },
+    "source_holdout_multi_gauss": {
+      "coverage": [
+        {
+          "calibrated_coverage": 0.0750433673950785,
+          "nominal": 0.05,
+          "raw_coverage": 0.04102882274682971
+        },
+        {
+          "calibrated_coverage": 0.14883954181763284,
+          "nominal": 0.1,
+          "raw_coverage": 0.08198789439915459
+        },
+        {
+          "calibrated_coverage": 0.22033594693538647,
+          "nominal": 0.15,
+          "raw_coverage": 0.12275246735356281
+        },
+        {
+          "calibrated_coverage": 0.2886174210258152,
+          "nominal": 0.2,
+          "raw_coverage": 0.16326355865036232
+        },
+        {
+          "calibrated_coverage": 0.3530633869263285,
+          "nominal": 0.25,
+          "raw_coverage": 0.20346154844127415
+        },
+        {
+          "calibrated_coverage": 0.41349597580766906,
+          "nominal": 0.3,
+          "raw_coverage": 0.24326221410778986
+        },
+        {
+          "calibrated_coverage": 0.46990026796497586,
+          "nominal": 0.35,
+          "raw_coverage": 0.2826561320576691
+        },
+        {
+          "calibrated_coverage": 0.5223142880057368,
+          "nominal": 0.4,
+          "raw_coverage": 0.32159039336126205
+        },
+        {
+          "calibrated_coverage": 0.5710216990300423,
+          "nominal": 0.45,
+          "raw_coverage": 0.3601463074615036
+        },
+        {
+          "calibrated_coverage": 0.616339176196407,
+          "nominal": 0.5,
+          "raw_coverage": 0.39834229695048307
+        },
+        {
+          "calibrated_coverage": 0.6585182197312802,
+          "nominal": 0.55,
+          "raw_coverage": 0.4362718547139191
+        },
+        {
+          "calibrated_coverage": 0.6978816731770834,
+          "nominal": 0.6,
+          "raw_coverage": 0.47412345259661837
+        },
+        {
+          "calibrated_coverage": 0.7347610842202597,
+          "nominal": 0.65,
+          "raw_coverage": 0.512018913232186
+        },
+        {
+          "calibrated_coverage": 0.7695416289251208,
+          "nominal": 0.7,
+          "raw_coverage": 0.5502861163005737
+        },
+        {
+          "calibrated_coverage": 0.8025212885907307,
+          "nominal": 0.75,
+          "raw_coverage": 0.5893281179234602
+        },
+        {
+          "calibrated_coverage": 0.8341136633831522,
+          "nominal": 0.8,
+          "raw_coverage": 0.6298041921422102
+        },
+        {
+          "calibrated_coverage": 0.864883838598279,
+          "nominal": 0.85,
+          "raw_coverage": 0.6728179843183877
+        },
+        {
+          "calibrated_coverage": 0.8957363847373189,
+          "nominal": 0.9,
+          "raw_coverage": 0.7206461824426329
+        },
+        {
+          "calibrated_coverage": 0.9287716660061897,
+          "nominal": 0.95,
+          "raw_coverage": 0.7796611398890398
+        }
+      ],
+      "error_uncertainty_corr_batch_mean": 0.6624117401930002,
+      "mean_abs_error": 0.10746671427851139,
+      "mean_variance": 0.013522663796005618,
+      "mse": 0.07184986593642673,
+      "n_elements": 84787200,
+      "n_samples": 414,
+      "path": "data/processed_ood/hydrostatic/source_holdout_multi_gauss"
+    },
+    "source_strength_extreme_high": {
+      "coverage": [
+        {
+          "calibrated_coverage": 0.07108894856770834,
+          "nominal": 0.05,
+          "raw_coverage": 0.03882961697048611
+        },
+        {
+          "calibrated_coverage": 0.14099259440104167,
+          "nominal": 0.1,
+          "raw_coverage": 0.07766623263888889
+        },
+        {
+          "calibrated_coverage": 0.20855886501736112,
+          "nominal": 0.15,
+          "raw_coverage": 0.11630322265625
+        },
+        {
+          "calibrated_coverage": 0.2730066731770833,
+          "nominal": 0.2,
+          "raw_coverage": 0.1546476779513889
+        },
+        {
+          "calibrated_coverage": 0.33350623914930555,
+          "nominal": 0.25,
+          "raw_coverage": 0.19260481770833332
+        },
+        {
+          "calibrated_coverage": 0.3899340277777778,
+          "nominal": 0.3,
+          "raw_coverage": 0.23023456488715277
+        },
+        {
+          "calibrated_coverage": 0.4421239691840278,
+          "nominal": 0.35,
+          "raw_coverage": 0.2673841959635417
+        },
+        {
+          "calibrated_coverage": 0.49049937608506944,
+          "nominal": 0.4,
+          "raw_coverage": 0.304018798828125
+        },
+        {
+          "calibrated_coverage": 0.5351644151475694,
+          "nominal": 0.45,
+          "raw_coverage": 0.3401357693142361
+        },
+        {
+          "calibrated_coverage": 0.5767282172309027,
+          "nominal": 0.5,
+          "raw_coverage": 0.3758239203559028
+        },
+        {
+          "calibrated_coverage": 0.6154370388454861,
+          "nominal": 0.55,
+          "raw_coverage": 0.4110504286024306
+        },
+        {
+          "calibrated_coverage": 0.6517178276909722,
+          "nominal": 0.6,
+          "raw_coverage": 0.446035400390625
+        },
+        {
+          "calibrated_coverage": 0.6859786512586805,
+          "nominal": 0.65,
+          "raw_coverage": 0.48104532877604167
+        },
+        {
+          "calibrated_coverage": 0.71866748046875,
+          "nominal": 0.7,
+          "raw_coverage": 0.5161270073784722
+        },
+        {
+          "calibrated_coverage": 0.7503428276909723,
+          "nominal": 0.75,
+          "raw_coverage": 0.5519377712673611
+        },
+        {
+          "calibrated_coverage": 0.7815430501302083,
+          "nominal": 0.8,
+          "raw_coverage": 0.5890694173177083
+        },
+        {
+          "calibrated_coverage": 0.8131062554253472,
+          "nominal": 0.85,
+          "raw_coverage": 0.6285733506944444
+        },
+        {
+          "calibrated_coverage": 0.8464099934895833,
+          "nominal": 0.9,
+          "raw_coverage": 0.6727920193142362
+        },
+        {
+          "calibrated_coverage": 0.8850817057291667,
+          "nominal": 0.95,
+          "raw_coverage": 0.7283276909722223
+        }
+      ],
+      "error_uncertainty_corr_batch_mean": 0.6998759430387745,
+      "mean_abs_error": 0.11733209504021538,
+      "mean_variance": 0.009293765889273749,
+      "mse": 0.1392846729490492,
+      "n_elements": 36864000,
+      "n_samples": 180,
+      "path": "data/processed_ood/hydrostatic/source_strength_extreme_high"
+    },
+    "test": {
+      "coverage": [
+        {
+          "calibrated_coverage": 0.089766974609375,
+          "nominal": 0.05,
+          "raw_coverage": 0.049122939453125
+        },
+        {
+          "calibrated_coverage": 0.17752647265625,
+          "nominal": 0.1,
+          "raw_coverage": 0.098057947265625
+        },
+        {
+          "calibrated_coverage": 0.2615143828125,
+          "nominal": 0.15,
+          "raw_coverage": 0.14660426171875
+        },
+        {
+          "calibrated_coverage": 0.3404015078125,
+          "nominal": 0.2,
+          "raw_coverage": 0.194564201171875
+        },
+        {
+          "calibrated_coverage": 0.413367439453125,
+          "nominal": 0.25,
+          "raw_coverage": 0.241807806640625
+        },
+        {
+          "calibrated_coverage": 0.480011419921875,
+          "nominal": 0.3,
+          "raw_coverage": 0.288173328125
+        },
+        {
+          "calibrated_coverage": 0.540345517578125,
+          "nominal": 0.35,
+          "raw_coverage": 0.333584380859375
+        },
+        {
+          "calibrated_coverage": 0.594663044921875,
+          "nominal": 0.4,
+          "raw_coverage": 0.3779519375
+        },
+        {
+          "calibrated_coverage": 0.643446552734375,
+          "nominal": 0.45,
+          "raw_coverage": 0.42125816015625
+        },
+        {
+          "calibrated_coverage": 0.68724597265625,
+          "nominal": 0.5,
+          "raw_coverage": 0.4634630859375
+        },
+        {
+          "calibrated_coverage": 0.7266274921875,
+          "nominal": 0.55,
+          "raw_coverage": 0.504605390625
+        },
+        {
+          "calibrated_coverage": 0.7621501328125,
+          "nominal": 0.6,
+          "raw_coverage": 0.54478927734375
+        },
+        {
+          "calibrated_coverage": 0.7943533828125,
+          "nominal": 0.65,
+          "raw_coverage": 0.5841348046875
+        },
+        {
+          "calibrated_coverage": 0.823725439453125,
+          "nominal": 0.7,
+          "raw_coverage": 0.6228631171875
+        },
+        {
+          "calibrated_coverage": 0.850755984375,
+          "nominal": 0.75,
+          "raw_coverage": 0.6613150703125
+        },
+        {
+          "calibrated_coverage": 0.875914021484375,
+          "nominal": 0.8,
+          "raw_coverage": 0.699962572265625
+        },
+        {
+          "calibrated_coverage": 0.8997361484375,
+          "nominal": 0.85,
+          "raw_coverage": 0.739671083984375
+        },
+        {
+          "calibrated_coverage": 0.923033662109375,
+          "nominal": 0.9,
+          "raw_coverage": 0.782151736328125
+        },
+        {
+          "calibrated_coverage": 0.94749237890625,
+          "nominal": 0.95,
+          "raw_coverage": 0.832109357421875
+        }
+      ],
+      "error_uncertainty_corr_batch_mean": 0.655383975551532,
+      "mean_abs_error": 0.07372027268218995,
+      "mean_variance": 0.00919009586238861,
+      "mse": 0.04640641021728516,
+      "n_elements": 512000000,
+      "n_samples": 2500,
+      "path": "data/processed/hydrostatic/test"
+    },
+    "validation": {
+      "coverage": [
+        {
+          "calibrated_coverage": 0.0902918115234375,
+          "nominal": 0.05,
+          "raw_coverage": 0.0494345458984375
+        },
+        {
+          "calibrated_coverage": 0.17856017578125,
+          "nominal": 0.1,
+          "raw_coverage": 0.098641484375
+        },
+        {
+          "calibrated_coverage": 0.2629243603515625,
+          "nominal": 0.15,
+          "raw_coverage": 0.147469619140625
+        },
+        {
+          "calibrated_coverage": 0.342057607421875,
+          "nominal": 0.2,
+          "raw_coverage": 0.1956895361328125
+        },
+        {
+          "calibrated_coverage": 0.4151395263671875,
+          "nominal": 0.25,
+          "raw_coverage": 0.243116865234375
+        },
+        {
+          "calibrated_coverage": 0.4817849072265625,
+          "nominal": 0.3,
+          "raw_coverage": 0.28969537109375
+        },
+        {
+          "calibrated_coverage": 0.5419701123046875,
+          "nominal": 0.35,
+          "raw_coverage": 0.3352262646484375
+        },
+        {
+          "calibrated_coverage": 0.59598849609375,
+          "nominal": 0.4,
+          "raw_coverage": 0.37969484375
+        },
+        {
+          "calibrated_coverage": 0.6443193798828125,
+          "nominal": 0.45,
+          "raw_coverage": 0.4230260986328125
+        },
+        {
+          "calibrated_coverage": 0.687638291015625,
+          "nominal": 0.5,
+          "raw_coverage": 0.4652442724609375
+        },
+        {
+          "calibrated_coverage": 0.7264787255859375,
+          "nominal": 0.55,
+          "raw_coverage": 0.5063632861328125
+        },
+        {
+          "calibrated_coverage": 0.7614857470703125,
+          "nominal": 0.6,
+          "raw_coverage": 0.5464026318359375
+        },
+        {
+          "calibrated_coverage": 0.79318359375,
+          "nominal": 0.65,
+          "raw_coverage": 0.585531640625
+        },
+        {
+          "calibrated_coverage": 0.8221207861328125,
+          "nominal": 0.7,
+          "raw_coverage": 0.6239496240234375
+        },
+        {
+          "calibrated_coverage": 0.848805009765625,
+          "nominal": 0.75,
+          "raw_coverage": 0.6619937255859375
+        },
+        {
+          "calibrated_coverage": 0.8736907373046875,
+          "nominal": 0.8,
+          "raw_coverage": 0.7001985791015625
+        },
+        {
+          "calibrated_coverage": 0.8973514208984374,
+          "nominal": 0.85,
+          "raw_coverage": 0.7393519580078125
+        },
+        {
+          "calibrated_coverage": 0.920618896484375,
+          "nominal": 0.9,
+          "raw_coverage": 0.7811935546875
+        },
+        {
+          "calibrated_coverage": 0.9452070703125,
+          "nominal": 0.95,
+          "raw_coverage": 0.830381640625
+        }
+      ],
+      "error_uncertainty_corr_batch_mean": 0.6565360908508301,
+      "mean_abs_error": 0.08002595420837402,
+      "mean_variance": 0.010369451434612275,
+      "mse": 0.05508318060874939,
+      "n_elements": 204800000,
+      "n_samples": 1000,
+      "path": "data/processed/hydrostatic/val"
+    }
+  },
+  "device": "cuda",
+  "diagnostic": "ensemble_reliability_scalar_variance_inflation",
+  "evaluation_scope": "full",
+  "figure_path": "paper/figures/ensemble_reliability_full.pdf",
+  "fit": {
+    "gamma": 3.3593639172363283,
+    "gamma_raw": 3.3593639172363283,
+    "mean_variance": 0.010369451434612275,
+    "mse": 0.05508318060874939,
+    "n_elements": 204800000,
+    "n_samples": 1000,
+    "std_scale": 1.832856763971568
+  },
+  "headline_levels": [
+    0.5,
+    0.8,
+    0.9,
+    0.95
+  ],
+  "json_path": "results/reviewer_validation/ensemble_calibration_full/ensemble_calibration.json",
+  "max_eval_samples": null,
+  "max_val_samples": null,
+  "nominal_levels": [
+    0.05,
+    0.1,
+    0.15,
+    0.2,
+    0.25,
+    0.3,
+    0.35,
+    0.4,
+    0.45,
+    0.5,
+    0.55,
+    0.6,
+    0.65,
+    0.7,
+    0.75,
+    0.8,
+    0.85,
+    0.9,
+    0.95
+  ],
+  "png_path": "paper/figures/ensemble_reliability_full.png",
+  "reliability_csv_path": "results/reviewer_validation/ensemble_calibration_full/reliability_curve.csv",
+  "skipped_suites": [],
+  "variance_eps": 1e-12
+}

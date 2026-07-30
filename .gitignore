@@ -39,6 +39,11 @@ data/*
 
 results/*
 !results/.gitkeep
+
+# Immutable run snapshots are intentionally versioned.
+!runs/**/results/
+!runs/**/results/**
+
 experiments/solver_compare/*
 
 figures/*

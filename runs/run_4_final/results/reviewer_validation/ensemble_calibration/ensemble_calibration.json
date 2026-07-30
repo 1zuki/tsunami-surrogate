@@ -1,0 +1,126 @@
+{
+  "calibration_status": "unavailable_no_per_element_predictions",
+  "coverage_table_csv_path": "results/reviewer_validation/ensemble_calibration/coverage_table.csv",
+  "datasets": {
+    "bathymetry_holdout_trench": {
+      "coverage": [
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.5,
+          "raw_coverage": 0.48772155557005914
+        },
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.8,
+          "raw_coverage": 0.7245712044828895
+        },
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.9,
+          "raw_coverage": 0.8038610236064808
+        },
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.95,
+          "raw_coverage": 0.8512022873220225
+        }
+      ],
+      "n_elements": null,
+      "n_samples": 481,
+      "source_summary": "results/uncertainty_hydrostatic_ood_m7.json"
+    },
+    "source_holdout_multi_gauss": {
+      "coverage": [
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.5,
+          "raw_coverage": 0.3983422981368171
+        },
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.8,
+          "raw_coverage": 0.6298041732414909
+        },
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.9,
+          "raw_coverage": 0.7206461593724679
+        },
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.95,
+          "raw_coverage": 0.7796610783839572
+        }
+      ],
+      "n_elements": null,
+      "n_samples": 414,
+      "source_summary": "results/uncertainty_hydrostatic_ood_m7.json"
+    },
+    "source_strength_extreme_high": {
+      "coverage": [
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.5,
+          "raw_coverage": 0.37582390507062274
+        },
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.8,
+          "raw_coverage": 0.5890694061915079
+        },
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.9,
+          "raw_coverage": 0.6727920201089647
+        },
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.95,
+          "raw_coverage": 0.728327649169498
+        }
+      ],
+      "n_elements": null,
+      "n_samples": 180,
+      "source_summary": "results/uncertainty_hydrostatic_ood_m7.json"
+    },
+    "test_summary": {
+      "coverage": [
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.5,
+          "raw_coverage": 0.4634630765914917
+        },
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.8,
+          "raw_coverage": 0.6999625574111938
+        },
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.9,
+          "raw_coverage": 0.7821516913414002
+        },
+        {
+          "calibrated_coverage": null,
+          "nominal": 0.95,
+          "raw_coverage": 0.8321093036651611
+        }
+      ],
+      "n_elements": null,
+      "n_samples": 2500,
+      "source_summary": "results/uncertainty_hydrostatic_indist_m7.json"
+    }
+  },
+  "diagnostic": "ensemble_reliability_summary_fallback",
+  "figure_path": "paper/figures/ensemble_reliability.pdf",
+  "json_path": "results/reviewer_validation/ensemble_calibration/ensemble_calibration.json",
+  "nominal_levels": [
+    0.5,
+    0.8,
+    0.9,
+    0.95
+  ],
+  "note": "Only existing headline summary coverage values were available; scalar calibration was not fit and calibrated intervals are intentionally absent.",
+  "png_path": "paper/figures/ensemble_reliability.png",
+  "reliability_csv_path": "results/reviewer_validation/ensemble_calibration/reliability_curve.csv"
+}

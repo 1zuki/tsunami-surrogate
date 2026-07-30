@@ -1,0 +1,17 @@
+dataset,nominal,raw_coverage,calibrated_coverage,n_samples,n_elements,calibration_status
+test_summary,0.5,0.4634630765914917,,2500,,unavailable_no_per_element_predictions
+test_summary,0.8,0.6999625574111938,,2500,,unavailable_no_per_element_predictions
+test_summary,0.9,0.7821516913414002,,2500,,unavailable_no_per_element_predictions
+test_summary,0.95,0.8321093036651611,,2500,,unavailable_no_per_element_predictions
+source_holdout_multi_gauss,0.5,0.3983422981368171,,414,,unavailable_no_per_element_predictions
+source_holdout_multi_gauss,0.8,0.6298041732414909,,414,,unavailable_no_per_element_predictions
+source_holdout_multi_gauss,0.9,0.7206461593724679,,414,,unavailable_no_per_element_predictions
+source_holdout_multi_gauss,0.95,0.7796610783839572,,414,,unavailable_no_per_element_predictions
+bathymetry_holdout_trench,0.5,0.48772155557005914,,481,,unavailable_no_per_element_predictions
+bathymetry_holdout_trench,0.8,0.7245712044828895,,481,,unavailable_no_per_element_predictions
+bathymetry_holdout_trench,0.9,0.8038610236064808,,481,,unavailable_no_per_element_predictions
+bathymetry_holdout_trench,0.95,0.8512022873220225,,481,,unavailable_no_per_element_predictions
+source_strength_extreme_high,0.5,0.37582390507062274,,180,,unavailable_no_per_element_predictions
+source_strength_extreme_high,0.8,0.5890694061915079,,180,,unavailable_no_per_element_predictions
+source_strength_extreme_high,0.9,0.6727920201089647,,180,,unavailable_no_per_element_predictions
+source_strength_extreme_high,0.95,0.728327649169498,,180,,unavailable_no_per_element_predictions
