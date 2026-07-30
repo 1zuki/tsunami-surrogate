@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict, Mapping
+import random
+import numpy as np
 import torch
 from torch import optim
 
@@ -10,6 +12,137 @@ from .engine import train_one_epoch, evaluate_epoch
 from .callbacks import EarlyStopping
 from .checkpointing import save_checkpoint, load_checkpoint
 from src.utils.io import save_json, load_json
+
+
+def _capture_rng_state() -> Dict[str, Any]:
+    bit_generator, keys, position, has_gauss, cached_gaussian = np.random.get_state()
+    return {
+        "python": random.getstate(),
+        "numpy": {
+            "bit_generator": str(bit_generator),
+            "keys": keys.astype(np.uint32, copy=False).tolist(),
+            "position": int(position),
+            "has_gauss": int(has_gauss),
+            "cached_gaussian": float(cached_gaussian),
+        },
+        "torch_cpu": torch.get_rng_state(),
+        "torch_cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+    }
+
+
+def _restore_rng_state(state: Dict[str, Any] | None) -> None:
+    if not state:
+        return
+    if state.get("python") is not None:
+        random.setstate(state["python"])
+    numpy_state = state.get("numpy")
+    if isinstance(numpy_state, Mapping):
+        np.random.set_state(
+            (
+                str(numpy_state["bit_generator"]),
+                np.asarray(numpy_state["keys"], dtype=np.uint32),
+                int(numpy_state["position"]),
+                int(numpy_state["has_gauss"]),
+                float(numpy_state["cached_gaussian"]),
+            )
+        )
+    elif numpy_state is not None:
+        # Compatibility with any in-memory state captured before the
+        # weights-only-safe representation above was introduced.
+        np.random.set_state(numpy_state)
+    if state.get("torch_cpu") is not None:
+        torch.set_rng_state(state["torch_cpu"])
+    if torch.cuda.is_available() and state.get("torch_cuda") is not None:
+        torch.cuda.set_rng_state_all(state["torch_cuda"])
+
+
+def _sampler_objects(loader: Any) -> Dict[str, Any]:
+    samplers: Dict[str, Any] = {}
+    seen: set[int] = set()
+    for name in ("batch_sampler", "sampler"):
+        sampler = getattr(loader, name, None)
+        if sampler is None or id(sampler) in seen:
+            continue
+        seen.add(id(sampler))
+        samplers[name] = sampler
+    return samplers
+
+
+def _type_name(value: Any) -> str:
+    cls = type(value)
+    return f"{cls.__module__}.{cls.__qualname__}"
+
+
+def _loader_contract(loader: Any) -> Dict[str, Any] | None:
+    required = (
+        "dataset",
+        "batch_size",
+        "drop_last",
+        "num_workers",
+        "persistent_workers",
+        "sampler",
+        "batch_sampler",
+    )
+    if any(not hasattr(loader, name) for name in required):
+        return None
+    return {
+        "dataset_type": _type_name(loader.dataset),
+        "dataset_length": int(len(loader.dataset)),
+        "batch_count": int(len(loader)),
+        "batch_size": (
+            None if loader.batch_size is None else int(loader.batch_size)
+        ),
+        "drop_last": bool(loader.drop_last),
+        "num_workers": int(loader.num_workers),
+        "persistent_workers": bool(loader.persistent_workers),
+        "sampler_type": _type_name(loader.sampler),
+        "batch_sampler_type": _type_name(loader.batch_sampler),
+    }
+
+
+def _capture_loader_state(loader: Any) -> Dict[str, Any]:
+    state: Dict[str, Any] = {"samplers": {}}
+    contract = _loader_contract(loader)
+    if contract is not None:
+        state["contract"] = contract
+    for name, sampler in _sampler_objects(loader).items():
+        if hasattr(sampler, "state_dict"):
+            state["samplers"][name] = sampler.state_dict()
+
+    generator = getattr(loader, "generator", None)
+    if isinstance(generator, torch.Generator):
+        state["generator_state"] = generator.get_state()
+    return state
+
+
+def _restore_loader_state(loader: Any, state: Dict[str, Any] | None) -> None:
+    if not state:
+        return
+    expected_contract = state.get("contract")
+    if isinstance(expected_contract, Mapping):
+        observed_contract = _loader_contract(loader)
+        if observed_contract is None or dict(expected_contract) != observed_contract:
+            raise ValueError(
+                "Training DataLoader contract mismatch during resume. "
+                f"checkpoint={dict(expected_contract)}, runtime={observed_contract}"
+            )
+
+    samplers = _sampler_objects(loader)
+    for name, sampler_state in dict(state.get("samplers", {})).items():
+        sampler = samplers.get(name)
+        if sampler is not None and hasattr(sampler, "load_state_dict"):
+            sampler.load_state_dict(sampler_state)
+
+    generator = getattr(loader, "generator", None)
+    generator_state = state.get("generator_state")
+    if isinstance(generator, torch.Generator) and generator_state is not None:
+        generator.set_state(generator_state)
+
+
+def _set_loader_epoch(loader: Any, epoch_index: int) -> None:
+    for sampler in _sampler_objects(loader).values():
+        if hasattr(sampler, "set_epoch"):
+            sampler.set_epoch(int(epoch_index))
 
 
 class Trainer:
@@ -58,7 +191,14 @@ class Trainer:
         )
 
     def _resume_from(self, resume_path: Path):
-        ckpt = load_checkpoint(resume_path, self.model, self.optimizer, self.scheduler, map_location=self.device)
+        ckpt = load_checkpoint(
+            resume_path,
+            self.model,
+            self.optimizer,
+            self.scheduler,
+            map_location=self.device,
+            validate_training_data=True,
+        )
         state = ckpt.get("trainer_state") or {}
 
         start_epoch = int(state.get("epoch", ckpt.get("epoch", 0))) + 1
@@ -68,6 +208,8 @@ class Trainer:
 
         self.early.best = state.get("early_best")
         self.early.count = int(state.get("early_count", 0))
+        _restore_loader_state(self.loaders["train"], state.get("train_loader_state"))
+        _restore_rng_state(state.get("rng_state"))
 
         history_path = self.output_dir / "history.json"
         history = load_json(history_path) if history_path.exists() else []
@@ -90,6 +232,7 @@ class Trainer:
 
         epoch = start_epoch - 1
         for epoch in range(start_epoch, epochs + 1):
+            _set_loader_epoch(self.loaders["train"], epoch - 1)
             train_metrics = train_one_epoch(self.model, self.loaders["train"], self.optimizer, self.loss_fn, self.device, grad_clip)
             val_metrics = evaluate_epoch(self.model, self.loaders["val"], self.loss_fn, self.device) if "val" in self.loaders else {}
 
@@ -99,10 +242,11 @@ class Trainer:
             metric_name = train_cfg.get("checkpoint_metric", "val_rel_l2")
             value = row.get(metric_name, row.get("val_loss", row.get("train_loss")))
 
-            if value is not None and self._is_checkpoint_improved(float(value), float(best_value)):
-                best_value = value
-                save_checkpoint(self.output_dir / "best.pt", self.model, self.optimizer, epoch, row, self.cfg,
-                                scheduler=self.scheduler, trainer_state=self._trainer_state(epoch, best_value))
+            improved = value is not None and self._is_checkpoint_improved(
+                float(value), float(best_value)
+            )
+            if improved:
+                best_value = float(value)
 
             save_json(history, self.output_dir / "history.json")
             print(row)
@@ -112,8 +256,21 @@ class Trainer:
             if self.scheduler is not None and not stop:
                 self.scheduler.step()
 
+            trainer_state = self._trainer_state(epoch, best_value)
+            if improved:
+                save_checkpoint(
+                    self.output_dir / "best.pt",
+                    self.model,
+                    self.optimizer,
+                    epoch,
+                    row,
+                    self.cfg,
+                    scheduler=self.scheduler,
+                    trainer_state=trainer_state,
+                )
+
             save_checkpoint(self.checkpoint_dir / "last.pt", self.model, self.optimizer, epoch, history[-1], self.cfg,
-                            scheduler=self.scheduler, trainer_state=self._trainer_state(epoch, best_value))
+                            scheduler=self.scheduler, trainer_state=trainer_state)
 
             if stop:
                 print(f"Early stopping at epoch {epoch}")
@@ -127,6 +284,8 @@ class Trainer:
             "best_value": float(best_value),
             "early_best": self.early.best,
             "early_count": int(self.early.count),
+            "rng_state": _capture_rng_state(),
+            "train_loader_state": _capture_loader_state(self.loaders["train"]),
         }
 
     def _is_checkpoint_improved(self, value: float, best_value: float) -> bool:

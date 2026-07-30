@@ -1,9 +1,18 @@
 import sys
+import json
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
-from src.data.dataset import TsunamiDataset, create_dataloaders, save_npz
+import pytest
+from src.data.dataset import (
+    PROCESSED_MANIFEST_SCHEMA_ID,
+    ShardedTsunamiDataset,
+    TsunamiDataset,
+    create_dataloaders,
+    save_npz,
+)
+from src.utils.hashing import sha256_file
 
 
 def test_dataset_shape(tmp_path):
@@ -66,3 +75,64 @@ def test_create_dataloaders_skips_empty_split_dirs(tmp_path):
     assert set(loaders) == {"train", "test"}
     assert len(loaders["train"].dataset) == 4
     assert len(loaders["test"].dataset) == 3
+
+
+def test_dataset_rejects_metadata_length_mismatch(tmp_path: Path) -> None:
+    path = tmp_path / "bad.npz"
+    np.savez_compressed(
+        path,
+        x=np.zeros((2, 1, 2, 2), dtype=np.float32),
+        y=np.zeros((2, 1, 2, 2), dtype=np.float32),
+        source_id=np.asarray(["only-one"], dtype=np.str_),
+    )
+    with pytest.raises(ValueError, match="Metadata length mismatch"):
+        TsunamiDataset(path)
+
+
+def test_sharded_v2_dataset_rejects_normalization_and_shard_corruption(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "processed"
+    split = root / "train"
+    shard_dir = split / "shards"
+    shard_dir.mkdir(parents=True)
+    stats = root / "normalization_stats.json"
+    stats.write_text("{}", encoding="utf-8")
+    shard = shard_dir / "shard_00000.npz"
+    np.savez_compressed(
+        shard,
+        inputs=np.zeros((1, 1, 2, 2), dtype=np.float32),
+        targets=np.zeros((1, 1, 2, 2), dtype=np.float32),
+    )
+    manifest = {
+        "schema_id": PROCESSED_MANIFEST_SCHEMA_ID,
+        "num_samples": 1,
+        "shards": [
+            {
+                "file": "shards/shard_00000.npz",
+                "sha256": sha256_file(shard),
+                "num_samples": 1,
+            }
+        ],
+        "provenance": {
+            "normalization": {
+                "path": "../normalization_stats.json",
+                "sha256": sha256_file(stats),
+            }
+        },
+    }
+    (split / "shards_manifest.json").write_text(
+        json.dumps(manifest),
+        encoding="utf-8",
+    )
+
+    assert len(ShardedTsunamiDataset(split)) == 1
+    shard.write_bytes(shard.read_bytes() + b"corrupt")
+    corrupted_shard = ShardedTsunamiDataset(split)
+    with pytest.raises(RuntimeError, match="shard hash mismatch"):
+        corrupted_shard[0]
+
+    shard.write_bytes(shard.read_bytes()[:-7])
+    stats.write_text('{"changed": true}', encoding="utf-8")
+    with pytest.raises(RuntimeError, match="normalization hash mismatch"):
+        ShardedTsunamiDataset(split)

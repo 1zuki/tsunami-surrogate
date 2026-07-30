@@ -3,12 +3,23 @@ from __future__ import annotations
 import json
 import pathlib
 import random
+import sys
 import numpy as np
 import yaml
 import argparse
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.utils.hashing import sha256_file, stable_json_sha256
+
+NORMALIZATION_STATS_SCHEMA_ID = "tsunami-surrogate.normalization-stats.v2"
+PROCESSED_MANIFEST_SCHEMA_ID = "tsunami-surrogate.processed-dataset.v2"
+
 
 @dataclass
 class PreprocessConfig:
@@ -232,6 +243,10 @@ class TsunamiPreprocessor:
         self._target_min: float = 0.0
         self._target_max: float = 1.0
         self._active_norm_reference_path: Optional[pathlib.Path] = None
+        self._loaded_normalization_payload: Dict[str, Any] = {}
+        self._normalization_stats_sha256: Optional[str] = None
+        self._normalization_provenance: Dict[str, Any] = {}
+        self._preprocess_config_sha256 = sha256_file(self.config_path)
         solver_vocab = self.fde_targets if self.fde_targets else sorted(set(self.fde_manifest_paths.keys()))
 
         if not solver_vocab:
@@ -627,29 +642,12 @@ class TsunamiPreprocessor:
         if train_records:
             return None
 
-        solver_name = output_dir.name
-        candidates = [
-            output_dir / "normalization_stats.json",
-            output_dir.parent / solver_name / "normalization_stats.json",
-            output_dir.parent / "train" / solver_name / "normalization_stats.json",
-            output_dir.parent.parent / solver_name / "normalization_stats.json",
-            output_dir.parent.parent / "train" / solver_name / "normalization_stats.json",
-        ]
-        seen: Set[pathlib.Path] = set()
-        for candidate in candidates:
-            candidate = candidate.resolve()
-            if candidate in seen:
-                continue
-            seen.add(candidate)
-            if candidate.is_file():
-                print(f"[preprocess] no train split records; reusing normalization stats: {candidate}")
-                return candidate
-
         if self._normalization_enabled():
             raise ValueError(
                 "No training records are available to fit normalization statistics. "
-                "Run the training split first, or set normalization.reference_stats_path "
-                "to an existing normalization_stats.json file."
+                "Set normalization.reference_stats_path or "
+                "normalization.reference_stats_by_fde explicitly; implicit path-based "
+                "normalization-stat discovery is disabled."
             )
 
         return None
@@ -664,6 +662,15 @@ class TsunamiPreprocessor:
 
         with stats_path.open("r", encoding="utf-8") as f:
             payload = json.load(f)
+        if not isinstance(payload, dict):
+            raise ValueError(f"Invalid normalization stats in {stats_path}: expected object")
+
+        method = str(payload.get("method", "")).strip().lower()
+        if method != self.cfg.norm_method.strip().lower():
+            raise ValueError(
+                f"Normalization method mismatch for {stats_path}: "
+                f"stats={method!r}, config={self.cfg.norm_method!r}"
+            )
 
         inputs = payload.get("inputs", {})
         if not isinstance(inputs, dict):
@@ -677,11 +684,38 @@ class TsunamiPreprocessor:
             if "offset" not in spec or "scale" not in spec:
                 continue
 
-            self._mean[str(name)] = float(spec["offset"])
-            self._stds[str(name)] = float(spec["scale"])
+            offset = float(spec["offset"])
+            scale = float(spec["scale"])
+            if not np.isfinite(offset) or not np.isfinite(scale) or scale <= 0.0:
+                raise ValueError(
+                    f"Invalid normalization statistic for {name!r} in {stats_path}: "
+                    f"offset={offset}, scale={scale}"
+                )
+            self._mean[str(name)] = offset
+            self._stds[str(name)] = scale
 
         targets = payload.get("targets", {})
+        trajectory_normalized = bool(self.cfg.norm_channels.get("trajectory", False))
+        if trajectory_normalized and not isinstance(targets, dict):
+            raise ValueError(
+                f"Normalization stats {stats_path} is missing target statistics"
+            )
         if isinstance(targets, dict):
+            if trajectory_normalized:
+                missing_target_fields = [
+                    name for name in ("offset", "scale") if name not in targets
+                ]
+                if missing_target_fields:
+                    raise ValueError(
+                        f"Normalization stats {stats_path} is missing target fields: "
+                        f"{missing_target_fields}"
+                    )
+            target_variable = str(targets.get("variable", "")).strip().lower()
+            if target_variable and target_variable != self.cfg.target_variable:
+                raise ValueError(
+                    f"Normalization target mismatch for {stats_path}: "
+                    f"stats={target_variable!r}, config={self.cfg.target_variable!r}"
+                )
             self._target_mean = float(targets.get("offset", 0.0))
             self._target_std = float(targets.get("scale", 1.0))
             self._target_min = float(targets.get("min", 0.0))
@@ -701,11 +735,23 @@ class TsunamiPreprocessor:
                     f"Available={sorted(self._mean.keys())}"
                 )
 
-        if self.cfg.norm_channels.get("trajectory", False) and abs(self._target_std) <= 0.0:
+        if trajectory_normalized and self._target_std <= 0.0:
             raise ValueError(
                 f"Normalization stats {stats_path} has invalid target scale={self._target_std}. "
-                "Expected non-zero target scale."
+                "Expected a positive target scale."
             )
+        if not all(
+            np.isfinite(value)
+            for value in (
+                self._target_mean,
+                self._target_std,
+                self._target_min,
+                self._target_max,
+            )
+        ):
+            raise ValueError(f"Normalization target statistics are non-finite in {stats_path}")
+
+        self._loaded_normalization_payload = payload
 
     def normalize_sample(self, X: Dict[str, np.ndarray], Y: np.ndarray) -> Tuple[Dict[str, np.ndarray], np.ndarray]:
         """ apply normalization using training statistics """
@@ -760,6 +806,143 @@ class TsunamiPreprocessor:
             "boussinesq": "boussinesq",
         }
         return mapping.get(n, n)
+
+    def _source_manifest_provenance(
+        self, solver_names: Set[str]
+    ) -> Dict[str, Dict[str, str]]:
+        manifests: Dict[str, Dict[str, str]] = {}
+        for solver_name in sorted(solver_names):
+            canonical = self._canonical_fde_name(solver_name)
+            path = self.fde_manifest_paths.get(canonical)
+            if path is None and len(solver_names) == 1:
+                path = self.cfg.manifest_path
+            if path is not None and path.is_file():
+                manifests[canonical] = {
+                    "path": str(path),
+                    "sha256": sha256_file(path),
+                }
+        return manifests
+
+    def _source_lineage(
+        self, records: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        if not records:
+            return {
+                "status": "empty",
+                "sample_count": 0,
+                "sample_identity_sha256": stable_json_sha256([]),
+                "source_manifests": {},
+            }
+
+        rows: List[Dict[str, Any]] = []
+        v2_count = 0
+        contract_hashes: Set[str] = set()
+        code_state_hashes: Set[str] = set()
+        solver_config_hashes: Dict[str, Set[str]] = {}
+        solver_names: Set[str] = set()
+        required_v2 = (
+            "contract_hash",
+            "resolved_config_hash",
+            "code_state_hash",
+            "input_fingerprint",
+        )
+
+        for record in records:
+            scenario_id = self._scenario_id_from_record(record)
+            solver_name = self._canonical_fde_name(
+                str(record.get("solver_name", record.get("primary_fde", "unknown")))
+            )
+            solver_names.add(solver_name)
+            row: Dict[str, Any] = {
+                "sample_index": record.get("sample_index"),
+                "scenario_id": scenario_id,
+                "solver_name": solver_name,
+            }
+            if record.get("contract_hash"):
+                v2_count += 1
+                missing = [key for key in required_v2 if not record.get(key)]
+                if missing:
+                    raise RuntimeError(
+                        f"Common-time-v2 preprocessing record {scenario_id} is "
+                        f"missing lineage fields: {missing}"
+                    )
+                contract_hash = str(record["contract_hash"])
+                config_hash = str(record["resolved_config_hash"])
+                code_hash = str(record["code_state_hash"])
+                contract_hashes.add(contract_hash)
+                code_state_hashes.add(code_hash)
+                solver_config_hashes.setdefault(solver_name, set()).add(config_hash)
+                row.update(
+                    {
+                        "contract_hash": contract_hash,
+                        "resolved_config_hash": config_hash,
+                        "code_state_hash": code_hash,
+                        "input_fingerprint": str(record["input_fingerprint"]),
+                    }
+                )
+            rows.append(row)
+
+        if v2_count not in {0, len(records)}:
+            raise RuntimeError("Refusing to preprocess mixed legacy and common-time-v2 records")
+        if len(contract_hashes) > 1:
+            raise RuntimeError(
+                f"Refusing mixed common-time-v2 contracts: {sorted(contract_hashes)}"
+            )
+        if len(code_state_hashes) > 1:
+            raise RuntimeError(
+                f"Refusing mixed common-time-v2 code states: {sorted(code_state_hashes)}"
+            )
+        for solver_name, hashes in solver_config_hashes.items():
+            if len(hashes) > 1:
+                raise RuntimeError(
+                    f"Refusing mixed resolved configs for {solver_name}: {sorted(hashes)}"
+                )
+
+        rows.sort(
+            key=lambda row: (
+                str(row["scenario_id"]),
+                str(row["solver_name"]),
+                int(row["sample_index"] or 0),
+            )
+        )
+        lineage: Dict[str, Any] = {
+            "status": "bound_common_time_v2" if v2_count else "legacy_unbound",
+            "sample_count": len(rows),
+            "sample_identity_sha256": stable_json_sha256(rows),
+            "solver_names": sorted(solver_names),
+            "source_manifests": self._source_manifest_provenance(solver_names),
+        }
+        if v2_count:
+            lineage.update(
+                {
+                    "contract_hash": next(iter(contract_hashes)),
+                    "code_state_hash": next(iter(code_state_hashes)),
+                    "resolved_config_hashes": {
+                        name: next(iter(hashes))
+                        for name, hashes in sorted(solver_config_hashes.items())
+                    },
+                }
+            )
+        return lineage
+
+    def _processed_provenance(
+        self, records: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        if self._normalization_stats_sha256 is None:
+            raise RuntimeError("Normalization statistics were not frozen before saving")
+        return {
+            "schema_id": PROCESSED_MANIFEST_SCHEMA_ID,
+            "preprocess_config": {
+                "path": str(self.config_path),
+                "sha256": self._preprocess_config_sha256,
+            },
+            "source_lineage": self._source_lineage(records),
+            "normalization": {
+                "path": "../normalization_stats.json",
+                "sha256": self._normalization_stats_sha256,
+                **self._normalization_provenance,
+            },
+        }
 
     @staticmethod
     def _load_manifest_path(manifest_path: pathlib.Path) -> List[Dict[str, Any]]:
@@ -906,7 +1089,7 @@ class TsunamiPreprocessor:
             original_processed_dir = self.cfg.processed_dir
             self.cfg.processed_dir = output_dir
             self.cfg.processed_dir.mkdir(parents=True, exist_ok=True)
-            self._save_normalization_stats()
+            self._save_normalization_stats(train_records)
             write_empty_splits = bool(train_records)
             for split_name, records in (
                 ("train", train_records),
@@ -949,7 +1132,7 @@ class TsunamiPreprocessor:
         original_processed_dir = self.cfg.processed_dir
         self.cfg.processed_dir = output_dir
         self.cfg.processed_dir.mkdir(parents=True, exist_ok=True)
-        self._save_normalization_stats()
+        self._save_normalization_stats(train_records)
         write_empty_splits = bool(train_records)
         for split_name, X_split, Y_split, meta_split, ids_split in (
             ("train", X_train, Y_train, meta_train, ids_train),
@@ -1025,6 +1208,19 @@ class TsunamiPreprocessor:
             with (out_dir / name).open("w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=2)
 
+    @staticmethod
+    def _hash_split_artifacts(
+        out_dir: pathlib.Path,
+        artifact_names: Set[str],
+    ) -> Dict[str, str]:
+        hashes: Dict[str, str] = {}
+        for name in sorted(artifact_names):
+            path = out_dir / name
+            if not path.is_file():
+                raise RuntimeError(f"Expected processed artifact was not written: {path}")
+            hashes[name] = sha256_file(path)
+        return hashes
+
     def _clear_generated_split_outputs(self, out_dir: pathlib.Path) -> None:
         known_files = {
             self.cfg.eval_inputs_name,
@@ -1088,6 +1284,7 @@ class TsunamiPreprocessor:
 
         return {
             "file": str(shard_path.relative_to(out_dir)),
+            "sha256": sha256_file(shard_path),
             "num_samples": int(eval_inputs.shape[0]),
             "inputs_shape": list(map(int, eval_inputs.shape)),
             "targets_shape": list(map(int, eval_targets.shape)),
@@ -1171,8 +1368,10 @@ class TsunamiPreprocessor:
             if meta_file is not None:
                 meta_file.close()
 
+        provenance = self._processed_provenance(records)
         shard_manifest = {
-            "version": 1,
+            "version": 2,
+            "schema_id": PROCESSED_MANIFEST_SCHEMA_ID,
             "split": split_name,
             "sharded": True,
             "num_samples": int(total_samples),
@@ -1187,11 +1386,13 @@ class TsunamiPreprocessor:
             "target_std": float(self._target_std),
             "target_min": float(self._target_min),
             "target_max": float(self._target_max),
+            "provenance": provenance,
         }
         with (out_dir / "shards_manifest.json").open("w", encoding="utf-8") as f:
             json.dump(shard_manifest, f, indent=2)
 
         eval_manifest = {
+            "schema_id": PROCESSED_MANIFEST_SCHEMA_ID,
             "split": split_name,
             "sharded": True,
             "shards_manifest": "shards_manifest.json",
@@ -1203,6 +1404,7 @@ class TsunamiPreprocessor:
             "num_shards": int(len(shards)),
             "inputs_shape": first_inputs_shape,
             "targets_shape": first_targets_shape,
+            "provenance": provenance,
         }
         self._write_eval_manifest(out_dir, eval_manifest)
 
@@ -1221,10 +1423,12 @@ class TsunamiPreprocessor:
 
         # save each input channel
         channel_names = list(X[0].keys())
+        artifact_names: Set[str] = {"Y.npy"}
 
         for channel in channel_names:
             stacked = np.stack([x[channel] for x in X], axis=0)
             npz_path = out_dir / f"X_{channel}.npz"
+            artifact_names.add(npz_path.name)
 
             if self.cfg.compress:
                 np.savez_compressed(npz_path, data=stacked)
@@ -1236,6 +1440,13 @@ class TsunamiPreprocessor:
         Y_arr = np.stack(Y, axis=0)
         Y_path = out_dir / "Y.npy"
         np.save(Y_path, Y_arr)
+
+        if self.cfg.include_meta:
+            meta_path = out_dir / "meta.jsonl"
+            with meta_path.open("w", encoding="utf-8") as f:
+                for meta in meta_list:
+                    f.write(json.dumps(meta) + "\n")
+            artifact_names.add(meta_path.name)
 
         if self.cfg.export_eval_arrays:
             input_order = self._resolved_eval_input_order(X[0])
@@ -1296,8 +1507,17 @@ class TsunamiPreprocessor:
                 target_min=np.asarray([self._target_min], dtype=np.float32),
                 target_max=np.asarray([self._target_max], dtype=np.float32),
             )
+            artifact_names.update(
+                {
+                    self.cfg.eval_inputs_name,
+                    self.cfg.eval_targets_name,
+                    self.cfg.eval_ids_name,
+                    self.cfg.eval_archive_name,
+                }
+            )
 
             eval_manifest = {
+                "schema_id": PROCESSED_MANIFEST_SCHEMA_ID,
                 "split": split_name,
                 "inputs_name": self.cfg.eval_inputs_name,
                 "targets_name": self.cfg.eval_targets_name,
@@ -1309,21 +1529,52 @@ class TsunamiPreprocessor:
                 "normalized_targets": bool(self.cfg.norm_channels.get("trajectory", False)),
                 "inputs_shape": list(map(int, eval_inputs.shape)),
                 "targets_shape": list(map(int, eval_targets.shape)),
+                "artifacts": self._hash_split_artifacts(
+                    out_dir,
+                    artifact_names,
+                ),
+                "provenance": self._processed_provenance(meta_list),
             }
             self._write_eval_manifest(out_dir, eval_manifest)
 
-        if self.cfg.include_meta:
-            meta_path = out_dir / "meta.jsonl"
+    def _save_normalization_stats(
+        self, fit_records: List[Dict[str, Any]]
+    ) -> None:
+        stats_path = self.cfg.processed_dir / "normalization_stats.json"
+        reference: Dict[str, Any] | None = None
+        if self._active_norm_reference_path is not None:
+            reference_path = self._active_norm_reference_path.resolve()
+            reference = {
+                "mode": "explicit_reference",
+                "path": str(self._active_norm_reference_path),
+                "sha256": sha256_file(reference_path),
+                "source": self._loaded_normalization_payload.get("source"),
+            }
+            if stats_path.resolve() == reference_path:
+                self._normalization_stats_sha256 = reference["sha256"]
+                self._normalization_provenance = {
+                    "mode": "explicit_reference_in_place",
+                    "reference": reference,
+                }
+                return
 
-            with meta_path.open("w", encoding="utf-8") as f:
-                for m in meta_list:
-                    f.write(json.dumps(m) + "\n")
-
-    def _save_normalization_stats(self) -> None:
+        source = (
+            reference
+            if reference is not None
+            else {
+                "mode": "fit_training_records",
+                "lineage": self._source_lineage(fit_records),
+            }
+        )
         stats = {
+            "schema_id": NORMALIZATION_STATS_SCHEMA_ID,
             "method": self.cfg.norm_method,
             "eps": float(self.cfg.eps),
-            "reference_stats_path": str(self._active_norm_reference_path) if self._active_norm_reference_path else None,
+            "preprocess_config": {
+                "path": str(self.config_path),
+                "sha256": self._preprocess_config_sha256,
+            },
+            "source": source,
             "inputs": {
                 name: {
                     "offset": float(self._mean[name]),
@@ -1340,8 +1591,13 @@ class TsunamiPreprocessor:
                 "max": float(self._target_max),
             },
         }
-        with (self.cfg.processed_dir / "normalization_stats.json").open("w", encoding="utf-8") as f:
+        with stats_path.open("w", encoding="utf-8") as f:
             json.dump(stats, f, indent=2)
+        self._normalization_stats_sha256 = sha256_file(stats_path)
+        self._normalization_provenance = {
+            "mode": str(source["mode"]),
+            "source": source,
+        }
 
     def run(self) -> None:
         mode = self.fde_mode

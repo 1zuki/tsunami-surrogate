@@ -35,7 +35,10 @@ try:
         stable_hash_payload,
         validate_publication,
     )
-    from src.data_gen.operational_timing import GenerationTimingRecorder
+    from src.data_gen.operational_timing import (
+        GenerationTimingRecorder,
+        effective_worker_count,
+    )
 except ImportError:
     from common_time_v2 import (
         ETA_SAMPLE_SCHEMA_ID,
@@ -52,7 +55,7 @@ except ImportError:
         stable_hash_payload,
         validate_publication,
     )
-    from operational_timing import GenerationTimingRecorder
+    from operational_timing import GenerationTimingRecorder, effective_worker_count
 
 try:
     from src.data_gen.generate_bathymetry import BathymetryGenerator
@@ -3454,7 +3457,7 @@ class TsunamiDatasetBuilder:
                 )
             return
 
-        workers = min(self.dataset.num_workers, max(1, os.cpu_count() or 1))
+        workers = effective_worker_count(self.dataset.num_workers, len(pending))
         mp_ctx = get_context("spawn")
         done = 0
         with ProcessPoolExecutor(max_workers=workers, mp_context=mp_ctx) as ex:
@@ -3544,7 +3547,7 @@ class TsunamiDatasetBuilder:
                 )
             return
 
-        workers = min(self.dataset.num_workers, max(1, os.cpu_count() or 1))
+        workers = effective_worker_count(self.dataset.num_workers, len(pending))
         mp_ctx = get_context("spawn")
         done = 0
         with ProcessPoolExecutor(max_workers=workers, mp_context=mp_ctx) as ex:
@@ -3920,7 +3923,7 @@ class TsunamiDatasetBuilder:
                 record_complete(rec, done)
             return records
 
-        workers = min(self.dataset.num_workers, max(1, os.cpu_count() or 1))
+        workers = effective_worker_count(self.dataset.num_workers, len(indices))
         max_in_flight = self.operations.max_in_flight or 2 * workers
         max_in_flight = min(len(indices), max(workers, int(max_in_flight)))
         mp_ctx = get_context("spawn")

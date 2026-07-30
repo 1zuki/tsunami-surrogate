@@ -135,10 +135,7 @@ def main():
     if normalization_bridge is not None:
         target_denorm = normalization_bridge.model_target_denorm
     elif report_physical and resolved_dataset_path is not None:
-        try:
-            target_denorm = load_target_denorm(resolved_dataset_path)
-        except Exception:
-            target_denorm = None
+        target_denorm = load_target_denorm(resolved_dataset_path)
 
     if report_physical and target_denorm is not None:
         physical_metrics = evaluate_accuracy(
@@ -157,6 +154,7 @@ def main():
     metrics["config_path"] = str(args.config)
     metrics["checkpoint_path"] = str(args.checkpoint)
     metrics["checkpoint_epoch"] = int(checkpoint.get("epoch", -1))
+    metrics["checkpoint_compatibility"] = checkpoint.get("compatibility", {})
     checkpoint_cfg = checkpoint.get("config")
     if isinstance(checkpoint_cfg, dict) and "seed" in checkpoint_cfg:
         metrics["checkpoint_seed"] = int(checkpoint_cfg["seed"])

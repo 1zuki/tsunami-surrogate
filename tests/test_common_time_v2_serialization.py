@@ -29,6 +29,7 @@ from src.data_gen.simulate_dataset import (
 )
 from src.data_gen.operational_timing import (
     GenerationTimingRecorder,
+    effective_worker_count,
     summarize_generation_timings,
     validate_generation_timing,
 )
@@ -303,6 +304,14 @@ def test_generation_timing_is_separate_and_fails_closed_on_shard_corruption(
     shard.write_bytes(shard.read_bytes() + b"corrupt")
     with pytest.raises(RuntimeError, match="manifest hash mismatch"):
         validate_generation_timing(path)
+
+
+def test_effective_worker_count_matches_execution_limits() -> None:
+    assert effective_worker_count(10, 20, logical_cpu_count=8) == 8
+    assert effective_worker_count(10, 3, logical_cpu_count=8) == 3
+    assert effective_worker_count(10, 0, logical_cpu_count=8) == 0
+    with pytest.raises(ValueError, match="requested_workers"):
+        effective_worker_count(0, 3, logical_cpu_count=8)
 
 
 def test_authoritative_input_validation_is_exact_and_fail_closed(

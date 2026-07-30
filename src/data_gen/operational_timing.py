@@ -32,6 +32,23 @@ THREAD_ENV_KEYS = (
 )
 
 
+def effective_worker_count(
+    requested_workers: int,
+    task_count: int,
+    logical_cpu_count: int | None = None,
+) -> int:
+    requested = int(requested_workers)
+    tasks = int(task_count)
+    if requested <= 0:
+        raise ValueError("requested_workers must be positive")
+    if tasks <= 0:
+        return 0
+
+    cpu_count = os.cpu_count() if logical_cpu_count is None else logical_cpu_count
+    cpu_limit = max(1, int(cpu_count or 1))
+    return min(requested, tasks, cpu_limit)
+
+
 def _utc_now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -205,7 +222,11 @@ class GenerationTimingRecorder:
             self.payload["solver_names"]
         )
         requested_workers = int(self.payload["worker_policy"]["requested_workers"])
-        effective_workers = min(requested_workers, max(1, int(planned_scenarios)))
+        effective_workers = effective_worker_count(
+            requested_workers,
+            int(planned_scenarios),
+            self.payload["machine"].get("logical_cpu_count"),
+        )
         requested_window = self.payload["worker_policy"]["requested_max_in_flight"]
         effective_window = min(
             int(planned_scenarios),

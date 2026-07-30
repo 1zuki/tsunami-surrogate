@@ -120,7 +120,7 @@ def main() -> None:
     validate_model_io_channels(cfg, loaders, preferred_splits=("test", "val", "train"))
 
     model = build_model(cfg).to(device)
-    load_checkpoint(args.checkpoint, model, map_location=device)
+    checkpoint = load_checkpoint(args.checkpoint, model, map_location=device)
     model = cast_model_for_precision(model, precision_cfg)
 
     metrics = benchmark_inference(
@@ -158,6 +158,7 @@ def main() -> None:
         "time_per_sample_mean_s": float(metrics.get("time_per_sample_mean_s", 0.0)),
         "samples_per_second": float(metrics.get("samples_per_second", 0.0)),
         "hardware": hardware_info(device),
+        "checkpoint_compatibility": checkpoint.get("compatibility", {}),
     }
 
     output_path = Path(args.output) if args.output else _default_output(eval_cfg, cfg)

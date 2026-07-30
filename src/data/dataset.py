@@ -12,6 +12,97 @@ import torch
 from torch.utils.data import DataLoader, Dataset, Sampler, Subset
 
 from src.utils.seed import make_torch_generator, make_worker_init_fn
+from src.utils.hashing import sha256_file
+
+
+PROCESSED_MANIFEST_SCHEMA_ID = "tsunami-surrogate.processed-dataset.v2"
+
+
+def _load_json_object(path: Path) -> Dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        raise ValueError(f"Expected a JSON object in {path}")
+    return payload
+
+
+def _validate_normalization_provenance(
+    root: Path,
+    manifest: Dict[str, Any],
+    manifest_path: Path,
+) -> None:
+    provenance = manifest.get("provenance")
+    if not isinstance(provenance, dict):
+        raise ValueError(f"Processed v2 manifest is missing provenance: {manifest_path}")
+    normalization = provenance.get("normalization")
+    if not isinstance(normalization, dict):
+        raise ValueError(
+            f"Processed v2 manifest is missing normalization provenance: "
+            f"{manifest_path}"
+        )
+
+    normalization_path = root / str(
+        normalization.get("path", "../normalization_stats.json")
+    )
+    expected_hash = str(normalization.get("sha256", ""))
+    if not normalization_path.is_file() or not expected_hash:
+        raise ValueError(
+            f"Processed v2 normalization artifact is incomplete: "
+            f"{normalization_path}"
+        )
+    if sha256_file(normalization_path) != expected_hash:
+        raise RuntimeError(
+            f"Processed normalization hash mismatch: {normalization_path}"
+        )
+
+
+def _resolve_array_path(path: str | Path) -> Path:
+    resolved = Path(path)
+    if not resolved.exists():
+        raise FileNotFoundError(resolved)
+
+    if resolved.is_dir():
+        candidate = resolved / "eval_dataset.npz"
+        if candidate.exists():
+            return candidate
+
+        npz_candidates = sorted(resolved.glob("*.npz"))
+        if not npz_candidates:
+            raise FileNotFoundError(f"No .npz found in directory: {resolved}")
+        return npz_candidates[0]
+
+    return resolved
+
+
+def _validate_unsharded_v2_artifact(path: Path) -> Dict[str, Any] | None:
+    manifest_path = path.parent / "eval_manifest.json"
+    if not manifest_path.is_file():
+        return None
+
+    manifest = _load_json_object(manifest_path)
+    if manifest.get("schema_id") != PROCESSED_MANIFEST_SCHEMA_ID:
+        return None
+    if bool(manifest.get("sharded", False)):
+        raise ValueError(
+            f"Sharded processed manifest cannot describe flat dataset {path}"
+        )
+
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, dict):
+        raise ValueError(
+            f"Processed v2 manifest is missing artifact hashes: {manifest_path}"
+        )
+    expected_hash = str(artifacts.get(path.name, ""))
+    if not expected_hash:
+        raise ValueError(
+            f"Processed v2 manifest does not bind dataset artifact {path.name}: "
+            f"{manifest_path}"
+        )
+    if sha256_file(path) != expected_hash:
+        raise RuntimeError(f"Processed dataset hash mismatch: {path}")
+
+    _validate_normalization_provenance(path.parent, manifest, manifest_path)
+    return manifest
 
 
 def _as_nchw(arr: np.ndarray) -> np.ndarray:
@@ -70,7 +161,9 @@ def _string_array(data: Any, n: int, default: str) -> np.ndarray:
     out = np.asarray([str(v) for v in arr], dtype=object)
 
     if out.shape[0] != n:
-        return np.asarray([default] * n, dtype=object)
+        raise ValueError(
+            f"Metadata length mismatch: expected {n}, got {out.shape[0]}"
+        )
 
     return out
 
@@ -82,28 +175,15 @@ def _float_array(data: Any, n: int, default: float = np.nan) -> np.ndarray:
 
     arr = arr.reshape(-1).astype(np.float32)
     if arr.shape[0] != n:
-        return np.full((n,), float(default), dtype=np.float32)
+        raise ValueError(
+            f"Numeric metadata length mismatch: expected {n}, got {arr.shape[0]}"
+        )
 
     return arr
 
 
 def _load_arrays(path: str | Path) -> LoadedArrays:
-    path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(path)
-
-    if path.is_dir():
-        candidate = path / "eval_dataset.npz"
-
-        if candidate.exists():
-            path = candidate
-        else:
-            npz_candidates = sorted(path.glob("*.npz"))
-
-            if not npz_candidates:
-                raise FileNotFoundError(f"No .npz found in directory: {path}")
-
-            path = npz_candidates[0]
+    path = _resolve_array_path(path)
 
     with np.load(path, allow_pickle=True) as data:
         if "x" in data and "y" in data:
@@ -176,7 +256,26 @@ def _load_arrays(path: str | Path) -> LoadedArrays:
 
 class TsunamiDataset(Dataset):
     def __init__(self, path: str | Path):
-        arrays = _load_arrays(path)
+        resolved_path = _resolve_array_path(path)
+        manifest = _validate_unsharded_v2_artifact(resolved_path)
+        arrays = _load_arrays(resolved_path)
+        if manifest is not None:
+            expected_inputs_shape = manifest.get("inputs_shape")
+            expected_targets_shape = manifest.get("targets_shape")
+            if isinstance(expected_inputs_shape, list) and list(arrays.x.shape) != [
+                int(value) for value in expected_inputs_shape
+            ]:
+                raise ValueError(
+                    f"Processed input-shape mismatch for {resolved_path}: "
+                    f"manifest={expected_inputs_shape}, observed={list(arrays.x.shape)}"
+                )
+            if isinstance(expected_targets_shape, list) and list(arrays.y.shape) != [
+                int(value) for value in expected_targets_shape
+            ]:
+                raise ValueError(
+                    f"Processed target-shape mismatch for {resolved_path}: "
+                    f"manifest={expected_targets_shape}, observed={list(arrays.y.shape)}"
+                )
         self.x = torch.from_numpy(arrays.x)
         self.y = torch.from_numpy(arrays.y)
         self.sample_id = arrays.sample_id
@@ -211,10 +310,23 @@ class ShardedTsunamiDataset(Dataset):
         if not self.manifest_path.is_file():
             raise FileNotFoundError(self.manifest_path)
 
-        with self.manifest_path.open("r", encoding="utf-8") as f:
-            manifest = json.load(f)
+        manifest = _load_json_object(self.manifest_path)
 
         self.shards: List[Dict[str, Any]] = list(manifest.get("shards", []))
+        self.schema_id = str(manifest.get("schema_id", ""))
+        self._validated_shards: set[int] = set()
+        if self.schema_id == PROCESSED_MANIFEST_SCHEMA_ID:
+            _validate_normalization_provenance(
+                self.root,
+                manifest,
+                self.manifest_path,
+            )
+            for shard in self.shards:
+                if not shard.get("file") or not shard.get("sha256"):
+                    raise ValueError(
+                        f"Processed v2 shard entry lacks file/hash: {self.manifest_path}"
+                    )
+
         self.counts = [int(shard.get("num_samples", 0)) for shard in self.shards]
         self.cumulative: List[int] = []
         total = 0
@@ -224,6 +336,11 @@ class ShardedTsunamiDataset(Dataset):
 
         self.num_samples = int(manifest.get("num_samples", total))
         if self.num_samples != total:
+            if self.schema_id == PROCESSED_MANIFEST_SCHEMA_ID:
+                raise ValueError(
+                    f"Processed v2 sample-count mismatch in {self.manifest_path}: "
+                    f"manifest={self.num_samples}, shards={total}"
+                )
             self.num_samples = total
 
         self.cache_size = max(1, int(cache_size))
@@ -250,7 +367,16 @@ class ShardedTsunamiDataset(Dataset):
         if not shard_file:
             raise KeyError(f"Shard {shard_idx} in {self.manifest_path} is missing a file path.")
 
-        arrays = _load_arrays(self.root / str(shard_file))
+        shard_path = self.root / str(shard_file)
+        if self.schema_id == PROCESSED_MANIFEST_SCHEMA_ID and shard_idx not in self._validated_shards:
+            expected_hash = str(self.shards[shard_idx]["sha256"])
+            if not shard_path.is_file():
+                raise FileNotFoundError(shard_path)
+            if sha256_file(shard_path) != expected_hash:
+                raise RuntimeError(f"Processed shard hash mismatch: {shard_path}")
+            self._validated_shards.add(shard_idx)
+
+        arrays = _load_arrays(shard_path)
         self._cache[shard_idx] = arrays
         self._cache.move_to_end(shard_idx)
         while len(self._cache) > self.cache_size:
@@ -335,6 +461,29 @@ class ShardedBatchSampler(Sampler[List[int]]):
     def __len__(self) -> int:
         return int(self._num_batches)
 
+    def set_epoch(self, epoch: int) -> None:
+        epoch = int(epoch)
+        if epoch < 0:
+            raise ValueError("sampler epoch must be non-negative")
+        self._epoch = epoch
+
+    def state_dict(self) -> Dict[str, Any]:
+        return {
+            "epoch": int(self._epoch),
+            "seed": int(self.seed),
+            "batch_size": int(self.batch_size),
+            "drop_last": bool(self.drop_last),
+        }
+
+    def load_state_dict(self, state: Dict[str, Any]) -> None:
+        if int(state.get("seed", self.seed)) != self.seed:
+            raise ValueError("ShardedBatchSampler seed mismatch during resume")
+        if int(state.get("batch_size", self.batch_size)) != self.batch_size:
+            raise ValueError("ShardedBatchSampler batch-size mismatch during resume")
+        if bool(state.get("drop_last", self.drop_last)) != self.drop_last:
+            raise ValueError("ShardedBatchSampler drop-last mismatch during resume")
+        self.set_epoch(int(state.get("epoch", 0)))
+
 
 class WindowedShardBatchSampler(Sampler[List[int]]):
     """Shard-local batches for a WindowedTrajectoryDataset.
@@ -391,6 +540,33 @@ class WindowedShardBatchSampler(Sampler[List[int]]):
 
     def __len__(self) -> int:
         return int(self._num_batches)
+
+    def set_epoch(self, epoch: int) -> None:
+        epoch = int(epoch)
+        if epoch < 0:
+            raise ValueError("sampler epoch must be non-negative")
+        self._epoch = epoch
+
+    def state_dict(self) -> Dict[str, Any]:
+        return {
+            "epoch": int(self._epoch),
+            "seed": int(self.seed),
+            "batch_size": int(self.batch_size),
+            "drop_last": bool(self.drop_last),
+        }
+
+    def load_state_dict(self, state: Dict[str, Any]) -> None:
+        if int(state.get("seed", self.seed)) != self.seed:
+            raise ValueError("WindowedShardBatchSampler seed mismatch during resume")
+        if int(state.get("batch_size", self.batch_size)) != self.batch_size:
+            raise ValueError(
+                "WindowedShardBatchSampler batch-size mismatch during resume"
+            )
+        if bool(state.get("drop_last", self.drop_last)) != self.drop_last:
+            raise ValueError(
+                "WindowedShardBatchSampler drop-last mismatch during resume"
+            )
+        self.set_epoch(int(state.get("epoch", 0)))
 
 
 def _split_indices(n: int, split_cfg: Dict[str, Any], seed: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:

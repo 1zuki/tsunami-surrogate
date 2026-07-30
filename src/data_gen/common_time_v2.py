@@ -11,6 +11,8 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from src.utils.hashing import sha256_file
+
 
 CONTRACT_SCHEMA_ID = "tsunami-surrogate.common-time-v2.contract.v1"
 ETA_SAMPLE_SCHEMA_ID = "tsunami-surrogate.common-time-v2.eta-sample.v1"
@@ -91,14 +93,6 @@ def stable_hash_payload(*, artifact_kind: str, payload: Any, schema_id: str) -> 
         envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
-
-
-def sha256_file(path: str | Path) -> str:
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def hash_array(values: Any) -> dict[str, Any]:
