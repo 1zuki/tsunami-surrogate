@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from src.utils.config import load_yaml
 
 from scripts.prepare_cluster_training_suite import (
@@ -86,3 +88,36 @@ def test_submit_command_uses_smoke_dependency_and_account_concurrency(
     assert "--dependency=afterok:55523" in cmd
     assert "GPU_HELPER_VERIFIED=1" in " ".join(cmd)
     assert cmd[-1] == "slurm/train_suite_array.slurm"
+
+
+@pytest.mark.parametrize(
+    "script_name",
+    [
+        "gpu_helper_probe.slurm",
+        "train_fno.slurm",
+        "train_suite_array.slurm",
+    ],
+)
+def test_slurm_scripts_preserve_project_python_before_system_paths(
+    script_name: str,
+) -> None:
+    text = (ROOT / "slurm" / script_name).read_text(encoding="utf-8")
+
+    assert 'export PATH="$ENV_PREFIX/bin:/usr/bin:/bin:$PATH"' in text
+
+
+@pytest.mark.parametrize(
+    "script_name",
+    [
+        "gpu_helper_probe.slurm",
+        "train_fno.slurm",
+        "train_suite_array.slurm",
+    ],
+)
+def test_slurm_scripts_reject_known_gpu_helper_typo(
+    script_name: str,
+) -> None:
+    text = (ROOT / "slurm" / script_name).read_text(encoding="utf-8")
+
+    assert 'grep -Fq "nvidia-smi-i "' in text
+    assert "nvidia-smi -i" in text

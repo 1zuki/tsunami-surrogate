@@ -59,7 +59,7 @@ fi
 source /datastore/vit/miniconda3/etc/profile.d/conda.sh
 conda activate "$ENV_PREFIX"
 
-export PATH="/usr/bin:/bin:$PATH"
+export PATH="$ENV_PREFIX/bin:/usr/bin:/bin:$PATH"
 export PIP_CACHE_DIR="$PROJECT_ROOT/.cache/pip"
 export TORCH_HOME="$PROJECT_ROOT/.cache/torch"
 export OMP_NUM_THREADS=1
@@ -73,6 +73,12 @@ if ! command -v nvidia-smi >/dev/null 2>&1; then
 fi
 if [ ! -x /usr/local/bin/gpu_check.sh ]; then
     echo "Missing compute-node helper: /usr/local/bin/gpu_check.sh"
+    exit 1
+fi
+if grep -Fq "nvidia-smi-i " /usr/local/bin/gpu_check.sh; then
+    echo "gpu_check.sh contains invalid command 'nvidia-smi-i'"
+    echo "Ask the cluster administrator to change it to 'nvidia-smi -i'"
+    echo "Refusing to call the helper because it would requeue this job forever"
     exit 1
 fi
 

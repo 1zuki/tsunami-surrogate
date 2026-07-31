@@ -21,7 +21,7 @@ if type module >/dev/null 2>&1; then
 fi
 source /datastore/vit/miniconda3/etc/profile.d/conda.sh
 conda activate "$ENV_PREFIX"
-export PATH="/usr/bin:/bin:$PATH"
+export PATH="$ENV_PREFIX/bin:/usr/bin:/bin:$PATH"
 
 echo "Host          : $(hostname)"
 echo "PATH          : $PATH"
@@ -45,3 +45,11 @@ echo "Syntax check  :"
 bash -n /usr/local/bin/gpu_check.sh
 echo "Helper lines 20-45:"
 nl -ba /usr/local/bin/gpu_check.sh | sed -n '20,45p'
+
+if grep -Fq "nvidia-smi-i " /usr/local/bin/gpu_check.sh; then
+    echo "ERROR: gpu_check.sh contains 'nvidia-smi-i'; the administrator"
+    echo "must change it to 'nvidia-smi -i' before training jobs are submitted"
+    exit 1
+fi
+
+echo "Known command check: passed"
