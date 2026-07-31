@@ -1,0 +1,13 @@
+defaults:
+  - ../model/fno.yaml
+
+output_dir: experiments/slurm/fno
+seeds: [18]
+device: cuda
+
+data:
+  batch_size: 64
+  num_workers: 4
+
+cluster_suite:
+  classification: legacy_dev_only

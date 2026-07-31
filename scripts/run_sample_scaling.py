@@ -138,8 +138,41 @@ def _write_results(payload: dict[str, Any], rows: list[dict[str, Any]], output_r
     _write_csv(rows, output_root / "sample_scaling_results.csv")
 
 
-def _build_config(base_config: str, output_root: Path, n_samples: int, device: str | None, val_samples: int | None, test_samples: int | None) -> tuple[dict[str, Any], Path, Path]:
+def _resolve_single_seed(cfg: dict[str, Any], requested_seed: int | None) -> int:
+    if requested_seed is not None:
+        seed = int(requested_seed)
+    elif "seeds" in cfg:
+        seeds = cfg["seeds"]
+        if (
+            not isinstance(seeds, list)
+            or len(seeds) != 1
+            or isinstance(seeds[0], bool)
+            or not isinstance(seeds[0], int)
+        ):
+            raise ValueError(
+                "sample scaling requires exactly one seed; pass --seed to "
+                "override a multi-seed base config"
+            )
+        seed = int(seeds[0])
+    else:
+        seed = int(cfg.get("seed", 42))
+
+    cfg.pop("seeds", None)
+    cfg["seed"] = seed
+    return seed
+
+
+def _build_config(
+    base_config: str,
+    output_root: Path,
+    n_samples: int,
+    device: str | None,
+    val_samples: int | None,
+    test_samples: int | None,
+    seed: int | None,
+) -> tuple[dict[str, Any], Path, Path]:
     cfg = load_config(base_config)
+    resolved_seed = _resolve_single_seed(cfg, seed)
     run_dir = output_root / f"n_{n_samples:06d}"
     cfg["output_dir"] = str(run_dir)
 
@@ -161,6 +194,7 @@ def _build_config(base_config: str, output_root: Path, n_samples: int, device: s
     cfg["sample_scaling"] = {
         "base_config": str(base_config),
         "requested_train_samples": int(n_samples),
+        "seed": int(resolved_seed),
     }
 
     config_dir = output_root / "configs"
@@ -177,6 +211,15 @@ def main() -> None:
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None, help="Optional device override saved into generated configs.")
     parser.add_argument("--val-samples", type=int, default=None, help="Optional validation subset size for faster sweeps.")
     parser.add_argument("--test-samples", type=int, default=None, help="Optional test subset size for faster sweeps.")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=(
+            "Single training seed. Required when the base config contains "
+            "multiple seeds."
+        ),
+    )
     parser.add_argument("--python", default=sys.executable, help="Python executable used for train/eval subprocesses.")
     parser.add_argument("--skip-train", action="store_true", help="Skip training and only evaluate existing best.pt checkpoints.")
     parser.add_argument("--skip-eval", action="store_true", help="Skip evaluation after training.")
@@ -195,19 +238,24 @@ def main() -> None:
         "samples": samples,
         "output_root": str(output_root),
         "device": args.device,
+        "seed": args.seed,
         "dry_run": bool(args.dry_run),
     }
     rows: list[dict[str, Any]] = []
 
     for n_samples in samples:
-        cfg, run_dir, config_path = _build_config(
-            args.config,
-            output_root,
-            n_samples,
-            args.device,
-            args.val_samples,
-            args.test_samples,
-        )
+        try:
+            cfg, run_dir, config_path = _build_config(
+                args.config,
+                output_root,
+                n_samples,
+                args.device,
+                args.val_samples,
+                args.test_samples,
+                args.seed,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
         log_path = run_dir / "console.log"
         checkpoint_path = run_dir / "best.pt"
         eval_metrics_path = run_dir / "eval" / "metrics.json"

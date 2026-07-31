@@ -37,6 +37,13 @@ data/*
 
 !data/**/.gitkeep
 
+# Cluster-only transfer staging. Dataset archives are large, reproducible
+# transport artifacts and must never be committed.
+/.transfer/
+/tsunami-surrogate-data.parts.sha256
+/tsunami-surrogate-data.tar.zst.part-*
+/configs/cluster/generated/
+
 results/*
 !results/.gitkeep
 

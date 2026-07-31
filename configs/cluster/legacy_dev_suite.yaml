@@ -1,0 +1,99 @@
+schema_version: 1
+suite_id: legacy_dev_full_v1
+classification: legacy_dev_only
+description: >-
+  Reproduces the broad legacy architecture and small-sample training matrix on
+  the currently archived processed datasets. These runs are development
+  evidence only and must not be reported as common-time-v2 final results.
+
+resources:
+  max_concurrent: 5
+  mps_per_job: 2
+  cpus_per_job: 4
+  memory_gb_per_job: 32
+  time_limit: "72:00:00"
+
+required_paths:
+  - data/processed/hydrostatic/train
+  - data/processed/hydrostatic/val
+
+entries:
+  - name: fno
+    config: configs/model/fno.yaml
+    seeds: [18, 36, 67, 72, 154]
+
+  - name: ffno
+    config: configs/model/ffno.yaml
+    seeds: [18, 36, 67, 72, 154]
+
+  - name: cnn
+    config: configs/model/cnn.yaml
+    seeds: [18, 36, 67]
+
+  - name: unet
+    config: configs/model/unet.yaml
+    seeds: [18, 36, 67]
+
+  - name: convlstm
+    config: configs/model/convlstm.yaml
+    seeds: [18, 36, 67]
+
+  - name: ufno
+    config: configs/model/ufno.yaml
+    seeds: [18, 36, 67]
+
+  - name: wno
+    config: configs/model/wno.yaml
+    seeds: [18, 36, 67]
+
+  - name: fno_modes8
+    config: configs/model/fno_modes8.yaml
+    seeds: [18, 36, 67]
+
+  - name: fno_modes20
+    config: configs/model/fno_modes20.yaml
+    seeds: [18, 36, 67]
+
+  - name: fno_sample_100
+    config: configs/model/fno.yaml
+    seeds: [42]
+    overrides:
+      data:
+        n_samples: 100
+      sample_scaling:
+        requested_train_samples: 100
+        protocol: legacy_single_seed_fixed_validation_test
+
+  - name: fno_sample_250
+    config: configs/model/fno.yaml
+    seeds: [42]
+    overrides:
+      data:
+        n_samples: 250
+      sample_scaling:
+        requested_train_samples: 250
+        protocol: legacy_single_seed_fixed_validation_test
+
+  - name: fno_native_res32
+    config: configs/model/fno_res32_hydrostatic.yaml
+    seeds: [18, 36, 67]
+    enabled: false
+    blocked_reason: >-
+      data/processed_crossres/res32 is absent and fresh common-time-v2 native
+      generation remains gated.
+
+  - name: fno_native_res64
+    config: configs/model/fno_res64_hydrostatic.yaml
+    seeds: [18, 36, 67]
+    enabled: false
+    blocked_reason: >-
+      data/processed_crossres/res64 is absent and fresh common-time-v2 native
+      generation remains gated.
+
+  - name: fno_native_res128
+    config: configs/model/fno_res128_hydrostatic.yaml
+    seeds: [18, 36, 67]
+    enabled: false
+    blocked_reason: >-
+      data/processed_crossres/res128 is absent and fresh common-time-v2 native
+      generation remains gated.
