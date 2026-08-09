@@ -306,6 +306,7 @@ def build_sbatch_command(
     suite: PreparedSuite,
     *,
     afterok: int,
+    max_concurrent: int | None = None,
     root: Path = ROOT,
 ) -> list[str]:
     array_script = root / ARRAY_SCRIPT
@@ -314,10 +315,21 @@ def build_sbatch_command(
     if afterok <= 0:
         raise ValueError("afterok must be a positive smoke-job ID")
 
+    concurrency = (
+        suite.max_concurrent
+        if max_concurrent is None
+        else int(max_concurrent)
+    )
+    if not 1 <= concurrency <= suite.max_concurrent:
+        raise ValueError(
+            "max_concurrent must be between 1 and the manifest limit "
+            f"({suite.max_concurrent})"
+        )
+
     last_index = len(suite.runs) - 1
     return [
         "sbatch",
-        f"--array=0-{last_index}%{suite.max_concurrent}",
+        f"--array=0-{last_index}%{concurrency}",
         f"--dependency=afterok:{afterok}",
         (
             "--export=ALL,"
@@ -348,7 +360,19 @@ def main() -> None:
     parser.add_argument(
         "--submit",
         action="store_true",
-        help="Submit the prepared Slurm array. Default behavior is prepare-only.",
+        help=(
+            "Queue every prepared run as one Slurm array. Tasks above the "
+            "concurrency limit remain pending. Default behavior is prepare-only."
+        ),
+    )
+    parser.add_argument(
+        "--max-concurrent",
+        type=int,
+        default=None,
+        help=(
+            "Maximum array tasks allowed to run simultaneously. Defaults to "
+            "the manifest limit and cannot exceed it."
+        ),
     )
     parser.add_argument(
         "--afterok",
@@ -410,10 +434,23 @@ def main() -> None:
         )
 
     try:
-        cmd = build_sbatch_command(suite, afterok=args.afterok)
+        cmd = build_sbatch_command(
+            suite,
+            afterok=args.afterok,
+            max_concurrent=args.max_concurrent,
+        )
     except (FileNotFoundError, ValueError) as exc:
         parser.error(str(exc))
 
+    concurrency = (
+        suite.max_concurrent
+        if args.max_concurrent is None
+        else args.max_concurrent
+    )
+    print(
+        f"[cluster-suite] queueing all {len(suite.runs)} tasks; "
+        f"at most {concurrency} may run concurrently"
+    )
     print("[cluster-suite] submitting:", " ".join(cmd))
     (ROOT / "logs" / "slurm").mkdir(parents=True, exist_ok=True)
     subprocess.run(cmd, cwd=ROOT, check=True)

@@ -90,6 +90,45 @@ def test_submit_command_uses_smoke_dependency_and_account_concurrency(
     assert cmd[-1] == "slurm/train_suite_array.slurm"
 
 
+def test_submit_command_can_reduce_array_concurrency(tmp_path: Path) -> None:
+    suite = prepare_suite(
+        DEFAULT_MANIFEST,
+        tmp_path,
+        root=ROOT,
+        check_data=False,
+    )
+
+    cmd = build_sbatch_command(
+        suite,
+        afterok=55523,
+        max_concurrent=3,
+        root=ROOT,
+    )
+
+    assert "--array=0-32%3" in cmd
+
+
+@pytest.mark.parametrize("max_concurrent", [0, 6])
+def test_submit_command_rejects_invalid_array_concurrency(
+    tmp_path: Path,
+    max_concurrent: int,
+) -> None:
+    suite = prepare_suite(
+        DEFAULT_MANIFEST,
+        tmp_path,
+        root=ROOT,
+        check_data=False,
+    )
+
+    with pytest.raises(ValueError, match="manifest limit"):
+        build_sbatch_command(
+            suite,
+            afterok=55523,
+            max_concurrent=max_concurrent,
+            root=ROOT,
+        )
+
+
 @pytest.mark.parametrize(
     "script_name",
     [
