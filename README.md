@@ -34,6 +34,62 @@ Separate follow-up track (not part of the current forward-surrogate paper):
 - Implemented evaluations: accuracy, speed, generalization, resolution transfer, and uncertainty.
 - Separate follow-up work: dedicated inverse-problem experiments and a separate paper track.
 
+### 3a) Current development checkpoint
+
+Updated: 2026-08-09.
+
+The repository is currently between the completed legacy-v1 paper campaign and
+the stricter common-time-v2 replacement study. Read these before resuming
+development:
+
+- [`HANDOFF.md`](HANDOFF.md): current operational state, artifacts, known
+  risks, and next-session startup order;
+- [`PROJECT_STATUS.md`](PROJECT_STATUS.md): plain-language progress and current
+  work order;
+- [`plan.md`](plan.md): scientific gates, scope boundaries, and experiment
+  decisions;
+- [`manual.md`](manual.md): UIT OpenVPN/SSH/rclone/Slurm workflow;
+- [`docs/refactor_plan.md`](docs/refactor_plan.md): staged cleanup plan.
+
+The main processed datasets under `data/processed/` contain
+10,000/1,000/2,500 train/validation/test samples per reference, but use the
+older version-1 shard format without explicit common-time-v2 binding. Current
+local broad-model checkpoints belong to this development/legacy-benchmark
+lane. The native 32/64/128 processed datasets use the version-2 schema, are
+explicitly common-time-v2-bound, and contain 700/150/150 samples per split and
+reference. Do not mix those evidence lanes in one scientific claim.
+
+Current seed-18 local runs completed for FNO, F-FNO, CNN, U-Net, ConvLSTM,
+U-FNO, WNO, FNO modes 8/20, FNO-MUSCL-HR, FNO-Boussinesq, and FNO window-5.
+F-FNO window-5 and ensemble member 44 remain incomplete. Ensemble members
+11/22/33 are complete; 55/66/77/88 have not started. Strict holdouts, sample
+scaling, ConvLSTM-MUSCL-HR, and native-resolution model training remain
+outstanding or blocked as described in the handoff.
+
+Important current safety notes:
+
+- Do not launch a completed ordinary config again without inspection.
+  `scripts/train.py` does not yet fail closed on an occupied output directory,
+  so a fresh run can overwrite history/checkpoints.
+- `scripts/train_ensemble.py` does refuse existing member artifacts, but the
+  current inherited eight-seed list collides with existing members and the
+  dedicated extension config is deleted. Reconcile that protocol before
+  continuing the ensemble.
+- Hydrostatic native-resolution configs currently point to absent
+  `data/processed_crossres/...` paths even though v2-bound native data exist
+  elsewhere. Treat that as a provenance/config bug, not an invitation to edit
+  paths ad hoc.
+- The focused training/cluster tests currently report 68 passed and one
+  failure because `configs/model/fno_ensemble_m8.yaml` is missing.
+- The UIT cluster workflow is documented, but broad L40 submission remains
+  blocked on an administrator-owned GPU-helper typo. Local RTX 4050 training
+  is the active fallback.
+
+All later work should meet the project standard of polished research software:
+scientifically defensible scope, explicit provenance, fail-closed data and
+checkpoint boundaries, reproducible commands, proportionate tests, and no
+paper/production claim stronger than the artifacts support.
+
 ## 4) Canonical Workflow
 
 The default full-module pipeline in this repo is:
