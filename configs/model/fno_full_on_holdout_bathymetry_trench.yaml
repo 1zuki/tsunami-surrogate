@@ -2,7 +2,7 @@ defaults:
   - fno.yaml
 
 output_dir: experiments/fno_full_on_holdout/bathymetry_trench
-seeds: [18, 36, 67]
+seed: 18
 
 data:
   test_path: data/processed_strict_holdout/hydrostatic/bathymetry_holdout_trench/test_heldout

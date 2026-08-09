@@ -6,18 +6,20 @@ from pathlib import Path
 import pytest
 
 import scripts.train as train_script
+from scripts.train_ensemble import _require_fresh_member
 from src.utils.config import load_config
 
 
-FIVE_SEED_CONFIGS = (
+LOCAL_SINGLE_SEED_CONFIGS = (
     "configs/model/fno.yaml",
     "configs/model/ffno.yaml",
-)
-
-THREE_SEED_CONFIGS = tuple(
-    str(path)
-    for path in sorted(Path("configs/model").glob("*.yaml"))
-    if path.name not in {"fno.yaml", "ffno.yaml", "fno_ensemble_m8.yaml"}
+    "configs/model/cnn.yaml",
+    "configs/model/unet.yaml",
+    "configs/model/convlstm.yaml",
+    "configs/model/ufno.yaml",
+    "configs/model/wno.yaml",
+    "configs/model/fno_modes8.yaml",
+    "configs/model/fno_modes20.yaml",
 )
 
 
@@ -87,18 +89,12 @@ def test_main_runs_seed_list_sequentially(tmp_path, monkeypatch) -> None:
     ]
 
 
-@pytest.mark.parametrize("config_path", FIVE_SEED_CONFIGS)
-def test_headline_configs_use_five_frozen_seeds(config_path) -> None:
+@pytest.mark.parametrize("config_path", LOCAL_SINGLE_SEED_CONFIGS)
+def test_local_model_configs_use_seed_18(config_path) -> None:
     cfg = load_config(config_path)
 
-    assert cfg["seeds"] == [18, 36, 67, 72, 154]
-
-
-@pytest.mark.parametrize("config_path", THREE_SEED_CONFIGS)
-def test_secondary_configs_use_three_frozen_seeds(config_path) -> None:
-    cfg = load_config(config_path)
-
-    assert cfg["seeds"] == [18, 36, 67]
+    assert cfg["seed"] == 18
+    assert "seeds" not in cfg
 
 
 def test_uncertainty_ensemble_keeps_its_member_seed_protocol() -> None:
@@ -106,3 +102,34 @@ def test_uncertainty_ensemble_keeps_its_member_seed_protocol() -> None:
 
     assert "seeds" not in cfg
     assert cfg["ensemble"]["seeds"] == [44, 55, 66, 77]
+
+
+def test_ensemble_training_refuses_existing_member_artifacts(
+    tmp_path: Path,
+) -> None:
+    member = tmp_path / "member_11"
+    member.mkdir()
+    (member / "history.json").write_text("[]\n", encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="Refusing to overwrite"):
+        _require_fresh_member(member)
+
+
+@pytest.mark.parametrize(
+    "config_path",
+    sorted(Path("configs/model").glob("*.yaml")),
+)
+def test_model_config_top_level_seed_lists_are_well_formed(
+    config_path: Path,
+) -> None:
+    cfg = load_config(config_path)
+    if "seeds" not in cfg:
+        return
+
+    seeds = cfg["seeds"]
+    assert isinstance(seeds, list) and seeds
+    assert all(
+        isinstance(seed, int) and not isinstance(seed, bool)
+        for seed in seeds
+    )
+    assert len(seeds) == len(set(seeds))

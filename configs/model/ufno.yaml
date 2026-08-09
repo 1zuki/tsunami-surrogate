@@ -2,10 +2,15 @@ defaults:
   - fno.yaml
 
 output_dir: experiments/ufno
-seeds: [18, 36, 67]
+seed: 18
+
+data:
+  batch_size: 8
+  num_workers: 2
 
 model:
   name: ufno2d
 
 eval:
+  batch_size: 8
   output_dir: experiments/ufno/eval

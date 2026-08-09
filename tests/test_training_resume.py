@@ -8,7 +8,7 @@ import pytest
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from src.training.train import Trainer
+from src.training.train import Trainer, _as_cpu_rng_state, _restore_rng_state
 from src.utils.seed import make_torch_generator, seed_everything
 
 
@@ -121,3 +121,47 @@ def test_resume_rejects_changed_training_loader_contract(tmp_path: Path) -> None
     )
     with pytest.raises(ValueError, match="DataLoader contract mismatch"):
         trainer.fit(resume_path=resume_path)
+
+
+def test_rng_restore_normalizes_loaded_states_to_cpu(monkeypatch) -> None:
+    cpu_state = torch.arange(16, dtype=torch.uint8)
+    observed: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        torch,
+        "set_rng_state",
+        lambda state: observed.setdefault("cpu", state),
+    )
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(
+        torch.cuda,
+        "set_rng_state_all",
+        lambda states: observed.setdefault("cuda", states),
+    )
+
+    _restore_rng_state(
+        {
+            "torch_cpu": cpu_state.clone(),
+            "torch_cuda": [cpu_state.clone()],
+        }
+    )
+
+    assert observed["cpu"].device.type == "cpu"
+    assert observed["cpu"].dtype == torch.uint8
+    assert observed["cuda"][0].device.type == "cpu"
+    assert observed["cuda"][0].dtype == torch.uint8
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        torch.arange(8, dtype=torch.uint8),
+        list(range(8)),
+    ],
+)
+def test_cpu_rng_state_normalization_accepts_tensor_and_legacy_list(value) -> None:
+    normalized = _as_cpu_rng_state(value)
+
+    assert normalized.device.type == "cpu"
+    assert normalized.dtype == torch.uint8
+    assert normalized.is_contiguous()

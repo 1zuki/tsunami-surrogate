@@ -51,9 +51,17 @@ def _restore_rng_state(state: Dict[str, Any] | None) -> None:
         # weights-only-safe representation above was introduced.
         np.random.set_state(numpy_state)
     if state.get("torch_cpu") is not None:
-        torch.set_rng_state(state["torch_cpu"])
+        torch.set_rng_state(_as_cpu_rng_state(state["torch_cpu"]))
     if torch.cuda.is_available() and state.get("torch_cuda") is not None:
-        torch.cuda.set_rng_state_all(state["torch_cuda"])
+        torch.cuda.set_rng_state_all(
+            [_as_cpu_rng_state(value) for value in state["torch_cuda"]]
+        )
+
+
+def _as_cpu_rng_state(value: Any) -> torch.Tensor:
+    if isinstance(value, torch.Tensor):
+        return value.detach().to(device="cpu", dtype=torch.uint8).contiguous()
+    return torch.as_tensor(value, dtype=torch.uint8, device="cpu").contiguous()
 
 
 def _sampler_objects(loader: Any) -> Dict[str, Any]:

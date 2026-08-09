@@ -16,6 +16,24 @@ from src.models import build_model
 from src.training.train import Trainer
 
 
+def _require_fresh_member(output_dir: str | Path) -> None:
+    output = Path(output_dir)
+    existing = [
+        path
+        for path in (
+            output / "history.json",
+            output / "best.pt",
+            output / "checkpoints" / "last.pt",
+        )
+        if path.exists()
+    ]
+    if existing:
+        raise FileExistsError(
+            "Refusing to overwrite existing ensemble member artifacts: "
+            + ", ".join(str(path) for path in existing)
+        )
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--config', required=True)
@@ -28,6 +46,7 @@ def main():
         member_cfg = deepcopy(cfg)
         member_cfg['seed'] = int(seed)
         member_cfg['output_dir'] = cfg.get('ensemble', {}).get('member_dir_template', 'experiments/ensemble/member_{seed}').format(seed=seed)
+        _require_fresh_member(member_cfg['output_dir'])
         seed_everything(int(seed))
         init_run(member_cfg['output_dir'], member_cfg)
         loaders = create_dataloaders(member_cfg)

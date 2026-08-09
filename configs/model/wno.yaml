@@ -2,7 +2,7 @@ defaults:
   - fno.yaml
 
 output_dir: experiments/wno
-seeds: [18, 36, 67]
+seed: 18
 
 data:
   batch_size: 64

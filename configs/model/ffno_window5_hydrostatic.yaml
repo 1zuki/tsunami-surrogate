@@ -2,7 +2,7 @@ defaults:
   - fno_window5_hydrostatic.yaml
 
 output_dir: experiments/ffno_window5_hydrostatic
-seeds: [18, 36, 67]
+seed: 18
 
 data:
   batch_size: 64

@@ -2,7 +2,7 @@ defaults:
   - ../train/base.yaml
 
 output_dir: experiments/unet
-seeds: [18, 36, 67]
+seed: 18
 
 model:
   name: unet

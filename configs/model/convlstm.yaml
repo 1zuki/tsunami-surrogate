@@ -2,10 +2,10 @@ defaults:
   - ../train/base.yaml
 
 output_dir: experiments/convlstm
-seeds: [18, 36, 67]
+seed: 18
 
 data:
-  batch_size: 8
+  batch_size: 4
   num_workers: 2
 
 model:
@@ -19,7 +19,6 @@ model:
   use_feedback: true
 
 train:
-  epochs: 64
   lr: 0.0005
   min_lr: 0.00005
   scheduler: cosine

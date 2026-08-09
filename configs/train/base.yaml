@@ -46,7 +46,7 @@ eval:
   timed_steps: 20
 
 ensemble:
-  seeds: [11, 22, 33]
+  seeds: [11, 22, 33, 44, 55, 66, 77, 88]
   member_dir_template: experiments/ensemble/member_{seed}
 
 resolution_transfer:
