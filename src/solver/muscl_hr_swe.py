@@ -377,9 +377,12 @@ class MUSCLHRShallowWaterSolver(ShallowWaterSolver):
         ) + int(np.count_nonzero(h_new < 0.0))
         h_new = np.maximum(h_new, 0.0)
         dry = h_new <= self.dry_tolerance
+        dry_momentum_projection = dry & (
+            (hu_new != 0.0) | (hv_new != 0.0)
+        )
         self.operator_diagnostics["dry_projection_count"] = int(
             self.operator_diagnostics["dry_projection_count"]
-        ) + int(np.count_nonzero(dry))
+        ) + int(np.count_nonzero(dry_momentum_projection))
         hu_new[dry] = 0.0
         hv_new[dry] = 0.0
 

@@ -1,4 +1,5 @@
 raw:
+  publication_split: train
   scenario_manifest: ./data/res128/synthetic/scenario_manifest.jsonl
   fde_manifests:
     hydrostatic: ./data/res128/synthetic/hydrostatic_manifest.jsonl

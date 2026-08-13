@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import random
+import shutil
 import sys
+import uuid
 import numpy as np
 import yaml
 import argparse
@@ -162,10 +165,18 @@ class TsunamiPreprocessor:
         eval_manifest_name = str(eval_cfg.get("manifest_name", "eval_manifest.json"))
 
         raw_cfg = cfg.get("raw", {})
+        self.expected_publication_split: str | None = None
         self.scenario_manifest_path: pathlib.Path | None = None
         self.fde_manifest_paths: Dict[str, pathlib.Path] = {}
         self.fde_raw_dirs: Dict[str, pathlib.Path] = {}
         if isinstance(raw_cfg, dict):
+            publication_split = raw_cfg.get("publication_split")
+            if publication_split is not None:
+                self.expected_publication_split = str(
+                    publication_split
+                ).strip()
+                if not self.expected_publication_split:
+                    raise ValueError("raw.publication_split must not be empty")
             scenario_manifest = raw_cfg.get("scenario_manifest")
             if scenario_manifest:
                 self.scenario_manifest_path = pathlib.Path(str(scenario_manifest))
@@ -232,9 +243,6 @@ class TsunamiPreprocessor:
             eval_manifest_name=eval_manifest_name,
         )
 
-        # create output dir
-        self.cfg.processed_dir.mkdir(parents=True, exist_ok=True)
-
         # placeholders
         self._mean: Dict[str, float] = {}
         self._stds: Dict[str, float] = {}
@@ -270,7 +278,12 @@ class TsunamiPreprocessor:
 
         return records
 
-    def load_sample(self, sample_dir: Union[str, pathlib.Path]) -> Dict[str, Any]:
+    def load_sample(
+        self,
+        sample_dir: Union[str, pathlib.Path],
+        *,
+        expected_record: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
         """
         load one raw sample:
         - bathymetry
@@ -292,6 +305,33 @@ class TsunamiPreprocessor:
             with meta_path.open("r", encoding="utf-8") as f:
                 meta = json.load(f)
 
+        payload_schema = ""
+        payload_contract = ""
+        try:
+            with np.load(npz_path, allow_pickle=False) as payload:
+                if "schema_id" in payload:
+                    payload_schema = str(
+                        np.asarray(payload["schema_id"]).reshape(-1)[0]
+                    )
+                if "contract_hash" in payload:
+                    payload_contract = str(
+                        np.asarray(payload["contract_hash"]).reshape(-1)[0]
+                    )
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(f"Could not inspect sample payload: {npz_path}") from exc
+
+        expects_v2_publication = bool(
+            (expected_record or {}).get("contract_hash")
+            or meta.get("contract_hash")
+            or payload_contract
+            or payload_schema.startswith("tsunami-surrogate.common-time-v2.")
+        )
+        if expects_v2_publication and not publication_path.is_file():
+            raise RuntimeError(
+                "Common-time-v2 preprocessing requires publication.json: "
+                f"{sample_dir}"
+            )
+
         if publication_path.is_file():
             try:
                 from src.data_gen.common_time_v2 import (
@@ -308,17 +348,69 @@ class TsunamiPreprocessor:
                     validate_publication,
                 )
 
+            expected_identity = None
+            expected_solver_name = None
+            expected_sample_index = None
+            if expected_record is not None:
+                scenario_id = self._scenario_id_from_record(expected_record)
+                if self.expected_publication_split is not None:
+                    expected_identity = {
+                        "split": self.expected_publication_split,
+                        "scenario_id": scenario_id,
+                    }
+                expected_solver_name = expected_record.get("solver_name")
+                if expected_record.get("sample_index") is not None:
+                    expected_sample_index = int(expected_record["sample_index"])
+
             publication = validate_publication(
                 sample_dir,
-                expected_contract_hash=meta.get("contract_hash"),
-                expected_config_hash=meta.get("resolved_config_hash"),
-                expected_code_state_hash=meta.get("code_state_hash"),
-                expected_input_fingerprint=meta.get("input_fingerprint"),
+                expected_identity=expected_identity,
+                expected_contract_hash=(
+                    expected_record.get("contract_hash")
+                    if expected_record is not None
+                    else meta.get("contract_hash")
+                ),
+                expected_config_hash=(
+                    expected_record.get("resolved_config_hash")
+                    if expected_record is not None
+                    else meta.get("resolved_config_hash")
+                ),
+                expected_code_state_hash=(
+                    expected_record.get("code_state_hash")
+                    if expected_record is not None
+                    else meta.get("code_state_hash")
+                ),
+                expected_input_fingerprint=(
+                    expected_record.get("input_fingerprint")
+                    if expected_record is not None
+                    else meta.get("input_fingerprint")
+                ),
+                expected_solver_name=expected_solver_name,
+                expected_sample_index=expected_sample_index,
+                expected_authoritative_input_fingerprint=(
+                    expected_record.get("authoritative_input_fingerprint")
+                    if expected_record is not None
+                    else meta.get("authoritative_input_fingerprint")
+                ),
             )
             if meta.get("schema_id") != ETA_SAMPLE_SCHEMA_ID:
                 raise RuntimeError("Unsupported common-time-v2 sample schema")
             if publication.get("contract_hash") != meta.get("contract_hash"):
                 raise RuntimeError("Publication/meta contract hash mismatch")
+            for key in (
+                "scenario_id",
+                "sample_index",
+                "solver_name",
+                "resolved_config_hash",
+                "code_state_hash",
+                "input_fingerprint",
+            ):
+                expected = publication.get(key)
+                observed = meta.get(key)
+                if expected is not None and observed != expected:
+                    raise RuntimeError(
+                        f"Publication/meta {key} mismatch"
+                    )
             with np.load(npz_path, allow_pickle=False) as payload:
                 if "timestamps" not in payload:
                     raise RuntimeError("common-time-v2 sample is missing timestamps")
@@ -995,6 +1087,53 @@ class TsunamiPreprocessor:
     ) -> List[Dict[str, Any]]:
         return [rec for rec in records if self._scenario_id_from_record(rec) in scenario_ids]
 
+    def _unique_scenario_ids(
+        self,
+        records: List[Dict[str, Any]],
+        *,
+        label: str,
+    ) -> Set[str]:
+        ids = [self._scenario_id_from_record(record) for record in records]
+        if "scenario_unknown" in ids:
+            raise RuntimeError(f"{label} contains an unidentifiable scenario")
+        if len(ids) != len(set(ids)):
+            raise RuntimeError(f"{label} contains duplicate scenario IDs")
+        return set(ids)
+
+    def _validate_solver_rosters(
+        self,
+        *,
+        targets: List[str],
+        split_source: List[Dict[str, Any]],
+        records_by_target: Dict[str, List[Dict[str, Any]]],
+    ) -> None:
+        expected = self._unique_scenario_ids(
+            split_source,
+            label="scenario manifest",
+        )
+        for target in targets:
+            records = records_by_target[target]
+            observed = self._unique_scenario_ids(
+                records,
+                label=f"{target} manifest",
+            )
+            missing = sorted(expected - observed)
+            extra = sorted(observed - expected)
+            if missing or extra:
+                raise RuntimeError(
+                    f"{target} manifest scenario roster mismatch: "
+                    f"missing={missing[:10]}, extra={extra[:10]}"
+                )
+            for record in records:
+                solver_name = self._canonical_fde_name(
+                    str(record.get("solver_name", target))
+                )
+                if solver_name != target:
+                    raise RuntimeError(
+                        f"{target} manifest contains solver_name "
+                        f"{record.get('solver_name')!r}"
+                    )
+
     def split_dataset(self, records: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
         """ split raw samples into train / val / test """
         random.seed(self.cfg.seed)
@@ -1015,7 +1154,10 @@ class TsunamiPreprocessor:
         self,
         rec: Dict[str, Any],
     ) -> Tuple[Dict[str, np.ndarray], np.ndarray, Dict[str, Any], str]:
-        raw = self.load_sample(rec["sample_dir"])
+        raw = self.load_sample(
+            rec["sample_dir"],
+            expected_record=rec,
+        )
         X, Y = self.build_example(raw)
 
         if "sample_index" in rec:
@@ -1024,10 +1166,10 @@ class TsunamiPreprocessor:
             sample_id = pathlib.Path(rec["sample_dir"]).name
 
         merged_meta: Dict[str, Any] = {}
-        merged_meta.update(rec if isinstance(rec, dict) else {})
         raw_meta = raw.get("meta", {})
         if isinstance(raw_meta, dict):
             merged_meta.update(raw_meta)
+        merged_meta.update(rec if isinstance(rec, dict) else {})
 
         merged_meta.setdefault("source_type", "unknown")
         merged_meta.setdefault("bathymetry_type", "unknown")
@@ -1064,6 +1206,36 @@ class TsunamiPreprocessor:
         return Xs, Ys, metas, sample_ids
 
     def _normalize_and_save(
+        self,
+        train_records: List[Dict[str, Any]],
+        val_records: List[Dict[str, Any]],
+        test_records: List[Dict[str, Any]],
+        output_dir: pathlib.Path,
+        norm_reference_stats_path: Optional[pathlib.Path] = None,
+    ) -> None:
+        output_dir = pathlib.Path(output_dir)
+        output_dir.parent.mkdir(parents=True, exist_ok=True)
+        staging_dir = output_dir.parent / (
+            f".{output_dir.name}.staging-{uuid.uuid4().hex}"
+        )
+        if staging_dir.exists():
+            raise RuntimeError(f"Unexpected preprocessing staging path: {staging_dir}")
+
+        try:
+            self._write_normalized_dataset(
+                train_records,
+                val_records,
+                test_records,
+                staging_dir,
+                norm_reference_stats_path=norm_reference_stats_path,
+            )
+            self._publish_processed_directory(staging_dir, output_dir)
+        except Exception:
+            if staging_dir.exists():
+                shutil.rmtree(staging_dir)
+            raise
+
+    def _write_normalized_dataset(
         self,
         train_records: List[Dict[str, Any]],
         val_records: List[Dict[str, Any]],
@@ -1143,6 +1315,28 @@ class TsunamiPreprocessor:
                 self.save_split(split_name, X_split, Y_split, meta_split, ids_split)
         self.cfg.processed_dir = original_processed_dir
         self._active_norm_reference_path = None
+
+    @staticmethod
+    def _publish_processed_directory(
+        staging_dir: pathlib.Path,
+        output_dir: pathlib.Path,
+    ) -> None:
+        backup_dir = output_dir.parent / (
+            f".{output_dir.name}.backup-{uuid.uuid4().hex}"
+        )
+        moved_existing = False
+        try:
+            if output_dir.exists():
+                os.replace(output_dir, backup_dir)
+                moved_existing = True
+            os.replace(staging_dir, output_dir)
+        except Exception:
+            if moved_existing and backup_dir.exists() and not output_dir.exists():
+                os.replace(backup_dir, output_dir)
+            raise
+        else:
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir)
 
     def _resolved_eval_input_order(self, sample_inputs: Dict[str, np.ndarray]) -> List[str]:
         preferred = [name for name in self.cfg.eval_input_order if name in sample_inputs]
@@ -1603,7 +1797,15 @@ class TsunamiPreprocessor:
         mode = self.fde_mode
         if mode in {"single", "separate_all", "multifidelity"} and self.fde_manifest_paths:
             requested = self.fde_targets if self.fde_targets else list(self.fde_manifest_paths.keys())
-            targets = [name for name in requested if name in self.fde_manifest_paths]
+            missing_targets = [
+                name for name in requested if name not in self.fde_manifest_paths
+            ]
+            if missing_targets:
+                raise ValueError(
+                    "Missing requested FDE manifests: "
+                    + ", ".join(sorted(missing_targets))
+                )
+            targets = list(requested)
             if not targets:
                 raise ValueError(
                     f"No valid fde.targets found for mode={mode}. Available: {sorted(self.fde_manifest_paths.keys())}"
@@ -1614,11 +1816,20 @@ class TsunamiPreprocessor:
                 split_source = self._load_manifest_path(self.scenario_manifest_path)
             else:
                 split_source = self._load_manifest_path(self.fde_manifest_paths[targets[0]])
+            records_by_target = {
+                target: self._load_manifest_path(self.fde_manifest_paths[target])
+                for target in targets
+            }
+            self._validate_solver_rosters(
+                targets=targets,
+                split_source=split_source,
+                records_by_target=records_by_target,
+            )
             train_ids, val_ids, test_ids = self._split_scenario_ids(split_source)
 
             if mode == "single":
                 fde_name = targets[0]
-                records = self._load_manifest_path(self.fde_manifest_paths[fde_name])
+                records = records_by_target[fde_name]
                 train_records = self._records_for_scenarios(records, train_ids)
                 val_records = self._records_for_scenarios(records, val_ids)
                 test_records = self._records_for_scenarios(records, test_ids)
@@ -1636,7 +1847,7 @@ class TsunamiPreprocessor:
 
             if mode == "separate_all":
                 for fde_name in targets:
-                    records = self._load_manifest_path(self.fde_manifest_paths[fde_name])
+                    records = records_by_target[fde_name]
                     train_records = self._records_for_scenarios(records, train_ids)
                     val_records = self._records_for_scenarios(records, val_ids)
                     test_records = self._records_for_scenarios(records, test_ids)
@@ -1657,7 +1868,7 @@ class TsunamiPreprocessor:
             val_records: List[Dict[str, Any]] = []
             test_records: List[Dict[str, Any]] = []
             for fde_name in targets:
-                records = self._load_manifest_path(self.fde_manifest_paths[fde_name])
+                records = records_by_target[fde_name]
                 train_records.extend(self._records_for_scenarios(records, train_ids))
                 val_records.extend(self._records_for_scenarios(records, val_ids))
                 test_records.extend(self._records_for_scenarios(records, test_ids))

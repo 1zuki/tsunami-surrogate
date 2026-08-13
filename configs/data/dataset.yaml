@@ -93,6 +93,10 @@ quality:
   max_velocity_limit: 30.0
   max_eta_over_depth: 1.0
   require_cg_converged: true
+  reject_sanitization: true
+  require_no_projection: true
+  require_no_velocity_clipping: true
+  max_post_step_cfl_ratio: 1.01
 
 solver:
   nx: 96

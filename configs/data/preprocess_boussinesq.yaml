@@ -5,7 +5,7 @@ raw:
   raw_dirs:
     boussinesq: ./data/bouss_debug/raw/boussinesq/samples
 
-processed_dir: data/processed
+processed_dir: data/processed_debug/boussinesq
 
 fde:
   mode: single

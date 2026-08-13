@@ -643,3 +643,33 @@ def test_full_legacy_generation_and_preprocess_contract(
     }
     builder.run(continue_from_last=True, start_at=1, stop_at=2)
     assert before == {path: sha256_file(path) for path in before}
+
+
+def test_v2_manifest_rebuild_is_refused(tmp_path: Path) -> None:
+    config = _write_fixture_configs(tmp_path, requested=True)
+    builder = TsunamiDatasetBuilder(str(config))
+
+    with pytest.raises(RuntimeError, match="discard frozen lineage"):
+        builder.run(
+            rebuild_manifests=True,
+            acknowledge_provisional=True,
+        )
+
+
+def test_builder_does_not_write_snapshot_before_run_preflight(
+    tmp_path: Path,
+) -> None:
+    config = _write_fixture_configs(tmp_path, requested=True)
+    cfg = yaml.safe_load(config.read_text(encoding="utf-8"))
+    cfg["dataset"]["copy_configs"] = True
+    config.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+
+    builder = TsunamiDatasetBuilder(str(config))
+    snapshot = tmp_path / "raw" / "dataset_config.snapshot.yaml"
+    assert not snapshot.exists()
+
+    sample_dir = tmp_path / "raw" / "hydrostatic" / "samples" / "sample_000001"
+    sample_dir.mkdir(parents=True)
+    with pytest.raises(RuntimeError, match="Existing sample outputs found"):
+        builder.run(acknowledge_provisional=True)
+    assert not snapshot.exists()

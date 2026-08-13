@@ -1,26 +1,24 @@
-# Common-time final-test dataset configuration. This file defines the split,
-# seed, sample count, and all output paths used by scripts/make_dataset.py.
 configs:
   bathymetry: configs/data/bathymetry.yaml
-  source: configs/data/source.yaml
-
+  source: configs/data/real_bathymetry/real_bathymetry_source.yaml
 dataset:
-  num_samples: 2500
+  num_samples: 1
   seed: 367
-  num_workers: 10
+  num_workers: 1
   n_steps: 250
   save_every: 5
   auto_dt: true
   target_cfl: 0.45
   include_initial_state: true
   sea_level_offset: 0.0
-  source_strength_range: [0.45, 0.85]
-  bathymetry_dir: data/test/bathymetry
-  source_dir: data/test/sources
-  output_dir: data/test/raw
-  manifest_path: data/test/synthetic/scenario_manifest.jsonl
+  source_strength_range:
+  - 0.45
+  - 0.85
+  bathymetry_dir: data/real_bathymetry_inputs_v2/main_morphology
+  source_dir: data/real_bathymetry_v2/sources/main_morphology
+  output_dir: data/real_bathymetry_v2/raw/main_morphology
+  manifest_path: data/real_bathymetry_v2/manifests/main_morphology/scenario_manifest.jsonl
   copy_configs: true
-
 requested_output:
   enabled: true
   schema_id: tsunami-surrogate.common-time-v2.contract.v1
@@ -36,25 +34,16 @@ requested_output:
   eta_primary: true
   debug_full_states: false
   acknowledge_provisional: false
-
-authoritative_inputs:
-  inventory_path: artifacts/common_time_v2/h0/830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b/h0_input_inventory.jsonl
-  inventory_sha256: c4f34bc504ca60d4b1c74fc88b7c6c239ae1dbbaa0f15f3bf2c501038eb438e3
-  h0_contract_hash: 830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b
-  require_exact_arrays: true
-  allow_input_generation: true
-
 computational_domain:
   enabled: true
   buffer_cells: 16
   source_taper_cells: 8
   bathymetry_extension: edge
   output_crop: central
-
 fdes:
-  enabled: [swe_hydrostatic, swe_muscl_hr, boussinesq]
+  enabled:
+  - swe_hydrostatic
   primary: swe_hydrostatic
-
 solver_profiles:
   swe_hydrostatic:
     cfl: 0.1125
@@ -76,19 +65,15 @@ solver_profiles:
     filter_time_mode: disabled
     filter_reference_dt: 0.0035
     cg_failure_mode: strict_v2
-
 operations:
   enabled: true
   progress_every: 1
   solver_progress: true
-  max_in_flight: 10
-  # Optional provenance fields belong here when known: cloud_provider,
-  # cloud_zone, machine_type, storage_class, and hourly_cost_usd.
-
+  max_in_flight: 1
 quality:
   on_violation: fail
   reject_nonfinite: true
-  min_h_tolerance: -1.0e-6
+  min_h_tolerance: -1.0e-06
   max_abs_eta_limit: 5.0
   max_velocity_limit: 30.0
   max_eta_over_depth: 1.0
@@ -97,19 +82,16 @@ quality:
   require_no_projection: true
   require_no_velocity_clipping: true
   max_post_step_cfl_ratio: 1.01
-
 solver:
   nx: 96
   ny: 96
-  # Preserve the original 64x64 physical resolution; the extra cells enlarge
-  # the computational domain rather than refining the central crop.
   dx: 0.015625
   dy: 0.015625
   dt: 0.001
   g: 9.81
   rho: 1000
   cfl: 0.45
-  dry_tolerance: 1.0e-6
+  dry_tolerance: 1.0e-06
   max_velocity: 30.0
   boundary: open
   use_sponge: true
@@ -118,7 +100,7 @@ solver:
   sponge_axes: xy
   sponge_profile: cosine
   alpha: 0.3333333333333333
-  min_depth: 1.0e-4
+  min_depth: 0.0001
   depth_scale: 1.0
   mode: linear_variable_depth
   filter_strength: 0.0

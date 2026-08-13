@@ -74,3 +74,78 @@ def test_quality_flags_boussinesq_eta_ratio_and_cg_failure() -> None:
 
     assert any("max_abs_eta_over_depth" in item for item in violations)
     assert any("cg_failed_count" in item for item in violations)
+
+
+def test_quality_flags_sanitization_projection_clipping_and_cfl() -> None:
+    policy = QualityPolicy(
+        on_violation="fail",
+        reject_nonfinite=True,
+        min_h_tolerance=-1.0e-6,
+        max_abs_eta_limit=10.0,
+        max_velocity_limit=50.0,
+        max_eta_over_depth=1.0,
+        require_cg_converged=True,
+        reject_sanitization=True,
+        require_no_projection=True,
+        require_no_velocity_clipping=True,
+        max_post_step_cfl_ratio=1.01,
+    )
+    health = {
+        "fde_name": "swe_muscl_hr",
+        "nan_count": 0,
+        "inf_count": 0,
+        "min_h": 0.2,
+        "max_abs_eta": 0.1,
+        "max_abs_velocity": 0.2,
+        "max_abs_eta_over_depth": float("nan"),
+        "operator_nan_to_num_replacement_count": 1,
+        "operator_positivity_projection_count": 2,
+        "operator_dry_projection_count": 3,
+        "operator_muscl_cell_velocity_clip_count": 4,
+        "operator_muscl_face_velocity_clip_count": 5,
+        "target_cfl": 0.225,
+        "max_post_step_cfl": 0.23,
+    }
+
+    violations = _quality_violations_for_health(health, policy)
+
+    assert any("nan_to_num" in item for item in violations)
+    assert any("positivity_projection" in item for item in violations)
+    assert any("dry_projection" in item for item in violations)
+    assert any("cell_velocity_clip" in item for item in violations)
+    assert any("face_velocity_clip" in item for item in violations)
+    assert any("max_post_step_cfl" in item for item in violations)
+
+
+def test_strict_quality_gates_reject_missing_applicable_diagnostics() -> None:
+    policy = QualityPolicy(
+        on_violation="fail",
+        reject_nonfinite=True,
+        min_h_tolerance=-1.0e-6,
+        max_abs_eta_limit=10.0,
+        max_velocity_limit=50.0,
+        max_eta_over_depth=1.0,
+        require_cg_converged=True,
+        reject_sanitization=True,
+        require_no_projection=True,
+        require_no_velocity_clipping=True,
+        max_post_step_cfl_ratio=1.01,
+    )
+    health = {
+        "fde_name": "swe_muscl_hr",
+        "nan_count": 0,
+        "inf_count": 0,
+        "min_h": 0.2,
+        "max_abs_eta": 0.1,
+        "max_abs_velocity": 0.2,
+        "max_abs_eta_over_depth": float("nan"),
+    }
+
+    violations = _quality_violations_for_health(health, policy)
+
+    assert "operator_nan_to_num_replacement_count_missing" in violations
+    assert "operator_positivity_projection_count_missing" in violations
+    assert "operator_dry_projection_count_missing" in violations
+    assert "operator_muscl_cell_velocity_clip_count_missing" in violations
+    assert "operator_muscl_face_velocity_clip_count_missing" in violations
+    assert "post_step_cfl_diagnostics_missing" in violations

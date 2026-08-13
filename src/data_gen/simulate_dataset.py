@@ -136,6 +136,10 @@ class QualityPolicy:
     max_velocity_limit: float | None
     max_eta_over_depth: float | None
     require_cg_converged: bool
+    reject_sanitization: bool = False
+    require_no_projection: bool = False
+    require_no_velocity_clipping: bool = False
+    max_post_step_cfl_ratio: float | None = None
 
 
 @dataclass(frozen=True)
@@ -586,6 +590,66 @@ def _quality_violations_for_health(
             cg_failed_count = int(health.get("cg_failed_count", 0) or 0)
             if cg_failed_count > 0:
                 violations.append(f"cg_failed_count({cg_failed_count}) > 0")
+
+    if policy.reject_sanitization:
+        key = "operator_nan_to_num_replacement_count"
+        if key not in health:
+            violations.append(f"{key}_missing")
+        else:
+            replacements = int(health.get(key, 0) or 0)
+            if replacements > 0:
+                violations.append(
+                    f"nan_to_num_replacement_count({replacements}) > 0"
+                )
+
+    if (
+        policy.require_no_projection
+        and str(health.get("fde_name", "")).strip().lower()
+        in {"swe_hydrostatic", "swe_muscl_hr"}
+    ):
+        for key in (
+            "operator_positivity_projection_count",
+            "operator_dry_projection_count",
+        ):
+            if key not in health:
+                violations.append(f"{key}_missing")
+                continue
+            count = int(health.get(key, 0) or 0)
+            if count > 0:
+                violations.append(f"{key}({count}) > 0")
+
+    if (
+        policy.require_no_velocity_clipping
+        and str(health.get("fde_name", "")).strip().lower() == "swe_muscl_hr"
+    ):
+        for key in (
+            "operator_muscl_cell_velocity_clip_count",
+            "operator_muscl_face_velocity_clip_count",
+        ):
+            if key not in health:
+                violations.append(f"{key}_missing")
+                continue
+            count = int(health.get(key, 0) or 0)
+            if count > 0:
+                violations.append(f"{key}({count}) > 0")
+
+    if policy.max_post_step_cfl_ratio is not None:
+        if "target_cfl" not in health or "max_post_step_cfl" not in health:
+            violations.append("post_step_cfl_diagnostics_missing")
+            return violations
+        target_cfl = float(health.get("target_cfl", np.nan))
+        max_post_step_cfl = float(
+            health.get("max_post_step_cfl", np.nan)
+        )
+        if not np.isfinite(target_cfl) or not np.isfinite(max_post_step_cfl):
+            violations.append("post_step_cfl_diagnostics_nonfinite")
+            return violations
+        allowed = target_cfl * float(policy.max_post_step_cfl_ratio)
+        if max_post_step_cfl > allowed:
+            violations.append(
+                "max_post_step_cfl"
+                f"({max_post_step_cfl:.6g}) > allowed({allowed:.6g})"
+            )
 
     return violations
 
@@ -1664,7 +1728,11 @@ def _validate_authoritative_input(
 
 
 def _requested_health_summary(
-    diagnostics: Dict[str, np.ndarray], health: Dict[str, Any], *, fde_name: str
+    diagnostics: Dict[str, np.ndarray],
+    health: Dict[str, Any],
+    *,
+    fde_name: str,
+    target_cfl: float,
 ) -> dict[str, Any]:
     def _scalar(name: str, default: float = np.nan) -> float:
         values = np.asarray(diagnostics.get(name, []), dtype=np.float64).reshape(-1)
@@ -1686,7 +1754,18 @@ def _requested_health_summary(
         "total_natural_steps": int(_scalar("total_natural_steps", 0.0)),
         "final_natural_timestamp": _scalar("final_natural_timestamp"),
         "max_post_step_cfl": float(np.max(cfl)) if cfl.size else np.nan,
+        "target_cfl": float(target_cfl),
     }
+    for key in (
+        "operator_nan_to_num_replacement_count",
+        "operator_positivity_projection_count",
+        "operator_dry_projection_count",
+        "operator_muscl_cell_velocity_clip_count",
+        "operator_muscl_face_velocity_clip_count",
+    ):
+        values = np.asarray(diagnostics.get(key, []), dtype=np.float64)
+        if values.size:
+            summary[key] = int(np.max(values))
     if fde_name in {"swe_hydrostatic", "swe_muscl_hr"}:
         natural_min_depth = np.asarray(
             diagnostics.get("swe_min_depth", []), dtype=np.float64
@@ -1808,7 +1887,12 @@ def _write_requested_publication(
     )
     code = dict(source_code) if source_code is not None else code_state(ROOT)
     diagnostics = rollout.diagnostics or {}
-    summary = _requested_health_summary(diagnostics, health, fde_name=fde_name)
+    summary = _requested_health_summary(
+        diagnostics,
+        health,
+        fde_name=fde_name,
+        target_cfl=dataset.target_cfl,
+    )
 
     staging = sample_dir.with_name(f".{sample_dir.name}.staging-{os.getpid()}")
     if staging.exists():
@@ -1977,9 +2061,28 @@ def _generate_sample_worker(
 
     bathymetry_master_hash: str | None = None
     source_master_hash: str | None = None
+    external_input_lineage: dict[str, Any] | None = None
     with np.load(bathy_path, allow_pickle=False) as bathy_npz:
         bathymetry = np.asarray(bathy_npz["bathymetry"], dtype=np.float32)
         bathy_type = str(np.asarray(bathy_npz["bathymetry_type"]).reshape(-1)[0])
+        if "input_lineage_json" in bathy_npz:
+            try:
+                loaded_lineage = json.loads(
+                    str(
+                        np.asarray(bathy_npz["input_lineage_json"]).reshape(-1)[
+                            0
+                        ]
+                    )
+                )
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"Invalid external input lineage in {bathy_path}"
+                ) from exc
+            if not isinstance(loaded_lineage, dict):
+                raise RuntimeError(
+                    f"External input lineage must be a mapping: {bathy_path}"
+                )
+            external_input_lineage = loaded_lineage
         if dataset.paired_inputs.enabled:
             bathymetry_master_hash = str(
                 np.asarray(bathy_npz["native_master_array_sha256"]).reshape(-1)[0]
@@ -2029,6 +2132,8 @@ def _generate_sample_worker(
             "master_bathymetry_sha256": bathymetry_master_hash,
             "master_source_sha256": source_master_hash,
         }
+    elif external_input_lineage is not None:
+        input_lineage = external_input_lineage
 
     if dataset.buffered_domain.enabled:
         prepared = _prepare_buffered_domain(
@@ -2253,7 +2358,10 @@ def _generate_sample_worker(
         )
         if dataset.requested_output is not None:
             health = _requested_health_summary(
-                full_rollout.diagnostics or {}, health, fde_name=fde_name
+                full_rollout.diagnostics or {},
+                health,
+                fde_name=fde_name,
+                target_cfl=dataset_for_fde.target_cfl,
             )
         quality_violations = _quality_violations_for_health(
             health=health, policy=dataset.quality_policy
@@ -2564,9 +2672,6 @@ class TsunamiDatasetBuilder:
         self.bathymetry_dir.mkdir(parents=True, exist_ok=True)
         self.source_dir.mkdir(parents=True, exist_ok=True)
         self.scenario_manifest_path.parent.mkdir(parents=True, exist_ok=True)
-
-        if self.dataset.copy_configs:
-            self._copy_config_snapshot()
 
         self.bathy_generator = BathymetryGenerator(str(self.bathy_cfg_path))
         self.source_generator = SourceGenerator(str(self.source_cfg_path))
@@ -3086,6 +3191,19 @@ class TsunamiDatasetBuilder:
                 quality_cfg.get("max_eta_over_depth", None), "max_eta_over_depth"
             ),
             require_cg_converged=bool(quality_cfg.get("require_cg_converged", True)),
+            reject_sanitization=bool(
+                quality_cfg.get("reject_sanitization", False)
+            ),
+            require_no_projection=bool(
+                quality_cfg.get("require_no_projection", False)
+            ),
+            require_no_velocity_clipping=bool(
+                quality_cfg.get("require_no_velocity_clipping", False)
+            ),
+            max_post_step_cfl_ratio=_optional_float(
+                quality_cfg.get("max_post_step_cfl_ratio", None),
+                "max_post_step_cfl_ratio",
+            ),
         )
 
         if (
@@ -3093,6 +3211,13 @@ class TsunamiDatasetBuilder:
             and quality_policy.max_eta_over_depth <= 0
         ):
             raise ValueError("quality.max_eta_over_depth must be positive when set")
+        if (
+            quality_policy.max_post_step_cfl_ratio is not None
+            and quality_policy.max_post_step_cfl_ratio < 1.0
+        ):
+            raise ValueError(
+                "quality.max_post_step_cfl_ratio must be >= 1 when set"
+            )
 
         if num_samples <= 0:
             raise ValueError("dataset.num_samples must be positive")
@@ -3159,10 +3284,23 @@ class TsunamiDatasetBuilder:
                 raise KeyError(f"missing solver key: {key}")
         return sv
 
-    def _copy_config_snapshot(self) -> None:
+    def _ensure_config_snapshot(self) -> None:
         snapshot_path = self.output_dir / "dataset_config.snapshot.yaml"
-        with snapshot_path.open("w", encoding="utf-8") as f:
+        if snapshot_path.is_file():
+            with snapshot_path.open("r", encoding="utf-8") as handle:
+                existing = yaml.safe_load(handle)
+            if existing != self.cfg:
+                raise RuntimeError(
+                    "Existing dataset configuration snapshot does not match "
+                    f"the requested run: {snapshot_path}"
+                )
+            return
+        temporary = snapshot_path.with_name(
+            f".{snapshot_path.name}.tmp-{os.getpid()}"
+        )
+        with temporary.open("w", encoding="utf-8") as f:
             yaml.safe_dump(self.cfg, f, sort_keys=False)
+        os.replace(temporary, snapshot_path)
 
     @staticmethod
     def _append_manifest(manifest_path: Path, record: Dict[str, Any]) -> None:
@@ -4128,6 +4266,11 @@ class TsunamiDatasetBuilder:
                 "Pass --acknowledge-provisional only for explicitly approved preparation runs."
             )
         if rebuild_manifests:
+            if self.dataset.requested_output is not None:
+                raise RuntimeError(
+                    "Refusing to rebuild common-time-v2 manifests from "
+                    "meta.json alone because that would discard frozen lineage"
+                )
             self.rebuild_manifests_from_existing_outputs()
             return
         if allow_override and (
@@ -4173,6 +4316,8 @@ class TsunamiDatasetBuilder:
         if range_stop < start_idx:
             raise ValueError("--stop-at must be >= the resolved start index")
         planned_indices = list(range(start_idx, range_stop + 1))
+        if self.dataset.copy_configs:
+            self._ensure_config_snapshot()
         recorder = getattr(self, "_operational_recorder", None)
         if recorder is not None:
             recorder.begin_range(

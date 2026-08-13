@@ -1,0 +1,58 @@
+raw:
+  publication_split: test
+  scenario_manifest: data/real_bathymetry_v2/manifests/appendix_coastline_stress/scenario_manifest.jsonl
+  fde_manifests:
+    hydrostatic: data/real_bathymetry_v2/manifests/appendix_coastline_stress/hydrostatic_manifest.jsonl
+  raw_dirs:
+    hydrostatic: data/real_bathymetry_v2/raw/appendix_coastline_stress/hydrostatic/samples
+processed_dir: data/processed_real_bathymetry_v2/appendix_coastline_stress
+fde:
+  mode: single
+  targets:
+  - hydrostatic
+  target_field: eta
+split:
+  train: 0
+  val: 0
+  test: 1
+  seed: 42
+input:
+  use_bathymetry: true
+  use_source: true
+  use_initial_depth: true
+  use_initial_surface: false
+  use_solver_id: false
+target:
+  mode: multi_step
+  variable: eta
+  forecast_steps: 50
+  stride: 1
+normalization:
+  method: standardize
+  reference_stats_by_fde:
+    hydrostatic: data/processed/hydrostatic/normalization_stats.json
+  channels:
+    bathymetry: true
+    source: true
+    solver_id: false
+    trajectory: true
+  eps: 1.0e-06
+saving:
+  format: npy
+  compress: true
+  include_meta: true
+  sharded: false
+  shard_size: 128
+  write_legacy_test_archive: false
+test_export:
+  enabled: true
+  input_order:
+  - bathymetry
+  - source
+  - initial_depth
+  - initial_surface
+  inputs_name: inputs.npy
+  targets_name: targets.npy
+  ids_name: sample_id.npy
+  archive_name: eval_dataset.npz
+  manifest_name: eval_manifest.json

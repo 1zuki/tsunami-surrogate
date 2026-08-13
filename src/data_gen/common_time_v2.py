@@ -294,7 +294,18 @@ def code_state(repo_root: str | Path) -> dict[str, Any]:
     commit = (
         commit_result.stdout.strip() if commit_result.returncode == 0 else "unknown"
     )
-    status_result = _git("status", "--porcelain", "--untracked-files=all")
+    status_result = _git(
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+        "--",
+        "src",
+        "scripts",
+        "configs",
+        "pyproject.toml",
+        "requirements.txt",
+        "requirements.lock",
+    )
     status = status_result.stdout if status_result.returncode == 0 else "unknown"
 
     included_roots = ("src", "scripts", "configs")

@@ -1,4 +1,5 @@
 raw:
+  publication_split: test
   scenario_manifest: ./data/test/synthetic/scenario_manifest.jsonl
   fde_manifests:
     hydrostatic: ./data/test/synthetic/hydrostatic_manifest.jsonl
@@ -9,7 +10,7 @@ raw:
     muscl_hr: ./data/test/raw/muscl_hr/samples
     boussinesq: ./data/test/raw/boussinesq/samples
 
-processed_dir: data/processed
+processed_dir: data/processed_common_time_v2_test
 
 fde:
   mode: separate_all          # single / separate_all / multifidelity

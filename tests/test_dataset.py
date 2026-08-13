@@ -52,6 +52,26 @@ def test_create_dataloaders_presplit_dirs(tmp_path):
     assert len(loaders["test"].dataset) == 5
 
 
+def test_create_dataloaders_rejects_unknown_split_type(tmp_path: Path) -> None:
+    path = tmp_path / "toy.npz"
+    save_npz(
+        path,
+        np.zeros((6, 1, 2, 2), dtype=np.float32),
+        np.zeros((6, 1, 2, 2), dtype=np.float32),
+    )
+
+    with pytest.raises(ValueError, match="Unsupported split type"):
+        create_dataloaders(
+            {
+                "data": {
+                    "path": str(path),
+                    "batch_size": 2,
+                    "split": {"type": "family_ood"},
+                }
+            }
+        )
+
+
 def test_create_dataloaders_skips_empty_split_dirs(tmp_path):
     root = tmp_path / "processed"
     rng = np.random.default_rng(2)

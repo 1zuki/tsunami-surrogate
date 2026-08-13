@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -79,6 +80,101 @@ def test_no_train_records_requires_an_explicit_normalization_reference(
             train_records=[],
             norm_reference_stats_path=None,
         )
+
+
+def test_solver_rosters_must_match_exactly(tmp_path: Path) -> None:
+    preprocessor = TsunamiPreprocessor(str(_config(tmp_path)))
+    split_source = [
+        {"scenario_id": "scenario_000001"},
+        {"scenario_id": "scenario_000002"},
+    ]
+    records = {
+        "hydrostatic": [
+            {
+                "scenario_id": "scenario_000001",
+                "solver_name": "swe_hydrostatic",
+            }
+        ]
+    }
+
+    with pytest.raises(RuntimeError, match="roster mismatch"):
+        preprocessor._validate_solver_rosters(
+            targets=["hydrostatic"],
+            split_source=split_source,
+            records_by_target=records,
+        )
+
+
+def test_v2_sample_requires_publication_record(tmp_path: Path) -> None:
+    preprocessor = TsunamiPreprocessor(str(_config(tmp_path)))
+    sample_dir = tmp_path / "sample_000001"
+    sample_dir.mkdir()
+    np.savez(sample_dir / "sample.npz", trajectory_eta=np.zeros((1, 2, 2)))
+    (sample_dir / "meta.json").write_text(
+        json.dumps({"contract_hash": "common-time-v2-contract"}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Common-time-v2 preprocessing requires publication.json",
+    ):
+        preprocessor.load_sample(
+            sample_dir,
+            expected_record={
+                "scenario_id": "scenario_000001",
+                "contract_hash": "common-time-v2-contract",
+            },
+        )
+
+
+def test_v2_payload_schema_requires_publication_when_metadata_is_stripped(
+    tmp_path: Path,
+) -> None:
+    preprocessor = TsunamiPreprocessor(str(_config(tmp_path)))
+    sample_dir = tmp_path / "sample_000001"
+    sample_dir.mkdir()
+    np.savez(
+        sample_dir / "sample.npz",
+        trajectory_eta=np.zeros((1, 2, 2)),
+        schema_id=np.asarray(
+            ["tsunami-surrogate.common-time-v2.eta-sample.v1"]
+        ),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Common-time-v2 preprocessing requires publication.json",
+    ):
+        preprocessor.load_sample(sample_dir)
+
+
+def test_processed_directory_publication_restores_existing_on_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output = tmp_path / "processed"
+    output.mkdir()
+    (output / "old.txt").write_text("old", encoding="utf-8")
+    staging = tmp_path / ".processed.staging"
+    staging.mkdir()
+    (staging / "new.txt").write_text("new", encoding="utf-8")
+
+    real_replace = os.replace
+    calls = 0
+
+    def fail_second_replace(source, destination):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected publication failure")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", fail_second_replace)
+    with pytest.raises(OSError, match="injected"):
+        TsunamiPreprocessor._publish_processed_directory(staging, output)
+
+    assert (output / "old.txt").read_text(encoding="utf-8") == "old"
 
 
 @pytest.mark.parametrize(

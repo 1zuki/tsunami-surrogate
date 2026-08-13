@@ -573,8 +573,9 @@ def _split_indices(n: int, split_cfg: Dict[str, Any], seed: int) -> Tuple[np.nda
     split_type = str(split_cfg.get("type", "iid")).lower()
 
     if split_type != "iid":
-        # fallback to deterministic IID-style split for unsupported modes
-        split_type = "iid"
+        raise ValueError(
+            f"Unsupported split type {split_type!r}; only 'iid' is implemented"
+        )
 
     train_ratio = float(split_cfg.get("train", 0.7))
     val_ratio = float(split_cfg.get("val", 0.15))
