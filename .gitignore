@@ -47,6 +47,10 @@ data/*
 results/*
 !results/.gitkeep
 
+# Immutable evaluation runs are local evidence bundles, not source files.
+/evaluation_runs/
+/results_archive/
+
 # Immutable run snapshots are intentionally versioned.
 !runs/**/results/
 !runs/**/results/**

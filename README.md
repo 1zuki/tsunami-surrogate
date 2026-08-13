@@ -36,59 +36,58 @@ Separate follow-up track (not part of the current forward-surrogate paper):
 
 ### 3a) Current development checkpoint
 
-Updated: 2026-08-09.
+Updated: 2026-08-13.
 
-The repository is currently between the completed legacy-v1 paper campaign and
-the stricter common-time-v2 replacement study. Read these before resuming
-development:
+The selected non-ensemble training campaign is complete and the repository is in its replacement-evaluation stage. Read these before resuming development:
 
 - [`HANDOFF.md`](HANDOFF.md): current operational state, artifacts, known
   risks, and next-session startup order;
 - [`PROJECT_STATUS.md`](PROJECT_STATUS.md): plain-language progress and current
   work order;
 - [`plan.md`](plan.md): scientific gates, scope boundaries, and experiment
-  decisions;
-- [`manual.md`](manual.md): UIT OpenVPN/SSH/rclone/Slurm workflow;
-- [`docs/refactor_plan.md`](docs/refactor_plan.md): staged cleanup plan.
+  decisions.
 
-The main processed datasets under `data/processed/` contain
-10,000/1,000/2,500 train/validation/test samples per reference, but use the
-older version-1 shard format without explicit common-time-v2 binding. Current
-local broad-model checkpoints belong to this development/legacy-benchmark
-lane. The native 32/64/128 processed datasets use the version-2 schema, are
-explicitly common-time-v2-bound, and contain 700/150/150 samples per split and
-reference. Do not mix those evidence lanes in one scientific claim.
+The main processed roots contain common-time-v2 payloads for
+10,000/1,000/2,500 train/validation/test scenarios per reference. Their outer shard manifests still use the older version-1 envelope, so describe them as **v2 payloads in a legacy manifest envelope**. Native MUSCL-HR, strict-holdout, and rebuilt real-bathymetry lanes have explicit v2 provenance.
 
-Current seed-18 local runs completed for FNO, F-FNO, CNN, U-Net, ConvLSTM,
-U-FNO, WNO, FNO modes 8/20, FNO-MUSCL-HR, FNO-Boussinesq, and FNO window-5.
-F-FNO window-5 and ensemble member 44 remain incomplete. Ensemble members
-11/22/33 are complete; 55/66/77/88 have not started. Strict holdouts, sample
-scaling, ConvLSTM-MUSCL-HR, and native-resolution model training remain
-outstanding or blocked as described in the handoff.
+Completed training includes 11 direct models, both FNO/F-FNO window-5 models,
+six sample-scaling runs, native MUSCL-HR at 32/64/128, and four strict-holdout
+models. All seven ensemble members 11/22/33/44/55/66/77 are complete and pass
+the ensemble-inclusive evaluation preflight. No more ConvLSTM runs are planned.
 
-Important current safety notes:
+The final evaluation interface is deliberately small:
 
-- Do not launch a completed ordinary config again without inspection.
-  `scripts/train.py` does not yet fail closed on an occupied output directory,
-  so a fresh run can overwrite history/checkpoints.
-- `scripts/train_ensemble.py` does refuse existing member artifacts, but the
-  current inherited eight-seed list collides with existing members and the
-  dedicated extension config is deleted. Reconcile that protocol before
-  continuing the ensemble.
-- Hydrostatic native-resolution configs currently point to absent
-  `data/processed_crossres/...` paths even though v2-bound native data exist
-  elsewhere. Treat that as a provenance/config bug, not an invitation to edit
-  paths ad hoc.
-- The focused training/cluster tests currently report 68 passed and one
-  failure because `configs/model/fno_ensemble_m8.yaml` is missing.
-- The UIT cluster workflow is documented, but broad L40 submission remains
-  blocked on an administrator-owned GPU-helper typo. Local RTX 4050 training
-  is the active fallback.
+```bash
+# Read-only preflight; creates no evaluation outputs.
+bash scripts/run_eval_suite.sh
 
-All later work should meet the project standard of polished research software:
-scientifically defensible scope, explicit provenance, fail-closed data and
-checkpoint boundaries, reproducible commands, proportionate tests, and no
-paper/production claim stronger than the artifacts support.
+# Read-only preflight including all seven ensemble members.
+bash scripts/run_eval_suite.sh --include-ensemble
+
+# Read-only preflight for every currently supported v2 paper metric.
+# This implies the seven-member ensemble.
+bash scripts/run_eval_suite.sh --include-paper-evidence
+
+# Full final execution after reviewing and committing the scientific patch.
+bash scripts/run_eval_suite.sh \
+  --execute \
+  --run-id <immutable-run-id> \
+  --device cuda \
+  --include-paper-evidence \
+  --include-speed \
+  --deep-payload-audit \
+  --rerun-numerical-validation
+```
+
+Real-bathymetry-v2 is included by default. Paper evidence implies the ensemble;
+speed and the fresh numerical-validation chain remain explicit because they are
+the longest lanes. Numerical validation requires a clean committed
+`src/`/`scripts/`/`configs/` source state and creates a checksum-bound archive
+inside the isolated evaluation run. Legacy cleanup remains a separate,
+replacement-aware step and requires a validated completion manifest from the
+new run.
+
+All later work should meet the project standard of polished research software: scientifically defensible scope, explicit provenance, fail-closed data and checkpoint boundaries, reproducible commands, proportionate tests, and no paper/production claim stronger than the artifacts support.
 
 ## 4) Canonical Workflow
 
@@ -114,18 +113,12 @@ pip install -r requirements.txt
 ## 5a) Reproducibility notes
 
 The intended runtime is Python 3.10, with dependencies listed in
-`requirements.txt`. Paper CUDA timing rows use the recorded speed metadata from
-runs with PyTorch 2.10.0+cu128 and CUDA 12.8. Trained checkpoints are not
-redistributed in full; the release provides configs, seeds, training histories,
-and checkpoint-selection information so reported runs can be reproduced. This
-archive supports research benchmark reproducibility, not operational tsunami
-prediction.
+`requirements.txt`. Paper CUDA timing rows use the recorded speed metadata from runs with PyTorch 2.10.0+cu128 and CUDA 12.8. Trained checkpoints are not redistributed in full; the release provides configs, seeds, training histories, and checkpoint-selection information so reported runs can be reproduced. This archive supports research benchmark reproducibility, not operational tsunami prediction.
 
 ## 5b) Reproduce from the released benchmark data (recommended)
 
 You do **not** need to regenerate the 300 GB raw rollouts to reproduce the paper.
-The released benchmark bundle ships the model-ready *processed* arrays, so you can
-go straight to training (Section 6.3) and evaluation (6.4+).
+The released benchmark bundle ships the model-ready *processed* arrays, so you can go straight to training (Section 6.3) and evaluation (6.4+).
 
 1. Download the dataset bundle from the archive (DOI: https://doi.org/10.5281/zenodo.20974604).
 2. Verify integrity, then extract each archive into `data/processed/`:
@@ -145,14 +138,10 @@ for f in ood_processed/*.tar.zst crossres_processed/*.tar.zst real_bathymetry_pr
 done
 ```
 
-After extraction you should have `data/processed/hydrostatic/{train,val,test}`,
-`data/processed/muscl_hr/...`, and `data/processed/boussinesq/...`, which is what the
-training and evaluation configs expect. The exact archive layout, per-suite contents,
-and citation are documented in the bundle's own `README.md`.
+After extraction you should have `data/processed/hydrostatic/{train,val,test}`, `data/processed/muscl_hr/...`, and `data/processed/boussinesq/...`, which is what the training and evaluation configs expect. The exact archive layout, per-suite contents, and citation are documented in the bundle's own `README.md`.
 
 Skipping the bundle? Generate everything from scratch via Sections 6.1--6.2 instead.
-All data paths in `configs/` are repo-relative (`./data/...`), so commands run from
-the repository root without edits.
+All data paths in `configs/` are repo-relative (`./data/...`), so commands run from the repository root without edits.
 
 ## 6) Run Commands
 
@@ -385,11 +374,15 @@ Large paper-facing preprocess configs use bounded shards by default:
 This keeps preprocessing and training RAM-bounded. Existing model config paths ending in `.../eval_dataset.npz` still work: when the monolithic archive is absent and the split is sharded, the loader falls back to that file's parent directory and reads `shards_manifest.json`. Paths may also point directly at the split folder, e.g. `data/processed/hydrostatic/train`.
 For sharded training splits, the loader uses a shard-aware batch sampler: it shuffles shard order and sample order within each shard, but keeps each mini-batch inside one shard to avoid repeatedly reloading compressed shard files.
 
-`preprocess.yaml` supports FDE-aware modes:
-- `fde.mode: single` with `fde.targets: [hydrostatic]` writes to `data/processed/hydrostatic/...`
-- `fde.mode: separate_all` writes one processed dataset per solver (`hydrostatic`, `muscl_hr`, `boussinesq`) using the same scenario split
-- `fde.mode: multifidelity` writes a combined dataset to `data/processed/multifidelity/...`
-- For `multifidelity`, keep `input.use_solver_id: true` (or omit it, since it auto-enables by default) so the model can condition on solver identity instead of learning an ambiguous one-to-many mapping
+The checked-in `configs/data/preprocess.yaml` is a fail-closed, test-only
+common-time-v2 rebuild into `data/processed_common_time_v2_test`. It reuses
+frozen training normalization statistics and is not the complete
+train/validation/test preprocessing command.
+
+The preprocessor itself supports FDE-aware modes:
+- `fde.mode: single` writes one selected reference;
+- `fde.mode: separate_all` writes one processed dataset per solver;
+- `fde.mode: multifidelity` writes a combined solver-conditioned dataset.
 
 Boussinesq-only preprocessing for the separate diagnostic regime:
 
@@ -397,7 +390,9 @@ Boussinesq-only preprocessing for the separate diagnostic regime:
 python src/data_gen/preprocess.py --config configs/data/preprocess_boussinesq.yaml
 ```
 
-Use this only with `configs/data/dataset_boussinesq.yaml` outputs. For the main same-scenario dataset, `configs/data/preprocess.yaml` already exports Boussinesq together with hydrostatic and MUSCL-HR.
+Use this only with `configs/data/dataset_boussinesq.yaml` outputs. Do not use
+the test-only `configs/data/preprocess.yaml` to rebuild the complete main
+train/validation/test dataset.
 
 Main outputs used by training/eval:
 - `data/processed/hydrostatic/{train,val,test}/shards_manifest.json`
@@ -439,14 +434,13 @@ For `output_dir: experiments/fno`, these runs are written to
 directory contains the complete run artifacts, including resolved config,
 metadata, history, and checkpoints.
 
-The headline Hydrostatic FNO and F-FNO configs use all five frozen seeds. Every
-other ordinary model config uses the shared three-seed subset `[18, 36, 67]`;
-the dedicated uncertainty-ensemble config retains its own member seeds. A seed
-list does not make legacy holdout or native-resolution data compatible with the
-common-time-v2 core, so run those configurations only under their own protocol.
+The current completed core scope uses one selected seed per ordinary model.
+The historical five-seed headline matrix remains a later replication protocol,
+not an implemented property of the current configs. The dedicated uncertainty
+ensemble uses members `[11, 22, 33, 44, 55, 66, 77]`.
 
 Optional training tracks:
-- Ensemble for uncertainty: `python scripts/train_ensemble.py --config configs/model/fno.yaml`
+- Ensemble for uncertainty: `python scripts/train_ensemble.py --config configs/model/fno_ensemble.yaml`
 - Experimental (not reported in the paper): a ConvLSTM baseline exists in the code
   (`configs/model/convlstm.yaml`) but did not converge under the training budget and
   is excluded from all paper results.
@@ -775,7 +769,7 @@ Optional visualization controls:
 Train an ensemble, then evaluate uncertainty metrics on OOD suite datasets:
 
 ```bash
-python scripts/train_ensemble.py --config configs/model/fno.yaml
+python scripts/train_ensemble.py --config configs/model/fno_ensemble.yaml
 
 python scripts/eval_uncertainty.py \
   --config configs/eval/uncertainty_ood_hydrostatic.yaml \
