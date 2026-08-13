@@ -684,6 +684,16 @@ def _validate_contract_identity(contract: Mapping[str, Any]) -> None:
         raise RuntimeError("H1 task identities are not unique")
 
 
+def _verify_frozen_config(contract: Mapping[str, Any]) -> None:
+    config_path = Path(str(contract["config_path"])).resolve()
+    if not config_path.is_file():
+        raise RuntimeError(f"H1 frozen config is missing: {config_path}")
+    if sha256_file(config_path) != str(contract["config_sha256"]):
+        raise RuntimeError("H1 frozen config checksum mismatch")
+    if _load_config(config_path) != contract["resolved_config"]:
+        raise RuntimeError("H1 frozen config content mismatch")
+
+
 def freeze_h1_contract(
     *,
     repo_root: Path,
@@ -1601,8 +1611,7 @@ def execute_h1_contract(
     validate_frozen_checksums(contract_root)
     contract = _read_json(contract_root / "preregistered_contract.json")
     _validate_contract_identity(contract)
-    if Path(contract["config_path"]).resolve().parents[2] != repo_root:
-        raise RuntimeError("H1 contract repository root mismatch")
+    _verify_frozen_config(contract)
     _verify_execution_environment(contract, repo_root=repo_root)
     _verify_prerequisites(
         config=contract["resolved_config"],

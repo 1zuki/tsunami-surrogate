@@ -1102,6 +1102,16 @@ def _validate_contract_identity(contract: Mapping[str, Any]) -> None:
         raise RuntimeError("H2 contract overlaps the prior viewed H2 selection")
 
 
+def _verify_frozen_config(contract: Mapping[str, Any]) -> None:
+    config_path = Path(str(contract["config_path"])).resolve()
+    if not config_path.is_file():
+        raise RuntimeError(f"H2 frozen config is missing: {config_path}")
+    if sha256_file(config_path) != str(contract["config_sha256"]):
+        raise RuntimeError("H2 frozen config checksum mismatch")
+    if _load_config(config_path) != contract["resolved_config"]:
+        raise RuntimeError("H2 frozen config content mismatch")
+
+
 def _verify_post_h2_diagnostic_evidence(
     *,
     config: Mapping[str, Any],
@@ -2487,8 +2497,7 @@ def execute_h2_contract(
     validate_frozen_checksums(contract_root)
     contract = _read_json(contract_root / "preregistered_contract.json")
     _validate_contract_identity(contract)
-    if Path(contract["config_path"]).resolve().parents[2] != repo_root:
-        raise RuntimeError("H2 contract repository root mismatch")
+    _verify_frozen_config(contract)
     _verify_execution_environment(contract, repo_root=repo_root)
     prerequisites = contract["prerequisites"]
     _verify_prerequisites(
