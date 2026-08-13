@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.audit_common_time_v2_h0 import audit_h0
+from scripts.audit_common_time_v2_h0 import audit_h0_regression
 from src.data_gen.common_time_v2 import code_state
 from src.evaluation.common_time_v2_h1 import (
     execute_h1_contract,
@@ -47,6 +47,10 @@ from src.evaluation.geoclaw_adapter import (
 STAGE_C_ARCHIVE = ROOT / (
     "artifacts/common_time_v2/stage_c_legacy_stride5_negative/"
     "1db46ddc9f6d2547ff01e74176c94d82fe4d0d962320a31b1510092d3be60ca6"
+)
+ACCEPTED_H0 = ROOT / (
+    "artifacts/common_time_v2/h0/"
+    "830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b"
 )
 PRIOR_H2 = ROOT / (
     "artifacts/common_time_v2/h2/"
@@ -137,6 +141,9 @@ def validate_prerequisites(
         (ROOT / "data/train", "dir"),
         (ROOT / "data/eval", "dir"),
         (ROOT / "data/test", "dir"),
+        (ACCEPTED_H0 / "h0_decision.json", "file"),
+        (ACCEPTED_H0 / "h0_input_inventory.jsonl", "file"),
+        (ACCEPTED_H0 / "SHA256SUMS.txt", "file"),
         (STAGE_C_ARCHIVE / "manifest.json", "file"),
         (PRIOR_H2 / "execution/result.json", "file"),
         (SWE_DIAGNOSTIC / "execution/result.json", "file"),
@@ -250,16 +257,21 @@ def run_chain(
     configs_root = workspace / "configs"
     artifacts_root = workspace / "artifacts"
 
-    print("[numerical-chain] H0 authoritative-input audit", flush=True)
-    h0_root = audit_h0(
+    suite_contract = _load_yaml(ROOT / "configs/eval/final_v2_suite.yaml")
+    publication_contract_hash = str(
+        suite_contract["scientific_scope"]["contract_hash"]
+    )
+    print("[numerical-chain] H0 authoritative-input regression", flush=True)
+    h0_root = audit_h0_regression(
         split_roots={
             "train": ROOT / "data/train",
             "eval": ROOT / "data/eval",
             "test": ROOT / "data/test",
         },
         expected_counts={"train": 10_000, "eval": 1_000, "test": 2_500},
+        accepted_h0_root=ACCEPTED_H0,
+        expected_publication_contract_hash=publication_contract_hash,
         output_root=artifacts_root / "h0",
-        stage_c_archive=STAGE_C_ARCHIVE,
     )
     h0_decision = _require_decision(
         h0_root / "h0_decision.json",

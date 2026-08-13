@@ -21,16 +21,19 @@ from src.data_gen.common_time_v2 import (
     CONTRACT_SCHEMA_ID,
     authoritative_input_fingerprint,
     build_candidate_contract,
+    candidate_requested_times,
     code_state,
     contract_hash,
     hash_array,
     sha256_file,
     split_qualified_identity,
     stable_hash_payload,
+    validate_publication,
 )
 
 
 H0_SCHEMA_ID = "tsunami-surrogate.common-time-v2.h0.v1"
+H0_REGRESSION_SCHEMA_ID = "tsunami-surrogate.common-time-v2.h0-regression.v1"
 SOLVERS = ("hydrostatic", "muscl_hr", "boussinesq")
 SWE_SOLVERS = ("hydrostatic", "muscl_hr")
 STATIC_FIELDS = (
@@ -668,6 +671,436 @@ def audit_h0(
         )
         checksum_paths = sorted(path for path in staging.iterdir() if path.is_file())
         with (staging / "SHA256SUMS.txt").open("w", encoding="utf-8") as handle:
+            for path in checksum_paths:
+                handle.write(f"{sha256_file(path)}  {path.name}\n")
+        output_root.mkdir(parents=True, exist_ok=True)
+        staging.rename(final)
+        return final
+    except Exception:
+        if staging.exists():
+            shutil.rmtree(staging)
+        raise
+
+
+def _validate_checksum_manifest(root: Path) -> None:
+    manifest = root / "SHA256SUMS.txt"
+    if not manifest.is_file():
+        raise RuntimeError(f"Missing checksum manifest: {manifest}")
+    listed: set[str] = set()
+    for line in manifest.read_text(encoding="utf-8").splitlines():
+        if not line:
+            continue
+        expected, relative = line.split("  ", 1)
+        path = root / relative
+        if not path.is_file() or sha256_file(path) != expected:
+            raise RuntimeError(f"Checksum mismatch: {root.name}/{relative}")
+        listed.add(relative)
+    actual = {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file() and path.name != "SHA256SUMS.txt"
+    }
+    if listed != actual:
+        raise RuntimeError(f"Checksum inventory mismatch: {root}")
+
+
+def audit_h0_regression(
+    *,
+    split_roots: Mapping[str, Path],
+    expected_counts: Mapping[str, int],
+    accepted_h0_root: Path,
+    expected_publication_contract_hash: str,
+    output_root: Path,
+    repo_root: Path = ROOT,
+) -> Path:
+    """Revalidate current v2 publications against the accepted H0 inputs.
+
+    The accepted H0 inventory describes untapered authoritative caches. Current
+    common-time-v2 publications contain the deterministic tapered source used
+    by the buffered solver domain. Those are distinct identities: publications
+    must bind the accepted H0 fingerprint rather than equal the untapered cache.
+    """
+
+    accepted_h0_root = accepted_h0_root.resolve()
+    _validate_checksum_manifest(accepted_h0_root)
+    accepted_decision = json.loads(
+        (accepted_h0_root / "h0_decision.json").read_text(encoding="utf-8")
+    )
+    if accepted_decision.get("audit_passed") is not True:
+        raise RuntimeError("Accepted H0 prerequisite did not pass")
+    accepted_inventory_path = accepted_h0_root / "h0_input_inventory.jsonl"
+    accepted_inventory_sha256 = sha256_file(accepted_inventory_path)
+    accepted_rows = list(_read_jsonl(accepted_inventory_path))
+    expected_total = sum(int(value) for value in expected_counts.values())
+    if len(accepted_rows) != expected_total:
+        raise RuntimeError(
+            "Accepted H0 inventory count mismatch: "
+            f"{len(accepted_rows)} != {expected_total}"
+        )
+    accepted_index: dict[str, dict[str, Any]] = {}
+    for row in accepted_rows:
+        qualified_id = str(row.get("qualified_id", ""))
+        if not qualified_id or qualified_id in accepted_index:
+            raise RuntimeError(
+                f"Accepted H0 inventory has a missing/duplicate identity: "
+                f"{qualified_id!r}"
+            )
+        accepted_index[qualified_id] = row
+
+    issues: list[dict[str, Any]] = []
+    inventory_records: list[dict[str, Any]] = []
+    split_summaries: dict[str, Any] = {}
+    publication_summaries: dict[str, Any] = {}
+    requested_times = candidate_requested_times()
+    solver_names = {
+        "hydrostatic": "swe_hydrostatic",
+        "muscl_hr": "swe_muscl_hr",
+        "boussinesq": "boussinesq",
+    }
+
+    for split, raw_root in split_roots.items():
+        split_root = raw_root.resolve()
+        expected_count = int(expected_counts[split])
+        manifest_path = split_root / "synthetic/scenario_manifest.jsonl"
+        if not manifest_path.is_file():
+            _issue(
+                issues,
+                split=split,
+                scenario_id="*",
+                code="manifest_missing",
+                message=str(manifest_path),
+            )
+            split_summaries[split] = {
+                "expected_count": expected_count,
+                "manifest_count": 0,
+                "audited_inventory_count": 0,
+            }
+            continue
+        manifest_rows = list(_read_jsonl(manifest_path))
+        if len(manifest_rows) != expected_count:
+            _issue(
+                issues,
+                split=split,
+                scenario_id="*",
+                code="materialized_count_mismatch",
+                message=f"manifest={len(manifest_rows)} expected={expected_count}",
+            )
+        seen_ids: set[str] = set()
+        successful_publications = 0
+
+        for manifest_row in manifest_rows:
+            scenario_id = str(manifest_row.get("scenario_id", ""))
+            qualified_id = f"{split}:{scenario_id}"
+            if not scenario_id or qualified_id in seen_ids:
+                _issue(
+                    issues,
+                    split=split,
+                    scenario_id=scenario_id or "*",
+                    code="invalid_or_duplicate_identity",
+                    message=qualified_id,
+                )
+                continue
+            seen_ids.add(qualified_id)
+            accepted = accepted_index.get(qualified_id)
+            if accepted is None:
+                _issue(
+                    issues,
+                    split=split,
+                    scenario_id=scenario_id,
+                    code="accepted_h0_identity_missing",
+                    message=qualified_id,
+                )
+                continue
+            try:
+                sample_index = int(manifest_row["sample_index"])
+                if sample_index != int(accepted["sample_index"]):
+                    raise RuntimeError("sample_index mismatch")
+                for key in ("bathymetry_type", "source_type"):
+                    if str(manifest_row.get(key)) != str(accepted.get(key)):
+                        raise RuntimeError(f"{key} mismatch")
+                if np.float32(manifest_row.get("source_strength")) != np.float32(
+                    accepted["source_strength"]
+                ):
+                    raise RuntimeError("source_strength mismatch")
+
+                bathymetry_path = _cache_path(
+                    split_root, "bathymetry", sample_index
+                )
+                source_path = _cache_path(split_root, "sources", sample_index)
+                with np.load(bathymetry_path, allow_pickle=False) as payload:
+                    bathymetry = np.asarray(payload["bathymetry"])
+                    bathymetry_type = str(
+                        _scalar(payload, "bathymetry_type")
+                    )
+                with np.load(source_path, allow_pickle=False) as payload:
+                    source = np.asarray(payload["source_field"])
+                    source_type = str(_scalar(payload, "source_type"))
+                    strength_array = np.asarray(payload["source_strength"])
+                if bathymetry_type != str(accepted["bathymetry_type"]):
+                    raise RuntimeError("bathymetry cache family mismatch")
+                if source_type != str(accepted["source_type"]):
+                    raise RuntimeError("source cache family mismatch")
+                strength = float(strength_array.reshape(-1)[0])
+                if np.float32(strength) != np.float32(
+                    accepted["source_strength"]
+                ):
+                    raise RuntimeError("source cache strength mismatch")
+                if not np.isfinite(bathymetry).all() or not np.isfinite(
+                    source
+                ).all():
+                    raise RuntimeError("authoritative cache contains nonfinite values")
+
+                expected_hashes = accepted.get("array_hashes")
+                if not isinstance(expected_hashes, Mapping):
+                    raise RuntimeError("accepted H0 array hashes are missing")
+                rest_depth = np.maximum(-bathymetry, 0.0).astype(
+                    np.dtype(expected_hashes["rest_depth"]["dtype"]),
+                    copy=False,
+                )
+                eta0 = np.asarray(
+                    strength * source,
+                    dtype=np.dtype(expected_hashes["eta0"]["dtype"]),
+                )
+                initial_depth = np.maximum(rest_depth + eta0, 0.0).astype(
+                    np.dtype(expected_hashes["initial_depth"]["dtype"]),
+                    copy=False,
+                )
+                free_surface0 = (initial_depth + bathymetry).astype(
+                    np.dtype(expected_hashes["free_surface0"]["dtype"]),
+                    copy=False,
+                )
+                authoritative_arrays = {
+                    "bathymetry": bathymetry,
+                    "source_field": source,
+                    "rest_depth": rest_depth,
+                    "eta0": eta0,
+                    "initial_depth": initial_depth,
+                    "free_surface0": free_surface0,
+                }
+                for name, values in authoritative_arrays.items():
+                    if hash_array(values) != expected_hashes.get(name):
+                        raise RuntimeError(
+                            f"authoritative cache hash mismatch: {name}"
+                        )
+                fingerprint = authoritative_input_fingerprint(
+                    split=split,
+                    sample_index=sample_index,
+                    scenario_id=scenario_id,
+                    bathymetry_type=bathymetry_type,
+                    source_type=source_type,
+                    source_strength=strength_array,
+                    arrays=authoritative_arrays,
+                )
+                if fingerprint != str(accepted["input_fingerprint"]):
+                    raise RuntimeError("authoritative input fingerprint mismatch")
+
+                current_static: dict[str, dict[str, np.ndarray]] = {}
+                publication_input_fingerprints: set[str] = set()
+                for solver, solver_name in solver_names.items():
+                    sample_path = _sample_path(split_root, solver, sample_index)
+                    sample_dir = sample_path.parent
+                    publication = validate_publication(
+                        sample_dir,
+                        expected_identity={
+                            "split": split,
+                            "scenario_id": scenario_id,
+                        },
+                        expected_contract_hash=expected_publication_contract_hash,
+                        expected_times=requested_times,
+                        expected_solver_name=solver_name,
+                        expected_sample_index=sample_index,
+                        expected_authoritative_input_fingerprint=fingerprint,
+                        expected_authoritative_inventory_sha256=(
+                            accepted_inventory_sha256
+                        ),
+                    )
+                    if publication.get("h0_contract_hash") != accepted_h0_root.name:
+                        raise RuntimeError(
+                            f"{solver} publication H0 contract mismatch"
+                        )
+                    if publication.get("quality_status") != "ok":
+                        raise RuntimeError(
+                            f"{solver} publication quality status is not ok"
+                        )
+                    publication_input_fingerprints.add(
+                        str(publication.get("input_fingerprint", ""))
+                    )
+                    with np.load(sample_path, allow_pickle=False) as payload:
+                        current_static[solver] = {
+                            field: np.asarray(payload[field])
+                            for field in STATIC_FIELDS
+                        }
+                        published_strength = float(
+                            np.asarray(payload["source_strength"]).reshape(-1)[0]
+                        )
+                    if np.float32(published_strength) != np.float32(strength):
+                        raise RuntimeError(
+                            f"{solver} publication source strength mismatch"
+                        )
+                    successful_publications += 1
+                if publication_input_fingerprints == {""} or len(
+                    publication_input_fingerprints
+                ) != 1:
+                    raise RuntimeError(
+                        "cross-reference publication input fingerprint mismatch"
+                    )
+
+                reference = current_static["hydrostatic"]
+                for solver, fields in current_static.items():
+                    for field in STATIC_FIELDS:
+                        if not _array_equal_exact(reference[field], fields[field]):
+                            raise RuntimeError(
+                                f"cross-reference static field mismatch: "
+                                f"{solver}:{field}"
+                            )
+                if not _array_equal_exact(
+                    reference["bathymetry"], bathymetry
+                ):
+                    raise RuntimeError("publication bathymetry differs from cache")
+                published_eta0 = np.asarray(
+                    strength * reference["source_field"],
+                    dtype=reference["eta0"].dtype,
+                )
+                published_rest = np.maximum(
+                    -reference["bathymetry"], 0.0
+                ).astype(reference["rest_depth"].dtype, copy=False)
+                published_depth = np.maximum(
+                    published_rest + published_eta0, 0.0
+                ).astype(reference["initial_depth"].dtype, copy=False)
+                published_surface = (
+                    published_depth + reference["bathymetry"]
+                ).astype(reference["free_surface0"].dtype, copy=False)
+                for name, expected_values in (
+                    ("rest_depth", published_rest),
+                    ("eta0", published_eta0),
+                    ("initial_depth", published_depth),
+                    ("free_surface0", published_surface),
+                ):
+                    if not np.array_equal(reference[name], expected_values):
+                        raise RuntimeError(
+                            f"v2 publication reconstruction mismatch: {name}"
+                        )
+
+                local_record = dict(accepted)
+                local_record["bathymetry_cache_path"] = str(bathymetry_path)
+                local_record["source_cache_path"] = str(source_path)
+                local_record["raw_sample_paths"] = {
+                    solver: str(_sample_path(split_root, solver, sample_index))
+                    for solver in SOLVERS
+                }
+                inventory_records.append(local_record)
+            except Exception as exc:
+                _issue(
+                    issues,
+                    split=split,
+                    scenario_id=scenario_id,
+                    code="h0_regression_binding_mismatch",
+                    message=f"{type(exc).__name__}: {exc}",
+                )
+
+        split_summaries[split] = {
+            "expected_count": expected_count,
+            "manifest_count": len(manifest_rows),
+            "audited_inventory_count": sum(
+                1 for row in inventory_records if row.get("split") == split
+            ),
+            "ordered_qualified_id_hash": stable_hash_payload(
+                artifact_kind="ordered-split-qualified-identities",
+                schema_id=H0_REGRESSION_SCHEMA_ID,
+                payload=[
+                    f"{split}:{row.get('scenario_id', '')}"
+                    for row in manifest_rows
+                ],
+            ),
+        }
+        publication_summaries[split] = {
+            "expected_publications": 3 * expected_count,
+            "validated_publications": successful_publications,
+        }
+
+    blocking = [item for item in issues if item.get("blocking", True)]
+    passed = not blocking and len(inventory_records) == expected_total
+    decision = {
+        "schema_id": H0_REGRESSION_SCHEMA_ID,
+        "artifact_kind": "common-time-v2-h0-regression-decision",
+        "audit_completed": True,
+        "audit_passed": passed,
+        "blocking_issue_count": len(blocking),
+        "accepted_h0_contract_hash": accepted_h0_root.name,
+        "accepted_h0_inventory_sha256": accepted_inventory_sha256,
+        "publication_contract_hash": expected_publication_contract_hash,
+    }
+    summary = {
+        "schema_id": H0_REGRESSION_SCHEMA_ID,
+        "artifact_kind": "common-time-v2-h0-regression-summary",
+        "audit_code_state": code_state(repo_root),
+        "accepted_h0": {
+            "root": str(accepted_h0_root),
+            "contract_hash": accepted_h0_root.name,
+            "inventory_sha256": accepted_inventory_sha256,
+            "inventory_count": len(accepted_rows),
+        },
+        "publication_contract_hash": expected_publication_contract_hash,
+        "split_summaries": split_summaries,
+        "publication_summaries": publication_summaries,
+        "inventory_count": len(inventory_records),
+        "issue_count": len(issues),
+        "blocking_issue_count": len(blocking),
+        "decision": decision,
+    }
+    complete_evidence = {
+        "summary": summary,
+        "decision": decision,
+        "inventory_records": inventory_records,
+        "issues": issues,
+    }
+    h0_hash = stable_hash_payload(
+        artifact_kind="h0-regression-complete-evidence",
+        schema_id=H0_REGRESSION_SCHEMA_ID,
+        payload=complete_evidence,
+    )
+    final = output_root.resolve() / h0_hash
+    staging = output_root.resolve() / f".{h0_hash}.staging"
+    if final.exists() or staging.exists():
+        raise FileExistsError(
+            f"Refusing to overwrite H0 regression artifact: {final}"
+        )
+    staging.mkdir(parents=True, exist_ok=False)
+    try:
+        for name, payload in (
+            ("h0_summary.json", summary),
+            ("h0_decision.json", decision),
+        ):
+            (staging / name).write_text(
+                json.dumps(payload, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        with (staging / "h0_input_inventory.jsonl").open(
+            "w", encoding="utf-8"
+        ) as handle:
+            for row in inventory_records:
+                handle.write(json.dumps(row, sort_keys=True) + "\n")
+        with (staging / "h0_issues.jsonl").open(
+            "w", encoding="utf-8"
+        ) as handle:
+            for issue in issues:
+                handle.write(json.dumps(issue, sort_keys=True) + "\n")
+        (staging / "REPORT.md").write_text(
+            "# Common-time-v2 H0 regression audit\n\n"
+            f"- Audit passed: {'yes' if passed else 'no'}\n"
+            f"- Accepted H0: `{accepted_h0_root.name}`\n"
+            f"- Authoritative inputs audited: {len(inventory_records)}\n"
+            f"- V2 publications validated: "
+            f"{sum(row['validated_publications'] for row in publication_summaries.values())}\n"
+            f"- Blocking issues: {len(blocking)}\n",
+            encoding="utf-8",
+        )
+        checksum_paths = sorted(
+            path for path in staging.iterdir() if path.is_file()
+        )
+        with (staging / "SHA256SUMS.txt").open(
+            "w", encoding="utf-8"
+        ) as handle:
             for path in checksum_paths:
                 handle.write(f"{sha256_file(path)}  {path.name}\n")
         output_root.mkdir(parents=True, exist_ok=True)
