@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import gc
 import hashlib
 import json
@@ -12,7 +13,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 import numpy as np
 import torch
@@ -359,6 +360,45 @@ def _validate_raw_timestamp_payload(
         )
 
 
+def _run_payload_audits(
+    jobs: list[dict[str, Any]],
+    *,
+    deep_payload_audit: bool,
+    workers: int,
+    label: str,
+    progress_callback: Callable[[str], None] | None,
+) -> None:
+    if not jobs:
+        return
+    if workers <= 0:
+        raise PreflightError("Payload-audit worker count must be positive")
+    total = len(jobs)
+    active_workers = min(workers, total)
+    if progress_callback is not None:
+        progress_callback(
+            f"[payload-audit] start {label} samples={total} workers={active_workers}"
+        )
+
+    def audit(job: Mapping[str, Any]) -> None:
+        _validate_raw_timestamp_payload(
+            **job,
+            deep_payload_audit=deep_payload_audit,
+        )
+
+    progress_interval = max(100, min(1000, total // 10 or 1))
+    with ThreadPoolExecutor(max_workers=active_workers) as executor:
+        for completed, _ in enumerate(executor.map(audit, jobs), start=1):
+            if (
+                progress_callback is not None
+                and (completed % progress_interval == 0 or completed == total)
+            ):
+                progress_callback(
+                    f"[payload-audit] progress {label} {completed}/{total}"
+                )
+    if progress_callback is not None:
+        progress_callback(f"[payload-audit] complete {label} samples={total}")
+
+
 def _validate_processed_split(
     split_dir: Path,
     *,
@@ -373,6 +413,8 @@ def _validate_processed_split(
     lineage_schema_id: str | None = None,
     expected_publication_hashes: Mapping[str, str] | None = None,
     deep_payload_audit: bool = False,
+    payload_audit_workers: int = 8,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> dict[str, dict[str, Any]]:
     if (split_dir / "shards_manifest.json").is_file():
         _validate_shard_manifest(
@@ -389,6 +431,9 @@ def _validate_processed_split(
             expected_targets_shape=(50, *publication_shape),
         )
     rows: dict[str, dict[str, Any]] = {}
+    payload_audit_jobs: list[dict[str, Any]] = []
+    if progress_callback is not None:
+        progress_callback(f"[dataset-preflight] metadata {_relative(split_dir)}")
     for row in _iter_jsonl(split_dir / "meta.jsonl"):
         scenario_id = str(row.get("scenario_id", "")).strip()
         if not scenario_id or scenario_id in rows:
@@ -442,20 +487,21 @@ def _validate_processed_split(
         publication_key = (
             f"{expected_publication_split}:{scenario_id}:{expected_solver}"
         )
-        _validate_raw_timestamp_payload(
-            sample_dir,
-            row=row,
-            expected_times=expected_times,
-            expected_shape=(50, *publication_shape),
-            expected_contract_hash=expected_contract_hash,
-            expected_schema_id=expected_schema_id,
-            expected_publication_split=expected_publication_split,
-            expected_publication_hash=(
-                None
-                if expected_publication_hashes is None
-                else expected_publication_hashes.get(publication_key)
-            ),
-            deep_payload_audit=deep_payload_audit,
+        payload_audit_jobs.append(
+            {
+                "sample_dir": sample_dir,
+                "row": row,
+                "expected_times": expected_times,
+                "expected_shape": (50, *publication_shape),
+                "expected_contract_hash": expected_contract_hash,
+                "expected_schema_id": expected_schema_id,
+                "expected_publication_split": expected_publication_split,
+                "expected_publication_hash": (
+                    None
+                    if expected_publication_hashes is None
+                    else expected_publication_hashes.get(publication_key)
+                ),
+            }
         )
         if (
             expected_publication_hashes is not None
@@ -471,6 +517,13 @@ def _validate_processed_split(
             f"Metadata row count mismatch in {_relative(split_dir)}: "
             f"{len(rows)} != {expected_count}"
         )
+    _run_payload_audits(
+        payload_audit_jobs,
+        deep_payload_audit=deep_payload_audit,
+        workers=payload_audit_workers,
+        label=_relative(split_dir),
+        progress_callback=progress_callback,
+    )
     return rows
 
 
@@ -1460,7 +1513,11 @@ def run_preflight(
     require_real_bathymetry: bool,
     include_paper_evidence: bool = False,
     deep_payload_audit: bool = False,
+    payload_audit_workers: int = 8,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
+    if payload_audit_workers <= 0:
+        raise PreflightError("Payload-audit worker count must be positive")
     scientific = contract["scientific_scope"]
     contract_hash = str(scientific["contract_hash"])
     sample_schema_id = str(scientific["sample_schema_id"])
@@ -1505,6 +1562,8 @@ def run_preflight(
                 solver_shape=solver_shape,
                 expected_publication_hashes=publication_indexes[split_name],
                 deep_payload_audit=deep_payload_audit,
+                payload_audit_workers=payload_audit_workers,
+                progress_callback=progress_callback,
             )
             main_indices[reference][split_name] = rows
             dataset_summaries.append(
@@ -1555,6 +1614,8 @@ def run_preflight(
                 solver_shape=None,
                 lineage_schema_id="tsunami-surrogate.native-resolution-inputs.v1",
                 deep_payload_audit=deep_payload_audit,
+                payload_audit_workers=payload_audit_workers,
+                progress_callback=progress_callback,
             )
             roster = set(rows)
             native_rosters[str(spec["id"])][split_name] = roster
@@ -1617,6 +1678,8 @@ def run_preflight(
                 # The auxiliary is only 13 samples and has no separately frozen
                 # operational-shard inventory, so always validate its payloads.
                 deep_payload_audit=True,
+                payload_audit_workers=payload_audit_workers,
+                progress_callback=progress_callback,
             )
             real_summaries.append({"suite": str(suite), "samples_verified": len(rows)})
 
@@ -1657,6 +1720,7 @@ def run_preflight(
         "accepted_numerical_artifacts": numerical,
         "frozen_generation_artifacts": generation,
         "deep_payload_audit": bool(deep_payload_audit),
+        "payload_audit_workers": int(payload_audit_workers),
         "ensemble": ensemble,
         "paper_evidence": paper_evidence,
         "limitations": [
@@ -1683,6 +1747,12 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--payload-audit-workers",
+        type=int,
+        default=8,
+        help="Worker threads used to hash and reopen independent raw payloads.",
+    )
+    parser.add_argument(
         "--allow-missing-real-bathymetry",
         action="store_true",
         help="Permit preflight before the v2-compatible auxiliary has been built.",
@@ -1697,6 +1767,8 @@ def main() -> None:
         include_paper_evidence=bool(args.include_paper_evidence),
         require_real_bathymetry=not bool(args.allow_missing_real_bathymetry),
         deep_payload_audit=bool(args.deep_payload_audit),
+        payload_audit_workers=int(args.payload_audit_workers),
+        progress_callback=lambda message: print(message, flush=True),
     )
     if args.report:
         _write_json_atomic(_repo_path(args.report), report)
