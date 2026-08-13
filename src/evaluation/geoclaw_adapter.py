@@ -41,6 +41,13 @@ class GeoClawEnvironment:
     mpi_fortran_compiler: str = "mpif90"
     fortran_compiler: str = "gfortran"
 
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "python_executable",
+            Path(os.path.abspath(self.python_executable)),
+        )
+
 
 FROZEN_STATE_MODULE = r"""
 module frozen_state_module
@@ -348,11 +355,46 @@ def validate_geoclaw_environment(environment: GeoClawEnvironment) -> dict[str, s
     for required_option in ("-ksp_type gmres", "-ksp_max_it 200", "-ksp_rtol 1.e-9"):
         if required_option not in options_text:
             raise RuntimeError(f"PETSc options missing {required_option!r}")
+    python_probe = subprocess.run(
+        [
+            str(environment.python_executable),
+            "-c",
+            (
+                "import json, platform\n"
+                "import numpy\n"
+                "from clawpack.clawutil import data\n"
+                "from clawpack.geoclaw.data import BoussData\n"
+                "print(json.dumps({"
+                "'python_version': platform.python_version(), "
+                "'numpy_version': numpy.__version__"
+                "}))"
+            ),
+        ],
+        env=_subprocess_environment(environment),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if python_probe.returncode != 0:
+        detail = (python_probe.stderr or python_probe.stdout).strip()
+        raise RuntimeError(
+            "GeoClaw Python cannot import NumPy and the required Clawpack "
+            f"modules: {environment.python_executable}. {detail}"
+        )
+    try:
+        python_runtime = json.loads(python_probe.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            "GeoClaw Python runtime probe returned invalid output: "
+            f"{python_probe.stdout!r}"
+        ) from exc
     return {
         "clawpack_commit": _git_commit(claw_root),
         "geoclaw_commit": _git_commit(claw_root / "geoclaw"),
         "petsc_commit": _git_commit(petsc_dir),
         "petsc_options_sha256": sha256_file(petsc_options),
+        "geoclaw_python_version": str(python_runtime["python_version"]),
+        "numpy_version": str(python_runtime["numpy_version"]),
     }
 
 
@@ -378,7 +420,7 @@ def _subprocess_environment(
     env.update(
         {
             "CLAW": claw_root,
-            "CLAW_PYTHON": str(environment.python_executable.resolve()),
+            "CLAW_PYTHON": str(environment.python_executable),
             "PYTHONPATH": claw_root + os.pathsep + env.get("PYTHONPATH", ""),
             "PETSC_DIR": petsc_dir,
             "PETSC_ARCH": environment.petsc_arch,

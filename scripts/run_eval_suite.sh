@@ -25,7 +25,7 @@ GEOCLAW_WORKERS="${GEOCLAW_WORKERS:-4}"
 CLAW_ROOT="${CLAW_ROOT:-/home/izu/opt/clawpack-v5.14.0}"
 PETSC_DIR="${PETSC_DIR:-/home/izu/opt/petsc-3.25.3}"
 PETSC_ARCH="${PETSC_ARCH:-arch-linux-c-opt}"
-GEOCLAW_PYTHON="${GEOCLAW_PYTHON:-/usr/bin/python3}"
+GEOCLAW_PYTHON="${GEOCLAW_PYTHON:-$PY}"
 
 usage() {
   sed -n '1,10p' "$0"

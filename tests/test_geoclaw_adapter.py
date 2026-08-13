@@ -17,6 +17,7 @@ from src.evaluation.geoclaw_adapter import (
     _subprocess_environment,
     _task_boundary,
     _write_state_file,
+    validate_geoclaw_environment,
 )
 from src.evaluation.established_solver_validation import (
     SCHEMA_ID_V3,
@@ -316,6 +317,74 @@ def test_v3_petsc_environment_requests_reason_and_fails_closed(
     assert "-ksp_converged_reason" in strict["PETSC_OPTIONS"]
     assert "-ksp_error_if_not_converged" in strict["PETSC_OPTIONS"]
     assert "-on_error_abort" in strict["PETSC_OPTIONS"]
+
+
+def test_environment_canonicalizes_python_before_subprocess_cwd_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    python = repo_root / ".venv/bin/python"
+    python.parent.mkdir(parents=True)
+    target = tmp_path / "system-python"
+    target.write_text("", encoding="utf-8")
+    python.symlink_to(target)
+    monkeypatch.chdir(repo_root)
+    environment = GeoClawEnvironment(
+        claw_root=Path("claw"),
+        petsc_dir=Path("petsc"),
+        petsc_arch="arch",
+        python_executable=Path(".venv/bin/python"),
+    )
+    monkeypatch.chdir(tmp_path)
+    assert environment.python_executable == python
+    assert environment.python_executable != python.resolve()
+    assert environment.python_executable.is_file()
+
+
+def test_environment_validation_rejects_python_without_required_modules(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claw = tmp_path / "claw"
+    petsc = tmp_path / "petsc"
+    for path in (
+        claw / "geoclaw/src/2d/shallow/Makefile.geoclaw",
+        claw / "geoclaw/src/2d/bouss/Makefile.bouss",
+        claw / "clawutil/src/Makefile.common",
+        petsc / "arch/lib/libpetsc.so",
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    options = claw / "geoclaw/examples/bouss/petscMPIoptions"
+    options.parent.mkdir(parents=True, exist_ok=True)
+    options.write_text(
+        "-ksp_type gmres\n-ksp_max_it 200\n-ksp_rtol 1.e-9\n",
+        encoding="utf-8",
+    )
+    python = tmp_path / "python"
+    python.write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        "src.evaluation.geoclaw_adapter.shutil.which",
+        lambda _name: "/bin/true",
+    )
+    monkeypatch.setattr(
+        "src.evaluation.geoclaw_adapter.subprocess.run",
+        lambda *args, **kwargs: __import__("subprocess").CompletedProcess(
+            args[0],
+            1,
+            stdout="",
+            stderr="ModuleNotFoundError: No module named 'numpy'",
+        ),
+    )
+    environment = GeoClawEnvironment(
+        claw_root=claw,
+        petsc_dir=petsc,
+        petsc_arch="arch",
+        python_executable=python,
+    )
+    with pytest.raises(RuntimeError, match="cannot import NumPy"):
+        validate_geoclaw_environment(environment)
 
 
 def test_ksp_health_parser_accepts_only_explicit_convergence(tmp_path: Path) -> None:

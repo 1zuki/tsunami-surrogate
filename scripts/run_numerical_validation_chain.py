@@ -491,7 +491,7 @@ def main() -> None:
     parser.add_argument(
         "--geoclaw-python",
         type=Path,
-        default=Path("/usr/bin/python3"),
+        default=Path(sys.executable),
     )
     args = parser.parse_args()
     if args.workers <= 0 or args.geoclaw_workers <= 0:
