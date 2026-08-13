@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 import torch
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -59,3 +60,68 @@ def test_trainer_checkpoint_mode_max_uses_larger_is_better(monkeypatch, tmp_path
     assert len(best_saves) == 2
     assert best_saves[0][1] == 1 and abs(best_saves[0][2] - 0.2) < 1e-8
     assert best_saves[1][1] == 2 and abs(best_saves[1][2] - 0.4) < 1e-8
+
+
+def test_trainer_rejects_unknown_checkpoint_metric(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        train_mod,
+        "train_one_epoch",
+        lambda *args, **kwargs: {"loss": 1.0},
+    )
+    monkeypatch.setattr(
+        train_mod,
+        "evaluate_epoch",
+        lambda *args, **kwargs: {"loss": 1.0, "rel_l2": 0.2},
+    )
+    cfg = {
+        "output_dir": str(tmp_path / "out"),
+        "train": {
+            "epochs": 1,
+            "loss": "mse",
+            "checkpoint_metric": "val_typo",
+            "early_stopping": {"patience": 10, "mode": "min"},
+        },
+    }
+    trainer = train_mod.Trainer(
+        TinyModel(),
+        {"train": [object()], "val": [object()]},
+        cfg,
+        device=torch.device("cpu"),
+    )
+
+    with pytest.raises(ValueError, match="checkpoint_metric"):
+        trainer.fit()
+
+
+def test_trainer_rejects_nonfinite_metrics_before_persistence(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        train_mod,
+        "train_one_epoch",
+        lambda *args, **kwargs: {"loss": float("nan")},
+    )
+    monkeypatch.setattr(
+        train_mod,
+        "evaluate_epoch",
+        lambda *args, **kwargs: {"loss": 1.0, "rel_l2": 0.2},
+    )
+    cfg = {
+        "output_dir": str(tmp_path / "out"),
+        "train": {
+            "epochs": 1,
+            "loss": "mse",
+            "checkpoint_metric": "val_rel_l2",
+            "early_stopping": {"patience": 10, "mode": "min"},
+        },
+    }
+    trainer = train_mod.Trainer(
+        TinyModel(),
+        {"train": [object()], "val": [object()]},
+        cfg,
+        device=torch.device("cpu"),
+    )
+
+    with pytest.raises(FloatingPointError, match="Nonfinite training metric"):
+        trainer.fit()
+    assert not (tmp_path / "out" / "history.json").exists()

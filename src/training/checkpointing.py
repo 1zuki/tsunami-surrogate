@@ -11,6 +11,94 @@ from src.utils.hashing import sha256_file
 
 DATA_PROVENANCE_SCHEMA_ID = "tsunami-surrogate.checkpoint-data-provenance.v1"
 PROCESSED_MANIFEST_SCHEMA_ID = "tsunami-surrogate.processed-dataset.v2"
+TRAINING_CONTRACT_SCHEMA_ID = "tsunami-surrogate.training-contract.v1"
+
+
+def _data_view_signature(cfg: Mapping[str, Any]) -> Dict[str, Any]:
+    data_cfg = cfg.get("data", cfg.get("dataset", {}))
+    if not isinstance(data_cfg, Mapping):
+        return {}
+    keys = (
+        "train_path",
+        "val_path",
+        "path",
+        "n_samples",
+        "train_samples",
+        "n_train_samples",
+        "val_samples",
+        "n_val_samples",
+        "windowed",
+        "window_K",
+        "window_prev",
+        "window_include_source",
+        "split",
+    )
+    return {key: data_cfg.get(key) for key in keys if key in data_cfg}
+
+
+def training_contract_signature(cfg: Mapping[str, Any]) -> Dict[str, Any]:
+    train_cfg = cfg.get("train", {})
+    if not isinstance(train_cfg, Mapping):
+        train_cfg = {}
+    early_cfg = train_cfg.get("early_stopping", {})
+    if not isinstance(early_cfg, Mapping):
+        early_cfg = {}
+
+    scheduler_name = str(train_cfg.get("scheduler", "none")).strip().lower()
+    early_mode = str(early_cfg.get("mode", "min")).strip().lower()
+    checkpoint_mode = str(
+        train_cfg.get("checkpoint_mode", early_mode)
+    ).strip().lower()
+    scheduler: Dict[str, Any] = {"name": scheduler_name}
+    if scheduler_name == "cosine":
+        scheduler.update(
+            {
+                "t_max": max(1, int(train_cfg.get("epochs", 5))),
+                "min_lr": float(train_cfg.get("min_lr", 1e-5)),
+            }
+        )
+
+    return {
+        "schema_id": TRAINING_CONTRACT_SCHEMA_ID,
+        "output_dir": Path(
+            str(cfg.get("output_dir", "experiments/default"))
+        ).as_posix(),
+        "seed": int(cfg.get("seed", 42)),
+        "data_view": _data_view_signature(cfg),
+        "optimizer": {
+            "name": "adamw",
+            "lr": float(train_cfg.get("lr", 1e-3)),
+            "weight_decay": float(train_cfg.get("weight_decay", 1e-6)),
+        },
+        "loss": {
+            key: train_cfg.get(key)
+            for key in (
+                "loss",
+                "horizon_min_weight",
+                "horizon_max_weight",
+                "horizon_power",
+            )
+        },
+        "grad_clip": train_cfg.get("grad_clip"),
+        "scheduler": scheduler,
+        "checkpoint": {
+            "metric": str(
+                train_cfg.get("checkpoint_metric", "val_rel_l2")
+            ),
+            "mode": checkpoint_mode,
+            "min_delta": float(
+                train_cfg.get(
+                    "checkpoint_min_delta",
+                    early_cfg.get("min_delta", 0.0),
+                )
+            ),
+        },
+        "early_stopping": {
+            "patience": int(early_cfg.get("patience", 10)),
+            "mode": early_mode,
+            "min_delta": float(early_cfg.get("min_delta", 0.0)),
+        },
+    }
 
 
 def _read_json(path: Path) -> Dict[str, Any] | None:
@@ -111,6 +199,9 @@ def capture_data_provenance(cfg: Mapping[str, Any]) -> Dict[str, Any]:
         if value:
             datasets[key] = _dataset_artifacts(str(value), key)
             break
+    val_path = data_cfg.get("val_path")
+    if val_path:
+        datasets["val_path"] = _dataset_artifacts(str(val_path), "val_path")
     return {"schema_id": DATA_PROVENANCE_SCHEMA_ID, "datasets": datasets}
 
 
@@ -137,10 +228,12 @@ def _validate_checkpoint_compatibility(
     model: torch.nn.Module,
     *,
     validate_training_data: bool,
+    validate_training_contract: bool,
 ) -> Dict[str, str]:
     compatibility = {
         "model_config": "unavailable",
         "training_data": "unavailable",
+        "training_contract": "unavailable",
     }
 
     runtime_signature = getattr(model, "_tsunami_model_config_signature", None)
@@ -162,6 +255,40 @@ def _validate_checkpoint_compatibility(
         compatibility["model_config"] = (
             "match" if signature_source == "stored" else "derived_match"
         )
+    elif validate_training_contract:
+        raise ValueError(
+            "Cannot validate resume compatibility because the checkpoint or "
+            "runtime model signature is unavailable."
+        )
+
+    runtime_cfg = getattr(model, "_tsunami_runtime_config", None)
+    if validate_training_contract:
+        checkpoint_contract = checkpoint.get("training_contract")
+        contract_source = "stored"
+        if checkpoint_contract is None:
+            checkpoint_cfg = checkpoint.get("config")
+            if isinstance(checkpoint_cfg, Mapping):
+                checkpoint_contract = training_contract_signature(checkpoint_cfg)
+                contract_source = "derived"
+        if not isinstance(runtime_cfg, Mapping) or not isinstance(
+            checkpoint_contract, Mapping
+        ):
+            raise ValueError(
+                "Cannot validate resume compatibility because the training "
+                "contract is unavailable."
+            )
+        runtime_contract = training_contract_signature(runtime_cfg)
+        if dict(checkpoint_contract) != runtime_contract:
+            raise ValueError(
+                "Checkpoint/training contract mismatch. "
+                f"checkpoint={dict(checkpoint_contract)}, "
+                f"runtime={runtime_contract}"
+            )
+        compatibility["training_contract"] = (
+            "match" if contract_source == "stored" else "derived_match"
+        )
+    elif checkpoint.get("training_contract") is not None:
+        compatibility["training_contract"] = "not_checked"
 
     checkpoint_data = checkpoint.get("data_provenance")
     if isinstance(checkpoint_data, Mapping):
@@ -169,43 +296,65 @@ def _validate_checkpoint_compatibility(
     if not validate_training_data:
         return compatibility
 
-    runtime_cfg = getattr(model, "_tsunami_runtime_config", None)
-    if isinstance(checkpoint_data, Mapping) and isinstance(runtime_cfg, Mapping):
-        runtime_data = capture_data_provenance(runtime_cfg)
-        expected_entry = _training_dataset_entry(checkpoint_data)
-        observed_entry = _training_dataset_entry(runtime_data)
-        if expected_entry is None:
-            compatibility["training_data"] = "unavailable"
-            return compatibility
-        if observed_entry is None:
-            raise ValueError(
-                "Cannot validate checkpoint training-data provenance because the "
-                "runtime configuration has no train_path or data.path."
-            )
+    if not isinstance(checkpoint_data, Mapping) or not isinstance(
+        runtime_cfg, Mapping
+    ):
+        raise ValueError(
+            "Cannot validate checkpoint training-data provenance because the "
+            "checkpoint or runtime configuration is missing provenance."
+        )
+    runtime_data = capture_data_provenance(runtime_cfg)
+    expected_datasets = checkpoint_data.get("datasets")
+    observed_datasets = runtime_data.get("datasets")
+    if not isinstance(expected_datasets, Mapping) or not expected_datasets:
+        raise ValueError(
+            "Cannot validate checkpoint training-data provenance because the "
+            "checkpoint declares no dataset identity."
+        )
+    if not isinstance(observed_datasets, Mapping):
+        raise ValueError(
+            "Cannot validate checkpoint training-data provenance because the "
+            "runtime configuration declares no dataset identity."
+        )
 
+    strengths: set[str] = set()
+    for key, expected_entry in expected_datasets.items():
+        if not isinstance(expected_entry, Mapping):
+            raise ValueError(
+                f"Invalid checkpoint data-provenance entry for {key!r}."
+            )
+        observed_entry = observed_datasets.get(key)
+        if not isinstance(observed_entry, Mapping):
+            raise ValueError(
+                "Cannot validate checkpoint training-data provenance because "
+                f"runtime dataset {key!r} is missing."
+            )
         expected = _artifact_hashes(expected_entry)
         observed = _artifact_hashes(observed_entry)
-        if not expected:
-            compatibility["training_data"] = "unavailable"
-            return compatibility
-        if not observed:
+        if not expected or not observed:
             raise ValueError(
-                "Cannot validate checkpoint training-data provenance because no "
-                "runtime dataset identity artifacts were found."
+                "Cannot validate checkpoint training-data provenance because "
+                f"dataset {key!r} has no identity artifacts."
             )
         if expected != observed:
-            raise ValueError(
-                "Checkpoint training-data provenance mismatch. "
-                f"checkpoint={expected}, runtime={observed}"
+            provenance_label = (
+                "validation-data"
+                if str(key) == "val_path"
+                else "training-data"
             )
-
-        strengths = {
-            str(expected_entry.get("identity_strength", "unavailable")),
-            str(observed_entry.get("identity_strength", "unavailable")),
-        }
-        compatibility["training_data"] = (
-            "match" if strengths == {"content_bound"} else "manifest_match"
+            raise ValueError(
+                f"Checkpoint {provenance_label} provenance mismatch. "
+                f"dataset={key!r}, checkpoint={expected}, runtime={observed}"
+            )
+        strengths.update(
+            {
+                str(expected_entry.get("identity_strength", "unavailable")),
+                str(observed_entry.get("identity_strength", "unavailable")),
+            }
         )
+    compatibility["training_data"] = (
+        "match" if strengths == {"content_bound"} else "manifest_match"
+    )
     return compatibility
 
 
@@ -222,6 +371,7 @@ def save_checkpoint(path, model, optimizer, epoch, metrics, cfg, scheduler=None,
     if not isinstance(data_provenance, Mapping):
         data_provenance = capture_data_provenance(cfg)
         model._tsunami_checkpoint_data_provenance = data_provenance
+    training_contract = training_contract_signature(cfg)
 
     torch.save({
         'model_state': model.state_dict(),
@@ -233,6 +383,7 @@ def save_checkpoint(path, model, optimizer, epoch, metrics, cfg, scheduler=None,
         'config': cfg,
         'model_signature': model_signature,
         'data_provenance': data_provenance,
+        'training_contract': training_contract,
     }, path)
 
 
@@ -244,12 +395,14 @@ def load_checkpoint(
     map_location='cpu',
     *,
     validate_training_data: bool = False,
+    validate_training_contract: bool = False,
 ):
     ckpt = torch.load(path, map_location=map_location)
     ckpt["compatibility"] = _validate_checkpoint_compatibility(
         ckpt,
         model,
         validate_training_data=validate_training_data,
+        validate_training_contract=validate_training_contract,
     )
     model.load_state_dict(ckpt['model_state'])
 

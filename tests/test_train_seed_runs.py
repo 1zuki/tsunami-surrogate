@@ -6,8 +6,13 @@ from pathlib import Path
 import pytest
 
 import scripts.train as train_script
-from scripts.train_ensemble import _require_fresh_member
+from scripts.train_ensemble import (
+    _parse_resume_members,
+    _parse_seeds,
+    _require_fresh_member,
+)
 from src.utils.config import load_config
+from src.utils.experiment import init_run
 
 
 LOCAL_SINGLE_SEED_CONFIGS = (
@@ -98,10 +103,29 @@ def test_local_model_configs_use_seed_18(config_path) -> None:
 
 
 def test_uncertainty_ensemble_keeps_its_member_seed_protocol() -> None:
-    cfg = load_config("configs/model/fno_ensemble_m8.yaml")
+    cfg = load_config("configs/model/fno_ensemble.yaml")
 
     assert "seeds" not in cfg
-    assert cfg["ensemble"]["seeds"] == [44, 55, 66, 77]
+    assert cfg["ensemble"]["seeds"] == [11, 22, 33, 44, 55, 66, 77]
+
+
+def test_ordinary_fno_does_not_implicitly_select_ensemble_members() -> None:
+    cfg = load_config("configs/model/fno.yaml")
+
+    assert "seeds" not in cfg.get("ensemble", {})
+
+
+def test_ensemble_cli_selection_and_resume_parsing() -> None:
+    assert _parse_seeds("44,55", None) == [44, 55]
+    assert _parse_resume_members(["44=experiments/ensemble/member_44/checkpoints/last.pt"]) == {
+        44: Path("experiments/ensemble/member_44/checkpoints/last.pt")
+    }
+
+
+@pytest.mark.parametrize("seeds", [[11.0], [True], ["11"]])
+def test_configured_ensemble_seeds_must_be_actual_integers(seeds) -> None:
+    with pytest.raises(ValueError, match="must be integers"):
+        _parse_seeds(None, seeds)
 
 
 def test_ensemble_training_refuses_existing_member_artifacts(
@@ -113,6 +137,15 @@ def test_ensemble_training_refuses_existing_member_artifacts(
 
     with pytest.raises(FileExistsError, match="Refusing to overwrite"):
         _require_fresh_member(member)
+
+
+def test_fresh_training_refuses_existing_run_artifacts(tmp_path: Path) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    (output / "history.json").write_text("[]\n", encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="Refusing to overwrite"):
+        init_run(output, {"output_dir": str(output)}, fresh=True)
 
 
 @pytest.mark.parametrize(

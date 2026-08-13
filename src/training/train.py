@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, Mapping
+import math
 import random
 import numpy as np
 import torch
@@ -11,6 +12,7 @@ from .losses import build_loss
 from .engine import train_one_epoch, evaluate_epoch
 from .callbacks import EarlyStopping
 from .checkpointing import save_checkpoint, load_checkpoint
+from src.models.signature import model_config_signature
 from src.utils.io import save_json, load_json
 
 
@@ -156,6 +158,11 @@ def _set_loader_epoch(loader: Any, epoch_index: int) -> None:
 class Trainer:
     def __init__(self, model, loaders, cfg: Dict[str, Any], device):
         self.model = model.to(device)
+        if not hasattr(self.model, "_tsunami_model_config_signature"):
+            self.model._tsunami_model_config_signature = model_config_signature(
+                cfg
+            )
+        self.model._tsunami_runtime_config = cfg
         self.loaders = loaders
         self.cfg = cfg
         self.device = device
@@ -197,8 +204,27 @@ class Trainer:
         self.checkpoint_min_delta = float(
             train_cfg.get("checkpoint_min_delta", early_cfg.get("min_delta", 0.0))
         )
+        self.checkpoint_metric = str(
+            train_cfg.get("checkpoint_metric", "val_rel_l2")
+        ).strip()
+        if not self.checkpoint_metric:
+            raise ValueError("checkpoint_metric must be a non-empty metric name")
 
     def _resume_from(self, resume_path: Path):
+        expected_resume_path = self.checkpoint_dir / "last.pt"
+        if resume_path.resolve() != expected_resume_path.resolve():
+            raise ValueError(
+                "Resume must use this run's own checkpoints/last.pt. "
+                f"expected={expected_resume_path}, received={resume_path}"
+            )
+        history_path = self.output_dir / "history.json"
+        best_path = self.output_dir / "best.pt"
+        for required in (resume_path, history_path, best_path):
+            if not required.is_file():
+                raise FileNotFoundError(
+                    f"Resume requires an existing run artifact: {required}"
+                )
+
         ckpt = load_checkpoint(
             resume_path,
             self.model,
@@ -206,8 +232,13 @@ class Trainer:
             self.scheduler,
             map_location=self.device,
             validate_training_data=True,
+            validate_training_contract=True,
         )
-        state = ckpt.get("trainer_state") or {}
+        state = ckpt.get("trainer_state")
+        if not isinstance(state, Mapping):
+            raise ValueError(
+                "Resume checkpoint is missing required trainer_state."
+            )
 
         start_epoch = int(state.get("epoch", ckpt.get("epoch", 0))) + 1
         best_value = state.get("best_value")
@@ -216,12 +247,44 @@ class Trainer:
 
         self.early.best = state.get("early_best")
         self.early.count = int(state.get("early_count", 0))
+        if self.early.count >= self.early.patience:
+            raise ValueError(
+                "Refusing to resume a run that already reached terminal early "
+                "stopping."
+            )
         _restore_loader_state(self.loaders["train"], state.get("train_loader_state"))
+        val_contract = state.get("val_loader_contract")
+        if isinstance(val_contract, Mapping) and "val" in self.loaders:
+            observed_val_contract = _loader_contract(self.loaders["val"])
+            if (
+                observed_val_contract is None
+                or dict(val_contract) != observed_val_contract
+            ):
+                raise ValueError(
+                    "Validation DataLoader contract mismatch during resume. "
+                    f"checkpoint={dict(val_contract)}, "
+                    f"runtime={observed_val_contract}"
+                )
         _restore_rng_state(state.get("rng_state"))
 
-        history_path = self.output_dir / "history.json"
-        history = load_json(history_path) if history_path.exists() else []
-        history = [r for r in history if int(r.get("epoch", 0)) < start_epoch]
+        history = load_json(history_path)
+        if not isinstance(history, list) or not history:
+            raise ValueError("Resume history must be a non-empty list.")
+        checkpoint_epoch = start_epoch - 1
+        observed_epochs = [
+            int(row.get("epoch", -1))
+            for row in history
+            if isinstance(row, Mapping)
+        ]
+        if observed_epochs != list(range(1, checkpoint_epoch + 1)):
+            raise ValueError(
+                "Resume history must be contiguous through the checkpoint "
+                f"epoch {checkpoint_epoch}."
+            )
+        if history[-1] != ckpt.get("metrics"):
+            raise ValueError(
+                "Resume checkpoint metrics do not match the final history row."
+            )
 
         print(f"[train] resuming from {resume_path} at epoch {start_epoch} (best {self.checkpoint_mode}={best_value})")
         return start_epoch, float(best_value), history
@@ -233,6 +296,11 @@ class Trainer:
 
         if resume_path is not None:
             start_epoch, best_value, history = self._resume_from(Path(resume_path))
+            if start_epoch > epochs:
+                raise ValueError(
+                    "Refusing to resume a run that already reached its configured "
+                    f"epoch horizon ({epochs})."
+                )
         else:
             start_epoch = 1
             best_value = float("inf") if self.checkpoint_mode == "min" else -float("inf")
@@ -246,20 +314,23 @@ class Trainer:
 
             row = {"epoch": epoch, **{f"train_{k}": v for k, v in train_metrics.items()}, **{f"val_{k}": v for k, v in val_metrics.items()}}
             row["lr"] = float(self.optimizer.param_groups[0]["lr"])
+            self._require_finite_metrics(row)
+            if self.checkpoint_metric not in row:
+                raise ValueError(
+                    f"Configured checkpoint_metric {self.checkpoint_metric!r} "
+                    f"is unavailable. Available metrics: {sorted(row)}"
+                )
+            value = float(row[self.checkpoint_metric])
             history.append(row)
-            metric_name = train_cfg.get("checkpoint_metric", "val_rel_l2")
-            value = row.get(metric_name, row.get("val_loss", row.get("train_loss")))
 
-            improved = value is not None and self._is_checkpoint_improved(
-                float(value), float(best_value)
-            )
+            improved = self._is_checkpoint_improved(value, float(best_value))
             if improved:
-                best_value = float(value)
+                best_value = value
 
             save_json(history, self.output_dir / "history.json")
             print(row)
 
-            stop = value is not None and self.early.step(float(value))
+            stop = self.early.step(value)
 
             if self.scheduler is not None and not stop:
                 self.scheduler.step()
@@ -294,9 +365,24 @@ class Trainer:
             "early_count": int(self.early.count),
             "rng_state": _capture_rng_state(),
             "train_loader_state": _capture_loader_state(self.loaders["train"]),
+            "val_loader_contract": (
+                _loader_contract(self.loaders["val"])
+                if "val" in self.loaders
+                else None
+            ),
         }
 
     def _is_checkpoint_improved(self, value: float, best_value: float) -> bool:
         if self.checkpoint_mode == "min":
             return value < best_value - self.checkpoint_min_delta
         return value > best_value + self.checkpoint_min_delta
+
+    @staticmethod
+    def _require_finite_metrics(row: Mapping[str, Any]) -> None:
+        for name, value in row.items():
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            if not math.isfinite(float(value)):
+                raise FloatingPointError(
+                    f"Nonfinite training metric {name}={value!r}"
+                )

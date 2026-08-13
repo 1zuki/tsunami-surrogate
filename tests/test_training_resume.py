@@ -36,7 +36,11 @@ class _RandomScaleModel(torch.nn.Module):
         return dropped * self.weight * random_scale
 
 
-def _loaders(seed: int, batch_size: int = 2) -> dict[str, DataLoader]:
+def _loaders(
+    seed: int,
+    batch_size: int = 2,
+    val_batch_size: int = 4,
+) -> dict[str, DataLoader]:
     dataset = _DictDataset()
     return {
         "train": DataLoader(
@@ -45,14 +49,25 @@ def _loaders(seed: int, batch_size: int = 2) -> dict[str, DataLoader]:
             shuffle=True,
             generator=make_torch_generator(seed),
         ),
-        "val": DataLoader(dataset, batch_size=4, shuffle=False),
+        "val": DataLoader(
+            dataset, batch_size=val_batch_size, shuffle=False
+        ),
     }
 
 
 def _config(output_dir: Path, epochs: int) -> dict:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    train_identity = output_dir / "train.identity"
+    val_identity = output_dir / "val.identity"
+    train_identity.write_bytes(b"train")
+    val_identity.write_bytes(b"validation")
     return {
         "output_dir": str(output_dir),
         "seed": 17,
+        "data": {
+            "train_path": str(train_identity),
+            "val_path": str(val_identity),
+        },
         "train": {
             "epochs": epochs,
             "lr": 1.0e-2,
@@ -121,6 +136,54 @@ def test_resume_rejects_changed_training_loader_contract(tmp_path: Path) -> None
     )
     with pytest.raises(ValueError, match="DataLoader contract mismatch"):
         trainer.fit(resume_path=resume_path)
+
+
+def test_resume_rejects_changed_training_contract(tmp_path: Path) -> None:
+    split_dir = tmp_path / "split"
+    _run(split_dir, epochs=1)
+    resume_path = split_dir / "checkpoints" / "last.pt"
+
+    cfg = _config(split_dir, epochs=2)
+    cfg["train"]["loss"] = "relative_l2"
+    trainer = Trainer(
+        _RandomScaleModel(),
+        _loaders(seed=17),
+        cfg,
+        device=torch.device("cpu"),
+    )
+    with pytest.raises(ValueError, match="training contract mismatch"):
+        trainer.fit(resume_path=resume_path)
+
+
+def test_resume_rejects_changed_validation_loader_contract(
+    tmp_path: Path,
+) -> None:
+    split_dir = tmp_path / "split"
+    _run(split_dir, epochs=1)
+    resume_path = split_dir / "checkpoints" / "last.pt"
+
+    trainer = Trainer(
+        _RandomScaleModel(),
+        _loaders(seed=17, val_batch_size=2),
+        _config(split_dir, epochs=2),
+        device=torch.device("cpu"),
+    )
+    with pytest.raises(ValueError, match="Validation DataLoader contract"):
+        trainer.fit(resume_path=resume_path)
+
+
+def test_resume_requires_own_last_checkpoint(tmp_path: Path) -> None:
+    split_dir = tmp_path / "split"
+    _run(split_dir, epochs=1)
+
+    trainer = Trainer(
+        _RandomScaleModel(),
+        _loaders(seed=17),
+        _config(split_dir, epochs=2),
+        device=torch.device("cpu"),
+    )
+    with pytest.raises(ValueError, match="own checkpoints/last.pt"):
+        trainer.fit(resume_path=split_dir / "best.pt")
 
 
 def test_rng_restore_normalizes_loaded_states_to_cpu(monkeypatch) -> None:

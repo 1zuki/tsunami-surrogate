@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import torch
 
 
@@ -14,6 +15,10 @@ class MetricAccumulator:
         self.max_abs_err = 0.0
 
     def update(self, pred: torch.Tensor, target: torch.Tensor) -> None:
+        if not bool(torch.isfinite(pred).all().item()):
+            raise FloatingPointError("Nonfinite prediction encountered in metrics")
+        if not bool(torch.isfinite(target).all().item()):
+            raise FloatingPointError("Nonfinite target encountered in metrics")
         diff = (pred - target).detach()
         if diff.numel() == 0:
             return
@@ -29,13 +34,19 @@ class MetricAccumulator:
 
     def compute(self) -> dict[str, float]:
         n = max(1, int(self.n_elements))
-        return {
+        metrics = {
             "mae": self.sum_abs_err / float(n),
             "rmse": (self.sum_sq_err / float(n)) ** 0.5,
             # This eps is added to the final dataset norm, not each batch norm.
             "rel_l2": (self.sum_sq_err ** 0.5) / ((self.sum_target_sq ** 0.5) + self.eps),
             "max_error": self.max_abs_err,
         }
+        for name, value in metrics.items():
+            if not math.isfinite(float(value)):
+                raise FloatingPointError(
+                    f"Nonfinite aggregate metric {name}={value!r}"
+                )
+        return metrics
 
 
 def mae(pred, target):
@@ -55,9 +66,19 @@ def max_error(pred, target):
 
 
 def compute_metrics(pred, target):
-    return {
+    if not bool(torch.isfinite(pred).all().item()):
+        raise FloatingPointError("Nonfinite prediction encountered in metrics")
+    if not bool(torch.isfinite(target).all().item()):
+        raise FloatingPointError("Nonfinite target encountered in metrics")
+    metrics = {
         'mae': float(mae(pred, target).detach().cpu()),
         'rmse': float(rmse(pred, target).detach().cpu()),
         'rel_l2': float(rel_l2(pred, target).detach().cpu()),
         'max_error': float(max_error(pred, target).detach().cpu()),
     }
+    for name, value in metrics.items():
+        if not math.isfinite(value):
+            raise FloatingPointError(
+                f"Nonfinite metric {name}={value!r}"
+            )
+    return metrics
