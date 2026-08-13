@@ -155,12 +155,21 @@ def _perframe_summary(path: Path) -> dict[str, Any] | None:
 
 
 def _build_row(
-    spec: dict[str, str], *, allow_missing: bool
+    spec: dict[str, str],
+    *,
+    allow_missing: bool,
+    eval_root: Path | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     missing: list[str] = []
-    heldout_dir = _eval_output_dir(ROOT / spec["config_heldout"])
-    id_dir = _eval_output_dir(ROOT / spec["config_id"])
-    full_dir = _eval_output_dir(ROOT / spec["config_full"])
+    if eval_root is None:
+        heldout_dir = _eval_output_dir(ROOT / spec["config_heldout"])
+        id_dir = _eval_output_dir(ROOT / spec["config_id"])
+        full_dir = _eval_output_dir(ROOT / spec["config_full"])
+    else:
+        base = eval_root / spec["label"]
+        heldout_dir = base / "eval_heldout"
+        id_dir = base / "eval_id"
+        full_dir = base / "full_on_heldout"
     heldout_metrics_path = heldout_dir / "metrics.json"
     id_metrics_path = id_dir / "metrics.json"
     full_metrics_path = full_dir / "metrics.json"
@@ -366,12 +375,22 @@ def main() -> None:
         action="store_true",
         help="Write partial summary instead of failing when metrics.json files are missing.",
     )
+    p.add_argument(
+        "--eval-root",
+        default=None,
+        help="Read isolated per-holdout outputs from this directory.",
+    )
     args = p.parse_args()
 
     rows: list[dict[str, Any]] = []
     missing: list[str] = []
+    eval_root = None if args.eval_root is None else Path(args.eval_root)
     for spec in HOLDOUTS:
-        row, row_missing = _build_row(spec, allow_missing=bool(args.allow_missing))
+        row, row_missing = _build_row(
+            spec,
+            allow_missing=bool(args.allow_missing),
+            eval_root=eval_root,
+        )
         missing.extend(row_missing)
         if row:
             rows.append(row)

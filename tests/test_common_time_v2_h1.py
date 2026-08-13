@@ -15,9 +15,11 @@ from src.evaluation.common_time_v2_h1 import (
     _summarize_diagnostics,
     _task_identity,
     _validate_task_result,
+    _validate_config,
     select_h1_scenarios,
     validate_frozen_checksums,
 )
+from src.utils.config import load_config
 
 
 BATHYMETRY_FAMILIES = ("canyon", "continental", "island", "seamounts", "trench")
@@ -192,6 +194,22 @@ def test_task_plan_has_90_primary_and_three_replay_tasks() -> None:
         for task in tasks
         if task["run_kind"] == "replay"
     )
+
+
+def test_h1_allows_fresh_content_addressed_prerequisite_identities() -> None:
+    config = load_config("configs/eval/common_time_v2_h1.yaml")
+    config["prerequisites"].update(
+        {
+            "h0_contract_hash": "a" * 64,
+            "level_a_contract_hash": "b" * 64,
+            "level_b_bundle_hash": "c" * 64,
+        }
+    )
+    _validate_config(config)
+
+    config["prerequisites"]["h0_contract_hash"] = "not-a-hash"
+    with pytest.raises(ValueError, match="SHA-256"):
+        _validate_config(config)
 
 
 @pytest.mark.parametrize(

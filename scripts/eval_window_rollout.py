@@ -149,13 +149,18 @@ def _run(
         n_samples += B
 
     metrics = glob.compute()
+    metrics["evaluation_type"] = "conditional_seeded_window_rollout"
     metrics["num_samples"] = float(n_samples)
     if resolved is not None:
         metrics["dataset_path"] = str(resolved)
     metrics["rollout_chunks"] = int(((target.shape[1]) + K - 1) // K)
     metrics["window_K"] = int(K)
+    metrics["seeded_with_true_first_frame"] = True
+    metrics["num_predicted_frames"] = int(target.shape[1])
     metrics["time_per_sample_rollout_s"] = t_infer / max(1, t_samples)
     metrics["samples_per_second_rollout"] = t_samples / max(t_infer, 1e-12)
+    metrics["config_path"] = str(args.config)
+    metrics["checkpoint"] = str(args.checkpoint)
     if glob_phys is not None:
         for k, v in glob_phys.compute().items():
             metrics[f"{k}_physical"] = v
@@ -168,18 +173,29 @@ def _run(
     rmse_pf = (pf_sums["sq"] / pf_sums["n"].clamp_min(1)).sqrt().cpu().tolist()
     perframe = {
         "evaluation_type": "window_rollout_perframe",
+        "config_path": args.config,
         "checkpoint": args.checkpoint,
+        "dataset_path": str(resolved) if resolved is not None else "",
         "num_samples": float(n_samples),
         "num_frames": len(rel),
         "frame_offset": 1,  # per-frame index f corresponds to eta frame f+1 (frame 0 is the seed)
+        "seeded_with_true_first_frame": True,
         "per_frame": {"rel_l2": rel, "mae": mae_pf, "rmse": rmse_pf},
     }
 
     out_dir = str(eval_cfg.get("output_dir", "")).strip()
     if not out_dir or out_dir == "experiments/eval":
         out_dir = f"{cfg.get('output_dir', 'experiments/default')}/eval"
-    save_json(metrics, f"{out_dir}/metrics.json")
-    save_json(perframe, f"{out_dir}/perframe.json")
+    metrics_output = (
+        Path(args.output) if args.output else Path(out_dir) / "metrics.json"
+    )
+    perframe_output = (
+        Path(args.perframe_output)
+        if args.perframe_output
+        else Path(out_dir) / "perframe.json"
+    )
+    save_json(metrics, metrics_output)
+    save_json(perframe, perframe_output)
     print(
         f"[rollout] rel_l2={metrics['rel_l2']:.4f} "
         f"last_frame_rel_l2={rel[-1]:.4f} first={rel[0]:.4f} "
@@ -192,6 +208,8 @@ def main() -> None:
     p.add_argument("--config", required=True)
     p.add_argument("--checkpoint", required=True)
     p.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None)
+    p.add_argument("--output", default=None)
+    p.add_argument("--perframe-output", default=None)
     args = p.parse_args()
 
     cfg = load_config(args.config)

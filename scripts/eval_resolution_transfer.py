@@ -55,6 +55,7 @@ def main():
     p.add_argument("--config", required=True)
     p.add_argument("--checkpoint", required=True)
     p.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None)
+    p.add_argument("--output", default=None)
 
     args = p.parse_args()
     cfg = load_config(args.config)
@@ -119,13 +120,20 @@ def main():
         output_dir = f"{cfg.get('output_dir', 'experiments/default')}/eval"
     summary = {
         "evaluation_type": "proxy_resolution_transfer",
+        "config_path": str(args.config),
+        "checkpoint_path": str(args.checkpoint),
         "dataset_path": str(data_path),
         "dataset_num_samples": int(len(ds)),
         "eval_resolutions": [int(r) for r in resolutions],
         "rows": rows,
     }
     print(summary)
-    save_json(summary, f"{output_dir}/resolution_transfer_proxy.json")
+    output_path = (
+        Path(args.output)
+        if args.output
+        else Path(output_dir) / "resolution_transfer_proxy.json"
+    )
+    save_json(summary, output_path)
 
 
 if __name__ == '__main__':

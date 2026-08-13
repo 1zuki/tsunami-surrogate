@@ -24,6 +24,12 @@ DEFAULT_MODELS = [
     ("cnn", "single_pass", "configs/model/cnn.yaml", "experiments/cnn/best.pt"),
     ("unet", "single_pass", "configs/model/unet.yaml", "experiments/unet/best.pt"),
     (
+        "convlstm",
+        "single_pass_baseline",
+        "configs/model/convlstm.yaml",
+        "experiments/convlstm/best.pt",
+    ),
+    (
         "fno_modes8",
         "single_pass_ablation",
         "configs/model/fno_modes8.yaml",
@@ -51,7 +57,7 @@ DEFAULT_MODELS = [
         "fno_muscl_hr",
         "target_solver",
         "configs/model/fno_muscl_hr.yaml",
-        "experiments/fno_muscl_hr/best.pt",
+        "experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt",
     ),
     (
         "fno_boussinesq",

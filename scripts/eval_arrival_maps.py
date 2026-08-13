@@ -61,18 +61,35 @@ def _accumulator(h: int, w: int) -> Dict[str, np.ndarray]:
     }
 
 
-def _update_acc(acc: Dict[str, np.ndarray], pred: np.ndarray, target: np.ndarray, threshold_fraction: float) -> Tuple[float, np.ndarray]:
+def _update_acc(
+    acc: Dict[str, np.ndarray],
+    pred: np.ndarray,
+    target: np.ndarray,
+    threshold_fraction: float,
+) -> Tuple[float | None, np.ndarray]:
     pred_t = _ensure_time_grid(pred)
     tgt_t = _ensure_time_grid(target)
-    t = min(pred_t.shape[0], tgt_t.shape[0])
-    pred_t = pred_t[:t]
-    tgt_t = tgt_t[:t]
+    if pred_t.shape != tgt_t.shape:
+        raise ValueError(
+            "Prediction/target arrival-map shapes differ: "
+            f"{pred_t.shape} != {tgt_t.shape}"
+        )
 
-    shared_peak = float(max(np.max(np.abs(pred_t)), np.max(np.abs(tgt_t)), 0.0))
-    thr = float(threshold_fraction) * shared_peak
+    target_peak = float(max(np.max(np.abs(tgt_t)), 0.0))
+    threshold_abs = float(threshold_fraction) * target_peak
+    if target_peak <= 1.0e-12:
+        first_tgt = np.full(tgt_t.shape[1:], -1, dtype=np.int32)
+        first_pred = np.full(pred_t.shape[1:], -1, dtype=np.int32)
+    else:
+        first_tgt = _first_arrival_index(
+            np.abs(tgt_t),
+            threshold_abs=threshold_abs,
+        )
+        first_pred = _first_arrival_index(
+            np.abs(pred_t),
+            threshold_abs=threshold_abs,
+        )
 
-    first_pred = _first_arrival_index(np.abs(pred_t), threshold_abs=thr)
-    first_tgt = _first_arrival_index(np.abs(tgt_t), threshold_abs=thr)
     valid = (first_pred >= 0) & (first_tgt >= 0)
     valid_pred = first_pred >= 0
     valid_tgt = first_tgt >= 0
@@ -88,7 +105,7 @@ def _update_acc(acc: Dict[str, np.ndarray], pred: np.ndarray, target: np.ndarray
     acc["sum_abs_diff_steps"] += np.where(valid, diff, 0.0)
 
     valid_vals = diff[np.isfinite(diff)]
-    sample_mean = float(np.mean(valid_vals)) if valid_vals.size > 0 else float("nan")
+    sample_mean = float(np.mean(valid_vals)) if valid_vals.size > 0 else None
     return sample_mean, diff
 
 
@@ -103,8 +120,8 @@ def main() -> None:
     p.add_argument("--maps-output", type=str, default=None, help="Optional arrival maps npz path.")
     args = p.parse_args()
 
-    if args.arrival_threshold_fraction < 0.0:
-        raise ValueError("--arrival-threshold-fraction must be >= 0")
+    if not 0.0 < args.arrival_threshold_fraction <= 1.0:
+        raise ValueError("--arrival-threshold-fraction must be in (0, 1]")
 
     cfg = load_config(args.config)
     if args.device is not None:
@@ -138,6 +155,7 @@ def main() -> None:
     sample_mean_diffs: list[float] = []
     sample_max_diffs: list[float] = []
     total_samples = 0
+    compared_samples = 0
 
     for batch in test_loader:
         x = batch["x"].to(device)
@@ -158,16 +176,22 @@ def main() -> None:
             y_i = np.asarray(y_np[i], dtype=np.float64)
             p_i = _ensure_time_grid(p_i)
             y_i = _ensure_time_grid(y_i)
-            if p_i.shape[1:] != y_i.shape[1:]:
-                continue
+            if p_i.shape != y_i.shape:
+                raise ValueError(
+                    "Prediction/target arrival-map shapes differ for sample "
+                    f"{total_samples - bs + i}: {p_i.shape} != {y_i.shape}"
+                )
             if acc is None:
                 h, w = p_i.shape[1], p_i.shape[2]
                 acc = _accumulator(h, w)
             assert acc is not None
             sample_mean, diff = _update_acc(acc, p_i, y_i, threshold_fraction=float(args.arrival_threshold_fraction))
-            sample_mean_diffs.append(sample_mean)
+            compared_samples += 1
+            if sample_mean is not None:
+                sample_mean_diffs.append(sample_mean)
             finite = diff[np.isfinite(diff)]
-            sample_max_diffs.append(float(np.max(finite)) if finite.size > 0 else float("nan"))
+            if finite.size > 0:
+                sample_max_diffs.append(float(np.max(finite)))
 
     if acc is None:
         raise RuntimeError("Could not compare any model-vs-target samples for arrival maps.")
@@ -202,20 +226,44 @@ def main() -> None:
     )
 
     flat_valid = mean_abs_diff[np.isfinite(mean_abs_diff)]
+    if flat_valid.size <= 0:
+        raise RuntimeError(
+            "No eligible target/prediction arrival pairs were found"
+        )
     summary: Dict[str, Any] = {
         "evaluation_type": "arrival_map_model_vs_target",
+        "config_path": str(args.config),
+        "checkpoint_path": str(args.checkpoint),
+        "dataset_path": (
+            str(resolved_path)
+            if report_physical and resolved_path is not None
+            else str(eval_cfg.get("dataset_path", data_cfg.get("test_path", "")))
+        ),
         "arrival_threshold_fraction": float(args.arrival_threshold_fraction),
+        "arrival_threshold_policy": (
+            "per-sample target-only peak fraction; model predictions never "
+            "change the target arrival threshold"
+        ),
         "target_units": "physical" if target_denorm is not None else "normalized",
         "target_offset": float(target_denorm[0]) if target_denorm is not None else None,
         "target_scale": float(target_denorm[1]) if target_denorm is not None else None,
         "num_samples_seen": int(total_samples),
+        "num_samples_compared": int(compared_samples),
         "arrival_map_shape": [int(coverage_map.shape[0]), int(coverage_map.shape[1])],
         "arrival_valid_fraction_mean": float(np.mean(coverage_map)),
-        "arrival_mean_abs_diff_steps_map_mean": float(np.mean(flat_valid)) if flat_valid.size > 0 else float("nan"),
-        "arrival_mean_abs_diff_steps_map_p90": float(np.percentile(flat_valid, 90)) if flat_valid.size > 0 else float("nan"),
-        "arrival_mean_abs_diff_steps_map_max": float(np.max(flat_valid)) if flat_valid.size > 0 else float("nan"),
-        "sample_mean_abs_diff_steps": float(np.nanmean(np.asarray(sample_mean_diffs, dtype=np.float64))),
-        "sample_max_abs_diff_steps": float(np.nanmax(np.asarray(sample_max_diffs, dtype=np.float64))),
+        "arrival_mean_abs_diff_steps_map_mean": float(np.mean(flat_valid)),
+        "arrival_mean_abs_diff_steps_map_p90": float(np.percentile(flat_valid, 90)),
+        "arrival_mean_abs_diff_steps_map_max": float(np.max(flat_valid)),
+        "sample_mean_abs_diff_steps": (
+            float(np.mean(np.asarray(sample_mean_diffs, dtype=np.float64)))
+            if sample_mean_diffs
+            else None
+        ),
+        "sample_max_abs_diff_steps": (
+            float(np.max(np.asarray(sample_max_diffs, dtype=np.float64)))
+            if sample_max_diffs
+            else None
+        ),
         "maps_path": str(maps_path),
     }
     save_json(summary, summary_path)

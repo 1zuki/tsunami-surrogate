@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.data.dataset import create_dataloaders
+from src.evaluation.uncertainty import ErrorUncertaintyCorrelationAccumulator
 from src.models import build_model
 from src.models.ensemble import EnsemblePredictor
 from src.training.checkpointing import load_checkpoint
@@ -197,8 +198,7 @@ def _evaluate_loader(
     abs_err_sum = 0.0
     mse_sum = 0.0
     var_sum = 0.0
-    corr_sum = 0.0
-    corr_n = 0
+    correlation = ErrorUncertaintyCorrelationAccumulator()
 
     for batch in loader:
         x = batch["x"].to(device)
@@ -224,21 +224,7 @@ def _evaluate_loader(
         abs_err_sum += float(abs_err.sum().detach().cpu())
         mse_sum += float(abs_err.square().sum().detach().cpu())
         var_sum += float(var.sum().detach().cpu())
-
-        # Batch-level Pearson correlation avoids storing all elements.
-        std_flat = std.reshape(-1).float()
-        err_flat = abs_err.reshape(-1).float()
-        if std_flat.numel() >= 2:
-            std_centered = std_flat - std_flat.mean()
-            err_centered = err_flat - err_flat.mean()
-            denom = torch.sqrt((std_centered * std_centered).sum()) * torch.sqrt(
-                (err_centered * err_centered).sum()
-            )
-            if float(denom.detach().cpu()) > 1e-12:
-                corr_sum += float(
-                    ((std_centered * err_centered).sum() / denom).detach().cpu()
-                )
-                corr_n += 1
+        correlation.update(mean, var, y)
 
     if n_elements <= 0:
         raise RuntimeError("No elements were evaluated.")
@@ -258,9 +244,7 @@ def _evaluate_loader(
         "mean_abs_error": float(abs_err_sum / float(n_elements)),
         "mse": float(mse_sum / float(n_elements)),
         "mean_variance": float(var_sum / float(n_elements)),
-        "error_uncertainty_corr_batch_mean": float(corr_sum / corr_n)
-        if corr_n > 0
-        else 0.0,
+        "error_uncertainty_corr": correlation.compute(),
         "coverage": rows,
     }
 

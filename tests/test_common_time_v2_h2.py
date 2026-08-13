@@ -18,6 +18,7 @@ from src.evaluation.common_time_v2_h2 import (
     _paired_stratified_bootstrap,
     _solver_summary_and_gates,
     _task_identity,
+    _validate_config,
     _validate_task_result,
     _expected_thresholds,
     paired_cfl_metrics,
@@ -511,6 +512,25 @@ def test_h2_config_and_frozen_checksum_contract() -> None:
     }
     assert v2["thresholds"] == config["thresholds"]
     assert v2["selection"]["expected_prior_h2_exclusion_count"] == 120
+
+
+def test_h2_allows_fresh_content_addressed_prerequisite_identities() -> None:
+    config = _load_config(Path("configs/eval/common_time_v2_h2_v2.yaml"))
+    config["prerequisites"].update(
+        {
+            "h0_contract_hash": "a" * 64,
+            "level_a_contract_hash": "b" * 64,
+            "level_b_bundle_hash": "c" * 64,
+            "h1_contract_hash": "d" * 64,
+        }
+    )
+    config["selection"]["exclude_h1_contract_hash"] = "d" * 64
+    _validate_config(config)
+
+    config["prerequisites"]["h1_contract_hash"] = "not-a-hash"
+    config["selection"]["exclude_h1_contract_hash"] = "not-a-hash"
+    with pytest.raises(ValueError, match="SHA-256"):
+        _validate_config(config)
 
 
 def test_h2_resume_timing_accumulates_successful_checkpoint_time(

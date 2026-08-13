@@ -15,7 +15,7 @@ from src.models import build_model
 from src.models.ensemble import EnsemblePredictor
 from src.training.checkpointing import load_checkpoint
 from src.evaluation.calibration import interval_calibration
-from src.evaluation.uncertainty import error_uncertainty_correlation
+from src.evaluation.uncertainty import ErrorUncertaintyCorrelationAccumulator
 from src.evaluation.target_scaling import load_target_denorm, resolve_eval_dataset_path
 from src.utils.io import save_json
 from src.utils.seed import seed_everything
@@ -30,11 +30,13 @@ def _evaluate_uncertainty_loader(
 ) -> Dict[str, float]:
     weighted_sums: Dict[str, float] = {}
     total_samples = 0
+    correlation = ErrorUncertaintyCorrelationAccumulator()
+    physical_correlation = ErrorUncertaintyCorrelationAccumulator()
     for batch in loader:
         x, y = batch["x"].to(device), batch["y"].to(device)
         out = ensemble(x)
         row = interval_calibration(out["mean"], out["variance"], y, levels)
-        row["error_uncertainty_corr"] = error_uncertainty_correlation(out["mean"], out["variance"], y)
+        correlation.update(out["mean"], out["variance"], y)
 
         if target_denorm is not None:
             offset, scale = float(target_denorm[0]), float(target_denorm[1])
@@ -42,7 +44,7 @@ def _evaluate_uncertainty_loader(
             y_p = y * scale + offset
             var_p = out["variance"] * (scale * scale)
             row_physical = interval_calibration(mean_p, var_p, y_p, levels)
-            row_physical["error_uncertainty_corr"] = error_uncertainty_correlation(mean_p, var_p, y_p)
+            physical_correlation.update(mean_p, var_p, y_p)
             for key, value in row_physical.items():
                 row[f"{key}_physical"] = float(value)
 
@@ -54,7 +56,16 @@ def _evaluate_uncertainty_loader(
     if total_samples <= 0:
         raise ValueError("test loader had zero batches")
 
-    return {k: v / float(total_samples) for k, v in weighted_sums.items()}
+    result = {
+        key: value / float(total_samples)
+        for key, value in weighted_sums.items()
+    }
+    result["error_uncertainty_corr"] = correlation.compute()
+    if target_denorm is not None:
+        result["error_uncertainty_corr_physical"] = (
+            physical_correlation.compute()
+        )
+    return result
 
 
 def _dataset_num_samples(loader: Any) -> int:
@@ -97,6 +108,7 @@ def main():
         default=None,
         help='Optional ensemble checkpoint path. Repeat this flag to pass multiple members.',
     )
+    p.add_argument("--output", default=None)
     args = p.parse_args()
     cfg = load_config(args.config)
     if args.device is not None:
@@ -227,16 +239,25 @@ def main():
             "num_samples": float(_dataset_num_samples(test_loader)),
             **mean_results,
         }
+        if resolved_dataset_path is not None:
+            mean_results["dataset_path"] = str(resolved_dataset_path)
         if denorm is not None:
             mean_results["target_offset"] = float(denorm[0])
             mean_results["target_scale"] = float(denorm[1])
         output_name = "uncertainty.json"
 
+    mean_results["config_path"] = str(args.config)
+    mean_results["checkpoints"] = [str(path) for path in ckpts]
     output_dir = str(eval_cfg.get("output_dir", "")).strip()
     if not output_dir or output_dir == "experiments/eval":
         output_dir = f"{cfg.get('output_dir', 'experiments/default')}/eval"
     print(mean_results)
-    save_json(mean_results, f"{output_dir}/{output_name}")
+    output_path = (
+        Path(args.output)
+        if args.output
+        else Path(output_dir) / output_name
+    )
+    save_json(mean_results, output_path)
 
 
 if __name__ == '__main__':

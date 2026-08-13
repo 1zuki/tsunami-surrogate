@@ -1,20 +1,9 @@
 #!/usr/bin/env bash
-# Run the strict held-out family evaluation matrix for the hydrostatic FNO.
+# Run strict held-out-family evaluations.
 #
-# This evaluates each trained strict-holdout checkpoint on:
-#   1. the matched ID test split;
-#   2. the held-out family test split.
-#
-# Outputs:
-#   experiments/fno_holdout/<label>/eval_id/{metrics,perframe,physics_diagnostics}.json
-#   experiments/fno_holdout/<label>/eval_heldout/{metrics,perframe,physics_diagnostics}.json
-#   experiments/fno_full_on_holdout/<label>/eval_heldout/metrics.json
-#   results/strict_holdout/strict_holdout_summary.{json,csv}
-#
-# Usage:
+# The final suite passes --output-root for isolated, complete outputs. The
+# historical shared-output modes remain available for repository users:
 #   DEVICE=cuda bash scripts/run_strict_holdout_evals.sh
-#   DEVICE=cuda bash scripts/run_strict_holdout_evals.sh --no-physics
-#   DEVICE=cuda bash scripts/run_strict_holdout_evals.sh --no-perframe
 #   DEVICE=cuda bash scripts/run_strict_holdout_evals.sh --full-model-only
 #   bash scripts/run_strict_holdout_evals.sh --summary-only
 
@@ -23,6 +12,7 @@ cd "$(dirname "$0")/.."
 
 PY="${PY:-.venv/bin/python}"
 DEVICE="${DEVICE:-cuda}"
+OUTPUT_ROOT=""
 RESULTS_DIR="${RESULTS_DIR:-results/strict_holdout}"
 RUN_ACCURACY=1
 RUN_PERFRAME=1
@@ -32,6 +22,10 @@ FULL_MODEL_ONLY=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --output-root)
+      shift
+      OUTPUT_ROOT="${1:-}"
+      ;;
     --summary-only)
       RUN_ACCURACY=0
       RUN_PERFRAME=0
@@ -53,7 +47,7 @@ while [ "$#" -gt 0 ]; do
       RUN_PHYSICS=0
       ;;
     -h|--help)
-      sed -n '1,19p' "$0"
+      sed -n '1,14p' "$0"
       exit 0
       ;;
     *)
@@ -63,6 +57,23 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+
+ISOLATED=0
+if [ -n "$OUTPUT_ROOT" ]; then
+  ISOLATED=1
+  if [ "$RUN_ACCURACY" = 0 ] || [ "$RUN_PERFRAME" = 0 ] || \
+    [ "$RUN_PHYSICS" = 0 ] || [ "$FULL_MODEL_ONLY" = 1 ]; then
+    echo "--output-root requires the complete strict-holdout matrix." >&2
+    exit 2
+  fi
+  if [ -e "$OUTPUT_ROOT" ]; then
+    echo "Strict-holdout output root already exists: $OUTPUT_ROOT" >&2
+    exit 1
+  fi
+  mkdir -p "$OUTPUT_ROOT"
+else
+  mkdir -p "$RESULTS_DIR"
+fi
 
 LABELS=(
   bathymetry_trench
@@ -95,138 +106,107 @@ CHECKPOINTS=(
   experiments/fno_holdout/source_okada_like/best.pt
 )
 FULL_CHECKPOINT=experiments/fno/best.pt
-EVAL_DIRS=(
-  experiments/fno_holdout/bathymetry_trench/eval_id
-  experiments/fno_holdout/bathymetry_trench/eval_heldout
-  experiments/fno_full_on_holdout/bathymetry_trench/eval_heldout
-  experiments/fno_holdout/bathymetry_continental/eval_id
-  experiments/fno_holdout/bathymetry_continental/eval_heldout
-  experiments/fno_full_on_holdout/bathymetry_continental/eval_heldout
-  experiments/fno_holdout/source_rough/eval_id
-  experiments/fno_holdout/source_rough/eval_heldout
-  experiments/fno_full_on_holdout/source_rough/eval_heldout
-  experiments/fno_holdout/source_okada_like/eval_id
-  experiments/fno_holdout/source_okada_like/eval_heldout
-  experiments/fno_full_on_holdout/source_okada_like/eval_heldout
-)
 
 run() {
   echo
   echo ">>> $*"
-  local tmp
-  tmp="$(mktemp)"
-  if "$@" >"$tmp" 2>&1; then
-    grep -vE "shard-aware|batch sampler" "$tmp" | tail -5 || true
-    rm -f "$tmp"
-  else
-    cat "$tmp" >&2
-    rm -f "$tmp"
-    return 1
-  fi
+  "$@"
 }
-
-require_file() {
-  if [ ! -f "$1" ]; then
-    echo "Missing required file: $1" >&2
-    exit 1
-  fi
-}
-
-mkdir -p "$RESULTS_DIR"
 
 for i in "${!LABELS[@]}"; do
-  require_file "${HELDOUT_CONFIGS[$i]}"
-  require_file "${ID_CONFIGS[$i]}"
-  require_file "${FULL_CONFIGS[$i]}"
-  require_file "${CHECKPOINTS[$i]}"
-done
-require_file "$FULL_CHECKPOINT"
-
-if [ "$CLEAN" = 1 ]; then
-  echo "########## CLEAN STRICT-HOLDOUT EVAL OUTPUTS ##########"
-  if [ "$FULL_MODEL_ONLY" = 1 ]; then
-    for i in "${!LABELS[@]}"; do
-      rm -f "experiments/fno_full_on_holdout/${LABELS[$i]}/eval_heldout/metrics.json"
-    done
+  label="${LABELS[$i]}"
+  checkpoint="${CHECKPOINTS[$i]}"
+  if [ "$ISOLATED" = 1 ]; then
+    base="$OUTPUT_ROOT/$label"
+    id_dir="$base/eval_id"
+    heldout_dir="$base/eval_heldout"
+    full_dir="$base/full_on_heldout"
   else
-    for d in "${EVAL_DIRS[@]}"; do
-      rm -f "$d/metrics.json" \
-            "$d/perframe.json" \
-            "$d/physics_diagnostics.json" \
-            "$d/physics_diagnostics_per_sample.csv"
-    done
+    id_dir="experiments/fno_holdout/$label/eval_id"
+    heldout_dir="experiments/fno_holdout/$label/eval_heldout"
+    full_dir="experiments/fno_full_on_holdout/$label/eval_heldout"
   fi
-  rm -f "$RESULTS_DIR/strict_holdout_summary.json" \
-        "$RESULTS_DIR/strict_holdout_summary.csv"
-fi
+  mkdir -p "$id_dir" "$heldout_dir" "$full_dir"
 
-if [ "$RUN_ACCURACY" = 1 ]; then
-  echo "########## STRICT HOLDOUT ACCURACY ##########"
-  for i in "${!LABELS[@]}"; do
-    label="${LABELS[$i]}"
-    checkpoint="${CHECKPOINTS[$i]}"
+  if [ "$CLEAN" = 1 ] && [ "$ISOLATED" = 0 ]; then
+    if [ "$FULL_MODEL_ONLY" = 1 ]; then
+      rm -f "$full_dir/metrics.json"
+    else
+      rm -f "$id_dir/metrics.json" "$id_dir/perframe.json" \
+        "$id_dir/physics_diagnostics.json" \
+        "$id_dir/physics_diagnostics_per_sample.csv" \
+        "$heldout_dir/metrics.json" "$heldout_dir/perframe.json" \
+        "$heldout_dir/physics_diagnostics.json" \
+        "$heldout_dir/physics_diagnostics_per_sample.csv" \
+        "$full_dir/metrics.json"
+    fi
+  fi
+
+  if [ "$RUN_ACCURACY" = 1 ]; then
     if [ "$FULL_MODEL_ONLY" = 0 ]; then
       run "$PY" scripts/eval_accuracy.py \
         --config "${ID_CONFIGS[$i]}" \
         --checkpoint "$checkpoint" \
-        --device "$DEVICE"
+        --device "$DEVICE" \
+        --output "$id_dir/metrics.json"
       run "$PY" scripts/eval_accuracy.py \
         --config "${HELDOUT_CONFIGS[$i]}" \
         --checkpoint "$checkpoint" \
-        --device "$DEVICE"
+        --device "$DEVICE" \
+        --output "$heldout_dir/metrics.json"
     fi
     run "$PY" scripts/eval_accuracy.py \
       --config "${FULL_CONFIGS[$i]}" \
       --checkpoint "$FULL_CHECKPOINT" \
-      --device "$DEVICE"
-    echo "[strict-holdout] accuracy done: $label"
-  done
-fi
+      --device "$DEVICE" \
+      --output "$full_dir/metrics.json"
+  fi
 
-if [ "$RUN_PERFRAME" = 1 ]; then
-  echo "########## STRICT HOLDOUT PER-FRAME CURVES ##########"
-  for i in "${!LABELS[@]}"; do
-    label="${LABELS[$i]}"
-    checkpoint="${CHECKPOINTS[$i]}"
+  if [ "$RUN_PERFRAME" = 1 ] && [ "$FULL_MODEL_ONLY" = 0 ]; then
     run "$PY" scripts/eval_perframe.py \
       --config "${ID_CONFIGS[$i]}" \
       --checkpoint "$checkpoint" \
-      --device "$DEVICE"
+      --device "$DEVICE" \
+      --output "$id_dir/perframe.json"
     run "$PY" scripts/eval_perframe.py \
       --config "${HELDOUT_CONFIGS[$i]}" \
       --checkpoint "$checkpoint" \
-      --device "$DEVICE"
-    echo "[strict-holdout] per-frame done: $label"
-  done
-else
-  echo "########## STRICT HOLDOUT PER-FRAME SKIPPED ##########"
-fi
+      --device "$DEVICE" \
+      --output "$heldout_dir/perframe.json"
+  fi
 
-if [ "$RUN_PHYSICS" = 1 ]; then
-  echo "########## STRICT HOLDOUT PHYSICS DIAGNOSTICS ##########"
-  for i in "${!LABELS[@]}"; do
-    label="${LABELS[$i]}"
-    checkpoint="${CHECKPOINTS[$i]}"
+  if [ "$RUN_PHYSICS" = 1 ] && [ "$FULL_MODEL_ONLY" = 0 ]; then
     run "$PY" scripts/eval_physics_diagnostics.py \
       --config "${ID_CONFIGS[$i]}" \
       --checkpoint "$checkpoint" \
-      --device "$DEVICE"
+      --device "$DEVICE" \
+      --output "$id_dir/physics_diagnostics.json" \
+      --per-sample-output "$id_dir/physics_diagnostics_per_sample.csv"
     run "$PY" scripts/eval_physics_diagnostics.py \
       --config "${HELDOUT_CONFIGS[$i]}" \
       --checkpoint "$checkpoint" \
-      --device "$DEVICE"
-    echo "[strict-holdout] physics done: $label"
-  done
-else
-  echo "########## STRICT HOLDOUT PHYSICS SKIPPED ##########"
-fi
+      --device "$DEVICE" \
+      --output "$heldout_dir/physics_diagnostics.json" \
+      --per-sample-output "$heldout_dir/physics_diagnostics_per_sample.csv"
+  fi
+done
 
-echo "########## STRICT HOLDOUT SUMMARY ##########"
-run "$PY" scripts/summarize_strict_holdout_evals.py \
-  --output "$RESULTS_DIR/strict_holdout_summary.json" \
-  --csv-output "$RESULTS_DIR/strict_holdout_summary.csv"
+if [ "$ISOLATED" = 1 ]; then
+  run "$PY" scripts/summarize_strict_holdout_evals.py \
+    --eval-root "$OUTPUT_ROOT" \
+    --output "$OUTPUT_ROOT/strict_holdout_summary.json" \
+    --csv-output "$OUTPUT_ROOT/strict_holdout_summary.csv"
+  SUMMARY_ROOT="$OUTPUT_ROOT"
+else
+  if [ "$CLEAN" = 1 ]; then
+    rm -f "$RESULTS_DIR/strict_holdout_summary.json" \
+      "$RESULTS_DIR/strict_holdout_summary.csv"
+  fi
+  run "$PY" scripts/summarize_strict_holdout_evals.py \
+    --output "$RESULTS_DIR/strict_holdout_summary.json" \
+    --csv-output "$RESULTS_DIR/strict_holdout_summary.csv"
+  SUMMARY_ROOT="$RESULTS_DIR"
+fi
 
 echo
-echo "DONE. Strict-holdout summary:"
-echo "  $RESULTS_DIR/strict_holdout_summary.json"
-echo "  $RESULTS_DIR/strict_holdout_summary.csv"
+echo "DONE. Strict-holdout outputs: $SUMMARY_ROOT"

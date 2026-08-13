@@ -460,6 +460,7 @@ def preregister_level_a(
     repo_root: Path,
     config_path: Path,
     output_root: Path | None = None,
+    h0_root: Path | None = None,
 ) -> Path:
     repo_root = repo_root.resolve()
     config_path = config_path.resolve()
@@ -469,7 +470,9 @@ def preregister_level_a(
     _validate_source_contract(config)
 
     h0_dir = (
-        repo_root
+        h0_root.resolve()
+        if h0_root is not None
+        else repo_root
         / "artifacts/common_time_v2/h0/830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b"
     )
     h0_decision = _read_json(h0_dir / "h0_decision.json")
@@ -507,6 +510,7 @@ def preregister_level_a(
         "source_config": _json_safe(config),
         "source_config_sha256": sha256_file(config_path),
         "candidate_times": candidate_requested_times().tolist(),
+        "h0_root": str(h0_dir),
         "h0_decision_sha256": sha256_file(h0_dir / "h0_decision.json"),
         "h0_inventory_sha256": sha256_file(inventory_path),
         "canaries": canaries,

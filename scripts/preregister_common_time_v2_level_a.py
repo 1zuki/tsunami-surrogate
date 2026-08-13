@@ -19,9 +19,18 @@ def main() -> None:
         "--config", type=Path, default=Path("configs/eval/common_time_v2_level_a.yaml")
     )
     parser.add_argument("--output-root", type=Path, default=None)
+    parser.add_argument(
+        "--h0-root",
+        type=Path,
+        default=None,
+        help="Bind Level A to a specific passing content-addressed H0 artifact.",
+    )
     args = parser.parse_args()
     path = preregister_level_a(
-        repo_root=ROOT, config_path=args.config, output_root=args.output_root
+        repo_root=ROOT,
+        config_path=args.config,
+        output_root=args.output_root,
+        h0_root=args.h0_root,
     )
     print(path)
 

@@ -125,6 +125,7 @@ def main():
     metrics = evaluate_accuracy(
         model, test_loader, device, batch_transform=batch_transform
     )
+    metrics["evaluation_type"] = "accuracy"
     metrics["num_samples"] = float(_dataset_num_samples(test_loader))
 
     if resolved_dataset_path is not None:

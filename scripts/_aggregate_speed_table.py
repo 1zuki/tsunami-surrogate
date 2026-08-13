@@ -14,6 +14,7 @@ MODEL_TO_SOLVER = {
     "ffno": "swe_hydrostatic",
     "cnn": "swe_hydrostatic",
     "unet": "swe_hydrostatic",
+    "convlstm": "swe_hydrostatic",
     "fno_modes8": "swe_hydrostatic",
     "fno_modes20": "swe_hydrostatic",
     "ufno": "swe_hydrostatic",

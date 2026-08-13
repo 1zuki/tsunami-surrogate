@@ -300,6 +300,13 @@ def _load_config(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _is_sha256(value: Any) -> bool:
+    text = str(value)
+    return len(text) == 64 and all(
+        character in "0123456789abcdef" for character in text
+    )
+
+
 def _validate_config(config: Mapping[str, Any]) -> None:
     schema_id = config.get("schema_id")
     if schema_id == CONFIG_SCHEMA_ID:
@@ -319,26 +326,38 @@ def _validate_config_v1(config: Mapping[str, Any]) -> None:
     ):
         raise ValueError("H2 claim scope changed")
 
-    expected_prerequisites = {
-        "h0_contract_hash": (
-            "830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b"
-        ),
-        "level_a_contract_hash": (
-            "be1af7dce1f48942e6d20a96bb06b1359655903847c7580954901e2dcfa3332b"
-        ),
-        "level_b_bundle_hash": (
-            "3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460"
-        ),
-        "h1_contract_hash": (
-            "ef96c24f62a0eb0884f5384436a50802c0d8dd644946552d9c462b225334bc7d"
-        ),
+    prerequisites = config.get("prerequisites")
+    if not isinstance(prerequisites, Mapping):
+        raise ValueError("H2 prerequisites are missing")
+    expected_prerequisite_policy = {
         "require_h0_pass": True,
         "require_level_a_decision": "pass_to_H1",
         "require_level_b_decision": "pass_to_H1",
         "require_h1_decision": "pass_to_H2",
     }
-    if config.get("prerequisites") != expected_prerequisites:
-        raise ValueError("H2 prerequisite identities or decisions changed")
+    if set(prerequisites) != {
+        "h0_contract_hash",
+        "level_a_contract_hash",
+        "level_b_bundle_hash",
+        "h1_contract_hash",
+        *expected_prerequisite_policy,
+    }:
+        raise ValueError("H2 prerequisite schema changed")
+    if any(
+        not _is_sha256(prerequisites[key])
+        for key in (
+            "h0_contract_hash",
+            "level_a_contract_hash",
+            "level_b_bundle_hash",
+            "h1_contract_hash",
+        )
+    ):
+        raise ValueError("H2 prerequisite identities must be SHA-256 hashes")
+    if any(
+        prerequisites[key] != expected
+        for key, expected in expected_prerequisite_policy.items()
+    ):
+        raise ValueError("H2 prerequisite decisions changed")
 
     expected_selection = {
         "split": "train",
@@ -346,7 +365,7 @@ def _validate_config_v1(config: Mapping[str, Any]) -> None:
         "count_per_cell": 4,
         "selection_seed": "common-time-v2-h2-balanced-selection-v1",
         "replay_selection_seed": "common-time-v2-h2-replay-selection-v1",
-        "exclude_h1_contract_hash": expected_prerequisites["h1_contract_hash"],
+        "exclude_h1_contract_hash": prerequisites["h1_contract_hash"],
         "expected_h1_exclusion_count": 30,
         "bathymetry_families": [
             "canyon",
@@ -518,9 +537,9 @@ def _validate_config_v2(config: Mapping[str, Any]) -> None:
         "count_per_cell": 4,
         "selection_seed": "common-time-v2-h2-balanced-selection-v2",
         "replay_selection_seed": "common-time-v2-h2-replay-selection-v2",
-        "exclude_h1_contract_hash": (
-            "ef96c24f62a0eb0884f5384436a50802c0d8dd644946552d9c462b225334bc7d"
-        ),
+        "exclude_h1_contract_hash": config["prerequisites"][
+            "h1_contract_hash"
+        ],
         "expected_h1_exclusion_count": 30,
         "exclude_prior_h2_contract_hash": (
             "b0a91373ea8dc6ba4304a2b2d319cbeb551d5e211279b8fb799228b811058be9"
@@ -624,9 +643,9 @@ def _validate_config_v2(config: Mapping[str, Any]) -> None:
         "count_per_cell": 4,
         "selection_seed": "common-time-v2-h2-balanced-selection-v1",
         "replay_selection_seed": "common-time-v2-h2-replay-selection-v1",
-        "exclude_h1_contract_hash": (
-            "ef96c24f62a0eb0884f5384436a50802c0d8dd644946552d9c462b225334bc7d"
-        ),
+        "exclude_h1_contract_hash": config["prerequisites"][
+            "h1_contract_hash"
+        ],
         "expected_h1_exclusion_count": 30,
         "bathymetry_families": [
             "canyon",

@@ -172,28 +172,48 @@ def _load_config(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _is_sha256(value: Any) -> bool:
+    text = str(value)
+    return len(text) == 64 and all(
+        character in "0123456789abcdef" for character in text
+    )
+
+
 def _validate_config(config: Mapping[str, Any]) -> None:
     if config.get("schema_id") != CONFIG_SCHEMA_ID or config.get("stage") != "H1":
         raise ValueError("H1 config schema/stage mismatch")
     if config.get("claim_scope") != "implementation_and_long_horizon_health_only":
         raise ValueError("H1 must remain an implementation/health smoke")
 
-    expected_prerequisites = {
-        "h0_contract_hash": (
-            "830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b"
-        ),
-        "level_a_contract_hash": (
-            "be1af7dce1f48942e6d20a96bb06b1359655903847c7580954901e2dcfa3332b"
-        ),
-        "level_b_bundle_hash": (
-            "3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460"
-        ),
+    prerequisites = config.get("prerequisites")
+    if not isinstance(prerequisites, Mapping):
+        raise ValueError("H1 prerequisites are missing")
+    expected_prerequisite_policy = {
         "require_h0_pass": True,
         "require_level_a_decision": "pass_to_H1",
         "require_level_b_decision": "pass_to_H1",
     }
-    if config.get("prerequisites") != expected_prerequisites:
-        raise ValueError("H1 prerequisite identities or decisions changed")
+    if set(prerequisites) != {
+        "h0_contract_hash",
+        "level_a_contract_hash",
+        "level_b_bundle_hash",
+        *expected_prerequisite_policy,
+    }:
+        raise ValueError("H1 prerequisite schema changed")
+    if any(
+        not _is_sha256(prerequisites[key])
+        for key in (
+            "h0_contract_hash",
+            "level_a_contract_hash",
+            "level_b_bundle_hash",
+        )
+    ):
+        raise ValueError("H1 prerequisite identities must be SHA-256 hashes")
+    if any(
+        prerequisites[key] != expected
+        for key, expected in expected_prerequisite_policy.items()
+    ):
+        raise ValueError("H1 prerequisite decisions changed")
 
     selection = config["selection"]
     bathymetry = tuple(selection["bathymetry_families"])
