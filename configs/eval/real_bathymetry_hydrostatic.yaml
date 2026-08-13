@@ -13,14 +13,14 @@ eval:
     normalization_tol: 1e-6
     suites:
       - label: main_morphology_suite_10
-        path: data/processed_real_bathymetry/main_morphology_suite_10/hydrostatic/test
+        path: data/processed_real_bathymetry_v2/main_morphology_suite_10/hydrostatic/test
         batch_size: 1
       - label: main_morphology
-        path: data/processed_real_bathymetry/main_morphology/hydrostatic/test
-        batch_size: 1
-      - label: appendix_coastline_stress
-        path: data/processed_real_bathymetry/appendix_coastline_stress/hydrostatic/test
+        path: data/processed_real_bathymetry_v2/main_morphology/hydrostatic/test
         batch_size: 1
       - label: appendix_coastline_fully_wet
-        path: data/processed_real_bathymetry/appendix_coastline_fully_wet/hydrostatic/test
+        path: data/processed_real_bathymetry_v2/appendix_coastline_fully_wet/hydrostatic/test
+        batch_size: 1
+      - label: appendix_coastline_stress
+        path: data/processed_real_bathymetry_v2/appendix_coastline_stress/hydrostatic/test
         batch_size: 1

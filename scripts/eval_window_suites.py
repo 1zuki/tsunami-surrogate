@@ -126,6 +126,7 @@ def main() -> None:
     p.add_argument("--config", required=True)
     p.add_argument("--checkpoint", required=True)
     p.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None)
+    p.add_argument("--output", default=None)
     args = p.parse_args()
 
     cfg = load_config(args.config)
@@ -184,12 +185,18 @@ def main() -> None:
     )
     summary = {
         "evaluation_type": "window_rollout_suites",
+        "config_path": args.config,
         "checkpoint": args.checkpoint,
         "window_K": int(K),
         "seeded_with_true_first_frame": True,
         "rows": rows,
     }
-    save_json(summary, f"{output_dir}/window_rollout_suites.json")
+    output_path = (
+        Path(args.output)
+        if args.output
+        else Path(output_dir) / "window_rollout_suites.json"
+    )
+    save_json(summary, output_path)
 
 
 if __name__ == "__main__":

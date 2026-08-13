@@ -11,6 +11,10 @@ transfer set, not real-event validation data.
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
+import hashlib
+import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -23,6 +27,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.data_gen.preprocess import TsunamiPreprocessor
+from src.data_gen.simulate_dataset import _seed_for_sample
+from src.utils.hashing import sha256_file
+
+
+REAL_BATHYMETRY_LINEAGE_SCHEMA_ID = (
+    "tsunami-surrogate.real-bathymetry-input.v1"
+)
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -32,8 +43,10 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 def _write_yaml(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
+    staging = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    with staging.open("w", encoding="utf-8") as f:
         yaml.safe_dump(payload, f, sort_keys=False)
+    os.replace(staging, path)
 
 
 def _suite_dirs(raw_root: Path, selected: list[str] | None) -> list[Path]:
@@ -49,6 +62,202 @@ def _suite_dirs(raw_root: Path, selected: list[str] | None) -> list[Path]:
     if not suites:
         raise FileNotFoundError(f"No suite directories found under {raw_root}")
     return suites
+
+
+def _array_sha256(values: np.ndarray) -> str:
+    array = np.ascontiguousarray(np.asarray(values))
+    return hashlib.sha256(array.tobytes(order="C")).hexdigest()
+
+
+def _jsonable_npz_metadata(payload: Any) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    for key in payload.files:
+        if key == "bathymetry":
+            continue
+        values = np.asarray(payload[key])
+        if values.dtype == object:
+            continue
+        metadata[key] = values.tolist()
+    return metadata
+
+
+def _write_prepared_input(
+    *,
+    target: Path,
+    bathymetry: np.ndarray,
+    bathymetry_type: str,
+    sample_seed: int,
+    lineage: dict[str, Any],
+) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    bathymetry = np.asarray(bathymetry, dtype=np.float32)
+    lineage_payload = {
+        **lineage,
+        "schema_id": REAL_BATHYMETRY_LINEAGE_SCHEMA_ID,
+        "bathymetry_array_sha256": _array_sha256(bathymetry),
+        "bathymetry_shape": [int(v) for v in bathymetry.shape],
+        "bathymetry_dtype": str(bathymetry.dtype),
+    }
+    lineage_json = json.dumps(
+        lineage_payload, sort_keys=True, separators=(",", ":")
+    )
+
+    if target.is_file():
+        with np.load(target, allow_pickle=False) as existing:
+            same = (
+                np.array_equal(existing["bathymetry"], bathymetry)
+                and str(
+                    np.asarray(existing["bathymetry_type"]).reshape(-1)[0]
+                )
+                == bathymetry_type
+                and int(np.asarray(existing["sample_seed"]).reshape(-1)[0])
+                == int(sample_seed)
+                and str(
+                    np.asarray(existing["input_lineage_json"]).reshape(-1)[0]
+                )
+                == lineage_json
+            )
+        if not same:
+            raise FileExistsError(
+                f"Prepared real-bathymetry input is incompatible: {target}"
+            )
+        return
+
+    staging = target.with_name(f".{target.name}.tmp-{os.getpid()}")
+    with staging.open("wb") as handle:
+        np.savez_compressed(
+            handle,
+            bathymetry=bathymetry,
+            bathymetry_type=np.asarray([bathymetry_type], dtype="U96"),
+            sample_seed=np.asarray([sample_seed], dtype=np.int64),
+            input_lineage_json=np.asarray([lineage_json], dtype="U4096"),
+        )
+    os.replace(staging, target)
+
+
+def _prepare_direct_suite(
+    *,
+    source_dir: Path,
+    target_dir: Path,
+    suite_name: str,
+    seed: int,
+) -> None:
+    for index, path in enumerate(_validate_bathymetry_files(source_dir), start=1):
+        with np.load(path, allow_pickle=False) as payload:
+            bathymetry = np.asarray(payload["bathymetry"], dtype=np.float32)
+            bathymetry_type = str(
+                np.asarray(payload["bathymetry_type"]).reshape(-1)[0]
+            )
+            metadata = _jsonable_npz_metadata(payload)
+        _write_prepared_input(
+            target=target_dir / path.name,
+            bathymetry=bathymetry,
+            bathymetry_type=bathymetry_type,
+            sample_seed=_seed_for_sample(seed, index),
+            lineage={
+                "suite": suite_name,
+                "sample_index": index,
+                "source_kind": "preserved_static_input",
+                "source_artifact": str(path),
+                "source_artifact_sha256": sha256_file(path),
+                "source_metadata": metadata,
+                "h0_authoritative": False,
+            },
+        )
+
+
+def _prepare_recovered_suite(
+    *,
+    legacy_raw_root: Path,
+    target_dir: Path,
+    suite_name: str,
+    seed: int,
+) -> None:
+    sample_dir = (
+        legacy_raw_root
+        / suite_name
+        / "hydrostatic"
+        / "samples"
+        / "sample_000001"
+    )
+    sample_path = sample_dir / "sample.npz"
+    meta_path = sample_dir / "meta.json"
+    if not sample_path.is_file() or not meta_path.is_file():
+        raise FileNotFoundError(
+            f"Cannot recover static bathymetry for {suite_name}: {sample_dir}"
+        )
+    metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+    with np.load(sample_path, allow_pickle=False) as payload:
+        bathymetry = np.asarray(payload["bathymetry"], dtype=np.float32)
+    _write_prepared_input(
+        target=target_dir / "sample_000001.npz",
+        bathymetry=bathymetry,
+        bathymetry_type=str(metadata.get("bathymetry_type", suite_name)),
+        sample_seed=_seed_for_sample(seed, 1),
+        lineage={
+            "suite": suite_name,
+            "sample_index": 1,
+            "source_kind": "recovered_from_legacy_rollout_static_array",
+            "source_artifact": str(sample_path),
+            "source_artifact_sha256": sha256_file(sample_path),
+            "source_meta_artifact": str(meta_path),
+            "source_meta_sha256": sha256_file(meta_path),
+            "legacy_bathymetry_cache_path": metadata.get(
+                "bathymetry_cache_path"
+            ),
+            "h0_authoritative": False,
+        },
+    )
+
+
+def _prepare_input_suites(
+    *,
+    raw_root: Path,
+    legacy_raw_root: Path,
+    input_root: Path,
+    seed: int,
+    selected: list[str] | None,
+) -> list[Path]:
+    requested = (
+        set(selected)
+        if selected
+        else {
+            "main_morphology_suite_10",
+            "main_morphology",
+            "appendix_coastline_fully_wet",
+        }
+    )
+    unknown = requested - {
+        "main_morphology_suite_10",
+        "main_morphology",
+        "appendix_coastline_stress",
+        "appendix_coastline_fully_wet",
+    }
+    if unknown:
+        raise ValueError(f"Unknown real-bathymetry suites: {sorted(unknown)}")
+
+    if "main_morphology_suite_10" in requested:
+        _prepare_direct_suite(
+            source_dir=raw_root / "main_morphology_suite_10",
+            target_dir=input_root / "main_morphology_suite_10",
+            suite_name="main_morphology_suite_10",
+            seed=seed,
+        )
+    for suite_name in sorted(
+        requested
+        & {
+            "main_morphology",
+            "appendix_coastline_stress",
+            "appendix_coastline_fully_wet",
+        }
+    ):
+        _prepare_recovered_suite(
+            legacy_raw_root=legacy_raw_root,
+            target_dir=input_root / suite_name,
+            suite_name=suite_name,
+            seed=seed,
+        )
+    return [input_root / name for name in sorted(requested)]
 
 
 def _rescale_to_range(arr: np.ndarray, out_min: float, out_max: float) -> np.ndarray:
@@ -123,8 +332,13 @@ def _dataset_config(
     seed: int,
     num_workers: int,
 ) -> dict[str, Any]:
-    cfg = dict(base)
+    cfg = deepcopy(base)
     cfg["configs"] = dict(cfg.get("configs", {}))
+    cfg["configs"]["source"] = (
+        "configs/data/real_bathymetry/real_bathymetry_source.yaml"
+    )
+    cfg.pop("authoritative_inputs", None)
+    cfg.pop("paired_inputs", None)
     cfg.setdefault("dataset", {})
     cfg["dataset"] = dict(cfg["dataset"])
     cfg["dataset"].update(
@@ -143,7 +357,13 @@ def _dataset_config(
     )
     cfg["fdes"] = {"enabled": ["swe_hydrostatic"], "primary": "swe_hydrostatic"}
     cfg["quality"] = dict(cfg.get("quality", {}))
-    cfg["quality"]["on_violation"] = "warn"
+    cfg["quality"]["on_violation"] = "fail"
+    if suite_name == "appendix_coastline_stress":
+        cfg["quality"]["max_abs_eta_limit"] = 5.01
+        cfg["quality"]["require_no_projection"] = False
+    cfg.setdefault("operations", {})
+    cfg["operations"] = dict(cfg["operations"])
+    cfg["operations"]["max_in_flight"] = max(1, int(num_workers))
     return cfg
 
 
@@ -154,6 +374,7 @@ def _preprocess_config(
     raw_root = out_root / "raw" / suite_name
     return {
         "raw": {
+            "publication_split": "test",
             "scenario_manifest": str(manifest_root / "scenario_manifest.jsonl"),
             "fde_manifests": {
                 "hydrostatic": str(manifest_root / "hydrostatic_manifest.jsonl")
@@ -212,16 +433,25 @@ def main() -> None:
     p.add_argument(
         "--raw-root",
         default="data/real_bathymetry_raw",
-        help="Directory of raw real-bathymetry crops (GEBCO-derived). "
-        "Override with the path where you downloaded/prepared the crops.",
+        help="Directory containing the preserved ten-crop morphology suite.",
+    )
+    p.add_argument(
+        "--legacy-raw-root",
+        default="data/real_bathymetry/raw",
+        help="Old rollout root used only to recover preserved static inputs.",
+    )
+    p.add_argument(
+        "--input-root", default="data/real_bathymetry_inputs_v2"
     )
     p.add_argument(
         "--base-config",
-        default="configs/data/real_bathymetry/main_morphology_dataset.yaml",
+        default="configs/data/dataset_test.yaml",
     )
-    p.add_argument("--out-root", default="data/real_bathymetry")
-    p.add_argument("--processed-root", default="data/processed_real_bathymetry")
-    p.add_argument("--config-out", default="configs/data/real_bathymetry")
+    p.add_argument("--out-root", default="data/real_bathymetry_v2")
+    p.add_argument(
+        "--processed-root", default="data/processed_real_bathymetry_v2"
+    )
+    p.add_argument("--config-out", default="configs/data/real_bathymetry_v2")
     p.add_argument(
         "--train-stats", default="data/processed/hydrostatic/normalization_stats.json"
     )
@@ -230,21 +460,14 @@ def main() -> None:
     )
     p.add_argument("--seed", type=int, default=367)
     p.add_argument("--num-workers", type=int, default=1)
-    p.add_argument(
-        "--derive-coastline-fully-wet",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-    )
-    p.add_argument("--coastline-source-suite", default="appendix_coastline_stress")
-    p.add_argument(
-        "--coastline-fully-wet-suite", default="appendix_coastline_fully_wet"
-    )
     p.add_argument("--allow-override", action="store_true")
     p.add_argument("--skip-generate", action="store_true")
     p.add_argument("--skip-preprocess", action="store_true")
     args = p.parse_args()
 
     raw_root = Path(args.raw_root)
+    legacy_raw_root = Path(args.legacy_raw_root)
+    input_root = Path(args.input_root)
     base_config_path = Path(args.base_config)
     out_root = Path(args.out_root)
     processed_root = Path(args.processed_root)
@@ -257,33 +480,14 @@ def main() -> None:
         raise FileNotFoundError(train_stats)
 
     base = _load_yaml(base_config_path)
-    if args.derive_coastline_fully_wet:
-        source_suite = raw_root / str(args.coastline_source_suite)
-        derived_suite = (
-            out_root / "derived_inputs" / str(args.coastline_fully_wet_suite)
-        )
-        if source_suite.exists():
-            print(f"[real-bath] derive fully wet coastline suite -> {derived_suite}")
-            _derive_fully_wet_suite(
-                source_suite,
-                derived_suite,
-                bathymetry_type="gebco_japan_coast_fully_wet_scaled",
-            )
-        else:
-            print(
-                f"[real-bath][warn] missing coastline source suite for derivation: {source_suite}"
-            )
-
     processed_paths: list[str] = []
-    suite_dirs = _suite_dirs(raw_root, args.suite)
-    if args.derive_coastline_fully_wet:
-        derived_suite = (
-            out_root / "derived_inputs" / str(args.coastline_fully_wet_suite)
-        )
-        if derived_suite.exists() and (
-            args.suite is None or derived_suite.name in set(args.suite)
-        ):
-            suite_dirs.append(derived_suite)
+    suite_dirs = _prepare_input_suites(
+        raw_root=raw_root,
+        legacy_raw_root=legacy_raw_root,
+        input_root=input_root,
+        seed=int(args.seed),
+        selected=args.suite,
+    )
 
     for suite_dir in suite_dirs:
         bathy_files = _validate_bathymetry_files(suite_dir)

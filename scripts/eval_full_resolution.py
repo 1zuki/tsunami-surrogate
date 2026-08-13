@@ -83,6 +83,7 @@ def main() -> None:
     p.add_argument("--config", required=True)
     p.add_argument("--checkpoint", required=True)
     p.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None)
+    p.add_argument("--output", default=None)
     args = p.parse_args()
 
     cfg = load_config(args.config)
@@ -242,6 +243,8 @@ def main() -> None:
 
     summary: Dict[str, Any] = {
         "evaluation_type": "native_real_resolution_benchmark",
+        "config_path": args.config,
+        "checkpoint": args.checkpoint,
         "rows": result_rows,
         "normalization_policy": normalization_policy,
         "normalization_mismatch": mismatch_action,
@@ -252,7 +255,12 @@ def main() -> None:
         "checkpoint_train_signature": checkpoint_train_signature,
     }
     print(summary)
-    save_json(summary, f"{output_dir}/real_resolution.json")
+    output_path = (
+        Path(args.output)
+        if args.output
+        else Path(output_dir) / "real_resolution.json"
+    )
+    save_json(summary, output_path)
 
 
 if __name__ == "__main__":
