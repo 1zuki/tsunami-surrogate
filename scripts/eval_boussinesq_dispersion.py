@@ -38,7 +38,7 @@ from src.solver.boussinesq import BoussinesqSolver
 DEFAULT_OUTPUT_DIR = Path("results/reviewer_validation/boussinesq_dispersion")
 DEFAULT_FIGURE = Path("paper/figures/boussinesq_dispersion.pdf")
 DEFAULT_ALPHAS = [0.0, 1.0 / 3.0]
-DEFAULT_MODES = [1, 2, 4, 8]
+DEFAULT_MODES = [1, 2, 4, 8, 12, 16, 24, 32]
 
 
 def _expected_frequency(
@@ -335,16 +335,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--modes", nargs="+", type=int, default=DEFAULT_MODES)
     parser.add_argument("--alphas", nargs="+", type=float, default=DEFAULT_ALPHAS)
-    parser.add_argument("--nx", type=int, default=128)
-    parser.add_argument("--ny", type=int, default=16)
+    parser.add_argument("--nx", type=int, default=256)
+    parser.add_argument("--ny", type=int, default=32)
     parser.add_argument("--depth", type=float, default=1.0)
     parser.add_argument("--g", type=float, default=9.81)
-    parser.add_argument("--dt", type=float, default=2.5e-4)
-    parser.add_argument("--final-time", type=float, default=1.0)
+    parser.add_argument("--dt", type=float, default=1.25e-4)
+    parser.add_argument("--final-time", type=float, default=1.5)
     parser.add_argument("--amplitude", type=float, default=1.0e-3)
     parser.add_argument("--record-every", type=int, default=5)
     parser.add_argument("--linear-solver-tol", type=float, default=1.0e-12)
-    parser.add_argument("--linear-solver-max-iter", type=int, default=500)
+    parser.add_argument("--linear-solver-max-iter", type=int, default=700)
     parser.add_argument("--fit-start-fraction", type=float, default=0.05)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--figure-output", type=Path, default=DEFAULT_FIGURE)

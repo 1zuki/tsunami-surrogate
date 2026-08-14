@@ -9,6 +9,7 @@ import torch
 
 from scripts._consolidate_results import (
     ConsolidationError,
+    _validate_cell,
     _validate_live_bindings,
     consolidate,
 )
@@ -266,6 +267,43 @@ def test_consolidation_rejects_companion_checksum_mismatch(
             output_path=run_root / "all_results.json",
             completion_manifest_path=run_root / "completion_manifest.json",
         )
+
+
+def test_validate_cell_returns_primary_path_after_companion_check(
+    tmp_path: Path,
+) -> None:
+    run_root = tmp_path / "run"
+    run_root.mkdir()
+    archive = run_root / "chain.tar.zst"
+    archive.write_bytes(b"archive")
+    import hashlib
+
+    archive_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
+    summary = run_root / "summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "evaluation_type": "test-summary",
+                "archive_sha256": archive_sha256,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _, validated_path = _validate_cell(
+        run_root=run_root,
+        cell={
+            "id": "summary",
+            "group": "test",
+            "path": "summary.json",
+            "evaluation_type": "test-summary",
+            "companion_sha256_fields": {
+                "archive_sha256": "chain.tar.zst"
+            },
+        },
+    )
+
+    assert validated_path == summary
 
 
 def test_live_bindings_reject_commit_change_after_preflight(

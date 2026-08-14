@@ -589,8 +589,10 @@ def _validate_cell(
                 str(key),
                 label=f"cell {cell.get('id')}",
             )
-            path = run_root / str(expected_path)
-            if not path.is_file() or str(observed) != _sha256(path):
+            companion_path = run_root / str(expected_path)
+            if not companion_path.is_file() or str(observed) != _sha256(
+                companion_path
+            ):
                 raise ConsolidationError(
                     f"Companion checksum mismatch for cell {cell.get('id')}: "
                     f"{key}"

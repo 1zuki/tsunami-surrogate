@@ -577,6 +577,16 @@ def main() -> None:
     )
     parser.add_argument("--summary-fallback", action="store_true")
     parser.add_argument(
+        "--input-json",
+        type=Path,
+        default=None,
+        help=(
+            "Existing full calibration JSON to plot without rerunning ensemble "
+            "inference. The file must contain the fit and datasets produced by "
+            "this script or the canonical v2 paper-evidence lane."
+        ),
+    )
+    parser.add_argument(
         "--fallback-indist-json", type=Path, default=SUMMARY_FALLBACK_INDIST
     )
     parser.add_argument("--fallback-ood-json", type=Path, default=SUMMARY_FALLBACK_OOD)
@@ -603,7 +613,26 @@ def main() -> None:
         [Path(p) for p in args.checkpoint] if args.checkpoint else DEFAULT_CHECKPOINTS
     )
     missing_checkpoints = [str(p) for p in checkpoint_paths if not p.is_file()]
-    if args.summary_fallback or missing_checkpoints:
+    if args.input_json is not None:
+        results = _load_json(args.input_json)
+        if not isinstance(results.get("datasets"), dict):
+            raise ValueError(
+                f"Input calibration JSON has no datasets mapping: {args.input_json}"
+            )
+        results = dict(results)
+        if "calibration_status" not in results:
+            has_calibrated_coverage = any(
+                row.get("calibrated_coverage") is not None
+                for dataset in results["datasets"].values()
+                for row in dataset.get("coverage", [])
+            )
+            results["calibration_status"] = (
+                "fit_validation_scalar_inflation"
+                if has_calibrated_coverage
+                else "unavailable_no_per_element_predictions"
+            )
+        results["source_json"] = str(args.input_json)
+    elif args.summary_fallback or missing_checkpoints:
         if missing_checkpoints and not args.summary_fallback:
             print(
                 f"[warn] missing ensemble checkpoints; using summary fallback: {missing_checkpoints}"
