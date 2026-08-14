@@ -233,7 +233,48 @@ def _validate_npz(path: Path, cell: Mapping[str, Any]) -> None:
         raise ConsolidationError(f"Unreadable NPZ artifact: {path}") from exc
 
 
-def _validate_live_bindings(manifest: Mapping[str, Any]) -> None:
+def _changed_evaluation_paths(expected_commit: str) -> list[str]:
+    try:
+        changed = subprocess.check_output(
+            [
+                "git",
+                "diff",
+                "--name-only",
+                expected_commit,
+                "--",
+                "configs",
+                "scripts",
+                "src",
+            ],
+            cwd=ROOT,
+            text=True,
+        ).splitlines()
+        untracked = subprocess.check_output(
+            [
+                "git",
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+                "--",
+                "configs",
+                "scripts",
+                "src",
+            ],
+            cwd=ROOT,
+            text=True,
+        ).splitlines()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ConsolidationError(
+            "Could not identify evaluation-tree changes"
+        ) from exc
+    return sorted({path for path in (*changed, *untracked) if path})
+
+
+def _validate_live_bindings(
+    manifest: Mapping[str, Any],
+    *,
+    allow_consolidator_only_repair: bool = False,
+) -> dict[str, Any] | None:
     code_state = manifest.get("code_state")
     if not isinstance(code_state, Mapping):
         raise ConsolidationError("Run manifest is missing evaluation code state")
@@ -261,10 +302,6 @@ def _validate_live_bindings(manifest: Mapping[str, Any]) -> None:
         )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise ConsolidationError("Could not verify evaluation code state") from exc
-    if not expected_commit or current_commit != expected_commit:
-        raise ConsolidationError(
-            "Git commit changed after evaluation preflight"
-        )
     digest = hashlib.sha256()
     for relative in sorted(
         Path(raw.decode("utf-8"))
@@ -278,10 +315,38 @@ def _validate_live_bindings(manifest: Mapping[str, Any]) -> None:
         digest.update(b"\0")
         digest.update(path.read_bytes())
         digest.update(b"\0")
-    if not expected_tree or digest.hexdigest() != expected_tree:
-        raise ConsolidationError(
-            "Evaluation code/config tree changed after preflight"
-        )
+    current_tree = digest.hexdigest()
+    repair: dict[str, Any] | None = None
+    if (
+        not expected_commit
+        or not expected_tree
+        or current_commit != expected_commit
+        or current_tree != expected_tree
+    ):
+        if not allow_consolidator_only_repair:
+            if not expected_commit or current_commit != expected_commit:
+                raise ConsolidationError(
+                    "Git commit changed after evaluation preflight"
+                )
+            raise ConsolidationError(
+                "Evaluation code/config tree changed after preflight"
+            )
+        changed_paths = _changed_evaluation_paths(expected_commit)
+        allowed_path = "scripts/_consolidate_results.py"
+        if changed_paths != [allowed_path]:
+            raise ConsolidationError(
+                "Consolidator-only repair rejected changed evaluation paths: "
+                f"{changed_paths}"
+            )
+        repair = {
+            "mode": "consolidator_only",
+            "preflight_git_commit": expected_commit,
+            "preflight_evaluation_tree_sha256": expected_tree,
+            "repair_git_commit": current_commit,
+            "repair_evaluation_tree_sha256": current_tree,
+            "changed_paths": changed_paths,
+            "consolidator_sha256": _sha256(ROOT / allowed_path),
+        }
 
     for raw_cell in manifest.get("cells", []):
         if not isinstance(raw_cell, Mapping):
@@ -336,6 +401,20 @@ def _validate_live_bindings(manifest: Mapping[str, Any]) -> None:
                         "Ensemble checkpoint changed after preflight: "
                         f"{checkpoint_path}"
                     )
+    return repair
+
+
+def _expected_value_matches(observed: Any, expected: Any) -> bool:
+    if isinstance(observed, bool) or isinstance(expected, bool):
+        return observed == expected
+    if isinstance(expected, float) and isinstance(observed, (int, float)):
+        return math.isclose(
+            float(observed),
+            float(expected),
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-15,
+        )
+    return observed == expected
 
 
 def _validate_cell(
@@ -390,7 +469,7 @@ def _validate_cell(
                 observed = _nested_value(payload, str(key))
             except KeyError:
                 observed = None
-            if observed != expected:
+            if not _expected_value_matches(observed, expected):
                 raise ConsolidationError(
                     f"Value mismatch for {cell.get('id')}:{key}: "
                     f"{observed!r} != {expected!r}"
@@ -679,6 +758,7 @@ def consolidate(
     manifest_path: Path,
     output_path: Path,
     completion_manifest_path: Path,
+    allow_consolidator_only_repair: bool = False,
 ) -> dict[str, Any]:
     run_root = run_root.resolve()
     for label, path in (
@@ -738,7 +818,10 @@ def consolidate(
         raise ConsolidationError(
             "Preflight report is missing or changed after manifest creation"
         )
-    _validate_live_bindings(manifest)
+    consolidation_repair = _validate_live_bindings(
+        manifest,
+        allow_consolidator_only_repair=allow_consolidator_only_repair,
+    )
 
     allowed_files = {
         str(Path(str(cell["path"])))
@@ -799,6 +882,8 @@ def consolidate(
         "run_manifest_sha256": _sha256(manifest_path),
         "artifacts": artifacts,
     }
+    if consolidation_repair is not None:
+        completion["consolidation_repair"] = consolidation_repair
     _write_atomic(completion_manifest_path, completion)
     return completion
 
@@ -809,6 +894,14 @@ def main() -> None:
     parser.add_argument("--manifest", default=None)
     parser.add_argument("--output", default=None)
     parser.add_argument("--completion-manifest", default=None)
+    parser.add_argument(
+        "--allow-consolidator-only-repair",
+        action="store_true",
+        help=(
+            "Permit reuse of completed staging outputs only when the sole "
+            "evaluation-tree change since preflight is this consolidator."
+        ),
+    )
     args = parser.parse_args()
 
     run_root = Path(args.run_root).resolve()
@@ -832,6 +925,9 @@ def main() -> None:
         manifest_path=manifest_path,
         output_path=output_path,
         completion_manifest_path=completion_path,
+        allow_consolidator_only_repair=bool(
+            args.allow_consolidator_only_repair
+        ),
     )
     print(
         f"[consolidate] status={completion['status']} "
