@@ -230,7 +230,7 @@ def main() -> None:
         "--frames",
         type=int,
         nargs=3,
-        default=[2, 12, 24],
+        default=[0, 24, 49],
         help="Early, mid, late 0-based frame indices into the 50-frame rollout.",
     )
     p.add_argument("--output", default=DEFAULT_OUTPUT)

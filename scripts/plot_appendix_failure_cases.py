@@ -62,10 +62,13 @@ DEFAULT_CASES = [
         stats_path=Path("data/processed/hydrostatic/normalization_stats.json"),
         config_path=Path("configs/model/fno.yaml"),
         checkpoint_path=Path("experiments/fno/best.pt"),
-        sample_id="sample_000385",
+        sample_id="sample_001849",
         loader="sharded",
-        expected_rel_l2=0.598,
-        note="Selected high-error rough-source case from the ordinary test split.",
+        expected_rel_l2=0.751,
+        note=(
+            "Highest-error rough-source case in the canonical R1 ordinary-test "
+            "per-sample diagnostics."
+        ),
     ),
     CaseSpec(
         key="strict_rough_holdout_failure",
@@ -78,43 +81,32 @@ DEFAULT_CASES = [
         ),
         config_path=Path("configs/model/fno_holdout_source_rough.yaml"),
         checkpoint_path=Path("experiments/fno_holdout/source_rough/best.pt"),
-        sample_id="sample_001861",
+        sample_id="sample_002127",
         loader="sharded",
-        expected_rel_l2=0.795,
-        note="Selected high-error case from the family-strict held-out rough-source split.",
-    ),
-    CaseSpec(
-        key="real_bathymetry_nankai_failure",
-        label="Fully wet real-bathymetry crop",
-        data_path=Path(
-            "data/processed_real_bathymetry/main_morphology_suite_10/hydrostatic/test"
+        expected_rel_l2=1.095,
+        note=(
+            "Highest-error case in the canonical R1 family-strict rough-source "
+            "per-sample diagnostics."
         ),
-        stats_path=Path(
-            "data/processed_real_bathymetry/main_morphology_suite_10/hydrostatic/normalization_stats.json"
-        ),
-        config_path=Path("configs/model/fno.yaml"),
-        checkpoint_path=Path("experiments/fno/best.pt"),
-        sample_id="sample_000010",
-        loader="flat_npy",
-        expected_rel_l2=0.530,
-        note="Worst direct-FNO crop in the fully wet 10-crop real-bathymetry morphology suite.",
-        crop_label="Nankai Trough / southwest Japan",
     ),
     CaseSpec(
         key="wet_dry_stress_failure",
         label="Wet-dry stress failure",
         data_path=Path(
-            "data/processed_real_bathymetry/appendix_coastline_stress/hydrostatic/test"
+            "data/processed_real_bathymetry_v2/appendix_coastline_stress/hydrostatic/test"
         ),
         stats_path=Path(
-            "data/processed_real_bathymetry/appendix_coastline_stress/hydrostatic/normalization_stats.json"
+            "data/processed_real_bathymetry_v2/appendix_coastline_stress/hydrostatic/normalization_stats.json"
         ),
         config_path=Path("configs/model/fno.yaml"),
         checkpoint_path=Path("experiments/fno/best.pt"),
         sample_id="sample_000001",
         loader="flat_npy",
-        expected_rel_l2=0.996,
-        note="Selected coastline wet-dry stress case with quality warning max_abs_eta(5.01349) > 5.",
+        expected_rel_l2=0.985,
+        note=(
+            "Selected coastline wet-dry stress case from the accepted v2 suite "
+            "with the suite-specific 5.01 eta ceiling."
+        ),
     ),
 ]
 

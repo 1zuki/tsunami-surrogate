@@ -39,7 +39,7 @@ from src.training.checkpointing import load_checkpoint
 from src.utils.config import load_config
 
 
-PROCESSED_ROOT = "data/processed_real_bathymetry"
+PROCESSED_ROOT = "data/processed_real_bathymetry_v2"
 DEFAULT_MAIN_OUTPUT = "paper/figures/real_bathymetry_offshore.pdf"
 DEFAULT_APPENDIX_OUTPUT = "paper/figures/real_bathymetry_suites.pdf"
 
@@ -275,10 +275,20 @@ def _compute_main_errors(
 ) -> dict[str, Any]:
     inputs = np.load(data_dir / "inputs.npy").astype(np.float32)
     targets = np.load(data_dir / "targets.npy").astype(np.float32)
-    if inputs.shape[:2] != (1, 3):
-        raise ValueError(f"Expected inputs shape [1, 3, H, W], got {inputs.shape}")
-    if targets.ndim != 4 or targets.shape[0] != 1:
-        raise ValueError(f"Expected targets shape [1, T, H, W], got {targets.shape}")
+    if inputs.ndim != 4 or inputs.shape[1] != 3:
+        raise ValueError(f"Expected inputs shape [N, 3, H, W], got {inputs.shape}")
+    if targets.ndim != 4 or targets.shape[0] != inputs.shape[0]:
+        raise ValueError(
+            f"Expected targets shape [N, T, H, W] matching inputs, got {targets.shape}"
+        )
+    sample_index = int(args.main_sample_index)
+    if sample_index < 0 or sample_index >= inputs.shape[0]:
+        raise ValueError(
+            f"main-sample-index must be in [0, {inputs.shape[0] - 1}], "
+            f"got {sample_index}"
+        )
+    inputs = inputs[sample_index : sample_index + 1]
+    targets = targets[sample_index : sample_index + 1]
     if frame <= 0 or frame >= targets.shape[1]:
         raise ValueError(
             f"frame-index must be in [1, {targets.shape[1] - 1}] for the window rollout"
@@ -351,6 +361,7 @@ def _compute_main_errors(
         "window_error": window_error,
         "direct_rel_l2": _rel_l2(direct_phys, target_phys),
         "window_rel_l2": _rel_l2(window_phys, target_phys[1:]),
+        "sample_index": sample_index,
     }
 
 
@@ -358,6 +369,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--processed-root", default=PROCESSED_ROOT)
     parser.add_argument("--main-suite", default="main_morphology")
+    parser.add_argument(
+        "--main-sample-index",
+        type=int,
+        default=0,
+        help=(
+            "Zero-based crop index within the main suite. The default selects "
+            "the canonical one-sample offshore morphology diagnostic."
+        ),
+    )
     parser.add_argument("--direct-config", default="configs/model/fno.yaml")
     parser.add_argument("--direct-checkpoint", default="experiments/fno/best.pt")
     parser.add_argument(
@@ -410,6 +430,7 @@ def main() -> None:
             main_output,
             main_png,
         )
+        print(f"main_sample_index={res['sample_index']}")
         print(f"main_direct_rel_l2_de_normalized={res['direct_rel_l2']:.6f}")
         print(f"main_window_rel_l2_de_normalized={res['window_rel_l2']:.6f}")
         print(f"saved_main_pdf={main_output}")
