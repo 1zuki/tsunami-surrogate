@@ -1,370 +1,372 @@
 \section{Results}
 \label{sec:results}
 
-All accuracy numbers are reported on the held-out test split ($N = 2500$ scenarios). Unless noted, MAE and RMSE are in denormalized benchmark-scale surface-elevation units obtained by reversing the target normalization, relative $L_2$ is dimensionless, and max-err is in normalized target units. Following Section~\ref{subsec:eval-metrics}, the relative $L_2$ and max-err values are accumulated globally over the whole split rather than averaged per batch. The FNO is trained and evaluated separately against each of the three numerical references; the expanded hydrostatic comparison set includes FFNO, mode-count ablations, U-FNO, WNO, U-Net, and CNN models.
+Unless stated otherwise, model accuracy is measured on the $N = 2500$ held-out test scenarios. MAE, RMSE, and headline relative $L_2$ values are computed after reversing target normalization; max-err remains in normalized target units. Every table uses the same completed common-time evaluation and the checkpoint, dataset, and metric definitions stated in Sections~\ref{sec:methods}--\ref{sec:training}.
 
-\subsection{Reference-solver health checks and dataset quality}
+\subsection{Common-time contract and numerical evidence}
 \label{subsec:res-dataset}
 
-All three numerical references use the same scenario design: parallel hydrostatic, MUSCL-HR, and Boussinesq datasets of $13{,}500$ scenarios each, split into $10{,}000$ train, $1{,}000$ validation, and $2{,}500$ test rollouts with fixed, disjoint seeds. Every target is a $50$-frame $\eta$ trajectory on a $64\times64$ grid with the $C=3$ input stack of Section~\ref{subsec:forward-task}. Under the quality policy of Section~\ref{subsec:reference-validation}, all $13{,}500$ scenarios in each dataset pass with \texttt{quality\_status}~$=$~\texttt{ok}: no rollout is dropped for non-finite values, sub-tolerance depth, or amplitude violations, and the Boussinesq conjugate-gradient acceleration solve converged on every sample. Source strength spans the same $[0.45,\, 0.85]$ range, with the six source families and five bathymetry types matched across references and splits, so each surrogate sees the same scenario population. Because scenario IDs are shared, the cross-solver gaps of Section~\ref{subsec:res-solver-fidelity} use all $2{,}500$ shared test scenarios for each pair, but they are same-scenario, same-saved-index released-label diagnostics rather than interpolated common-physical-time comparisons. The timestamp audit in Appendix~\ref{app:solver-diag} confirms that Hydrostatic and MUSCL-HR frame $50$ are nearly time-aligned, while Boussinesq frame $50$ is at about half the shallow-water physical time.
+All three main datasets contain $10{,}000$ training, $1{,}000$ validation, and $2{,}500$ test scenarios. Each processed target has shape $50 \times 64 \times 64$, and all $40{,}500$ solver-specific trajectories passed the configured numerical-health checks. The scenario populations match across references: six source families, five bathymetry families, and source strength in $[0.45, 0.85]$.
 
-Table~\ref{tab:solver-validation} summarizes the final solver health and consistency checks. The 24-sample lake-at-rest tests preserve roundoff, all $13{,}500$ stored dynamic rollouts per solver are finite, and Boussinesq has zero recorded conjugate-gradient failures. With sponge disabled for the conservation diagnostic, the shallow-water references keep the mass/free-surface integral to about $2.6 \times 10 ^ {-16}$. The CFL rows are only a timestep-sensitivity diagnostic at matched benchmark end time: CFL $0.60$ remains finite on the subset but shows large final-field differences, so these numbers are not a formal convergence proof. Taken together, these are sanity, sensitivity, and health checks, not substitutes for a convergence study, external solver comparison, observed-event validation, or production-code validation.
+Table~\ref{tab:solver-validation} summarizes the numerical evidence used to accept the finite-horizon label contract. The categories are grouped by their scientific purpose.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Reference-solver sanity/health-check summary. Lake-at-rest and conservation checks are rerun diagnostics on denormalized inputs; dynamic finite-state statistics are aggregated over the generated datasets. CFL sensitivity is diagnostic only, not a formal convergence result.}
+\caption{Numerical verification and validation supporting the common-time label contract. Passing these checks supports the stated finite-horizon implementation, not event-scale physical validity.}
 \label{tab:solver-validation}
-\begin{tabular}{p{0.34\linewidth}p{0.25\linewidth}cc}
+\small
+\begin{tabular}{p{0.23\linewidth}p{0.55\linewidth}p{0.13\linewidth}}
     \toprule
-    Check & Solver & Samples & Result \\
+    Evidence & Scope & Outcome \\
     \midrule
-    Lake at rest max $\eta$ drift           & Hydrostatic & $24$ & $8.88 \times 10 ^ {-16}$ \\
-    Lake at rest max $\eta$ drift           & MUSCL-HR    & $24$ & $5.33 \times 10 ^ {-15}$ \\
-    Lake at rest max $\eta$ drift           & Boussinesq  & $24$ & $0$ \\
-    Dynamic finite pass rate                & Hydrostatic / MUSCL-HR / Boussinesq & $13{,}500$ each & $1.000$ \\
-    Boussinesq CG failures / max iterations & Boussinesq  & $13{,}500$ & $0$ / $416$ \\
-    Max mass rel.\ change                   & Hydrostatic / MUSCL-HR & $24$ each & $\approx 2.6 \times 10 ^ {-16}$ \\
-    CFL final-field sensitivity vs $0.45$   & Hydrostatic / MUSCL-HR & $12$ each & diagnostic \\
+    Input identity & $13{,}500$ shared scenarios, split identities, arrays, and horizon coverage & passed \\
+    Internal verification & $86$ analytical/numerical cases and $48$ fixed criteria & passed \\
+    Independent comparator & analytical/refinement checks and matched GeoClaw/Clawpack regimes & checks passed; broader agreement limited \\
+    Generation-path checks & $90$ buffered common-time cases and $3$ repeatability checks & passed \\
+    Independent sensitivity set & $363$ paired cases, $726$ executions, and $42$ fixed criteria & passed \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Same-solver surrogate accuracy}
+The independent-comparator evidence is deliberately limited. All analytical, verification, and refinement comparisons passed, whereas $11$ of $12$ exploratory descriptive comparisons exceeded their provisional limits. On three production-like cases, trajectory relative $L_2$ against GeoClaw ranged from $0.414$ to $0.537$ for Hydrostatic and from $0.231$ to $0.259$ for MUSCL-HR. These discrepancies remain part of the interpretation: the package supports matched-regime verification, but not pointwise production equivalence or the designation of GeoClaw as physical truth.
+
+\subsection{Direct same-reference accuracy}
 \label{subsec:res-accuracy}
 
-Table~\ref{tab:accuracy} reports direct single-pass accuracy on the hydrostatic reference, plus the FNO trained against each reference. Among the single-run direct hydrostatic configurations tested, FFNO is strongest, reaching relative $L_2=0.168$ with $0.411$M parameters, compared with $0.235$ and $5.443$M for the base FNO (about $13 \times$ fewer). The base FNO, U-FNO, and FNO-modes20 are effectively tied around $0.235$; FNO-modes8 is slightly worse at $0.241$; and WNO, U-Net, and CNN trail at $0.367$, $0.475$, and $0.607$. The ordering supports global operator structure, but the small gap between Fourier-family variants suggests the main gain is not simply from increasing retained modes.
+Table~\ref{tab:accuracy} contains all eleven direct model--reference configurations. Among the selected single-seed Hydrostatic configurations, F-FNO has the lowest relative $L_2$ ($0.190$), followed by ConvLSTM ($0.211$). U-FNO, the two mode ablations, and the base FNO form a narrow $0.238$--$0.244$ group. WNO, U-Net, and the small CNN are less accurate. F-FNO uses $0.411$M parameters, about thirteen times fewer than the $5.443$M-parameter FNO, so its improvement is not explained by parameter count.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Same-solver field accuracy on the held-out test split ($N = 2500$). Parameter counts are in millions. MAE and RMSE are in denormalized benchmark-scale surface-elevation units; relative $L_2$ is dimensionless; max-err is the global worst-case element in normalized units. The first block shares the hydrostatic reference; the last two rows are the FNO trained and scored against the MUSCL-HR and Boussinesq references on their own test splits.}
+\caption{Direct same-reference field accuracy on the held-out test split ($N = 2500$). Canonical sources are FNO and its mode variants \citep{li2021fno}, F-FNO \citep{tran2023ffno}, ConvLSTM \citep{shi2015convlstm}, U-FNO \citep{wen2022ufno}, WNO \citep{tripura2023wno}, U-Net \citep{ronneberger2015unet}, and the general CNN precedent \citep{lecun1998gradient}; the reported implementations are defined in Section~\ref{sec:models}. Params are millions. MAE, RMSE, and relative $L_2$ are in the denormalized benchmark space; max-err is the global normalized-unit maximum.}
 \label{tab:accuracy}
+\small
 \begin{tabular}{llccccc}
     \toprule
-    Model & Reference & Params (M) & MAE & RMSE & rel-$L_2$ & max-err \\
+    Model & Reference & Params & MAE & RMSE & rel-$L_2$ & max-err \\
     \midrule
-    FFNO        & Hydrostatic & $0.411$  & $0.00066$ & $0.00163$ & $\mathbf{0.168}$ & $18.6$ \\
-    FNO         & Hydrostatic & $5.443$  & $0.00087$ & $0.00227$ & $0.235$          & $22.9$ \\
-    U-FNO       & Hydrostatic & $6.938$  & $0.00086$ & $0.00227$ & $0.235$          & $26.3$ \\
-    FNO-modes20 & Hydrostatic & $11.083$ & $0.00088$ & $0.00228$ & $0.235$          & $24.4$ \\
-    FNO-modes8  & Hydrostatic & $1.793$  & $0.00084$ & $0.00233$ & $0.241$          & $25.5$ \\
-    WNO         & Hydrostatic & $2.016$  & $0.00151$ & $0.00355$ & $0.367$          & $23.3$ \\
-    U-Net       & Hydrostatic & $0.104$  & $0.00187$ & $0.00460$ & $0.475$          & $27.4$ \\
-    CNN         & Hydrostatic & $0.045$  & $0.00236$ & $0.00588$ & $0.607$          & $29.8$ \\
+    F-FNO       & Hydrostatic & $0.411$  & $0.00123$ & $0.00247$ & $\mathbf{0.190}$ & $16.7$ \\
+    ConvLSTM    & Hydrostatic & $0.359$  & $0.00130$ & $0.00274$ & $0.211$ & $17.3$ \\
+    U-FNO       & Hydrostatic & $6.938$  & $0.00152$ & $0.00311$ & $0.238$ & $22.2$ \\
+    FNO-modes8  & Hydrostatic & $1.793$  & $0.00154$ & $0.00311$ & $0.239$ & $19.6$ \\
+    FNO-modes20 & Hydrostatic & $11.083$ & $0.00161$ & $0.00316$ & $0.242$ & $16.5$ \\
+    FNO         & Hydrostatic & $5.443$  & $0.00164$ & $0.00318$ & $0.244$ & $17.8$ \\
+    WNO         & Hydrostatic & $2.016$  & $0.00327$ & $0.00596$ & $0.458$ & $22.0$ \\
+    U-Net       & Hydrostatic & $0.104$  & $0.00371$ & $0.00681$ & $0.523$ & $20.3$ \\
+    CNN         & Hydrostatic & $0.045$  & $0.00458$ & $0.00859$ & $0.659$ & $22.6$ \\
     \midrule
-    FNO         & MUSCL-HR    & $5.443$  & $0.00119$ & $0.00281$ & $0.263$          & $22.1$ \\
-    FNO         & Boussinesq  & $5.443$  & $0.00137$ & $0.00468$ & $0.210$          & $15.9$ \\
+    FNO         & MUSCL-HR    & $5.443$  & $0.00259$ & $0.00461$ & $0.294$ & $18.4$ \\
+    FNO         & Boussinesq  & $5.443$  & $0.00381$ & $0.00817$ & $0.189$ & $8.3$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-Across references, FNO relative $L_2$ stays between $0.21$ and $0.26$. It is lowest on the Boussinesq target ($0.210$), but this ranking is unit-dependent: in denormalized benchmark-scale RMSE, the Boussinesq surrogate is the \emph{least} accurate same-solver FNO run ($0.00468$ vs $0.00227$ hydrostatic and $0.00281$ MUSCL-HR). The dimensionless relative $L_2$ and normalized-unit max-err metrics are affected by the Boussinesq target normalization scale, about $2.3 \times$ larger ($0.0221$ vs $0.0097$). We therefore avoid calling any single reference ``best'' outright: the FNO emulates all three to comparable dimensionless fidelity, while the denormalized benchmark-scale RMSE ranking favors the shallow-water targets. These are same-solver numbers, each surrogate scored against the reference it was trained on, so they measure emulation quality and are kept separate from the raw solver-vs-solver gaps in Section~\ref{subsec:res-solver-fidelity}.
+The Boussinesq FNO has the lowest relative $L_2$ among the three FNO targets but the largest denormalized benchmark-scale RMSE. This is why the reference-specific ranking must not be reduced to one number: the target scale and waveform structure differ across equation families.
+
+\paragraph{Paired scenario uncertainty.}
+The paired scenario bootstrap gives mean per-scenario relative $L_2$ values of $0.222$ ($95\%$ interval $[0.218, 0.226]$) for F-FNO, $0.272$ ($[0.266, 0.278]$) for ConvLSTM, and $0.304$ ($[0.298, 0.310]$) for FNO. Relative to FNO, the paired mean differences are $-0.082$ ($[-0.085, -0.079]$) for F-FNO and $-0.032$ ($[-0.036, -0.028]$) for ConvLSTM. Their per-scenario errors are lower than FNO on $93.2\%$ and $64.0\%$ of the test scenarios, respectively. These intervals describe variation over the fixed test scenarios for the selected checkpoints; they are not multi-seed significance claims.
+
+Relative to the base Hydrostatic FNO, F-FNO reduces the global relative $L_2$ by approximately $22\%$ while using about $7.6\%$ as many parameters. ConvLSTM reduces the same error by about $14\%$ and has the lowest final-frame error among the three models shown in Table~\ref{tab:perframe}. These results are consistent with benefits from axis-factorized global mixing and explicit temporal recurrence, respectively, but the direct architecture table uses one selected seed per configuration. The ranking should therefore be read as a controlled comparison of these runs, not as a population-level significance claim across architectures.
 
 \begin{figure}[pos=htbp]
 \centering
-\includegraphics[width=0.7\linewidth]{figures/hydrostatic_rollout.pdf}
-\caption{Single-pass FNO rollout on one hydrostatic test scenario. The top row shows de-normalized bathymetry, source, and metadata; lower rows show reference $\eta$, prediction, and denormalized benchmark-scale absolute error for early, middle, and late frames. Reference and prediction share each frame's symmetric $\eta$ scale; the changing scale reflects amplitude decay over the horizon, and late-frame error growth matches Table~\ref{tab:perframe}.}
+\includegraphics[width=0.72\linewidth]{figures/hydrostatic_rollout.pdf}
+\caption{Direct FNO prediction for common-time Hydrostatic test scenario \texttt{scenario\_000857}. Reference, prediction, and absolute error are shown at $t = 0.0035$, $0.0875$, and $0.175$. All $\eta$ panels are denormalized benchmark-scale fields.}
 \label{fig:rollout}
 \end{figure}
 
-\paragraph{Per-frame error growth.}
-The single-pass models predict all $50$ frames in one shot, but their accuracy is not uniform over the forecast horizon, as the qualitative rollout in Figure~\ref{fig:rollout} already suggests. Table~\ref{tab:perframe} reports the per-frame relative $L_2$ at the first, middle, and last frame for the FNO on each reference and for the stronger hydrostatic FFNO. On the hydrostatic target the FNO error rises over the horizon, from $0.214$ at the first frame to a peak of $0.355$ late in the rollout (around frame $38$), then eases slightly to $0.309$ at the final frame, so the last frame is somewhat below the mid-to-late peak rather than the maximum. The FFNO lowers the whole curve, from $0.135$ at the first frame to $0.273$ at the last, but its peak still rises to $0.289$, so factorization reduces rather than removes drift. On MUSCL-HR the FNO error grows more steeply and does not recover, from $0.217$ to $0.469$ at the last frame -- the worst late-horizon drift of the three. This is a limitation of a horizon-predicting surrogate: even without an explicit autoregressive feedback loop, late frames depend on longer-range propagation and accumulate more error, the same drift pattern a recurrent rollout would show. The Boussinesq FNO is the clear exception: its per-frame error is essentially flat, $0.207$ at the first frame and $0.208$ at the last (range $0.205$--$0.217$), showing no temporal drift over the horizon. We attribute this to the smoothness of the weakly dispersive elevation field discussed above rather than to a different model, and we return to the drift-targeting windowed forecaster in Section~\ref{subsec:res-window}.
+\paragraph{Per-frame behavior.}
+Table~\ref{tab:perframe} reports denormalized benchmark-scale relative $L_2$ at the first, middle, and final requested times. Hydrostatic and MUSCL-HR errors grow over the horizon. ConvLSTM has a flatter late-time curve than direct FNO, while the Boussinesq FNO stays nearly constant.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Per-frame relative $L_2$ at the first frame, the mid-horizon frame, and the last frame of the $50$-step rollout ($N = 2500$). Numbers are in normalized units. FFNO reduces hydrostatic drift but does not remove it; the Boussinesq FNO remains nearly flat.}
+\caption{Per-frame denormalized benchmark-scale relative $L_2$ on the $N = 2500$ test split.}
 \label{tab:perframe}
 \begin{tabular}{llccc}
     \toprule
-    Model & Reference & Frame $1$ & mid-horizon & frame $50$ \\
+    Model & Reference & frame $1$ & frame $25$ & frame $50$ \\
     \midrule
-    FFNO & Hydrostatic & $0.135$ & $0.264$ & $0.273$ \\
-    FNO  & Hydrostatic & $0.214$ & $0.325$ & $0.309$ \\
-    FNO  & MUSCL-HR    & $0.217$ & $0.385$ & $0.469$ \\
-    FNO  & Boussinesq  & $0.207$ & $0.206$ & $0.208$ \\
+    F-FNO    & Hydrostatic & $0.160$ & $0.225$ & $0.308$ \\
+    ConvLSTM & Hydrostatic & $0.179$ & $0.225$ & $0.242$ \\
+    FNO      & Hydrostatic & $0.215$ & $0.291$ & $0.379$ \\
+    FNO      & MUSCL-HR    & $0.228$ & $0.359$ & $0.468$ \\
+    FNO      & Boussinesq  & $0.189$ & $0.187$ & $0.199$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
 \paragraph{Physics diagnostics.}
-Table~\ref{tab:physics-diag} gives three compact physics-aware diagnostics for the hydrostatic FNO and FFNO. The free-surface integral error measures the spatial-mean $\eta$ time series, the mass proxy uses the fully wet relation $h = \eta - b$, and the spectral-band rows split trajectory error by Fourier radius. These diagnostics track where the surrogate errors live; they do not imply that either network enforces conservation. The FFNO improves all three summaries, lowering the free-surface integral relative $L_2$ from $0.190$ to $0.139$ and the mass-proxy error from $1.20 \times 10 ^ {-4}$ to $8.77 \times 10 ^ {-5}$, while both models remain weakest in the high-wavenumber band.
+F-FNO lowers the Hydrostatic integral and spectral errors relative to FNO. ConvLSTM has competitive low- and mid-frequency errors but a larger high-frequency error. These quantities diagnose where the error lies; they do not imply conservation enforcement.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Hydrostatic physics diagnostics for direct single-pass FNO and FFNO on the held-out test split. Integral diagnostics are relative $L_2$ of spatial-mean time series; spectral columns are relative $L_2$ by Fourier band.}
+\caption{Hydrostatic denormalized benchmark-scale diagnostics on the full test split. Integral columns are relative $L_2$ of spatial-mean time series; spectral columns are bandwise field relative $L_2$.}
 \label{tab:physics-diag}
 \begin{tabular}{lccccc}
     \toprule
-    Model & $\eta$ integral & mass proxy & spectral low & spectral mid & spectral high \\
+    Model & $\eta$ integral & mass proxy & low & mid & high \\
     \midrule
-    FNO  & $0.190$ & $1.20 \times 10 ^ {-4}$ & $0.220$ & $0.499$ & $0.687$ \\
-    FFNO & $0.139$ & $8.77 \times 10 ^ {-5}$ & $0.155$ & $0.452$ & $0.645$ \\
+    FNO      & $0.189$ & $1.71 \times 10 ^ {-4}$ & $0.230$ & $0.495$ & $0.494$ \\
+    F-FNO    & $0.163$ & $1.48 \times 10 ^ {-4}$ & $0.180$ & $0.465$ & $0.482$ \\
+    ConvLSTM & $0.194$ & $1.76 \times 10 ^ {-4}$ & $0.202$ & $0.447$ & $0.584$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Runtime and speedup}
+\subsection{Runtime and implementation-level speedup}
 \label{subsec:res-speed}
 
-Table~\ref{tab:speed} reports per-sample timings from a dedicated benchmarking pass, following the protocol of Section~\ref{subsec:runtime}: GPU inference time per sample for each surrogate (CUDA, fp32), CPU rollout time per sample for each reference solver (rollout only, excluding bathymetry and source generation; float64), and their ratio as the speedup. The direct surrogates infer a full $50$-frame trajectory in roughly $0.17$~ms (CNN) to $3.89$~ms (U-FNO), against CPU solver rollouts of $16$--$72$~s per sample. The resulting speedups are large, from about $8.5 \times 10 ^ {3}$ for U-FNO against the hydrostatic solver up to about $1.9 \times 10 ^ {5}$ for the CNN against the same solver.
-
-These ratios should be read as an order-of-magnitude, implementation-level comparison, not as a claim against optimized production tsunami codes. As stressed in Section~\ref{subsec:runtime}, the reference solvers are single-threaded CPU NumPy implementations chosen to be reproducible and auditable, not tuned for speed; a vectorized, compiled, or GPU solver would shrink the denominator substantially. The point is that even against an unoptimized baseline, the surrogate moves a per-scenario forecast from tens of seconds to milliseconds or less, which is the regime change that makes large ensemble or many-scenario studies practical. Among the FNO same-solver rows the speedup also tracks the cost of the target solver: the base FNO is fastest relative to MUSCL-HR ($\approx 7.99 \times 10 ^ {4}$), whose rollout is the most expensive ($72.34$~s), and slowest relative to Boussinesq ($\approx 1.82 \times 10 ^ {4}$), whose rollout is the cheapest ($16.48$~s).
+The matched reference rollouts take $2.43$~s for Hydrostatic, $3.47$~s for MUSCL-HR, and $1.44$~s for Boussinesq per sample on the local CPU. Direct GPU inference ranges from $0.138$~ms for CNN to $21.0$~ms for recurrent ConvLSTM. The corresponding implementation-level acceleration spans about $116 \times$ to $17{,}639 \times$. For the main FNO, the measured speedups are $2{,}114 \times$, $3{,}030 \times$, and $1{,}200 \times$ agaisnt Hydrostatic, MUSCL-HR, and Boussinesq, respectively.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Per-sample runtime and speedup. Surrogate inference is full-trajectory GPU time (CUDA, fp32); solver rollout is CPU time (float64) over $8$ scenarios with $3$ repeats, excluding bathymetry/source generation. Speedup is solver time divided by inference time, an implementation-level comparison with unoptimized CPU references (Section~\ref{subsec:runtime}).}
+\caption{Batch-one CUDA fp32 model time against the matched float64 CPU common-time reference rollout. Model timing uses five warm-up and twenty measured passes; each solver mean uses eight scenarios, one warm-up, and three measured repeats.}
 \label{tab:speed}
+\small
 \begin{tabular}{lccrr}
     \toprule
-    Model & Reference solver & Infer (ms) & Solver (s) & Speedup \\
+    Model & Reference & infer (ms) & solver (s) & speedup \\
     \midrule
-    FNO         & Hydrostatic & $0.904$ & $33.06$ & $36{,}564  \times$ \\
-    FFNO        & Hydrostatic & $1.664$ & $33.06$ & $19{,}873  \times$ \\
-    CNN         & Hydrostatic & $0.171$ & $33.06$ & $192{,}921 \times$ \\
-    U-Net       & Hydrostatic & $0.237$ & $33.06$ & $139{,}502 \times$ \\
-    FNO-modes8  & Hydrostatic & $0.861$ & $33.06$ & $38{,}414  \times$ \\
-    FNO-modes20 & Hydrostatic & $0.954$ & $33.06$ & $34{,}649  \times$ \\
-    U-FNO       & Hydrostatic & $3.895$ & $33.06$ & $8{,}490   \times$ \\
-    WNO         & Hydrostatic & $2.086$ & $33.06$ & $15{,}849  \times$ \\
-    FNO         & MUSCL-HR    & $0.905$ & $72.34$ & $79{,}933  \times$ \\
-    FNO         & Boussinesq  & $0.906$ & $16.48$ & $18{,}197  \times$ \\
+    FNO         & Hydrostatic & $1.150$ & $2.430$ & $2{,}114\times$  \\
+    F-FNO       & Hydrostatic & $1.513$ & $2.430$ & $1{,}606\times$  \\
+    CNN         & Hydrostatic & $0.138$ & $2.430$ & $17{,}639\times$ \\
+    U-Net       & Hydrostatic & $0.185$ & $2.430$ & $13{,}129\times$ \\
+    ConvLSTM    & Hydrostatic & $21.023$ & $2.430$ & $116\times$     \\
+    FNO-modes8  & Hydrostatic & $1.146$ & $2.430$ & $2{,}120\times$  \\
+    FNO-modes20 & Hydrostatic & $2.064$ & $2.430$ & $1{,}177\times$  \\
+    U-FNO       & Hydrostatic & $3.770$ & $2.430$ & $644\times$      \\
+    WNO         & Hydrostatic & $1.732$ & $2.430$ & $1{,}403\times$  \\
+    FNO         & MUSCL-HR    & $1.146$ & $3.473$ & $3{,}030\times$  \\
+    FNO         & Boussinesq  & $1.204$ & $1.444$ & $1{,}200\times$  \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Distribution-shift generalization}
+These values compare the study's vectorized CPU references with laptop-GPU inference. They are not speedups over operational, compiled, GPU, or adaptive-mesh solvers.
+
+\subsection{Distribution shift and sample scaling}
 \label{subsec:res-ood}
 
-Table~\ref{tab:ood} reports the hydrostatic FNO scored on the test pool grouped by source family. Following Section~\ref{subsec:generalization-protocol}, these are per-sample-then-grouped metrics, so the relative $L_2$ of a group is the mean of the per-sample values and is not directly comparable cell-for-cell with the globally aggregated number in Table~\ref{tab:accuracy}. All six families are present in the training distribution, so this is a difficult-subgroup analysis rather than a held-out-family test.
+Table~\ref{tab:ood} groups the Hydrostatic FNO by source family using means of per-scenario physical metrics. Rough sources are the hardest group ($0.384$), while the other families lie between $0.246$ and $0.329$. The bathymetry grouping similarly identifies continental fields as the hardest family ($0.365$). Because every family appears in training, these are subgroup giadnostics, not unseen-family tests.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Source-family breakdown for the hydrostatic FNO (per-sample-then-grouped, Section~\ref{subsec:generalization-protocol}). MAE is denormalized benchmark-scale; rel-$L_2$ is dimensionless; max-err is in normalized target units. rel-$L_2$ and max-err are per-sample means within the group; $n$ is the group size.}
+\caption{Hydrostatic FNO source-family subgroups. Metrics are means of per-scenario denormalized benchmark-scale values.}
 \label{tab:ood}
-\begin{tabular}{lcccc}
+\begin{tabular}{lccc}
     \toprule
-    Source family & MAE & rel-$L_2$ & max-err & $n$ \\
+    Source family & MAE & rel-$L_2$ & $n$ \\
     \midrule
-    okada-like  & $0.00112$ & $0.228$ & $3.27$ & $447$ \\
-    multi-gauss & $0.00123$ & $0.232$ & $4.75$ & $414$ \\
-    gaussian    & $0.00059$ & $0.246$ & $2.98$ & $426$ \\
-    fault       & $0.00072$ & $0.253$ & $3.30$ & $402$ \\
-    dipole      & $0.00065$ & $0.254$ & $3.13$ & $408$ \\
-    rough       & $0.00090$ & $\mathbf{0.344}$ & $3.48$ & $403$ \\
+    multi-gauss & $0.00240$ & $0.246$ & $414$ \\
+    okada-like  & $0.00216$ & $0.257$ & $447$ \\
+    fault       & $0.00140$ & $0.303$ & $402$ \\
+    gaussian    & $0.00117$ & $0.311$ & $426$ \\
+    dipole      & $0.00124$ & $0.329$ & $408$ \\
+    rough       & $0.00140$ & $\mathbf{0.384}$ & $403$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-The FNO degrades gracefully across most families: five of the six sit in a narrow $0.23$--$0.25$ band, close to the in-distribution level. The clear outlier is the \emph{rough} family ($0.344$), where the error is roughly $50\%$ higher than the easiest family. This is consistent with the spectral inductive bias: rough sources inject high-wavenumber content that the truncated low-mode spectral path cannot represent as well, so the hardest family for the FNO is plausibly the one dominated by the modes it discards, though we do not isolate this with an ablation. We note this as a property to watch rather than a failure, the worst-case family is still within the same order as the in-distribution error.
-
-We additionally evaluate three named shift suites for the hydrostatic FNO: the \texttt{multi-gauss} subset, the \texttt{trench} subset, and the high source-strength tail ($s \ge 0.82$). These give per-sample-mean relative $L_2$ of $0.232$ and $0.267$ for the first two; within the high source-strength tail the per-family error spans $0.247$--$0.345$, with the \emph{rough} family again the worst ($0.345$) and the others between $0.247$ and $0.280$. As in the same-solver breakdown, rough sources are the hardest case and sit above the in-distribution band, while the remaining families stay within or just above it. We stress that these suites are carved from the in-distribution test pool by metadata filtering, not held out from training; following the distinction in Section~\ref{subsec:generalization-protocol} they are therefore \emph{difficult-subgroup} tests, not \emph{held-out-family} tests, and are evidence of robustness within the training distribution rather than of generalization to an unseen family.
-
-Table~\ref{tab:strict-holdout} reports the stricter held-out-family stress tests. In each row the named family is removed before preprocessing, normalization statistics are refit from the filtered training split only, and the trained FNO is evaluated both on the in-distribution remainder and on the excluded family. For cross-model comparability, all values in this table are relative $L_2$ errors after reversing each checkpoint's own target standardization. The full-distribution checkpoint receives the same physical held-out inputs rebased from the filtered statistics to its original full-training input statistics before inference. Holding out \texttt{trench} is mild ($1.07 \times$ degradation over the filtered in-distribution test), \texttt{continental} and \texttt{okada-like} are moderate ($1.48 \times$ and $1.31 \times$), and \texttt{rough} sources are the clear failure mode ($2.54 \times$). The full-distribution model is more accurate than the strict model on all four held-out subsets, consistent with a benefit from having seen each family during training; this is a single-run reference comparison rather than a causal estimate of the value of one family.
+The strict holdouts are more demanding. Trench bathymetry produces only a $1.09 \times$ held-out/ID increase, while continental bathymetry and rough sources exceed $2 \times$. The full-distribution model is better on every excluded family, indicating that removing the family costs more than any benefit from specializing the normalization and training distribution. This remains a single-seed comparison and does not separate representation limits from reduced training-set diversity.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Strict held-out-family hydrostatic FNO stress tests. ID is the filtered in-distribution test remainder for the model trained without the named family; held-out is the excluded family; full model is the main FNO evaluated on the same physical held-out subset after rebasing inputs to the main model's training normalization. Relative $L_2$ values are dimensionless and computed after target denormalization so the two checkpoints are compared in one benchmark-scale space. Ratio is held-out/ID for the strict model.}
+\caption{Strict Hydrostatic FNO held-out-family tests. Values are denormalized benchmark-scale relative $L_2$ after applying the checkpoint-specific normalization bridge.}
 \label{tab:strict-holdout}
-\begin{tabular}{lcccc}
+\begin{tabular}{lccccc}
     \toprule
-    Held-out family & ID rel-$L_2$ & Held-out rel-$L_2$ & Full model rel-$L_2$ & Ratio \\
+    Held-out family & $n_{\mathrm{ID}}$ & $n_{\mathrm{HO}}$ & ID & held-out & full model / ratio \\
     \midrule
-    \texttt{trench} bathymetry      & $0.253$ & $0.272$ & $0.240$ & $1.07$ \\
-    \texttt{continental} bathymetry & $0.233$ & $0.344$ & $0.257$ & $1.48$ \\
-    \texttt{rough} source           & $0.233$ & $0.592$ & $0.365$ & $2.54$ \\
-    \texttt{okada-like} source      & $0.234$ & $0.306$ & $0.220$ & $1.31$ \\
+    \texttt{trench} bathymetry      & $2019$ & $481$ & $0.255$ & $0.279$ & $0.243$ / $1.09$ \\
+    \texttt{continental} bathymetry & $1985$ & $515$ & $0.236$ & $0.502$ & $0.302$ / $2.13$ \\
+    \texttt{rough} source           & $2097$ & $403$ & $0.247$ & $0.575$ & $0.376$ / $2.32$ \\
+    \texttt{okada-like} source      & $2053$ & $447$ & $0.242$ & $0.334$ & $0.235$ / $1.38$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Cross-resolution transfer}
+The six seed-$42$ sample-scaling runs are monotime: relative $L_2$ falls from $0.613$ with $100$ training scenarios to $0.263$ with $5{,}000$. The separately trained seed-$18$ direct FNO gives $0.244$ at $10{,}000$ samples and is plotted as a comparator rather than as a seventh point on the same-seed curve. Full values and curves are given in Appendix~\ref{app:sample-scaling}; this is a diagnostic learning curve, not a fitted scaling law.
+
+\subsection{Resolution transfer}
 \label{subsec:res-crossres}
 
-Table~\ref{tab:crossres} reports the \emph{proxy} resolution-transfer diagnostic of Section~\ref{subsec:generalization-protocol}: the same hydrostatic FNO weights are applied to the test fields resized to a target grid, with no new simulation. Because the retained Fourier-mode count is fixed while the FFT grid is rebuilt from the input size (Section~\ref{subsec:fno}), the trained operator can be evaluated at a different resolution without modification.
+The proxy Hydrostatic experiment applies the same $64 \times 64$ FNO checkpoint after resizing the processed test fields. Error rises in both directions, to $0.517$ at $32 \times 32$ and $0.398$ at $128 \times 128$.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Proxy resolution-transfer for the hydrostatic FNO ($N=2500$). The same weights are evaluated on test fields resized to each grid. MAE/RMSE are denormalized benchmark-scale metrics; rel-$L_2$ is dimensionless; max-err is in normalized target units. The $64 \times 64$ row is the native training resolution and matches Table~\ref{tab:accuracy}.}
+\caption{Proxy Hydrostatic FNO resolution transfer ($ N = 2500$). The $64 \times 64$ row is the ordinary test set.}
 \label{tab:crossres}
-\begin{tabular}{lcccc}
+\begin{tabular}{lccc}
     \toprule
-    Grid & MAE & RMSE & rel-$L_2$ & max-err \\
+    Evaluation grid & MAE & RMSE & rel-$L_2$ \\
     \midrule
-    $64\times64$ (native) & $0.00087$ & $0.00227$ & $0.235$ & $22.9$ \\
-    $32\times32$ (proxy)  & $0.00197$ & $0.00404$ & $0.420$ & $24.7$ \\
+    $32  \times 32$  proxy  & $0.00462$ & $0.00671$ & $0.517$ \\
+    $64  \times 64$  native & $0.00164$ & $0.00318$ & $0.244$ \\
+    $128 \times 128$ proxy  & $0.00310$ & $0.00517$ & $0.398$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-The operator runs at $32 \times 32$ without error and produces a coherent field, confirming the resolution-flexibility property. Accuracy degrades on the coarser grid (relative $L_2$ rising from $0.235$ to $0.420$), which is expected: downsampling to $32 \times 32$ removes the high-wavenumber content that the field carries at $64 \times 64$. This proxy is therefore only a cheap resizing diagnostic, not a like-for-like simulation-resolution result. No proxy $128 \times 128$ row is reported because the current result archive contains only the $32 \times 32$ resized proxy diagnostic; the $128 \times 128$ setting is covered by the native-resolution diagnostics below. This is exactly why Section~\ref{subsec:generalization-protocol} separates the proxy from the \emph{native} setting, where the wavefield is physically resolved at each resolution.
-
-Table~\ref{tab:crossres-native} reports the complementary native-resolution experiment: separate hydrostatic FNOs are trained and evaluated at $32 \times 32$, $64 \times 64$, and $128 \times 128$ on independently simulated fields at those grids. The split sizes are deliberately matched across resolutions, with $700$ training, $150$ validation, and $150$ test scenarios in each native dataset, and the scenario IDs are shared across the three grids. Under this smaller-data protocol the dimensionless relative $L_2$ is broadly flat, $0.35$--$0.38$, so the FNO can train and run natively at all three resolutions without a clear monotone degradation with grid size. A small data-quality caveat applies only to this native-resolution auxiliary set: during generation, the quality policy was relaxed from fail to warn for a few flagged cases so the manifest could be completed, affecting about $3$ samples at $32 \times 32$ and $19$ samples at $128 \times 128$. We therefore treat the native-resolution table as a useful diagnostic, not as a cleaner dataset than the main $64 \times 64$ benchmark where all samples have \texttt{quality\_status}~$=$~\texttt{ok}.
+The stronger native experiment uses paired MUSCL-HR simulations and three separately trained checkpoints. The diagonal errors are $0.434$, $0.501$, and $0.551$ for $32$, $64$, and $128$ grids. Off-diagonal transfer is consistently worse than or close to the corresponding diagonal, but the degradation is not a uniform collapse.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Native-resolution hydrostatic FNO accuracy. Each row uses a separate model trained and evaluated at the listed grid on the matched $700/150/150$ train/validation/test split. We report only dimensionless relative $L_2$ because absolute MAE/RMSE scales are not comparable across these native grids.}
-\label{tab:crossres-native}
-\begin{tabular}{lcc}
-    \toprule
-    Grid & Test scenarios & rel-$L_2$ \\
-    \midrule
-    $32 \times 32$   & $150$ & $0.3792$ \\
-    $64 \times 64$   & $150$ & $0.3799$ \\
-    $128 \times 128$ & $150$ & $0.3524$ \\
-    \bottomrule
-\end{tabular}
-\end{table}
-
-These native numbers should not be compared directly to the main $64 \times 64$ FNO in Table~\ref{tab:accuracy} as though only the resolution changed. The native $64 \times 64$ model here uses $700$ training scenarios and scores $0.3799$, whereas the main hydrostatic FNO uses $10{,}000$ training scenarios and scores $0.235$; the gap is therefore a data-size/protocol difference, not evidence that the $64 \times 64$ resolution itself regressed. Likewise, the native-resolution \texttt{metrics.json} files include MAE and RMSE, but we do not rank them across grids. The stored target standardization constants are shared across the three native datasets, yet the realized denormalized target RMS on the held-out split differs substantially ($0.0817$, $0.0104$, and $0.2014$ for $32 \times 32$, $64 \times 64$, and $128 \times 128$), so absolute denormalized benchmark-scale or normalized-unit errors are scale-dependent. The dimensionless relative $L_2$ is the appropriate cross-resolution summary here.
-
-We also tested whether the native models transfer zero-shot between native grids, using the same checkpoints as Table~\ref{tab:crossres-native} and only changing the target test set. Table~\ref{tab:crossres-native-transfer} shows that this is much harder than training and evaluating at the same grid. The diagonal entries reproduce the same-resolution results, while off-diagonal entries rise to $0.71$--$2.28$. The adjacent upward case $64 \rightarrow 128$ is the best off-diagonal transfer ($0.714$), but it is still roughly twice the same-resolution $128 \times 128$ error. Thus the current evidence supports native training at each grid, but not a strong claim that one native-resolution checkpoint generalizes cleanly to another physically simulated grid.
-
-\begin{table}[pos=htbp]
-\centering
-\caption{Zero-shot native-resolution transfer for hydrostatic FNO checkpoints. Rows give the training grid and columns the native evaluation grid; all checkpoints use the matched $700$-train native protocol, distinct from the main $10{,}000$-train $64 \times 64$ FNO. Entries are relative $L_2$ on the $150$-scenario test split.}
+\caption{Native MUSCL-HR FNO transfer matrix. Rows are training grids and columns are native test grids; each cell is denormalized benchmark-scale relative $L_2$ on $150$ matched scenarios.}
 \label{tab:crossres-native-transfer}
-\begin{tabular}{lcccc}
+\begin{tabular}{lccc}
     \toprule
-    Train grid & Train $N$ & Test $32 \times 32$ & Test $64 \times 64$ & Test $128 \times 128$ \\
+    Train grid & Test $32$ & Test $64$ & Test $128$ \\
     \midrule
-    $32 \times 32$   & $700$ & $0.379$ & $0.956$ & $0.911$ \\
-    $64 \times 64$   & $700$ & $1.212$ & $0.380$ & $0.714$ \\
-    $128 \times 128$ & $700$ & $2.282$ & $1.937$ & $0.352$ \\
+    $32$  & $\mathbf{0.434}$ & $0.648$ & $0.751$ \\
+    $64$  & $0.549$ & $\mathbf{0.501}$ & $0.610$ \\
+    $128$ & $0.648$ & $0.541$ & $\mathbf{0.551}$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Synthetic-to-real bathymetry transfer}
+Each native model sees only $700$ training scenarios, so the matrix should not be compared directly with the main $10{,}000$-scenario Hydrostatic model as though resolution were the only variable.
+
+\subsection{Synthetic-forcing transfer to real bathymetry}
 \label{subsec:res-real}
 
-The main real-bathymetry diagnostic uses a 10-crop GEBCO-derived morphology suite covering fully wet offshore regions including Sumatra--Java, Alaska--Aleutian, Cascadia, the Hellenic Arc/Aegean, Florida--Bahamas, the Caribbean, the Philippines east trench, Kuril--Japan, Tohoku offshore, and Nankai. The real-bathymetry diagnostic crops are derived from the GEBCO\_2026 Grid, a global ocean-and-land terrain model provided at 15 arc-second resolution \citep{gebco2026}; after cropping, they are resampled to the model's $64 \times 64$ grid and linearly rescaled to the fully wet training range $[-10,\, -0.75]$. The raw files contain bathymetry only, so each crop is paired with a synthetic initial-displacement source, advanced with the hydrostatic solver, and preprocessed with the main hydrostatic training normalization. This is therefore a synthetic-source/real-bathymetry morphology-transfer suite, not real-event validation.
+The main morphology suite contains ten GEBCO-derived fully wet crops rescaled into the training depth range and paired with synthetic sources. Direct F-FNO transfers better than direct FNO, with denormalized benchmark-scale relative $L_2$ $0.218$ versus $0.299$. The seeded window results are lower but are not like-for-like direct forecasts.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Synthetic-source transfer on the 10-crop fully wet real-bathymetry morphology suite. Direct models use static inputs; windowed models are first-target-frame-seeded diagnostics scored on the remaining $49$ predicted target frames, so they are not like-for-like with direct $50$-frame prediction. Relative $L_2$ is shown in normalized and denormalized benchmark-scale forms.}
+\caption{Real-bathymetry morphology suite under synthetic forcing. Window models receive the first true target frame and are scored on the remaining $49$ frames.}
 \label{tab:real-bath}
 \begin{tabular}{lccc}
     \toprule
-    Model & Samples & rel-$L_2$ & denorm. rel-$L_2$ \\
+    Model & Samples & normalized rel-$L_2$ & denormalized rel-$L_2$ \\
     \midrule
-    Direct FNO       & $10$ & $0.275$ & $0.271$ \\
-    Direct FFNO      & $10$ & $0.183$ & $0.179$ \\
-    Window-FNO-5     & $10$ & $0.053$ & $0.052$ \\
-    Window-FFNO-5    & $10$ & $0.039$ & $0.038$ \\
+    Direct FNO       & $10$ & $0.303$ & $0.299$ \\
+    Direct F-FNO     & $10$ & $0.221$ & $0.218$ \\
+    Window-FNO-5     & $10$ & $0.063$ & $0.062$ \\
+    Window-F-FNO-5   & $10$ & $0.051$ & $0.050$ \\
     \bottomrule
 \end{tabular}
 \end{table}
-
-FFNO improves the direct FNO on this suite from rel-$L_2 = 0.275$ to $0.183$. The windowed scores are lower (Window-FNO-5 $0.053$, Window-FFNO-5 $0.039$), but they use the first-target-frame-seeded diagnostic of Section~\ref{subsec:res-window}, are scored on the remaining $49$ predicted target frames, and are not like-for-like with direct $50$-frame prediction. We therefore claim only transfer to fully wet real bathymetric morphologies under synthetic forcing, not real-event or site-specific hazard skill. Figure~\ref{fig:real-bath} shows one illustrative Tohoku offshore crop; the coastline variants are in Appendix~\ref{app:details}.
 
 \begin{figure}[pos=htbp]
 \centering
-\includegraphics[width=0.7\linewidth]{figures/real_bathymetry_offshore.pdf}
-\caption{Synthetic-forcing morphology transfer on one GEBCO-derived Tohoku crop rescaled to $[-10,\, -0.75]$. Top: bathymetry, synthetic source, and hydrostatic reference $\eta$ at frame 49. Bottom: direct-FNO error, Window-FNO-5 error, and Window-FNO-5 $\eta$ on the reference scale. Panel rel-$L_2$ labels are single-crop trajectory scores for this illustrative case, not the 10-crop aggregate in Table~\ref{tab:real-bath}; this is not real-event validation.}
+\includegraphics[width=0.72\linewidth]{figures/real_bathymetry_offshore.pdf}
+\caption{Synthetic-forcing morphology transfer on one illustrative fully wet offshore crop. At the final requested time, the figure compares the reference field with direct-FNO and first-frame-seeded Window-FNO-5 errors. Their full-trajectory denormalized benchmark-scale relative $L_2$ values are $0.291$ and $0.038$. This is not real-event validation.}
 \label{fig:real-bath}
 \end{figure}
 
-\subsection{Solver-gap and cross-solver diagnostics}
+The fully wet coastline ablation remains usable, but the coastline stress case with positive topography gives relative $L_2$ near one for all four models. This isolates a clear scope boundary: transfer to offshore morphology does not imply shoreline or wet--dry skill.
+
+\subsection{Common-time solver gaps and cross-reference ratios}
 \label{subsec:res-solver-fidelity}
 
-Because the training solver is not itself ground truth, Section~\ref{subsec:cross-solver} separates two quantities: the raw denormalized benchmark-scale gap between two numerical references on shared scenarios, and the surrogate error of a model trained on one reference and scored against another. Table~\ref{tab:solvergap} reports the raw solver-vs-solver gaps on all $2{,}500$ shared test scenarios, in both directions for each pair. These are same-scenario, same-saved-index diagnostics on the released labels, not strict common-physical-time solver-fidelity comparisons. The two shallow-water references are close: hydrostatic versus MUSCL-HR has a mean relative $L_2$ of $0.164$ (RMSE $0.00173$). Both shallow-water references are far from the weakly dispersive Boussinesq comparison reference: hydrostatic versus Boussinesq has a mean relative $L_2$ of $0.861$ and MUSCL-HR versus Boussinesq $0.897$, an order of magnitude larger in RMSE ($\approx 0.016$--$0.017$). The reverse Boussinesq-vs-shallow-water directions give larger relative $L_2$ ($1.60$ and $1.55$). We interpret this only as directional normalization: each row divides the same symmetric difference by the norm of the row's reference field, so the two directions answer different ``relative to which reference?'' questions. The symmetric RMSE and MAE are therefore the safer scale comparisons. This gap structure is consistent with the different numerical references, but because Boussinesq has a different saved-frame physical-time scale, we do not read the cross-family rows as strict common-physical-time fidelity errors.
+The common-time Hydrostatic--MUSCL-HR gap is the smallest pairwise discrepancy. Its global field RMSE is $0.00508$, compared with $0.04425$ and $0.04540$ for the two shallow-water--Boussinesq pairs. The relative $L_2$ is directional because it divides by the second reference's norm.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Raw solver-vs-solver gaps on shared test scenarios ($N = 2500$, field $\eta$ trajectory), compared as same-scenario, same-saved-index released labels. RMSE and MAE are denormalized benchmark-scale metrics; relative $L_2$ is a per-sample mean. The relative $L_2$ is asymmetric because it normalizes by the second solver's field norm; RMSE and MAE are symmetric.}
+\caption{Common-time solver gaps on all $2500$ shared test scenarios. Scenario metrics are means with the second solver as the relative-$L_2$ reference.}
 \label{tab:solvergap}
 \begin{tabular}{llccc}
     \toprule
-    Solver pair ($A$ & vs $B$) & MAE & RMSE & rel-$L_2$ \\
+    Solver $A$ & Solver $B$ & global RMSE & mean scenario RMSE & mean rel-$L_2$ \\
     \midrule
-    Hydrostatic & MUSCL-HR    & $0.00084$ & $0.00173$ & $0.164$ \\
-    MUSCL-HR    & Hydrostatic & $0.00084$ & $0.00173$ & $0.177$ \\
-    Hydrostatic & Boussinesq  & $0.00651$ & $0.01632$ & $0.861$ \\
-    Boussinesq  & Hydrostatic & $0.00651$ & $0.01632$ & $1.603$ \\
-    MUSCL-HR    & Boussinesq  & $0.00692$ & $0.01690$ & $0.897$ \\
-    Boussinesq  & MUSCL-HR    & $0.00692$ & $0.01690$ & $1.548$ \\
+    Hydrostatic & MUSCL-HR   & $0.00508$ & $0.00418$ & $0.371$ \\
+    Hydrostatic & Boussinesq & $0.04425$ & $0.03561$ & $1.024$ \\
+    MUSCL-HR    & Boussinesq & $0.04540$ & $0.03666$ & $1.057$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Emulator-superiority ratios.}
-Table~\ref{tab:superiority} reports the emulator-superiority ratio of Section~\ref{subsec:cross-solver},
-\[
-    \rho(A \rightarrow B) =
-    \frac{\mathrm{RMSE}(f_\theta ^ A,\, \mathrm{ref}\, B)}
-         {\mathrm{RMSE}(\mathrm{ref}\, A,\, \mathrm{ref}\, B)} .
-\]
-The numerator is the denormalized benchmark-scale RMSE of a surrogate trained on reference $A$ and scored against the targets of a \emph{different} reference $B$; the denominator is the raw $A$-vs-$B$ solver gap. Because all three references are generated on the same scenarios with identical input channels (Section~\ref{subsec:res-dataset}), a surrogate can be evaluated against another reference's targets without distribution shift in its inputs. A value $\rho<1$ would mean the surrogate is closer to $B$ than $A$'s own solver is.
-
-Across all four cross-reference pairs the ratio exceeds one. Within the shallow-water family the hydrostatic-trained FNO scored against MUSCL-HR gives $\rho = 1.98$ and the MUSCL-HR-trained FNO against hydrostatic gives $\rho = 1.76$: the two shallow-water solvers already agree closely (Table~\ref{tab:solvergap}, gap $0.00173$), so the surrogate's own emulation error is larger than the small reference gap it would have to beat. For the cross-family pairs the Boussinesq-trained FNO scored against the hydrostatic and MUSCL-HR targets gives $\rho=1.33$ in both cases: although the raw cross-family solver gap is an order of magnitude larger ($\approx 0.016$), the Boussinesq surrogate's error \emph{on the shallow-water targets} ($\approx 0.022$) is larger still, because those targets are governed by physics it was not trained on. The consistent reading is that the emulator is not ``superior'' to the numerical reference in any of these pairs: a surrogate reproduces the solver it was trained on far better than it reproduces a different solver, and the cross-solver reference gap is not something the present surrogate closes. We regard this as a negative diagnostic outcome rather than a shortfall of the method.
+Table~\ref{tab:superiority} reports all six cross-reference directions. The two shallow-water directions remain above one. Several cross-family directions lie only slightly below one, and Hydrostatic $\rightarrow$ Boussinesq is statistically indistinguishable from one at the reported precision. The below-one values are small benchmark-relative shifts, not evidence that the surrogate becomes a more accurate physical model.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Emulator-superiority ratios from Section~\ref{subsec:cross-solver}. RMSE$_f$ is the cross-reference surrogate error and RMSE$_{AB}$ is the raw solver-gap denominator from Table~\ref{tab:solvergap}. Values $\rho<1$ would indicate surrogate superiority; all rows give $\rho>1$.}
+\caption{Cross-reference discrepancy ratio $\rho$ with $95\%$ scenario-bootstrap intervals. Values below one mean closer to the second numerical reference in global RMSE, not physical superiority.}
 \label{tab:superiority}
-\begin{tabular}{llccc}
+\begin{tabular}{llcc}
     \toprule
-    Surrogate (trained on $A$) & vs ref $B$ & RMSE$_{f}$ & RMSE$_{AB}$ & $\rho$ \\
+    Surrogate trained on & Compared with & $\rho$ & $95\%$ CI \\
     \midrule
-    FNO (Hydrostatic) & MUSCL-HR    & $0.00343$ & $0.00173$ & $1.98$ \\
-    FNO (MUSCL-HR)    & Hydrostatic & $0.00305$ & $0.00173$ & $1.76$ \\
-    FNO (Boussinesq)  & Hydrostatic & $0.02174$ & $0.01632$ & $1.33$ \\
-    FNO (Boussinesq)  & MUSCL-HR    & $0.02241$ & $0.01690$ & $1.33$ \\
+    Hydrostatic & MUSCL-HR   & $1.265$ & $[1.248,\,1.285]$ \\
+    MUSCL-HR    & Hydrostatic& $1.121$ & $[1.096,\,1.145]$ \\
+    Hydrostatic & Boussinesq & $0.999$ & $[0.998,\,1.000]$ \\
+    MUSCL-HR    & Boussinesq & $0.997$ & $[0.996,\,0.999]$ \\
+    Boussinesq  & Hydrostatic& $0.985$ & $[0.973,\,0.996]$ \\
+    Boussinesq  & MUSCL-HR   & $0.985$ & $[0.973,\,0.997]$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Normalization check.}
-The cross-reference diagnostic checks both the target denormalization signature and the input-channel normalization statistics between the prediction dataset and the reference dataset. For all four pairs the input-channel signature check passes: the bathymetry and source channels share identical normalization statistics across the prediction and reference datasets (the \texttt{initial\_depth} channel is in stored scale on both sides), so the surrogate sees inputs on the same scale it was trained on. The target denormalization is applied separately to prediction and reference using each dataset's own stored statistics, so the denormalized benchmark-scale numerator and denominator are each well defined in their native scale. The ratios are therefore reported as direct denormalized benchmark-scale comparisons, and the qualitative conclusion ($\rho>1$ throughout) is unaffected.
+\subsection{Gauge, arrival, and peak diagnostics}
+\label{subsec:res-wave}
 
-\subsection{Windowed autoregressive forecaster}
-\label{subsec:res-window}
-
-To target the per-frame drift of the single-pass models (Table~\ref{tab:perframe}), we train windowed FNO and FFNO variants on the hydrostatic reference that forecast the trajectory autoregressively in blocks of $K = 5$ frames: from an input stack $[\,\text{bathymetry},\, \text{source},\, \eta_t,\, \eta_{t - 1}\,]$ each model predicts the next five frames, then re-conditions on its own last two predicted frames and advances, covering the $50$-frame horizon in ten chunks. This trades one long-horizon prediction for several short-horizon ones at the cost of an autoregressive feedback loop.
-
-Table~\ref{tab:window} compares the windowed models against their direct single-pass counterparts on the hydrostatic test split. The windowed rows are first-target-frame-seeded diagnostics scored on the remaining $49$ predicted target frames, not like-for-like direct $50$-frame predictions. Window-FNO-5 reaches a full-trajectory relative $L_2$ of $0.077$, against $0.235$ for the single-pass FNO. Window-FFNO-5 is lower again at $0.052$ (denormalized benchmark-scale rel-$L_2 = 0.0513$), compared with $0.168$ for the direct FFNO. The same drift pattern remains: the windowed FFNO starts at $0.030$ and rises to $0.169$ by the final predicted frame, so it reduces but does not eliminate temporal accumulation.
+Table~\ref{tab:wave-metrics} summarizes nine virtual gauges per scenario. Hydrostatic and MUSCL-HR have similar median waveform errors and small median arrival errors among eligible gauges. Boussinesq has a much larger waveform tail and far fewer arrival-eligible gauges: $22{,}132$ of $22{,}500$ target gauges are already active at the first requested time, and two additional eligible gauges have no predicted threshold crossing. The resulting $366$ compared arrivals describe only the remaining eligible subset.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Windowed versus direct hydrostatic models on the test split ($N = 2500$). Params are in millions; full-traj is global relative $L_2$; per-frame columns are relative $L_2$ at the first scored prediction, mid horizon, and final frame. Direct models predict all $50$ target frames from static inputs; windowed models are first-target-frame-seeded diagnostics scored on the remaining $49$ predicted target frames, so the tasks are not like-for-like. Inference time is per sample on GPU.}
-\label{tab:window}
+\caption{FNO virtual-gauge diagnostics. Arrival errors use only eligible target gauges; time values are normalized benchmark-time units.}
+\label{tab:wave-metrics}
 \small
-\begin{tabular}{lcccccc}
-    \toprule
-    Model & Params (M) & full-traj & first scored & mid & final & infer (ms) \\
-    \midrule
-    Direct FNO       & $5.443$ & $0.235$ & $0.214$ & $0.325$ & $0.309$ & $0.90$ \\
-    Direct FFNO      & $0.411$ & $0.168$ & $0.135$ & $0.264$ & $0.273$ & $1.66$ \\
-    Window-FNO-5     & $5.439$ & $0.077$ & $0.051$ & $0.130$ & $0.172$ & $11.1$ \\
-    Window-FFNO-5    & $0.407$ & $\mathbf{0.052}$ & $\mathbf{0.030}$ & $\mathbf{0.105}$ & $\mathbf{0.169}$ & $21.6$ \\
-    \bottomrule
-\end{tabular}
-\end{table}
-
-Two caveats are essential for a fair reading. First, the comparison is not strictly like-for-like: the windowed rollout is a \emph{first-target-frame-seeded diagnostic} and its metrics are computed over the remaining $49$ predicted target frames, whereas the direct models predict all $50$ target frames from the static inputs alone with no seed. Part of the windowed models' advantage at early frames therefore reflects the easier, partially observed task; the late-frame improvement is more informative but still not a clean direct-task comparison. Second, the windowed models are slower because they run ten sequential forward passes: Window-FNO-5 costs $11.1$~ms and Window-FFNO-5 costs $21.6$~ms per sample. Window-FFNO-5 is much smaller than Window-FNO-5 ($0.407$M vs $5.439$M parameters), but it is slower in this implementation, so parameter count should not be read as measured throughput. Even so, they remain orders of magnitude faster than the CPU hydrostatic reference. We also do not compute the emulator-superiority ratio for the windowed models, because their seeded numerator would be a different task from the single-pass surrogate used in Section~\ref{subsec:res-solver-fidelity}.
-
-On the 10-crop real-bathymetry morphology suite of Section~\ref{subsec:res-real}, the same seeded pattern holds: Window-FNO-5 reaches rel-$L_2 = 0.053$ and Window-FFNO-5 reaches $0.039$, compared with $0.275$ and $0.183$ for their direct counterparts. These are again first-target-frame-seeded diagnostics scored on the remaining $49$ predicted target frames, not like-for-like direct $50$-frame predictions. In the appendix coastline ablation, the fully wet coastline remains easy for the windowed models, while the wet-dry version fails, so we treat the wet-dry stress result as a limitation rather than evidence for the main transfer claim. We additionally score Window-FNO-5 on the same distribution-shift and native-resolution suites used for the single-pass FNO, with the same first-target-frame-seeded caveat applied throughout. The native-resolution result differs: Window-FNO-5 is trained only at $64 \times 64$, so evaluating the same checkpoint at other native grids is a zero-shot resolution transfer. At its training resolution it scores $0.076$ (in line with the main test split), but it fails when transferred zero-shot to $32 \times 32$ ($1.101$) and $128 \times 128$ ($0.828$), mirroring the single-pass zero-shot transfer collapse in Table~\ref{tab:crossres-native-transfer}. We therefore report the windowed cross-resolution result only as a same-resolution number plus an explicit zero-shot-transfer failure, not as a native-resolution training claim. Full per-suite numbers are tabulated in the appendix (Table~\ref{tab:app-window-suites}).
-
-\subsection{Uncertainty}
-\label{subsec:res-uncertainty}
-
-We quantify predictive uncertainty with a deep ensemble of $M = 7$ hydrostatic FNOs that differ only in random seed (seeds $11$, $22$, $33$, $44$, $55$, $66$, $77$), following the protocol of Section~\ref{subsec:uncertainty}. Table~\ref{tab:uncertainty} reports two complementary raw diagnostics: the empirical coverage of uncalibrated central Gaussian prediction intervals at four nominal levels, and the Pearson correlation between the per-element predictive standard deviation and the absolute error, on the in-distribution test split and on the three distribution-shift suites.
-
-\begin{table}[pos=htbp]
-\centering
-\caption{Ensemble uncertainty diagnostics for the hydrostatic FNO ($M = 7$). Coverage is raw empirical central-interval coverage before scalar calibration (ideal $0.50$/$0.80$/$0.90$/$0.95$); err--unc.\ is the Pearson correlation between predictive standard deviation and absolute error. The first row is the full $N = 2500$ test split; others are distribution-shift suites.}
-\label{tab:uncertainty}
+\setlength{\tabcolsep}{3pt}
 \begin{tabular}{lccccc}
     \toprule
-    Suite & cov$_{50}$ & cov$_{80}$ & cov$_{90}$ & cov$_{95}$ & err--unc.\ \\
+    Reference & \shortstack{waveform NRMSE\\median / p95} & \shortstack{compared\\arrivals} & \shortstack{arrival abs.\\median} & \shortstack{peak abs.\\median} & \shortstack{time-to-peak\\median} \\
     \midrule
-    In-distribution             & $0.463$ & $0.700$ & $0.782$ & $0.832$ & $0.646$ \\
-    \texttt{multi-gauss} subset & $0.398$ & $0.630$ & $0.721$ & $0.780$ & $0.658$ \\
-    \texttt{trench} subset      & $0.488$ & $0.725$ & $0.804$ & $0.851$ & $0.648$ \\
-    high source-strength tail   & $0.376$ & $0.589$ & $0.673$ & $0.728$ & $0.700$ \\
+    Hydrostatic & $0.105$ / $0.343$ & $7262$ & $0.0035$ & $0.00249$ & $0.00175$ \\
+    MUSCL-HR    & $0.118$ / $0.350$ & $9051$ & $0.0070$ & $0.00371$ & $0.00175$ \\
+    Boussinesq  & $0.346$ / $4.409$ & $366$  & $0.0455$ & $0.00147$ & $0.0315$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-Two findings stand out. First, the raw ensemble is \emph{overconfident}: empirical coverage remains below the nominal level at every interval, with the nominal $95\%$ interval capturing $83\%$ of in-distribution targets and $73$--$85\%$ under shift. Thus the uncalibrated Gaussian intervals built from ensemble variance are too narrow and should not be read as calibrated probabilities. Second, and more positively, the error--uncertainty correlation is stable and moderately strong across all settings ($0.65$--$0.70$), and is highest on the high source-strength tail ($0.700$). So even though the raw scale of the uncertainty is miscalibrated, its \emph{spatial structure} tracks where the model is actually wrong, which is the property that matters for flagging untrustworthy regions of a prediction.
+The pixelwise arrival maps give mean per-scenario eligible-pixel absolute differences of $0.72$, $1.09$, and $0.18$ requested-time indices for Hydrostatic, MUSCL-HR, and Boussinesq, respectively. These values average scenario-level errors rather than pooling all eligible cells, and their valid-arrival fractions differ strongly ($0.55$, $0.72$, and $0.21$). The map errors should therefore not be ranked without both the aggregation rule and eligibility context.
 
-The behavior under shift is mixed. Raw coverage does not improve uniformly under distribution shift, and on the high source-strength tail the normalized Gaussian negative log-likelihood is worse than in distribution ($-0.22$ versus $-1.91$), meaning the variance still fails to grow enough to match the larger errors in that tail. The \texttt{trench} bathymetry suite is the one raw case where coverage edges above the in-distribution level, but not enough to reach the nominal targets. Appendix~\ref{app:add-result-tab} reports the full reliability/calibration diagnostic: a validation-only scalar variance inflation ($\gamma = 3.359364$) improves marginal coverage on the in-distribution test split and some OOD suites, while the hardest high source-strength tail remains under-covered. We therefore treat these as reliability diagnostics rather than calibrated risk estimates: the ensemble produces a useful relative ranking of where error concentrates, and the post-hoc correction improves interval scale, but per-element marginal coverage over correlated pixels and frames is not operational risk calibration.
+\subsection{Seeded window forecasts}
+\label{subsec:res-window}
+
+The window models receive the first true target frame and predict the remaining $49$ frames in ten sequential chunks of up to five frames. They are conditional drift diagnostics rather than replacements for the direct task. Window-F-FNO-5 gives the lowest full-trajectory error, while Window-FNO-5 is about twice as fast in this implementation.
+
+The conditioning changes both the magnitude and shape of the error curve. Window-F-FNO-5 is better over the full scored trajectory, but its final-frame relative $L_2$ ($0.134$) is slightly above Window-FNO-5 ($0.121$). Thus the factorized model's aggregate advantage does not imply uniform dominance at every forecast time, and neither window result measures a cold-start forecast.
+
+\begin{table}[pos=htbp]
+\centering
+\caption{Direct and seeded-window Hydrostatic models. Full-trajectory relative $L_2$ is computed after denormalization to benchmark scale; per-frame values are normalized because the window evaluation records that curve before target denormalization.}
+\label{tab:window}
+\small
+\begin{tabular}{lccccc}
+    \toprule
+    Model & full-traj & first scored & middle & final & infer (ms) \\
+    \midrule
+    Direct FNO       & $0.244$ & $0.217$ & $0.288$ & $0.350$ & $1.15$ \\
+    Direct F-FNO     & $0.190$ & $0.161$ & $0.223$ & $0.284$ & $1.51$ \\
+    Window-FNO-5     & $0.064$ & $0.032$ & $0.087$ & $0.121$ & $11.21$ \\
+    Window-F-FNO-5   & $\mathbf{0.053}$ & $0.022$ & $0.076$ & $0.134$ & $21.73$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Ensemble uncertainty and seed stability}
+\label{subsec:res-uncertainty}
+
+The raw seven-member ensemble is under-dispersed. On the ordinary test split, raw coverage is $0.419$, $0.654$, $0.742$, and $0.798$ for nominal $50\%$, $80\%$, $90\%$, and $95\%$ intervals. The error--uncertainty correlation is $0.562$, indicating useful but only moderate spatial ranking.
+
+A validation-only variance multiplier $\gamma = 3.981$ (standard-deviation scale $1.995$) raises test $90\%$ coverage from $0.742$ to $0.920$. It also improves the multi-Gaussian subgroup from $0.664$ to $0.888$ and trench from $0.748$ to $0.924$, while the high-strength tail remains under-covered at $0.821$.
+
+\begin{table}[pos=htbp]
+\centering
+\caption{Seven-member FNO ensemble reliability. Coverage is marginal over correlated pixels and frames.}
+\label{tab:uncertainty}
+\begin{tabular}{lcccc}
+    \toprule
+    Suite & $n$ & err--unc.\ corr. & raw cov$_{90}$ & scaled cov$_{90}$ \\
+    \midrule
+    Validation & $1000$ & $0.563$ & $0.740$ & $0.916$ \\
+    Test & $2500$ & $0.562$ & $0.742$ & $0.920$ \\
+    \texttt{multi-gauss} subgroup & $414$ & $0.531$ & $0.664$ & $0.888$ \\
+    \texttt{trench} subgroup & $481$ & $0.533$ & $0.748$ & $0.924$ \\
+    high-strength subgroup & $180$ & $0.613$ & $0.594$ & $0.821$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+Across the seven individual seeds, the mean per-scenario relative $L_2$ ranges from $0.288$ to $0.306$, with member mean $0.297$ and standard deviation $0.0074$. This is evidence of stability for the Hydrostatic FNO ensemble only; it is not a replicated multi-architecture matrix.
+
+Variance inflation improves interval scale but does not make the ensemble uniformly calibrated. The corrected test coverage is close to nominal at $90\%$, while the high-strength subgroup remains almost ten percentage points below nominal. Together with the moderate error--uncertainty correlation, this supports using ensemble spread as a relative warning signal within the benchmark rather than as a calibrated hazard probability.

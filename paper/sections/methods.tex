@@ -1,63 +1,75 @@
 \section{Problem formulation and evaluation protocol}
 \label{sec:methods}
 
-This section defines the supervised forward-emulation problem and the evaluation protocol used throughout the benchmark. The data-generation details are described in Section~\ref{sec:data-generation}; the model architectures and optimization choices are described separately in Sections~\ref{sec:models} and~\ref{sec:training}. Here, the emphasis is on the mathematical object being learned, the numerical references that define the labels, and the metrics used to decide whether a surrogate is accurate, fast, robust, and scientifically interpretable.
+This section defines the supervised task, numerical references, validation boundaries, and evaluation metrics. Data construction is described in Section~\ref{sec:data-generation}; model and optimization details are given in Sections~\ref{sec:models} and~\ref{sec:training}.
 
 \subsection{Forward emulation task}
 \label{subsec:forward-task}
-Let $\Omega=[0, 1]^2$ denote the normalized two-dimensional computational domain and let $[H, W]$ be the grid resolution. Each scenario contains a bathymetry field $b\in\mathbb{R}^{H \times W}$, a raw stored source template $q \in\mathbb{R}^{H \times W}$, and an initial water-depth field $h_0 \in\mathbb{R}^{H \times W}$. The bathymetry convention is
-\[
-b(x, y) < 0 \quad \text {for submerged cells},
-\]
-so the still-water depth used by the data generator is
-\[
-h_{\mathrm{rest}}(x, y) = \max\{-b(x, y) + \eta_{\mathrm{sea}},\, 0\},
-\]
-where $\eta_{\mathrm{sea}}$ is the configured sea-level offset. The sampled \texttt{source\_strength} multiplier $s$ converts the raw source template into the scaled initial free-surface perturbation
-\[
-\eta_0(x, y) = s\, q(x, y),
-\]
-and the shallow-water initial depth is clipped to remain non-negative,
-\[
-h_0(x, y) = \max\{h_{\mathrm{rest}}(x, y) + \eta_0(x, y),\, 0\}.
-\]
-The stored initial free surface is therefore $h_0 + b$, which equals $\eta_0$ away from the clipping region.
 
-The default supervised input tensor stacks the active spatial channels
+Let $\Omega=[0,1]^2$ be the normalized two-dimensional publication domain. Each scenario contains bathymetry $b$, a raw source template $q$, and initial water depth $h_0$. The convention is $b<0$ for submerged cells, giving
 \[
-X = [\,b,\, q,\, h_0\,] \in\mathbb{R}^{C \times H \times W},
+h_{\mathrm{rest}}(x, y) = \max\{-b(x, y) + \eta_{\mathrm{sea}}, 0\}.
 \]
-with C = 3 for the main single-solver experiments. Thus the default source input is the raw template $q$, not the scaled perturbation $\eta_0$; the raw archives store \texttt{eta0} and \texttt{free\_surface0} separately for diagnostics and optional channels. The preprocessing code also supports optional initial-surface and solver-identity channels, but these are not part of the default single-reference FNO configuration. For a numerical reference solver $r$, the target is a future free-surface trajectory
+With sampled source-strength multiplier $s$,
 \[
-Y_r = [\,\eta_r(t_1),\, \eta_r(t_2),\, \ldots,\, \eta_r(t_T)\,] \in\mathbb{R}^{T \times H \times W}.
+\eta_0(x, y) = s\, q(x, y), \qquad
+h_0(x, y) = \max\{h_{\mathrm{rest}}(x, y) + \eta_0(x, y), 0\}.
 \]
-The initially stored frame is not used as a prediction target. With the default rollout settings the solver is advanced for $250$ updates and stores states with solver-step indices $0, 5, 10, \ldots, 250$, giving $51$ saved frames per rollout. For the adaptive-CFL shallow-water references, these saved frames are indexed rollout snapshots with recorded timestamps, not values interpolated onto a shared physical-time grid. Preprocessing then discards the initial frame and keeps $T = 50$ future frames as the multi-step forecast target.
-
-A surrogate model $f_\theta$ is trained to approximate the solver-conditioned operator
+The default supervised input is
 \[
-f_\theta : X \mapsto \widehat{Y}_r \approx{Y_r}
+X = [\, b, q, h_0\,] \in\mathbb{R} ^ {3 \times H \times W}.
 \]
+The source channel is the raw template $q$ rather than the scaled perturbation $\eta_0$; both quantities remain available in the raw provenance.
 
-The labels are produced by three numerical references on the same scenario design: a hydrostatic-reconstruction finite-volume solver, a MUSCL-HR finite-volume solver, and a Boussinesq-type weakly dispersive solver. Hydrostatic reconstruction is the primary reference used to anchor the benchmark, while MUSCL-HR and Boussinesq are comparison references with different numerical assumptions. The Boussinesq solver evolves the free surface directly, so its target $\eta$ is read from the surface state rather than reconstructed from depth; the supervised input, however, uses the same $C=3$ channel stack in the current pipeline.
+For numerical reference $r$, the target is
+\[
+Y_r = [\,\eta_r(t_1), \ldots, \eta_r(t_{50})\,]
+\in\mathbb{R} ^ {50 \times 64 \times64},
+\]
+where
+\[
+t_k = 0.0035k, \qquad k = 1, \ldots1, 50.
+\]
+The final requested time is $0.175$ in normalized benchmark-time units. The initial state at $t=0$ is not a target. These coordinates and times define a benchmark-scale problem; no conversion to a particular ocean-basin length or dimensional event duration is implied.
 
-\subsection{Numerical reference formulation}
+\subsection{Common-time extraction and buffered domain}
+\label{subsec:common-time-extraction}
+
+Each reference advances on its own natural time sequence $\tau_r ^ 0 < \tau_r ^ 1 < \cdot s$. The shallow-water steps adapt to the evolving state, whereas the Boussinesq step is CFL-selected once from the fixed depth field of each scenario and remains constant within that rollout. For a requested time $t_k$ bracketed by two adjacent natural states, $\tau_r ^ n < t_k < \tau_r ^ {n + 1}$, the extraction weight is
+\[
+\lambda_{r, k} = \frac{t_k - \tau_r ^ n}{\tau_r ^ {n + 1} - \tau_r ^ n},
+\qquad 0 < \lambda_{r, k} < 1,
+\]
+and the published state is
+\[
+\widetilde{Z}_r (t_k) = (1 - \lambda_{r, k}) Z_r ^ n + \lambda_{r, k} Z_r ^ {n + 1}.
+\]
+For the shallow-water references, $Z = [h, hu, hv] ^ \top$ and the free surface is then recovered using the time-independent bathymetry; for Boussinesq, $\eta$ is already part of the evolved state. If $t_k$ exactly equals a natural time, the corresponding state is copied without interpolation. Several requested times may fall inside one natural-step interval, but every output is formed only from that adjacent pair.
+
+The interpolation is performed in float64 before the publication frame is case to float32. It is output-only: interpolated states are never fed back into the time integrator, so the natural solver trajectory is unchanged. For each published frame, the generator records the bracketing times, interpolation weight, bracked width, exact-knot status, and natural-step index. This design prevents the cross-reference time mismatch that would arise from solver-step-indexed sampling while retaining solver-specific natural stepping, It does not remove the interpolation approximation or make the three governing models equivalent.
+
+The central publication domain contains $64 \times 64$ cells with $\Delta x = \Delta y = 1/64$. Numerical integration is performed on $96 \times 96$ cells at the same spacing, adding 16 cells around every side rather than refining the reported region. Bathymetry is extended by its edge values into the buffer, and the source is tapered over the outer eight buffer cells. Only the central crop enters the learning target. The buffer and elapsed-time sponge reduce direct boundary exposure over the finite horizon, but they do not establish a generally non-reflecting boundary condition.
+
+A surrogate $f_\theta$ approximates the solver-conditioned operator
+\[
+f_\theta: X \mapsto \widehat{Y}_r \approx Y_r.
+\]
+Hydrostatic reconstruction is the primary reference. MUSCL-HR is a second shallow-water reference, and Boussinesq is an exploratory weakly dispersive comparison reference.
+
+\subsection{Numerical references}
 \label{subsec:numerical-reference-formulation}
 
-The shallow-water references evolve the conservative state
+The shallow-water references evolve
 \[
-U = [\,h,\, hu,\, hv\,]^\top,
+U = [\, h, hu, hv \,] ^ \top, \qquad \eta = h + b,
 \]
-where $h$ is the water depth and $(hu, hv)$ are the depth-integrated momenta. The free surface is reconstructed as
-\[
-\eta = h + b.
-\]
-Ignoring the boundary terms, the two-dimensional shallow-water equations with bathymetry source terms can be written as
+under
 \[
 \partial_t U + \partial_x F(U) + \partial_y G(U) = S(U, b),
 \]
-with fluxes
+with
 \[
-F(U) = 
+F(U) =
 \begin{bmatrix}
     hu \\[2pt]
     \dfrac{(hu) ^ 2}{h} + \dfrac{1}{2}gh ^ 2 \\[6pt]
@@ -70,9 +82,7 @@ G(U) =
     \dfrac{hu\, hv}{h} \\[6pt]
     \dfrac{(hv) ^ 2}{h} + \dfrac{1}{2}gh ^ 2
 \end{bmatrix},
-\]
-and the bathymetry source term
-\[
+\qquad
 S(U, b) =
 \begin{bmatrix}
     0 \\
@@ -80,130 +90,202 @@ S(U, b) =
     -gh\, \partial_y b
 \end{bmatrix}.
 \]
-In the implementation the divisions by $h$ use dry-cell protection and momentum clipping, to avoid numerical overflow near the nearly dry cells.
+Here $h$ is water depth, $hu$ and $hv$ are the two depth-integrated discharges, and $u = hu/h$, $v = hv/h$ wherever the cell is wet. The numerical unknowns are cell averages. Divisions use a minimum positive depth, and cells at or below the configured dry tolerance have zero momentum. Although the common-time scenarios are designed to remain fully wet, retaining these safeguards makes loss of positivity a detectable numerical failure rather than an undefined velocity.
 
-Both shallow-water references use finite-volume updates of the form
-\[
-U_{i, j} ^ {\,n + 1} = U_{i, j} ^ {\,n}
-- \frac{\Delta t}{\Delta x} \left(\mathcal{F}_{i + 1/2,\, j} - \mathcal{F}_{i - 1/2,\, j}\right)
-- \frac{\Delta t}{\Delta y} \left(\mathcal{G}_{i,\, j + 1/2} - \mathcal{G}_{i,\, j - 1/2}\right)
-+ \Delta t\, S_{i, j},
-\]
-where $\mathcal{F}$ and $\mathcal{G}$ are the numerical interface fluxes. The base interface flux is a Rusanov flux,
-\[
-\mathcal{F}(U_L, U_R) = \frac{1}{2}\left(F(U_L) + F(U_R)\right) - \frac{1}{2}\,\alpha_x\left(U_R - U_L\right),
-\]
-with local wave-speed estimate
-\[
-\alpha_x = \max\!\left\{|u_L| + \sqrt{g h_L},\; |u_R| + \sqrt{g h_R}\right\},
-\]
-and an equivalent $y$-direction speed using $v$. This choice is diffusive compared with sharper Riemann solvers, but it is robust and suitable for controlled dataset generation \citep{toro2009riemann,toro2026rusanov}.
+All spatial coordinates, depths, elevations, velocities, and times in these equations are benchmark quantities rather than SI measurements for a particular ocean basin. The resolved numerical coefficients are $g = 9.81$, dry tolerance $10 ^ {-6}$, and maximum safeguarded velocity $30$ in those benchmark units. The choice of the familiar numerical value for $g$ does not by itself define a dimensional length--time mapping.
 
-Because the scheme is explicit, the time step is not free: an explicit finite-volume update is only stable when the information does not travel more than one cell per step, which is the Courant--Friedrichs--Lewy (CFL) condition. We therefore do not fix $\Delta t$ in advance but choose it adaptively at every step from the current state, using the same characteristic speed $|U| + \sqrt{gh}$ that appears in the Rusanov flux,
+Both references use finite-volume updates with Rusanov-type interface fluxes,
 \[
-\Delta t = \mathrm{CFL} \cdot \left[\,\max \! \left\{\frac{\max\{|u| + \sqrt{gh}\}}{\Delta x},\; \frac{\max\{|v| +  \sqrt{gh}\}}{\Delta y} \right\} \right] ^ {-1},
-\]
-where the maxima are taken over the whole grid and the target CFL number is $\mathrm{CFL} = 0.45$ in the default configuration. Adapting $\Delta t$ this way keeps the rollout stable when a large initial displacement temporarily increases the wave speed, while still taking the largest safe step elsewhere; this matters for a benchmark, because an over-large fixed step would let unstable samples enter the training labels.
-
-The hydrostatic-reconstruction solver modifies the left and right water depths at each face before computing the Rusanov flux. For an interface with bed elevations $b_L$ and $b_R$, it sets
-\[
-z ^ \star = \max\{b_L, b_R\}, \qquad
-h_L ^ \star = \max\{0,\, h_L + b_L - z ^ \star\}, \qquad
-h_R ^ \star = \max\{0,\, h_R + b_R - z ^ \star\}.
-\]
-These reconstructed states preserve nonnegative water depth and help to balance the flux-gradient and bed-slope terms for stationary water over uneven bathymetry \citep{audusse2004hydrostatic}. In this well-balanced formulation the bathymetry source $S$ is absorbed into the reconstructed face fluxes rather than added as a separate term, so the $\Delta t\, S_{i, j}$ contribution above is schematic for the hydrostatic solver; the MUSCL-HR solver instead applies an explicit, centered discretization of the same source after its slope-limited reconstruction. The MUSCL-HR solver uses the same hydrostatic face idea but reconstructs $h$, $\eta$, $u$ and $v$ with minmod-limited slopes before face update, followed by a two-state Heun update. This gives a less diffusive second-order comparison reference while retaining the lake-at-rest safeguards needed for tsunami-like bathymetry \citep{clain2016secondorder, hou2015muscl}.
-
-The third numerical reference is a Boussinesq-type comparison solver. We include it because the shallow-water equations above are non-dispersive: all long waves travel according to the local depth-dependent speed, but the model does not represent the weak frequency dispersion that can matter for shorter components of a tsunami-like disturbance. The implementation is not a full nonlinear coastal Boussinesq model. It is an elevation-only, linear, weakly dispersive approximation used as an additional reference beside Hydrostatic and MUSCL-HR.
-
-In the variable-depth mode used here, the unknown is the free-surface elevation $\eta$ and its time derivative $\eta_t$. If the dispersive correction is removed, the model reduces to the familiar linear long-wave surface equation
-\[
-\eta_{tt} = g\, \nabla \cdot(H \nabla \eta),
-\]
-where $H$ is the still-water depth. The implemented Boussinesq form modifies this by solving for the acceleration $a_\eta = \eta_{tt}$ through a Helmholtz-type linear system,
-\[
-\left(I - \alpha_B\, \nabla \cdot(H ^ 2 \nabla)\right) a_\eta = g\, \nabla \cdot(H \nabla \eta),
+\mathcal{F}(U_L, U_R) = \frac{1}{2}\left(F(U_L) + F(U_R)\right) - \frac{1}{2} \alpha_x(U_R - U_L),
 \]
 where
 \[
-H(x, y) = \max\!\left\{(-b(x, y) + \eta_{\mathrm{sea}})\, s_H,\; H_{\min}\right\}
+\alpha_x = \max\!\left\{|u_L| + \sqrt{gh_L},\, |u_R| + \sqrt{gh_R}\right\},
 \]
-is the effective depth used inside this solver. The factor $s_H$ is an implementation parameter used only for auxiliary diagnostics; in the shared dataset reported here, we use $s_H = 1$. The lower bound $H_{\min}$ prevents zero or near-zero depth from making the operator singular or badly conditioned. In the main configuration $H_{\min} = 10^{-4}$, $\alpha_B = 1/3$, and the same normalized bathymetry convention as the shallow-water solvers is used.
+and similarly in $y$ \citep{toro2009riemann,toro2026rusanov}. Schematically, the cell update is
+\[
+U_{i,j} ^ {n + 1} = U_{i, j} ^ {n} - \frac{\Delta t}{\Delta x}
+\left(\mathcal{F}_{i + 1/2, j} - \mathcal{F}_{i - 1/2, j}\right)
+- \frac{\Delta t}{\Delta y}
+\left(\mathcal{G}_{i, j + 1/2} - \mathcal{G}_{i, j - 1/2}\right)
++ \Delta t\,S_{i, j},
+\]
+with the well-balanced source treatment incorporated differently by the two schemes. The Rusanov dissipation uses the largest local gravity-wave characteristic speed crossing each face. It is deliberately simple and robust: the principal difference between the two shallow-water references comes from their reconstruction and time integration, not from changing the approximate Riemann solver.
 
-The coefficient $\alpha_B$ controls the strength of the weakly dispersive correction. When $\alpha_B = 0$, the left hand side becomes just $a_\eta$, so the update is just the non-dispersive linear long-wave equation written above. A positive $\alpha_B$ makes the acceleration depend on a spatial solve involving $H ^ 2 \nabla a_\eta$, which is the part that gives this reference its weakly dispersive character. We set $\alpha_B = 1/3$, matching the solver default, and treat it as a fixed model choice rather than a fitted physical parameter. The linear system is applied matrix-free and solved with conjugate gradients, so the implementation never forms a dense matrix; the rollout is then advanced with a velocity-Verlet step, which updates $\eta$ and $\eta_t$ using accelerations at the start and end of the step. This gives the benchmark a weakly dispersive comparison reference beside the two shallow-water references, while still keeping Hydrostatic as the main solver and without treating any numerical reference as real-ocean truth.
+The shallow-water adaptive step is
+\[
+\Delta t = c_r\left[\max\!\left\{\frac{\max(|u| + \sqrt{gh})}{\Delta x}, \frac{\max(|v| + \sqrt{gh})}{\Delta y} \right\} \right] ^ {-1},
+\]
+where $c_r = 0.1125$ for Hydrostatic and $c_r = 0.225$ for MUSCL-HR. The wave speeds and therefore $\Delta t$ are recomputed from every natural state. The final step crossing a requested output time is not shortened to land on that time; instead, the two natural states continue to bracket the request and the output-only interpolation of Section~\ref{subsec:common-time-extraction} is applied.
 
-\subsection{Reference-solver health and consistency checks}
+\paragraph{Hydrostatic reconstruction reference.}
+The primary reference uses cell-centered states without piecewise-linear slope reconstruction and advances them with one explicit finite-volume update per natural step. At a face, hydrostatic reconstruction replaces the two depths by
+\[
+z ^ \star = \max\{b_L, b_R\}, \qquad
+h_L ^ \star = \max\{0, h_L + b_L - z ^ \star\}, \qquad
+h_R ^ \star = \max\{0, h_R + b_R - z ^ \star\},
+\]
+which preserves nonnegative depth and lake-at-rest balance \citep{audusse2004hydrostatic}. The reconstructed momenta retain the velocities of their originating cells, while side-specific pressure corrections account for the portion of the hydrostatic pressure removed by the depth reconstruction. This couples the topographic source and flux difference at the same interface rather than adding an unrelated centered approximation of $-gh\nabla b$. The method is intentionally the more diffusive, first-order reference: it provides a finite-volume, well-balanced baseline against which the higher-order shallow-water labels can be compared.
+
+\paragraph{MUSCL-HR reference.}
+MUSCL-HR reconstructs $h$, $\eta = h + b$, $u$, and $v$ independently in each coordinate direction. For a scalar cell field $q$, the production limiter is the componentwise minmod slope
+\[
+s_i = \operatorname{minmod}(q_i - q_{i - 1},\, q_{i + 1} - q_i),
+\qquad
+q_i ^ \pm = q_i \pm\frac{1}{2}s_i.
+\]
+Slopes are set to zero when the one-sided differences change sign, suppressing new extrema; consequently, the scheme is second order in smooth monotone regions but locally reverts toward first order near extrema or sharp changes. Reconstructed depths are clipped to be nonnegative, face velocities are bounded by the same safety limit used by the quality policy, and face bathymetry is recovered consistently as $b ^ \pm = \eta ^ \pm - h ^ \pm$. Hydrostatic reconstruction and the same Rusanov flux are then applied to these face states \citep{clain2016secondorder,hou2015muscl}.
+
+Each Euler stage also includes the reconstructed-bed momentum source
+\[
+S_{hu} = -\frac{g}{2}(h_E + h_W)\frac{b_E - b_W}{\Delta x},
+\qquad
+S_{hv} = -\frac{g}{2}(h_N + h_S)\frac{b_N - b_S}{\Delta y},
+\]
+where the directional states are the limited reconstructions associated with the current cell. This term is applied before the Heun stage average and works with the hydrostatic face corrections to retain the intended topographic balance.
+
+Time integration uses the two-stage Heun from. If $\Phi_{\Delta t}(U)$ denotes one limited finite-volume Euler update, then
+\[
+U ^ {(1)} = \Phi_{\Delta t}(U ^ n),\qquad
+U ^ {n + 1} = \frac{1}{2} U ^ n +
+\frac{1}{2}\Phi_{\Delta t}\!\left(U ^ {(1)}\right).
+\]
+Positivity and dry-momentum projections are checked after the stage updates and after the final average. Thus MUSCL-HR differs from the primary reference in both its piecewise-linear spatial representation and its two-stage temporal update; it is not merely the same solver evaluated at a larger CFL value.
+
+\paragraph{Weakly dispersive Boussinesq comparison.}
+The Boussinesq comparison evolves surface elevation and its time derivative, $[\eta, \eta_t] ^ \top$, rather than depth and discharge. Its linear variable-depth form solves
+\[
+\left(I - \alpha_B \nabla \cdot(H ^ 2 \nabla)\right) a_\eta = g \nabla \cdot(H \nabla \eta),
+\]
+where
+\[
+H(x, y) = \max\!\left\{(-b(x, y) + \eta_{\mathrm{sea}}) s_H, H_{\min}\right\}.
+\]
+We use $\alpha_B = 1/3$, $s_H = 1$, and $H_{\min} = 10 ^ {-4}$. Spatial gradients and variable-coefficient divergences are represented by centered second-order finite differences with depth coefficients averaged to cell faces. For fixed bathymetry, the dispersive mass operator on the left-hand side is unchanged throughout a rollout. Its face coefficients and sparse factorization are therefore cached, and each matrix-free conjugate-gradient acceleration solve uses the cached sparse-LU factor as a preconditioner. The relative residual tolerance is $10 ^ {-10}$ with at most $750$ iterations per solve.
+
+Two acceleration solves form one velocity-Verlet step:
+\[
+\eta ^ {n + 1} = \eta ^ n + \Delta t\, \eta_t ^ n + \frac{1}{2}\Delta t ^ 2a_\eta ^ n,
+\qquad
+\eta_t ^ {n + 1} = \eta_t ^ n + \frac{\Delta t}{2} \left(a_\eta ^ n + a_\eta ^ {n + 1} \right).
+\]
+The production path fails the sample if either solve does not meet its residual tolerance; a nonconverged iterate is not retained as a label. For each fixed bathymetry, the natural step is selected from the maximum shallow long-wave speed,
+\[
+\Delta t = \frac{0.35}{\sqrt{g\max(H)}\left(\Delta x ^ {-1} + \Delta y ^ {-1}\right)}.
+\]
+This is an elevation-only linear weakly dispersive comparison, not a full nonlinear coastal Boussinesq model. It is included to create a controlled equation-family contrast, not because it is assumed to be more accurate than the shallow-water references.
+
+\paragraph{Boundaries, damping, and shared scope.}
+The shallow-water references use bathymetry-aware linearized radiation states at all four outer edges. The outgoing free-surface characteristic is continued through the face around the local rest depth, while the tangential velocity is carried from the adjacent interior cell. This treatment reduces direct reflection for small outgoing waves but is not an exact non-reflecting condition for nonlinear, oblique, or strongly heterogeneous propagation. The Boussinesq comparison instead uses open zero-gradient scalar boundaries.
+
+All three references additionally use the same 16-cell cosine sponge in the outer computational buffer. If $D(x, y) \in [0.8, 1]$ is the reference mask and $\Delta t_{\mathrm{ref}} = 0.0035$, a natural step applies $D ^ {\Delta t/\Delta t_{\mathrm{ref}}}$. Consequently, two trajectories covering the same elapsed time receive approximately the same cumulative damping even when their natural step sizes or counts differ. The shallow-water sponge damps momentum and free-surface displacement about rest depth; the Boussinesq sponge damps $\eta$ and $\eta_t$. The Boussinesq production filter is disabled. Across all three references, the benchmark omits Coriolis acceleration, bottom friction, moving bathymetry, and event-specific forcing after initialization.
+
+\subsection{Numerical verification and validation scope}
 \label{subsec:reference-validation}
 
-As health and consistency checks for the reference solvers used for dataset generation, we run a small series of numerical tests before generation. These checks screen for basic implementation failures and unstable labels; they are not substitutes for grid/time-step convergence studies, independent solver benchmarks, or event-scale validation against observations.
+The numerical-label contract was assessed before the final surrogate analysis through five complementary forms of evidence:
 
-\paragraph{Lake at rest.} A well-balanced shallow-water solver should preserve a stationary free surface over non-uniform bathymetry. We therefore initialize a fully submerged, spatially varying bathymetry with zero surface elevation, $\eta_0(x,y) = 0$, and zero momentum, $hu(x,y) = hv(x,y) = 0$. Since $\eta = h + b$, this corresponds to an initial water depth $h_0(x,y) = -b(x,y)$. Both the hydrostatic and MUSCL-HR solver are advanced for many adaptive-CFL time steps with the sponge damping disabled. We consider the lake-at-rest condition preserved when the maximum free-surface drift stays below $10^{-8}$ and the maximum absolute momentum stays below $10^{-7}$. This property matters over long rollouts, because a solver that slowly drifts from rest would inject a spurious signal into every training label.
+\begin{enumerate}[leftmargin=2.2em]
+    \item \textbf{Input identity:} all $13{,}500$ scenario definitions were checked for split-qualified identity, array equality, horizon coverage, and exact reuse across the three references.
+    \item \textbf{Internal verification:} analytical-wave, lake-at-rest, conservation, spatial/temporal sensitivity, requested-output, boundary/sponge, dispersive, health, and deterministic-replay checks were run with thresholds fixed before evaluation.
+    \item \textbf{Independent comparison:} matched analytical and small production-like cases were compared with GeoClaw/Clawpack. The analytical and refinement checks passed, but most exploratory production-like comparisons exceeded their descriptive limits. The external solver is therefore an independent comparator, not automatic truth or evidence of pointwise equivalence.
+    \item \textbf{Generation-path checks:} the exact buffered-domain, adaptive-step, interpolation, and quality-screening path was exercised on cases separate from the implementation checks.
+    \item \textbf{Independent sensitivity set:} additional training-pool cases, excluded from the earlier diagnostic selections, tested the fixed production/reference CFL pairs, time extraction, health criteria, and replay consistency.
+\end{enumerate}
 
-\paragraph{Dynamic finite-state behavior.} Lake at rest only checks the trivial equilibrium, so we additionally run dynamic rollouts from non-trivial initial displacements and confirm that the state remains finite and bounded over the full horizon. This guards against late time blow-up or oscillations that look stable for a few steps and then produce non-finite values near the dry cells.
+Decision thresholds and case selections were fixed before the corresponding outcomes were inspected. Validation and test scenarios used to evaluate the surrogates were not used to tune these numerical gates. The full chain was repeated under a fixed source revision before the reported model evaluation. Passing it supports the implemented finite-horizon label contract; it does not establish observed-event validity, shoreline accuracy, generally non-reflecting boundaries, or equivalence with an operational tsunami code.
 
-\paragraph{Quality status.} During generation each rollout is screened by the quality policy, which records whether the trajectories contain non-finite values, depth below tolerance, or excessive surface amplitude and velocity. For the Boussinesq solver, the same health record also checks the free-surface-to-depth ratio and whether the conjugate-gradient acceleration solve converged. The outcome is written into the per-sample metadata as a quality status. This status also makes accepted samples explicitly identifiable during dataset construction, avoiding unnecessary recomputation.
+Each mass-generation rollout must additionally pass finiteness, positivity/depth, amplitude, velocity, sanitization, projection, clipping, post-step CFL, and, where relevant, conjugate-gradient checks. Rejected or incompatible outputs are not silently reused.
 
-\subsection{Evaluation metrics}
+\subsection{Field and physics metrics}
 \label{subsec:eval-metrics}
 
-For field accuracy, we report the mean absolute error (MAE), root-mean-squared error, the relative $L2$ error, and maximum absolute error over the predicted trajectory. Writing  $y$ for the reference frames and $\widehat{y}$ for the prediction, and letting $k$ index all elements of the $T \times H \times W$ trajectory tensor with $N$ entries in total,
+For field accuracy, with $k$ indexing every element of the trajectory,
 \[
-\mathrm{MAE} = \frac{1}{N}\sum_{k} \lvert \widehat{y}_k - y_k \rvert,
+\mathrm{MAE} = \frac{1}{N}\sum_k | \widehat{y}_k - y_k |,
 \qquad
-\mathrm{RMSE} = \sqrt{\frac{1}{N}\sum_{k} (\widehat{y}_k - y_k)^2},
+\mathrm{RMSE} = \sqrt{\frac{1}{N} \sum_k(\widehat{y}_k - y_k) ^ 2},
 \]
 \[
-\mathrm{rel}\,L_2 = \frac{\lVert \widehat{y} - y \rVert_2}{\lVert y \rVert_2},
+\mathrm{rel}\, L_2 = \frac{\|\widehat{y} - y \|_2}{\| y \|_2},
 \qquad
-\mathrm{max\text{-}err} = \max_{k} \lvert \widehat{y}_k - y_k \rvert .
+\mathrm{max\text{-}err}=\max_k | \widehat{y}_k - y_k |.
 \]
+MAE, RMSE, and the headline relative $L_2$ are computed after reversing target normalization. Main-table max-err remains in normalized target units unless marked physical.
 
-Unless otherwise stated, MAE and RMSE are computed after reversing the target normalization, so that those errors are reported in denormalized benchmark-scale surface-elevation units. The relative $L_2$ error is dimensionless. The max-err values in the main tables are tracked with the same aggregation logic but are reported in normalized target units unless a caption explicitly marks them as denormalized or physical; this maximum remains a useful proxy for local worst-case behavior and for time-stepping stability.
+For a full split, the underlying sums are accumulated before reduction, giving one global relative $L_2$ and one global maximum, Metadata subgroup tables instead compute per-scenario metrics first and then average within the group. These two aggregations answer different questions and are labelled separately.
 
-When we aggregate these metrics over a whole evaluation split, we accumulate the underlying sums across every sample first and only reduce at the end, instead of averaging the per-batch numbers. Concretely we keep a running total of $\sum_k \lvert \widehat{y}_k - y_k \rvert$, $\sum_k (\widehat{y}_k - y_k) ^ 2$, and $\sum_k y_k ^ 2$ over the full split, and track a single running maximum for max-err. This matters because the relative $L_2$ is a ratio of norms and the max-err is a maximum, so averaging them batch-by-batch would not give the true split-level value: a batch-averaged max-err in particular only reports the mean of the per-batch maxima and therefore understates the real worst case. Computing them from the accumulated sums means the reported rel\, $L_2$ and max-err are the genuine dataset-level quantities, and they no longer depend on the batch size used at evaluation time.
+For the selected single-seed Hydrostatic architecture comparison, we also use a paired nonparametric bootstrap: one shared index draw resamples the same $2{,}500$ scenario identities $2{,}000$ times with seed $20260814$. We report mean per-scenario denormalized relative $L_2$ and paired differences from FNO. These are test-scenario intervals for fixed checkpoints, not training-seed uncertainty or population-level architecture rankings.
 
-For distribution-shift evaluation the metrics are computed per sample first and then grouped by metadata, using the source type, the bathymetry type, the source-strength range, or the reference solver. Computing per-sample errors before grouping avoids letting a few large scenarios dominate a suite average. Note that this is deliberately a different aggregation from the split-level accumulation described above: here the relative $L_2$ and max-err of a group are the mean of the per-sample values, not a single global ratio or global maximum, so the two kinds of table should not be compared cell-for-cell. In addition to the field metrics above, we report a set of frequency-band and conserved-quantity diagnostics in the appendix, following the metric design of PDEBench \citep{takamoto2022pdebench}; these are useful for separating low and high-wavenumber error, which is relevant when the surrogate is a spectral operator.
+Per-frame relative $L_2$ uses the same norm ratio after restricting the tensors to one requested time. Physics diagnostics additionally use the spatial means
+\[
+\overline{\eta}(t) = \frac{1}{HW}\sum_{i, j}\eta_{i, j}(t),
+\qquad
+\overline{h}(t) = \frac{1}{HW}\sum_{i, j}\bigl(\eta_{i, j}(t) - b_{i, j}\bigr),
+\]
+where $\overline{h}$ is a fully wet mass proxy rather than an independently conserved model output. Spectral error is computed from orthonormal two-dimensional FFT coefficients in radial wavenumber bands $\kappa \leq 8$, $8 < \kappa \leq 16$, and $\kappa > 16$:
+\[
+E_{\mathcal{B}} = \frac{\|\mathcal{M}_{\mathcal{B}}\mathcal{F}(\widehat{Y} - Y)\|_2}{\|\mathcal{M}_{\mathcal{B}}\mathcal{F}(Y)\|_2}.
+\]
+These diagnostics localize error in integral and spectral structure; none of the neural models enforces a conservation law.
 
-\subsection{Generalization and resolution-transfer protocol}
+\subsection{Generalization and resolution transfer}
 \label{subsec:generalization-protocol}
 
-The metadata-filtered suites whose composition is described in Section~\ref{sec:data-generation} are evaluated under a fixed protocol. For each suite we score the trained checkpoint on the held-out samples using the same per-sample-then-grouped metrics as above, so that an in-distribution number and an out-of-distribution number are always produced by the identical pipeline and differ only in the scenarios that are included. We distinguish two cases that are easy to conflate. A \emph{difficult-subgroup} test keeps a family in the training distribution but reports the error on a metadata-selected subset of the test pool, while a \emph{held-out-family} test removes that family from the training split entirely before preprocessing and only then evaluates it. We label each suite by which of the two it is, because only the second is evidence of generalization to an unseen family.
+Metadata-filtered suites select \texttt{multi-gauss}, \texttt{trench}, or source strength $s \ge 0.82$ from the ordinary test set. These are difficult subgroups within the training support, not unseen-family OOD datasets. The strict tests remove one bathymetry or source family before preprocessing and training, refit normalization on the filtered training set, and evaluate the excluded family separately. When a checkpoint is applied to data standardized with another training distribution, the inputs are first restored with the dataset statistics and then re-standardized with the checkpoint's training statistics. Predictions and targets are finally compared after target denormalization in one benchmark-scale space.
 
-For resolution transfer we keep two settings separate. The \emph{proxy} setting resizes the $64 \times 64$ test fields to a target grid and evaluates the same checkpoint on the resized inputs; it is a cheap diagnostic and does not involve any new simulation, so it is not a like-for-like simulation-resolution result. The \emph{native} setting instead evaluates the checkpoint on data that were independently generated and simulated at $32 \times 32$ and $128 \times 128$, which is the stronger test because the wavefield at each resolution is physically resolved rather than interpolated. Cross-resolution comparison is only meaningful when the target normalization is controlled, so we adopt a strict policy: a native-resolution suite is accepted only when its target normalization statistics match the reference statistics of the training distribution, and a transfer claim that mixes incompatible statistics is rejected rather than silently reported. This prevents a change of feature scaling from being mistaken for genuine resolution generalization.
+The proxy resolution diagnostic resizes the processed Hydrostatic test fields to $32 \times 32$ or $128 \times 128$ and applies the same $64 \times 64$ checkpoint. The native experiment instead uses paired MUSCL-HR simulations at $32$, $64$, and $128$ resolution. Three checkpoints are trained separately, and the full train-grid/test-grid matrix is evaluated. Each target dataset is rebased into the checkpoint's training normalization before inference.
 
 \subsection{Runtime benchmarking}
 \label{subsec:runtime}
 
-The numerical reference solvers are timed using their CPU NumPy rollout implementations, excluding the bathymetry and source generation, so the denominator reflects only the forward integration. The neural surrogate is timed on CPU and, when available, the GPU. For every measurement we record the device, the batch size, the numerical precision label, and the TF32 back-end state, and on GPU we synchronize the device before and after timing so that asynchronous kernel launches are not counted as zero. Each configuration uses a short warmup and is then repeated several times, and we report the per-sample time and throughput in samples per second. The speedup is computed as
+The numerical references are timed on CPU using the exact common-time $96 \times 96$ rollout and central-crop contract, excluding bathymetry and source generation. These are vectorized NumPy/SciPy implementations. Each reference timing uses eight fixed scenarios, one warm-up pass, and three measured repeats. Surrogates are timed on the RTX 4050 Laptop GPU in fp32 at batch size one, with TF32 disabled, five warm-up passes, twenty measured passes, and device synchronization around timing. The implementation-level speedup is
 \[
 \mathrm{speedup} =
-\frac{\text{reference-solver rollout time per sample}}
+\frac{\text{reference rollout time per sample}}
     {\text{surrogate inference time per sample}}.
 \]
+Loading the stored scenario, preparing the buffered inputs, and constructing the solver are recorded separately from the rollout denominator. The comparison therefore measures the repeated forward task under stated hardware, not end-to-end hazard-system latency. The denominator is not a compiled, GPU, adaptive-mesh, or operational tsunami solver.
 
-We stress that these speedups are implementation-level comparisons under the reported hardware, and not universal comparisons against optimized production-grade tsunami solvers. The CPU NumPy references are reproducible and easy to audit, but they are not tuned for speed, so the numbers should be read as a relative indication and not as an absolute performance claim.
-
-\subsection{Cross-solver and emulator-superiority analysis}
+\subsection{Cross-reference discrepancy}
 \label{subsec:cross-solver}
 
-Because the training solver is not itself the ground truth, we separate two different quantities. The first is the raw solver-vs-solver gap, that is the denormalized benchmark-scale difference between two numerical references evaluated on the same shared scenarios at matching saved-frame indices. The second is the surrogate error of a model trained on one reference and compared against another. Keeping these apart is important, since a surrogate can look poor only because the two reference solvers themselves disagree. These are released-label, same-scenario, same-saved-index diagnostics, not strict common-physical-time solver-fidelity measurements.
-
-Following the neural emulator-superiority idea \citep{koehler2026emulator}, we also report a ratio that compares a surrogate trained on reference $A$ against a second reference $B$.
+The raw solver gap compares two numerical references on the same scenarios and requested times. A second diagnostic compares a surrogate trained on reference $A$ with reference $B$:
 \[
-\rho =
-\frac{\operatorname{Err}\!\left(f_\theta ^ {A},\; \mathrm{ref}\,B \right)}
-     {\operatorname{Err}\!\left(\mathrm{ref}\, A,\; \mathrm{ref}\,B \right)},
+\rho(A \rightarrow B) = 
+\frac{\mathrm{RMSE}(f_\theta ^ A, \mathrm{ref}\, B)}
+     {\mathrm{RMSE}(\mathrm{ref}\, A, \mathrm{ref}\, B)}.
 \]
-where the error is a denormalized benchmark-scale metric evaluated on the same scenarios with separate denormalization for the prediction and target. A value $\rho < 1$ would mean that the emulator trained on $A$ is in fact closer to $B$ than its own training solver $A$ is. We only report this ratio when the prediction and target denormalization, and the input normalization statistics, are compatible, because otherwise the scale comparison is not meaningful. The hydrostatic, MUSCL-HR, and Boussinesq references are generated on the same scenario IDs, so raw solver-vs-solver field gaps can be computed for all pairs. The emulator-superiority ratio is treated as a main result for the hydrostatic/MUSCL-HR pair because those are the two shallow-water references; Boussinesq is reported as a weakly dispersive comparison reference for the same benchmark rather than as physical truth or an automatic upgrade.
+All terms use the global denormalized benchmark-scale RMSE, and confidence intervals use 2,000 scenario bootstrap resamples. A value $\rho < 1$ means that the surrogate is closer to reference $B$ in this benchmark metric than reference $A$ is. Without observational truth or a stronger physical reference, this is not evidence of physical superiority.
+
+\subsection{Gauge, arrival, and peak diagnostics}
+\label{subsec:wave-metrics}
+
+We evaluate nine fixed virtual gauges arranged on a $3 \times 3$ interior grid. For target waveform $y_g(t_k)$ and prediction $\widehat{y}_g(t_k)$, the waveform normalized RMSE is
+\[
+\mathrm{NRMSE}_g = \frac{\sqrt{T ^ {-1} \sum_k \bigl(\widehat{y}_g(t_k) - y_g(t_k) \bigr) ^ 2}}{\max_k | y_g(t_k) |}.
+\]
+Gauges with target amplitude at or below $10 ^ {-12}$ are excluded from waveform NRMSE and relative-peak summaries and counted as inactive, avoiding division by a numerically zero target. The gauge-arrival threshold is $10\%$ of the target gauge's maximum absolute amplitude and is never changed by the prediction. A target gauge that never crosses the threshold is inactive; one already active at $t_1$ is excluded because the true arrival occurred before the observed window. An eligible gauge is compared only if the prediction also crosses the threshold, and missing predicted arrivals are counted separately. Peak elevation is the maximum signed surface value. To reduce one-frame instability in the time-to-peak metric, all times within $1\%$ of the target or predicted peak-to-trough range are treated as a plateau and averaged.
+
+A separate arrival-map diagnostic uses a single target-only threshold equal to $10\%$ of the sample-wide maximum absolute target elevation, applies it at every pixel, and reports requested-frame index differences only where both prediction and target cross. Its eligibility fraction is reported together with the error. The summary first computes mean absolute index error over the eligible pixels of each scenario and then averages those scenario values; it does not pool all eligible pixels into one global reduction. These are normalized-domain virtual-observation diagnostics, not comparisons with measured coastal gauges.
 
 \subsection{Uncertainty quantification}
 \label{subsec:uncertainty}
 
-Point accuracy alone does not tell a user when a surrogate is likely to be wrong, which matters for any hazard-oriented application. We therefore estimate predictive uncertainty with a deep ensemble of $M$ independently trained models that differ only in their random seed \citep{lakshminarayanan2017deepensembles}. For an input $X$ the members produce predictions $\{\widehat{Y} ^ {(m)}\}_{m = 1} ^ {M}$, and we form the ensemble mean and the per element predictive variance
+A seven-member FNO ensemble differs only in seed. For member predictions $\widehat{Y} ^ {(m)}$,
 \[
 \bar{Y} = \frac{1}{M}\sum_{m = 1} ^ {M}\widehat{Y} ^ {(m)},
 \qquad
-\sigma ^ 2 = \frac{1}{M}\sum_{m = 1} ^ {M}\left(\widehat{Y} ^ {(m)} - \bar{Y}\right) ^ 2
+\sigma ^ 2 = \frac{1}{M}\sum_{m = 1} ^ {M}\left(\widehat{Y} ^ {(m)} - \bar{Y}\right) ^ 2.
 \]
-where $\bar{Y}$ is used as a prediction and $\sigma$ as the uncertainty. A single member gives a degenerate zero variance, so we require $M \ge 2$ and use $M = 7$ in the reported experiment.
-
-We assess the quality of this uncertainty in two ways. First, we measure whether the uncertainty tracks the actual error through the Pearson correlation between the per-element predictive standard deviation $\sigma$ and the absolute error $\lvert \bar{Y} - Y \rvert$; a useful uncertainty should be larger where the error is larger. Second, we check calibration by treating each prediction as Gaussian with mean $\bar{Y}$ and standard deviation $\sigma$ and measuring the empirical coverage of central prediction intervals at several nominal levels, together with the Gaussian negative log-likelihood. A well-calibrated model should have an empirical coverage close to the nominal level, for example about $90\%$ of targets inside the nominal $90\%$ interval. We additionally report these uncertainty metrics on the distribution-shift suites of Section~\ref{subsec:eval-metrics}, since a trustworthy uncertainty should grow under distribution shift rather than stay falsely confident. We interpret these as reliability diagnostics and do not claim formally calibrated risk.
+For a central Gaussian interval with nominal coverage $p$, we use
+\[
+\bar{Y}\pm z_p\sigma,
+\qquad
+z_p = \sqrt{2}\, \operatorname{erf} ^ {-1}(p).
+\]
+We report empirical coverage and the Pearson correlation between $\sigma$ and $| \bar{Y} - Y |$. Because the raw ensemble is under-dispersed, one scalar variance factor is estimated on validation elements only:
+\[
+\gamma = \max\!\left\{1,\, \frac{1}{N_{\mathrm{val}}} \sum_k\frac{(Y_k - \bar{Y}_k) ^ 2}{\max(\sigma_k ^ 2, \varepsilon)} \right\}.
+\]
+The calibrated interval replaces $\sigma$ by $\sqrt{\gamma}\sigma$ and applies the same factor unchanged to test and subgroup suites. Coverage is marginal over correlated pixels and frames, so these are interval-scale reliability diagnostics rather than calibrated event probabilities.

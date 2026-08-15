@@ -4,7 +4,7 @@
 \usepackage{enumitem}
 \usepackage{xurl}
 \usepackage{tikz}
-\usepackage{float}
+\usepackage{placeins}
 \usetikzlibrary{arrows.meta, positioning, calc, fit}
 
 \begin{document}
@@ -42,10 +42,10 @@
 \input{sections/abstract}
 
 \begin{highlights}
-\item A common-time benchmark separates surrogate error from reference-solver effects.
-\item Three numerical references are evaluated on identical synthetic scenarios.
-\item Replicated neural surrogates are compared under matched training protocols.
-\item Solver and distribution-shift diagnostics support robust evaluation.
+\item Fifty shared requested times align all three numerical-reference targets.
+\item Reference choice changes solver gaps and the error scale seen by surrogates.
+\item Selected single-seed comparisons favor F-FNO and ConvLSTM on Hydrostatic labels.
+\item Real-bathymetry and uncertainty tests reveal useful but limited transfer.
 \end{highlights}
 
 \begin{keywords}
