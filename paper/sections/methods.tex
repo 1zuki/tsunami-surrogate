@@ -6,7 +6,7 @@ This section defines the supervised task, numerical references, validation bound
 \subsection{Forward emulation task}
 \label{subsec:forward-task}
 
-Let $\Omega=[0,1]^2$ be the normalized two-dimensional publication domain. Each scenario contains bathymetry $b$, a raw source template $q$, and initial water depth $h_0$. The convention is $b<0$ for submerged cells, giving
+Let $\Omega = [0, 1] ^ 2$ be the normalized two-dimensional publication domain. Each scenario contains bathymetry $b$, a raw source template $q$, and initial water depth $h_0$. The convention is $b < 0$ for submerged cells, giving
 \[
 h_{\mathrm{rest}}(x, y) = \max\{-b(x, y) + \eta_{\mathrm{sea}}, 0\}.
 \]
@@ -24,18 +24,18 @@ The source channel is the raw template $q$ rather than the scaled perturbation $
 For numerical reference $r$, the target is
 \[
 Y_r = [\,\eta_r(t_1), \ldots, \eta_r(t_{50})\,]
-\in\mathbb{R} ^ {50 \times 64 \times64},
+\in\mathbb{R} ^ {50 \times 64 \times 64},
 \]
 where
 \[
-t_k = 0.0035k, \qquad k = 1, \ldots1, 50.
+t_k = 0.0035k, \qquad k = 1, \ldots, 50.
 \]
 The final requested time is $0.175$ in normalized benchmark-time units. The initial state at $t=0$ is not a target. These coordinates and times define a benchmark-scale problem; no conversion to a particular ocean-basin length or dimensional event duration is implied.
 
 \subsection{Common-time extraction and buffered domain}
 \label{subsec:common-time-extraction}
 
-Each reference advances on its own natural time sequence $\tau_r ^ 0 < \tau_r ^ 1 < \cdot s$. The shallow-water steps adapt to the evolving state, whereas the Boussinesq step is CFL-selected once from the fixed depth field of each scenario and remains constant within that rollout. For a requested time $t_k$ bracketed by two adjacent natural states, $\tau_r ^ n < t_k < \tau_r ^ {n + 1}$, the extraction weight is
+Each reference advances on its own natural time sequence $\tau_r ^ 0 < \tau_r ^ 1 < \cdots$. The shallow-water steps adapt to the evolving state, whereas the Boussinesq step is CFL-selected once from the fixed depth field of each scenario and remains constant within that rollout. For a requested time $t_k$ bracketed by two adjacent natural states, $\tau_r ^ n < t_k < \tau_r ^ {n + 1}$, the extraction weight is
 \[
 \lambda_{r, k} = \frac{t_k - \tau_r ^ n}{\tau_r ^ {n + 1} - \tau_r ^ n},
 \qquad 0 < \lambda_{r, k} < 1,

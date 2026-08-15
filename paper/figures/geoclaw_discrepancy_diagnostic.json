@@ -1,0 +1,199 @@
+{
+  "bundle_hash": "3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460",
+  "canaries": [
+    {
+      "case_hash": "612a4d1936e8a75e13452069b41834d9d3d21cc73c5f86f19ab2d261fce12902",
+      "case_id": "production_input_canaries_train_scenario_000002",
+      "input_fingerprint": "6cd7d36197d0f194cda5600e75c6b41701e076eda408cd21199d25690675e71c",
+      "qualified_id": "train:scenario_000002"
+    },
+    {
+      "case_hash": "8fd0cf36a1ff80f4453dd6cf1560113e465f570e38b2d16b6e15ac07809136ea",
+      "case_id": "production_input_canaries_train_scenario_000008",
+      "input_fingerprint": "ace497f64c8cf0325fc7a5ac80c0d311bb600fadd3d29b85214cc9c994686226",
+      "qualified_id": "train:scenario_000008"
+    },
+    {
+      "case_hash": "0043bf0a52365d673f7cb0020901434bcae1b879186d3b31a31a812a860dde1c",
+      "case_id": "production_input_canaries_train_scenario_000016",
+      "input_fingerprint": "eb175196407ddaa532051e89ab8afc14bd5379d46f04c9c2e1dd2d3f63c04c41",
+      "qualified_id": "train:scenario_000016"
+    }
+  ],
+  "causal_interpretation": {
+    "excluded_conclusion": "These frozen compatibility canaries cannot identify one unique cause or establish either implementation as physical truth.",
+    "status": "not_isolated",
+    "supported_observations": [
+      "MUSCL-HR has lower trajectory discrepancy than the Hydrostatic reference on all three retained canaries.",
+      "Both boundary-band and interior discrepancies are material, so the retained metrics do not support a boundary-only explanation.",
+      "Field cosine similarities remain high while field-norm ratios are below one, which is consistent with a mixture of shape and amplitude/dissipation differences."
+    ],
+    "unisolated_dimensions": [
+      "computational-domain extent",
+      "outer-boundary treatment",
+      "sponge treatment",
+      "spatial reconstruction and flux/source treatment",
+      "time integration and CFL policy",
+      "initial-state embedding outside the publication crop"
+    ]
+  },
+  "frozen_setup_difference": {
+    "geoclaw": {
+      "boundary": "open_extrapolation",
+      "bounds": [
+        -1.0,
+        2.0,
+        -1.0,
+        2.0
+      ],
+      "dx": 0.015625,
+      "output_crop": [
+        64,
+        128,
+        64,
+        128
+      ],
+      "required_round_trip_time_bound": 0.1925,
+      "round_trip_time_bound": 0.20191395515872174,
+      "round_trip_time_bound_by_canary": {
+        "production_input_canaries_train_scenario_000002": 0.20191395515872174,
+        "production_input_canaries_train_scenario_000008": 0.20187910584797153,
+        "production_input_canaries_train_scenario_000016": 0.20192751093846087
+      },
+      "shape": [
+        192,
+        192
+      ],
+      "sponge": "disabled"
+    },
+    "geoclaw_numerics": {
+      "cfl_desired": 0.75,
+      "cfl_max": 1.0,
+      "dimensional_split": "unsplit",
+      "limiter": "mc",
+      "source_split": "godunov",
+      "spatial_order": 2,
+      "use_fwaves": true
+    },
+    "inhouse": {
+      "boundary": "radiation",
+      "bounds": [
+        -0.25,
+        1.25,
+        -0.25,
+        1.25
+      ],
+      "dx": 0.015625,
+      "output_crop": [
+        16,
+        80,
+        16,
+        80
+      ],
+      "shape": [
+        96,
+        96
+      ],
+      "sponge": {
+        "axes": "xy",
+        "enabled": true,
+        "min_factor": 0.8,
+        "profile": "cosine",
+        "reference_dt": 0.0035,
+        "time_mode": "elapsed_time_consistent",
+        "width": 16
+      }
+    },
+    "initial_state_embedding": "The contract stores distinct 96x96 in-house and 192x192 external bathymetry/initial-state arrays around the common 64x64 comparison crop."
+  },
+  "metrics_by_inhouse_solver": {
+    "swe_hydrostatic": {
+      "boundary_band_relative_l2": {
+        "max": 0.5519999311958017,
+        "mean": 0.47525294827276937,
+        "min": 0.43317290756195903
+      },
+      "field_cosine_similarity": {
+        "max": 0.9241095614554469,
+        "mean": 0.8916620089307318,
+        "min": 0.8684004650528613
+      },
+      "field_norm_ratio": {
+        "max": 0.7654552644328374,
+        "mean": 0.6917675949657474,
+        "min": 0.6234835241673472
+      },
+      "interior_relative_l2": {
+        "max": 0.6001464241005318,
+        "mean": 0.5118623066149995,
+        "min": 0.40616642387596397
+      },
+      "per_time_scaled_l2_p95_active": {
+        "max": 1.010273718645913,
+        "mean": 0.8488526625157862,
+        "min": 0.7545094027206174
+      },
+      "trajectory_relative_l2": {
+        "max": 0.536948052988302,
+        "mean": 0.49297463720856866,
+        "min": 0.413754401052561
+      }
+    },
+    "swe_muscl_hr": {
+      "boundary_band_relative_l2": {
+        "max": 0.2553768961840208,
+        "mean": 0.23251688564555553,
+        "min": 0.2151565426461476
+      },
+      "field_cosine_similarity": {
+        "max": 0.9810344323741264,
+        "mean": 0.976654120449504,
+        "min": 0.9735162505981889
+      },
+      "field_norm_ratio": {
+        "max": 0.8833922876725739,
+        "mean": 0.863345100564985,
+        "min": 0.8516268986211492
+      },
+      "interior_relative_l2": {
+        "max": 0.29501745832279197,
+        "mean": 0.2535119151176788,
+        "min": 0.23226276528184903
+      },
+      "per_time_scaled_l2_p95_active": {
+        "max": 0.8514500034466517,
+        "mean": 0.5530480038975512,
+        "min": 0.3963022864043551
+      },
+      "trajectory_relative_l2": {
+        "max": 0.25908130759787773,
+        "mean": 0.24303600703063669,
+        "min": 0.23119701275980586
+      }
+    }
+  },
+  "schema_id": "tsunami-surrogate.geoclaw-discrepancy-diagnostic.v1",
+  "shared_comparison_target": {
+    "cell_size": 0.015625,
+    "publication_crop_shape": [
+      64,
+      64
+    ],
+    "requested_time_count": 50,
+    "requested_time_horizon": 0.175
+  },
+  "source_artifacts": [
+    {
+      "path": "artifacts/common_time_v2/level_b_minimum/3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460/frozen_contract.json",
+      "sha256": "ae4ae4622148b3afc4052fb48d03eb24b53ff17aa62d331b5fd051cce7544fc7"
+    },
+    {
+      "path": "artifacts/common_time_v2/level_b_minimum_evaluation/3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460/comparison_rows.json",
+      "sha256": "72126e3293a125623acf538f906cbd5c5386b40e254ffb8540b01264dd1d7cc7"
+    },
+    {
+      "path": "artifacts/common_time_v2/level_b_minimum_external/3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460/RUN_MANIFEST.json",
+      "sha256": "ff2b697300a05cde44673eac9e87a8143d0e0082d7732cb38e2240460296be49"
+    }
+  ]
+}

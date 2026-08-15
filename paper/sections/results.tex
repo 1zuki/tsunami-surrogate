@@ -12,7 +12,7 @@ Table~\ref{tab:solver-validation} summarizes the numerical evidence used to acce
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Numerical verification and validation supporting the common-time label contract. Passing these checks supports the stated finite-horizon implementation, not event-scale physical validity.}
+\caption{Numerical verification and inter-code comparison supporting the common-time label contract. Passing these checks supports the stated finite-horizon implementation, not event-scale physical validity.}
 \label{tab:solver-validation}
 \small
 \begin{tabular}{p{0.23\linewidth}p{0.55\linewidth}p{0.13\linewidth}}
@@ -20,8 +20,9 @@ Table~\ref{tab:solver-validation} summarizes the numerical evidence used to acce
     Evidence & Scope & Outcome \\
     \midrule
     Input identity & $13{,}500$ shared scenarios, split identities, arrays, and horizon coverage & passed \\
-    Internal verification & $86$ analytical/numerical cases and $48$ fixed criteria & passed \\
-    Independent comparator & analytical/refinement checks and matched GeoClaw/Clawpack regimes & checks passed; broader agreement limited \\
+    Internal verification & $86$ cases and $48$ analytical, numerical, and health criteria & passed \\
+    Matched-regime comparison & $3$ primary, $2$ verification, and $7$ refinement GeoClaw/Clawpack checks & passed \\
+    Exploratory comparison & $12$ production-like GeoClaw/Clawpack comparisons & $1 / 12$ within limit \\
     Generation-path checks & $90$ buffered common-time cases and $3$ repeatability checks & passed \\
     Independent sensitivity set & $363$ paired cases, $726$ executions, and $42$ fixed criteria & passed \\
     \bottomrule
@@ -29,6 +30,10 @@ Table~\ref{tab:solver-validation} summarizes the numerical evidence used to acce
 \end{table}
 
 The independent-comparator evidence is deliberately limited. All analytical, verification, and refinement comparisons passed, whereas $11$ of $12$ exploratory descriptive comparisons exceeded their provisional limits. On three production-like cases, trajectory relative $L_2$ against GeoClaw ranged from $0.414$ to $0.537$ for Hydrostatic and from $0.231$ to $0.259$ for MUSCL-HR. These discrepancies remain part of the interpretation: the package supports matched-regime verification, but not pointwise production equivalence or the designation of GeoClaw as physical truth.
+
+The linear weakly dispersive implementation also reproduces its discrete constant-depth phase-speed trend over eight Fourier modes. The maximum relative error is $2.45 \times 10 ^ {-4}$ for the non-dispersive branch and $1.91 \times 10 ^ {-8}$ for $\alpha_B = 1 / 3$, with no conjugate-gradient failures and at most $35$ iterations in the latter branch (Appendix~\ref{tab:app-bouss-dispersion}). This is a local implementation diagnostic rather than external or event-scale validation.
+
+The central evaluation result is that the remaining reference discrepancy is not small relative to surrogate error. As quantified in Section~\ref{subsec:res-solver-fidelity}, the common-time Hydrostatic--MUSCL-HR RMSE gap is $1.6$ times the Hydrostatic FNO error and $2.1$ times the F-FNO error, while either shallow-water--Boussinesq gap exceeds the same-reference Boussinesq FNO error by more than five times. The architecture comparisons below therefore demonstrate the consequences of the reference-aware protocol rather than defining its primary contribution.
 
 \subsection{Direct same-reference accuracy}
 \label{subsec:res-accuracy}
@@ -115,7 +120,7 @@ F-FNO lowers the Hydrostatic integral and spectral errors relative to FNO. ConvL
 \subsection{Runtime and implementation-level speedup}
 \label{subsec:res-speed}
 
-The matched reference rollouts take $2.43$~s for Hydrostatic, $3.47$~s for MUSCL-HR, and $1.44$~s for Boussinesq per sample on the local CPU. Direct GPU inference ranges from $0.138$~ms for CNN to $21.0$~ms for recurrent ConvLSTM. The corresponding implementation-level acceleration spans about $116 \times$ to $17{,}639 \times$. For the main FNO, the measured speedups are $2{,}114 \times$, $3{,}030 \times$, and $1{,}200 \times$ agaisnt Hydrostatic, MUSCL-HR, and Boussinesq, respectively.
+The matched reference rollouts take $2.43$~s for Hydrostatic, $3.47$~s for MUSCL-HR, and $1.44$~s for Boussinesq per sample on the local CPU. Direct GPU inference ranges from $0.138$~ms for CNN to $21.0$~ms for recurrent ConvLSTM. The corresponding implementation-level acceleration spans about $116 \times$ to $17{,}639 \times$. For the main FNO, the measured speedups are $2{,}114 \times$, $3{,}030 \times$, and $1{,}200 \times$ against Hydrostatic, MUSCL-HR, and Boussinesq, respectively.
 
 \begin{table}[pos=htbp]
 \centering
@@ -146,7 +151,7 @@ These values compare the study's vectorized CPU references with laptop-GPU infer
 \subsection{Distribution shift and sample scaling}
 \label{subsec:res-ood}
 
-Table~\ref{tab:ood} groups the Hydrostatic FNO by source family using means of per-scenario physical metrics. Rough sources are the hardest group ($0.384$), while the other families lie between $0.246$ and $0.329$. The bathymetry grouping similarly identifies continental fields as the hardest family ($0.365$). Because every family appears in training, these are subgroup giadnostics, not unseen-family tests.
+Table~\ref{tab:ood} groups the Hydrostatic FNO by source family using means of per-scenario physical metrics. Rough sources are the hardest group ($0.384$), while the other families lie between $0.246$ and $0.329$. The bathymetry grouping similarly identifies continental fields as the hardest family ($0.365$). Because every family appears in training, these are subgroup diagnostics, not unseen-family tests.
 
 \begin{table}[pos=htbp]
 \centering
@@ -275,6 +280,15 @@ The common-time Hydrostatic--MUSCL-HR gap is the smallest pairwise discrepancy. 
 \end{tabular}
 \end{table}
 
+Figure~\ref{fig:solver-gap-scale} places the selected same-reference surrogate controls and raw solver gaps on one denormalized RMSE scale. For the shallow-water pair, the Hydrostatic FNO and F-FNO controls give the $1.6\times$ and $2.1\times$ comparisons used in the main text. For the two cross-family pairs, the Boussinesq FNO is the more conservative same-reference control because its RMSE is larger than the Hydrostatic and MUSCL-HR FNO errors.
+
+\begin{figure}[pos=htbp]
+\centering
+\includegraphics[width=0.88\linewidth]{figures/solver_gap_vs_surrogate_error.pdf}
+\caption{Raw common-time solver gaps compared with selected same-reference surrogate errors in the same denormalized global-RMSE units. Lines connect each surrogate control to its paired solver gap; annotations give the gap-to-surrogate ratio.}
+\label{fig:solver-gap-scale}
+\end{figure}
+
 Table~\ref{tab:superiority} reports all six cross-reference directions. The two shallow-water directions remain above one. Several cross-family directions lie only slightly below one, and Hydrostatic $\rightarrow$ Boussinesq is statistically indistinguishable from one at the reported precision. The below-one values are small benchmark-relative shifts, not evidence that the surrogate becomes a more accurate physical model.
 
 \begin{table}[pos=htbp]
@@ -294,6 +308,15 @@ Table~\ref{tab:superiority} reports all six cross-reference directions. The two 
     \bottomrule
 \end{tabular}
 \end{table}
+
+Figure~\ref{fig:cross-reference-forest} shows the same six ratios with their paired-bootstrap intervals. The reference line at $\rho=1$ is the raw solver-gap scale: values below it indicate only that the surrogate lies marginally closer to the second numerical reference under this global norm.
+
+\begin{figure}[pos=htbp]
+\centering
+\includegraphics[width=0.88\linewidth]{figures/cross_reference_ratio_forest.pdf}
+\caption{Cross-reference discrepancy ratios with $95\%$ paired scenario-bootstrap intervals. The dashed line denotes equality with the corresponding raw solver gap, not equality with physical truth.}
+\label{fig:cross-reference-forest}
+\end{figure}
 
 \subsection{Gauge, arrival, and peak diagnostics}
 \label{subsec:res-wave}
@@ -319,29 +342,8 @@ Table~\ref{tab:wave-metrics} summarizes nine virtual gauges per scenario. Hydros
 
 The pixelwise arrival maps give mean per-scenario eligible-pixel absolute differences of $0.72$, $1.09$, and $0.18$ requested-time indices for Hydrostatic, MUSCL-HR, and Boussinesq, respectively. These values average scenario-level errors rather than pooling all eligible cells, and their valid-arrival fractions differ strongly ($0.55$, $0.72$, and $0.21$). The map errors should therefore not be ranked without both the aggregation rule and eligibility context.
 
-\subsection{Seeded window forecasts}
-\label{subsec:res-window}
-
-The window models receive the first true target frame and predict the remaining $49$ frames in ten sequential chunks of up to five frames. They are conditional drift diagnostics rather than replacements for the direct task. Window-F-FNO-5 gives the lowest full-trajectory error, while Window-FNO-5 is about twice as fast in this implementation.
-
-The conditioning changes both the magnitude and shape of the error curve. Window-F-FNO-5 is better over the full scored trajectory, but its final-frame relative $L_2$ ($0.134$) is slightly above Window-FNO-5 ($0.121$). Thus the factorized model's aggregate advantage does not imply uniform dominance at every forecast time, and neither window result measures a cold-start forecast.
-
-\begin{table}[pos=htbp]
-\centering
-\caption{Direct and seeded-window Hydrostatic models. Full-trajectory relative $L_2$ is computed after denormalization to benchmark scale; per-frame values are normalized because the window evaluation records that curve before target denormalization.}
-\label{tab:window}
-\small
-\begin{tabular}{lccccc}
-    \toprule
-    Model & full-traj & first scored & middle & final & infer (ms) \\
-    \midrule
-    Direct FNO       & $0.244$ & $0.217$ & $0.288$ & $0.350$ & $1.15$ \\
-    Direct F-FNO     & $0.190$ & $0.161$ & $0.223$ & $0.284$ & $1.51$ \\
-    Window-FNO-5     & $0.064$ & $0.032$ & $0.087$ & $0.121$ & $11.21$ \\
-    Window-F-FNO-5   & $\mathbf{0.053}$ & $0.022$ & $0.076$ & $0.134$ & $21.73$ \\
-    \bottomrule
-\end{tabular}
-\end{table}
+\paragraph{Conditional windowed forecasts.}
+First-target-frame-seeded Window-FNO-5 and Window-F-FNO-5 provide long-horizon drift diagnostics, but they solve an easier conditional task than the direct $50$-frame forecast. Their full metrics and speed--accuracy trade-off are therefore retained in Appendix~\ref{tab:app-window} rather than included in the primary model comparison.
 
 \subsection{Ensemble uncertainty and seed stability}
 \label{subsec:res-uncertainty}

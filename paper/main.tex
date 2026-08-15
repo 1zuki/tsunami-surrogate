@@ -14,25 +14,31 @@
 \emergencystretch=2em
 \Urlmuskip=0mu plus 2mu
 
-\shorttitle{Multi-reference tsunami-surrogate benchmark}
+\shorttitle{Reference-aware neural PDE-surrogate evaluation}
 \shortauthors{Nguyen et~al.}
 
-\title[mode=title]{Tsunami-Surrogate: A Controlled Multi-Reference Benchmark for Neural-Operator Emulation of Tsunami-Like Wave Propagation}
+\title[mode=title]{Reference-Aware Evaluation of Neural PDE Surrogates: A Controlled Multi-Reference Benchmark for Tsunami-Like Waves}
 
-\author[1]{Nguyen Tho Binh An}
+\author[1,2]{Nguyen Tho Binh An}
 \ead{25520020@gm.uit.edu.vn}
 
-\author[1]{Le Minh Nhut Tan}
+\author[1,2]{Le Minh Nhut Tan}
 \ead{25521650@gm.uit.edu.vn}
 
-\author[1]{Mai Tien Dung}
+\author[1,2]{Mai Tien Dung}
 \cormark[1]
 \ead{dungmt@uit.edu.vn}
 
 \affiliation[1]{
   organization={Faculty of Computer Science,
-                VNUHCM - University of Information Technology},
+                University of Information Technology},
   addressline={Quarter 34, Linh Xuan Ward},
+  city={Ho Chi Minh City},
+  country={Viet Nam}
+}
+
+\affiliation[2]{
+  organization={Vietnam National University},
   city={Ho Chi Minh City},
   country={Viet Nam}
 }
@@ -42,14 +48,14 @@
 \input{sections/abstract}
 
 \begin{highlights}
-\item Fifty shared requested times align all three numerical-reference targets.
-\item Reference choice changes solver gaps and the error scale seen by surrogates.
-\item Selected single-seed comparisons favor F-FNO and ConvLSTM on Hydrostatic labels.
-\item Real-bathymetry and uncertainty tests reveal useful but limited transfer.
+\item A common-time contract aligns adaptive numerical-reference outputs.
+\item Reference gaps reach 1.6--5.6 times same-reference surrogate error.
+\item Cross-reference closeness does not establish physical superiority.
+\item Verification supports a finite-horizon benchmark, not event validity.
 \end{highlights}
 
 \begin{keywords}
-tsunami surrogate modeling \sep neural operators \sep Fourier neural operator \sep shallow-water equations \sep benchmark datasets
+neural PDE surrogates \sep reference-solver discrepancy \sep numerical verification \sep neural operators \sep shallow-water equations \sep scientific machine learning
 \end{keywords}
 
 \maketitle
