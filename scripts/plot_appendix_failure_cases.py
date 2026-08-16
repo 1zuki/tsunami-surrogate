@@ -376,30 +376,32 @@ def _draw_panel(
     fig, ax, array: np.ndarray, title: str, cmap: str, **kwargs: Any
 ) -> None:
     im = ax.imshow(array, origin="upper", cmap=cmap, **kwargs)
-    ax.set_title(title, fontsize=8)
+    ax.set_title(title, fontsize=12)
     ax.set_xticks([])
     ax.set_yticks([])
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.025)
-    cbar.ax.tick_params(labelsize=5)
+    cbar.ax.tick_params(labelsize=9)
 
 
 def _plot(rows: list[dict[str, Any]], output: Path, png_output: Path | None) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    n_rows = len(rows)
-    fig, axes = plt.subplots(
-        n_rows, 5, figsize=(13.2, 2.45 * n_rows), constrained_layout=True
-    )
-    if n_rows == 1:
-        axes = axes[np.newaxis, :]
-
-    col_titles = [
+    n_cases = len(rows)
+    field_labels = [
         "Bathymetry",
         "Source",
         "Reference late $\\eta$",
         "FNO prediction",
         "$|$error$|$",
     ]
-    for r, row in enumerate(rows):
+    fig, axes = plt.subplots(
+        len(field_labels),
+        n_cases,
+        figsize=(3.1 * n_cases, 10.8),
+        constrained_layout=True,
+        squeeze=False,
+    )
+
+    for c, row in enumerate(rows):
         arrays = row["arrays"]
         ref = arrays["reference_frame"]
         pred = arrays["prediction_frame"]
@@ -419,24 +421,39 @@ def _plot(rows: list[dict[str, Any]], output: Path, png_output: Path | None) -> 
             (pred, "RdBu_r", {"norm": eta_norm}),
             (err, "magma", {"vmin": 0.0, "vmax": err_vmax}),
         ]
-        for c, (array, cmap, kwargs) in enumerate(panels):
-            title = col_titles[c] if r == 0 else ""
+        crop = f"\n{row['crop_label']}" if row.get("crop_label") else ""
+        case_title = (
+            f"{row['label']}{crop}\n"
+            f"{row['sample_id']}\n"
+            f"rel-$L_2$={row['computed_rel_l2']:.3f}"
+        )
+        for r, (array, cmap, kwargs) in enumerate(panels):
+            title = case_title if r == 0 else ""
             _draw_panel(fig, axes[r, c], array, title, cmap, **kwargs)
+            if c == 0:
+                axes[r, c].set_ylabel(
+                    field_labels[r],
+                    fontsize=11,
+                    rotation=90,
+                    labelpad=7,
+                )
 
         meta = row["meta"]
-        crop = f"\n{row['crop_label']}" if row.get("crop_label") else ""
-        axes[r, 0].set_ylabel(
-            f"{row['label']}{crop}\n{row['sample_id']}  rel-$L_2$={row['computed_rel_l2']:.3f}",
-            fontsize=8,
-            rotation=90,
-            labelpad=10,
-        )
-        axes[r, 1].set_xlabel(
-            f"{meta.get('source_type', '')} / {meta.get('bathymetry_type', '')}",
-            fontsize=6,
+        axes[1, c].set_xlabel(
+            f"{meta.get('source_type', '')}\n{meta.get('bathymetry_type', '')}",
+            fontsize=9,
         )
 
-    fig.savefig(output, bbox_inches="tight")
+    fig.savefig(
+        output,
+        bbox_inches="tight",
+        metadata={
+            "CreationDate": None,
+            "ModDate": None,
+            "Creator": "tsunami-surrogate",
+            "Producer": "Matplotlib",
+        },
+    )
     if png_output is not None:
         png_output.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(png_output, dpi=300, bbox_inches="tight")

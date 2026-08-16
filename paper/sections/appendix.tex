@@ -246,7 +246,14 @@ The real-bathymetry extension remains a synthetic-forcing transfer study. The te
 \subsection{Selected high-error cases}
 \label{app:failure-cases}
 
-Figure~\ref{fig:app-failure-cases} intentionally selects difficult examples, not representative or average cases. The rows are an ordinary rough-source test case, a strict rough-source holdout case, and the wet--dry coastline stress case. Their full-trajectory denormalized benchmark-scale relative $L_2$ values are listed in Table~\ref{tab:app-failure-cases}. The selected examples make the failure modes visible without changing the aggregate metrics reported in the main text.
+Figure~\ref{fig:app-failure-cases} intentionally selects difficult examples, not representative or average cases. The columns are an ordinary rough-source test case, a strict rough-source holdout case, and the wet--dry coastline stress case. Their full-trajectory denormalized benchmark-scale relative $L_2$ values are listed in Table~\ref{tab:app-failure-cases}. The selected examples make the failure modes visible without changing the aggregate metrics reported in the main text.
+
+\begin{figure}[pos=htbp]
+\centering
+\includegraphics[width=0.86\linewidth]{figures/appendix_failure_cases.pdf}
+\caption{Selected high-error cases, not average or representative examples. Columns are the three cases; rows show denormalized bathymetry, source, late-frame Hydrostatic reference $\eta$, FNO prediction, and absolute error.}
+\label{fig:app-failure-cases}
+\end{figure}
 
 \begin{table}[pos=htbp]
 \centering
@@ -262,10 +269,3 @@ Figure~\ref{fig:app-failure-cases} intentionally selects difficult examples, not
     \bottomrule
 \end{tabular}
 \end{table}
-
-\begin{figure}[pos=htbp]
-\centering
-\includegraphics[width=\linewidth]{figures/appendix_failure_cases.pdf}
-\caption{Selected high-error cases, not average or representative examples. Columns show denormalized bathymetry, source, late-frame Hydrostatic reference $\eta$, FNO prediction, and absolute error.}
-\label{fig:app-failure-cases}
-\end{figure}

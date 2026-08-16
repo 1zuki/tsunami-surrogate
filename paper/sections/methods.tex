@@ -46,7 +46,7 @@ and the published state is
 \]
 For the shallow-water references, $Z = [h, hu, hv] ^ \top$ and the free surface is then recovered using the time-independent bathymetry; for Boussinesq, $\eta$ is already part of the evolved state. If $t_k$ exactly equals a natural time, the corresponding state is copied without interpolation. Several requested times may fall inside one natural-step interval, but every output is formed only from that adjacent pair.
 
-The interpolation is performed in float64 before the publication frame is case to float32. It is output-only: interpolated states are never fed back into the time integrator, so the natural solver trajectory is unchanged. For each published frame, the generator records the bracketing times, interpolation weight, bracked width, exact-knot status, and natural-step index. This design prevents the cross-reference time mismatch that would arise from solver-step-indexed sampling while retaining solver-specific natural stepping, It does not remove the interpolation approximation or make the three governing models equivalent.
+The interpolation is performed in float64 before the publication frame is cast to float32. It is output-only: interpolated states are never fed back into the time integrator, so the natural solver trajectory is unchanged. For each published frame, the generator records the bracketing times, interpolation weight, bracket width, exact-knot status, and natural-step index. This design prevents the cross-reference time mismatch that would arise from solver-step-indexed sampling while retaining solver-specific natural stepping, It does not remove the interpolation approximation or make the three governing models equivalent.
 
 The central publication domain contains $64 \times 64$ cells with $\Delta x = \Delta y = 1/64$. Numerical integration is performed on $96 \times 96$ cells at the same spacing, adding 16 cells around every side rather than refining the reported region. Bathymetry is extended by its edge values into the buffer, and the source is tapered over the outer eight buffer cells. Only the central crop enters the learning target. The buffer and elapsed-time sponge reduce direct boundary exposure over the finite horizon, but they do not establish a generally non-reflecting boundary condition.
 
@@ -144,7 +144,7 @@ S_{hv} = -\frac{g}{2}(h_N + h_S)\frac{b_N - b_S}{\Delta y},
 \]
 where the directional states are the limited reconstructions associated with the current cell. This term is applied before the Heun stage average and works with the hydrostatic face corrections to retain the intended topographic balance.
 
-Time integration uses the two-stage Heun from. If $\Phi_{\Delta t}(U)$ denotes one limited finite-volume Euler update, then
+Time integration uses the two-stage Heun form. If $\Phi_{\Delta t}(U)$ denotes one limited finite-volume Euler update, then
 \[
 U ^ {(1)} = \Phi_{\Delta t}(U ^ n),\qquad
 U ^ {n + 1} = \frac{1}{2} U ^ n +
