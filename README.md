@@ -113,34 +113,48 @@ pip install -r requirements.txt
 ## 5a) Reproducibility notes
 
 The intended runtime is Python 3.10, with dependencies listed in
-`requirements.txt`. Paper CUDA timing rows use the recorded speed metadata from runs with PyTorch 2.10.0+cu128 and CUDA 12.8. Trained checkpoints are not redistributed in full; the release provides configs, seeds, training histories, and checkpoint-selection information so reported runs can be reproduced. This archive supports research benchmark reproducibility, not operational tsunami prediction.
+`requirements.txt`. Paper CUDA timing rows use the recorded speed metadata from
+runs with PyTorch 2.10.0+cu128 and CUDA 12.8. The release includes all 33
+selected checkpoints together with their resolved configurations and training
+histories. This archive supports research benchmark reproducibility, not
+operational tsunami prediction.
 
 ## 5b) Reproduce from the released benchmark data (recommended)
 
-You do **not** need to regenerate the 300 GB raw rollouts to reproduce the paper.
-The released benchmark bundle ships the model-ready *processed* arrays, so you can go straight to training (Section 6.3) and evaluation (6.4+).
+You do **not** need to regenerate the approximately 31 GB eta-primary raw
+publications to reproduce the paper. The released benchmark bundle ships the
+model-ready *processed* arrays and selected checkpoints, so you can go straight
+to training (Section 6.3) or evaluation (6.4+).
 
-1. Download the dataset bundle from the archive (DOI: https://doi.org/10.5281/zenodo.20974604).
-2. Verify integrity, then extract each archive into `data/processed/`:
+1. Download the reproduction package from
+   https://doi.org/10.5281/zenodo.21956834.
+2. Verify integrity, then extract the required archives into the repository
+   root:
 
 ```bash
 # from the bundle directory
 sha256sum -c SHA256SUMS.txt
 
-# main 64x64 references (hydrostatic / MUSCL-HR / Boussinesq) + eval split
+# main 64x64 references (Hydrostatic / MUSCL-HR / Boussinesq)
 for f in main_processed/*.tar.zst; do
-  tar --use-compress-program=unzstd -xf "$f" -C /path/to/tsunami-surrogate/data/processed/
+  tar --use-compress-program=unzstd -xf "$f" -C /path/to/tsunami-surrogate
 done
 
-# optional: OOD suites, cross-resolution, and real-bathymetry diagnostics
-for f in ood_processed/*.tar.zst crossres_processed/*.tar.zst real_bathymetry_processed/*.tar.zst; do
-  tar --use-compress-program=unzstd -xf "$f" -C /path/to/tsunami-surrogate/data/processed/
+# selected checkpoints and validated evaluation evidence
+tar --use-compress-program=unzstd -xf models/selected_checkpoints.tar.zst -C /path/to/tsunami-surrogate
+tar --use-compress-program=unzstd -xf results/final_paper_evaluation.tar.zst -C /path/to/tsunami-surrogate
+
+# optional: strict holdouts, native resolution, and real-bathymetry diagnostics
+for f in supplementary/*.tar.zst; do
+  tar --use-compress-program=unzstd -xf "$f" -C /path/to/tsunami-surrogate
 done
 ```
 
 After extraction you should have `data/processed/hydrostatic/{train,val,test}`, `data/processed/muscl_hr/...`, and `data/processed/boussinesq/...`, which is what the training and evaluation configs expect. The exact archive layout, per-suite contents, and citation are documented in the bundle's own `README.md`.
 
-Skipping the bundle? Generate everything from scratch via Sections 6.1--6.2 instead.
+The complete raw numerical publications are also available through the
+supplementary mirror documented in the bundle README. Skipping the bundle?
+Generate everything from scratch via Sections 6.1--6.2 instead.
 All data paths in `configs/` are repo-relative (`./data/...`), so commands run from the repository root without edits.
 
 ## 6) Run Commands
