@@ -20,6 +20,15 @@ DEFAULT_RELEASE_ROOT = ROOT / "release/common-time-v2-zenodo"
 DEFAULT_PROJECT_PYTHON = ROOT / ".venv/bin/python"
 RELEASE_VERSION = "2.0.0"
 DEFAULT_PREPARED_DATE = "2026-08-15"
+REPRODUCTION_DOI_URL = "https://doi.org/10.5281/zenodo.21956834"
+RAW_MIRROR_URL = (
+    "https://drive.google.com/drive/folders/"
+    "1avJBArJGgdoosuNRyZMHKqgd3kWX3U84?usp=sharing"
+)
+DATA_LICENSE_ID = "cc-by-4.0"
+DATA_LICENSE_NAME = (
+    "Creative Commons Attribution 4.0 International (CC BY 4.0)"
+)
 
 
 @dataclass(frozen=True)
@@ -493,7 +502,10 @@ evaluation and figure. The three main processed datasets include complete
 train/validation/test splits. Strict-holdout and native-resolution archives
 include the evaluation subsets required for the reported auxiliary analyses;
 their selected checkpoints, resolved configurations, and training histories
-are included, but their full auxiliary train/validation arrays are not."""
+are included, but their full auxiliary train/validation arrays are not.
+
+`direct_model_statistics.json` contains the paired scenario-bootstrap
+statistics reported for the direct Hydrostatic models."""
         extraction = """Extract archives into a fresh clone's repository root:
 
 ```bash
@@ -520,13 +532,15 @@ disclosed in the manuscript and retained evaluation report."""
 The real-bathymetry transfer suite contains derived GEBCO_2026 material.
 GEBCO must be acknowledged and cited. The derived crops are rescaled research
 inputs and must not be used for navigation."""
+        integrity_description = """`RELEASE_MANIFEST.json` records archive hashes, byte sizes, source file counts,
+source paths, the validated evaluation run, and the evaluation code state."""
     else:
         title = "Tsunami-Surrogate Common-Time V2 Raw Numerical Publications"
         description = (
             "Eta-primary common-time raw train, validation, and test numerical "
             "publications for Hydrostatic, MUSCL-HR, and Boussinesq references."
         )
-        scope = """This is the optional raw companion record. It contains all
+        scope = """This is the complete raw-publication mirror. It contains all
 13,500 shared scenarios and 40,500 solver publications. Each solver publication
 stores 50 requested-time surface-elevation frames plus requested-time,
 adjacent-step interpolation, health, contract, and checksum provenance. Full
@@ -563,6 +577,103 @@ same frozen contract and code state:
 The top-level archive hashes verify transfer integrity. The raw publications
 also retain their original per-publication hashes and provenance."""
         gebco = ""
+        integrity_description = """`RELEASE_MANIFEST.json` records archive
+hashes, byte sizes, source file counts, source paths, and the frozen generation
+contract and code state."""
+
+    if profile == "reproduction":
+        availability = f"""## Archive locations
+
+- Version DOI: {REPRODUCTION_DOI_URL}
+- Complete raw-publication mirror:
+  {RAW_MIRROR_URL}
+
+The Zenodo record is the persistent citation for this reproduction package.
+The Google Drive folder provides the approximately 31 GB eta-primary raw
+publications as a supplementary distribution mirror. Because that folder is
+mutable, verify downloaded raw archives with their supplied checksums and do
+not treat the Drive URL as an immutable identifier."""
+        metadata_notes = (
+            f"Version DOI: {REPRODUCTION_DOI_URL}. Complete raw numerical "
+            f"publications are distributed through the supplementary mutable "
+            f"mirror at {RAW_MIRROR_URL}."
+        )
+        license_and_citation = f"""## License
+
+The Zenodo dataset record declares Creative Commons Attribution 4.0
+International (CC BY 4.0) for the deposited research data and documentation.
+This dataset license does not replace the repository's code license or
+third-party terms. The GEBCO-derived suite retains its required source
+attribution, and the Elsevier template files retain their original terms.
+
+## Citation
+
+Cite the versioned reproduction package at
+{REPRODUCTION_DOI_URL}. The DOI becomes active when the
+Zenodo draft is published. The Google Drive raw mirror is not a persistent
+citation."""
+        checklist = f"""# Manual Zenodo upload checklist
+
+1. Verify `sha256sum -c SHA256SUMS.txt`.
+2. Open the existing processed-data record and choose **New version**.
+3. Confirm the reserved version DOI is
+   `{REPRODUCTION_DOI_URL}`.
+4. Copy and review `ZENODO_METADATA_TEMPLATE.json`.
+5. Confirm the dataset license is Creative Commons Attribution 4.0
+   International (CC BY 4.0).
+6. Set `publication_date` to the actual publication date.
+7. Test the raw mirror in a private browser window with no Google account:
+   {RAW_MIRROR_URL}
+8. Upload `README.md`, `RELEASE_MANIFEST.json`, `ARCHIVE_CONTENTS.tsv`,
+   `SHA256SUMS.txt`, `direct_model_statistics.json`, and every archive.
+9. Confirm the displayed total size, every filename, and the raw-mirror link
+   before publishing.
+10. Publish the Zenodo version and verify that the DOI resolves.
+11. Download one archive from Zenodo and re-run its SHA-256 check as an
+    independent post-upload smoke test.
+"""
+    else:
+        availability = f"""## Distribution
+
+- Raw-publication mirror: {RAW_MIRROR_URL}
+- Citable reproduction package: {REPRODUCTION_DOI_URL}
+
+This Google Drive folder is a supplementary, mutable distribution mirror
+rather than an immutable archive. Verify every downloaded archive against
+`SHA256SUMS.txt`. Cite the Zenodo reproduction package, not the Drive URL."""
+        metadata_notes = (
+            f"Raw numerical publications are distributed through the mutable "
+            f"mirror at {RAW_MIRROR_URL}; cite the reproduction package at "
+            f"{REPRODUCTION_DOI_URL}."
+        )
+        license_and_citation = f"""## License
+
+The associated Zenodo dataset record declares Creative Commons Attribution 4.0
+International (CC BY 4.0) for the deposited research data and documentation.
+This dataset license does not replace the repository's code license or
+third-party terms.
+
+## Citation
+
+Cite the versioned reproduction package at
+{REPRODUCTION_DOI_URL}. The DOI becomes active when the
+Zenodo draft is published. Do not cite the mutable Drive folder as an archival
+record."""
+        checklist = f"""# Raw mirror upload checklist
+
+1. Verify `sha256sum -c SHA256SUMS.txt`.
+2. Upload `README.md`, `RELEASE_MANIFEST.json`, `ARCHIVE_CONTENTS.tsv`,
+   `SHA256SUMS.txt`, and all three raw archives to:
+   {RAW_MIRROR_URL}
+3. Confirm every displayed filename and byte size.
+4. Set the folder and files to **Anyone with the link: Viewer**.
+5. Test access and downloads in a private browser window with no Google
+   account.
+6. Keep the folder read-only and verify downloaded archives against
+   `SHA256SUMS.txt`.
+7. Cite the persistent reproduction package at {REPRODUCTION_DOI_URL}; do not
+   cite the mutable Drive folder as an archival record.
+"""
 
     readme = f"""# {title}
 
@@ -580,14 +691,15 @@ site-specific hazard product.
 
 {scope}
 
+{availability}
+
 ## Integrity
 
 ```bash
 sha256sum -c SHA256SUMS.txt
 ```
 
-`RELEASE_MANIFEST.json` records archive hashes, byte sizes, source file counts,
-source paths, the validated evaluation run, and the evaluation code state.
+{integrity_description}
 
 ## Extraction
 
@@ -599,16 +711,7 @@ source paths, the validated evaluation run, and the evaluation code state.
 
 {gebco}
 
-## License before publication
-
-The repository code license does not automatically choose the data license.
-Select and record the intended dataset license in Zenodo before publishing this
-version. Do not upload this draft without making that explicit choice.
-
-## Citation
-
-Use the DOI assigned to the published Zenodo version. Do not cite the local
-draft directory as an immutable public release.
+{license_and_citation}
 """
     (destination / "README.md").write_text(readme, encoding="utf-8")
 
@@ -647,38 +750,23 @@ draft directory as an immutable public release.
         "version": RELEASE_VERSION,
         "publication_date": prepared,
         "access_right": "open",
+        "license": DATA_LICENSE_ID,
         "related_identifiers": [
             {
                 "identifier": "https://github.com/1zuki/tsunami-surrogate",
                 "relation": "isSupplementedBy",
                 "scheme": "url",
+            },
+            {
+                "identifier": RAW_MIRROR_URL,
+                "relation": "isSupplementedBy",
+                "scheme": "url",
             }
         ],
-        "notes": (
-            "Select the dataset license and link the raw/reproduction companion "
-            "record after reserving both DOIs."
-        ),
+        "notes": metadata_notes,
     }
     _write_json(destination / "ZENODO_METADATA_TEMPLATE.json", metadata)
 
-    checklist = """# Manual Zenodo upload checklist
-
-1. Verify `sha256sum -c SHA256SUMS.txt`.
-2. Open the existing processed-data record and choose **New version** for the
-   reproduction package. Use a separate dataset record for the raw package.
-3. Reserve both DOIs before publication and link the two records as companion
-   datasets.
-4. Copy and review `ZENODO_METADATA_TEMPLATE.json`.
-5. Choose the dataset license explicitly; do not assume the code license.
-6. If uploading after the prepared date, update `publication_date`.
-7. Upload README, manifests, checksums, and every archive.
-8. Confirm the displayed total size and every filename before publishing.
-9. Publish the raw record first, then add its DOI to the reproduction record.
-10. Publish the reproduction version and replace the manuscript's pending
-    data-availability text with the final persistent identifier.
-11. Download one archive from Zenodo and re-run its SHA-256 check as an
-    independent post-upload smoke test.
-"""
     (destination / "UPLOAD_CHECKLIST.md").write_text(checklist, encoding="utf-8")
 
 
