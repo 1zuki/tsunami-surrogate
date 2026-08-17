@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import partial
 import os
 import random
 from typing import Callable
@@ -43,10 +44,7 @@ def seed_worker(worker_id: int, base_seed: int) -> None:
 
 
 def make_worker_init_fn(base_seed: int) -> Callable[[int], None]:
-    def _init_fn(worker_id: int) -> None:
-        seed_worker(worker_id, base_seed)
-
-    return _init_fn
+    return partial(seed_worker, base_seed=int(base_seed))
 
 
 def make_torch_generator(seed: int) -> torch.Generator:
