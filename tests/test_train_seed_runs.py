@@ -27,6 +27,14 @@ LOCAL_SINGLE_SEED_CONFIGS = (
     "configs/model/fno_modes20.yaml",
 )
 
+FINAL_V2_MULTISEED_CONFIGS = (
+    "configs/model/multiseed/fno_hydrostatic.yaml",
+    "configs/model/multiseed/fno_muscl_hr.yaml",
+    "configs/model/multiseed/fno_boussinesq.yaml",
+    "configs/model/multiseed/ffno_hydrostatic.yaml",
+    "configs/model/multiseed/unet_hydrostatic.yaml",
+)
+
 
 def test_single_seed_preserves_existing_output_directory() -> None:
     seeds, list_mode = train_script.resolve_training_seeds(
@@ -94,12 +102,113 @@ def test_main_runs_seed_list_sequentially(tmp_path, monkeypatch) -> None:
     ]
 
 
+def test_main_can_select_one_seed_from_seed_list(tmp_path, monkeypatch) -> None:
+    config_path = tmp_path / "fno.yaml"
+    config_path.write_text(
+        "output_dir: experiments/fno\nseeds: [18, 36]\ndevice: cpu\n",
+        encoding="utf-8",
+    )
+    observed = []
+
+    monkeypatch.setattr(train_script, "resolve_device", lambda device: device)
+    monkeypatch.setattr(
+        train_script,
+        "train_one",
+        lambda cfg, device, resume_path=None: observed.append(
+            (cfg["seed"], cfg["output_dir"], device, resume_path)
+        ),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["train.py", "--config", str(config_path), "--seed", "36"],
+    )
+
+    train_script.main()
+
+    assert observed == [
+        (36, "experiments/fno/fno_seed_36", "cpu", None),
+    ]
+
+
+def test_main_rejects_unconfigured_seed(tmp_path, monkeypatch) -> None:
+    config_path = tmp_path / "fno.yaml"
+    config_path.write_text(
+        "output_dir: experiments/fno\nseeds: [18, 36]\ndevice: cpu\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["train.py", "--config", str(config_path), "--seed", "67"],
+    )
+
+    with pytest.raises(SystemExit):
+        train_script.main()
+
+
+def test_multi_seed_runs_isolate_evaluation_outputs(tmp_path, monkeypatch) -> None:
+    config_path = tmp_path / "fno.yaml"
+    config_path.write_text(
+        "output_dir: experiments/fno\n"
+        "seeds: [18, 36]\n"
+        "device: cpu\n"
+        "eval:\n"
+        "  output_dir: experiments/fno/eval\n",
+        encoding="utf-8",
+    )
+    observed = []
+
+    monkeypatch.setattr(train_script, "resolve_device", lambda device: device)
+    monkeypatch.setattr(
+        train_script,
+        "train_one",
+        lambda cfg, device, resume_path=None: observed.append(
+            (
+                cfg["seed"],
+                cfg["output_dir"],
+                cfg["eval"]["output_dir"],
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["train.py", "--config", str(config_path)],
+    )
+
+    train_script.main()
+
+    assert observed == [
+        (
+            18,
+            "experiments/fno/fno_seed_18",
+            "experiments/fno/fno_seed_18/eval",
+        ),
+        (
+            36,
+            "experiments/fno/fno_seed_36",
+            "experiments/fno/fno_seed_36/eval",
+        ),
+    ]
+
+
 @pytest.mark.parametrize("config_path", LOCAL_SINGLE_SEED_CONFIGS)
 def test_local_model_configs_use_seed_18(config_path) -> None:
     cfg = load_config(config_path)
 
     assert cfg["seed"] == 18
     assert "seeds" not in cfg
+
+
+@pytest.mark.parametrize("config_path", FINAL_V2_MULTISEED_CONFIGS)
+def test_final_v2_multiseed_configs_add_only_missing_seeds(config_path) -> None:
+    cfg = load_config(config_path)
+
+    assert cfg["seed"] == 18
+    assert cfg["seeds"] == [36, 67]
+    assert cfg["output_dir"].startswith("experiments/multiseed_v2/")
+    assert cfg["eval"]["output_dir"].startswith("experiments/multiseed_v2/")
 
 
 def test_uncertainty_ensemble_keeps_its_member_seed_protocol() -> None:

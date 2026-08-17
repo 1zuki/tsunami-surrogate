@@ -80,6 +80,9 @@ def main():
     p.add_argument('--resume', default=None,
                    help="Path to a checkpoint to resume from (e.g. experiments/fno/checkpoints/last.pt). "
                         "Restores model, optimizer, scheduler, early-stopping state, and history.")
+    p.add_argument('--seed', type=int, default=None,
+                   help="Run only this seed from a multi-seed config. "
+                        "Useful for independent launch and resume commands.")
     args = p.parse_args()
     cfg = load_config(args.config)
 
@@ -87,6 +90,11 @@ def main():
         seeds, list_mode = resolve_training_seeds(cfg)
     except ValueError as exc:
         p.error(str(exc))
+
+    if args.seed is not None:
+        if args.seed not in seeds:
+            p.error(f'--seed must be one of the configured seeds: {seeds}')
+        seeds = [args.seed]
 
     if args.resume is not None and list_mode and len(seeds) > 1:
         p.error('--resume cannot be used with multiple seeds; keep only the seed being resumed')
@@ -96,7 +104,12 @@ def main():
     for index, seed in enumerate(seeds, start=1):
         run_cfg = deepcopy(cfg)
         run_cfg['seed'] = int(seed)
-        run_cfg['output_dir'] = str(seed_output_dir(base_output_dir, seed, list_mode))
+        run_output_dir = seed_output_dir(base_output_dir, seed, list_mode)
+        run_cfg['output_dir'] = str(run_output_dir)
+        if list_mode:
+            eval_cfg = deepcopy(run_cfg.get('eval', {}))
+            eval_cfg['output_dir'] = str(run_output_dir / 'eval')
+            run_cfg['eval'] = eval_cfg
         print(
             f'[train] run {index}/{len(seeds)} seed={seed} '
             f'output_dir={run_cfg["output_dir"]}'
