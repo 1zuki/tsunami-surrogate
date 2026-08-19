@@ -37,6 +37,9 @@ from src.utils.hashing import sha256_file  # noqa: E402
 
 SUITE_SCHEMA_ID = "tsunami-surrogate.final-v2-evaluation-suite.v1"
 REPORT_SCHEMA_ID = "tsunami-surrogate.final-v2-evaluation-preflight.v1"
+MANUAL_COMPLETION_SCHEMA_ID = (
+    "tsunami-surrogate.manual-training-completion.v1"
+)
 
 
 class PreflightError(RuntimeError):
@@ -116,6 +119,118 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise PreflightError(f"Expected JSON object: {_relative(path)}")
     return payload
+
+
+def _validate_manual_training_completion(
+    run_dir: Path,
+    *,
+    seed: int,
+    last_epoch: int,
+    best_epoch: int,
+    best_path: Path,
+    last_path: Path,
+) -> dict[str, Any] | None:
+    record_path = run_dir / "manual_completion.json"
+    if not record_path.is_file():
+        return None
+
+    record = _read_json(record_path)
+    status = _read_json(run_dir / "run_status.json")
+    expected_scalars = {
+        "schema_id": MANUAL_COMPLETION_SCHEMA_ID,
+        "state": "completed",
+        "completion": "manual_resource_stop",
+        "seed": seed,
+        "last_epoch": last_epoch,
+        "best_epoch": best_epoch,
+        "checkpoint_selection_basis": "validation_metric_only",
+        "best_checkpoint_frozen_before_test_evaluation": True,
+        "best_checkpoint_modified_after_snapshot": False,
+        "continued_training_after_test_result": False,
+    }
+    for key, expected in expected_scalars.items():
+        if record.get(key) != expected:
+            raise PreflightError(
+                f"Manual completion field mismatch for {_relative(run_dir)}: "
+                f"{key}={record.get(key)!r} expected={expected!r}"
+            )
+
+    if (
+        status.get("state") != "completed"
+        or status.get("completion") != "manual_resource_stop"
+        or status.get("manual_completion_record") != record_path.name
+    ):
+        raise PreflightError(
+            f"Run status does not bind the manual completion record: "
+            f"{_relative(run_dir)}"
+        )
+
+    observed_best_hash = sha256_file(best_path)
+    observed_last_hash = sha256_file(last_path)
+    if record.get("best_checkpoint_sha256") != observed_best_hash:
+        raise PreflightError(
+            f"Manual completion best-checkpoint hash mismatch: "
+            f"{_relative(best_path)}"
+        )
+    if record.get("last_checkpoint_sha256") != observed_last_hash:
+        raise PreflightError(
+            f"Manual completion last-checkpoint hash mismatch: "
+            f"{_relative(last_path)}"
+        )
+
+    evaluation_name = str(record.get("evaluation_artifact", ""))
+    evaluation_relative = Path(evaluation_name)
+    if (
+        not evaluation_name
+        or evaluation_relative.is_absolute()
+        or ".." in evaluation_relative.parts
+    ):
+        raise PreflightError(
+            f"Unsafe manual-completion evaluation path: {evaluation_name!r}"
+        )
+    evaluation_path = run_dir / evaluation_relative
+    if not evaluation_path.is_file():
+        raise PreflightError(
+            f"Missing manual-completion evaluation: {_relative(evaluation_path)}"
+        )
+    if record.get("evaluation_artifact_sha256") != sha256_file(evaluation_path):
+        raise PreflightError(
+            f"Manual-completion evaluation hash mismatch: "
+            f"{_relative(evaluation_path)}"
+        )
+
+    evaluation = _read_json(evaluation_path)
+    if int(evaluation.get("num_samples", -1)) != int(
+        record.get("evaluation_num_samples", -2)
+    ):
+        raise PreflightError(
+            f"Manual-completion evaluation sample count mismatch: "
+            f"{_relative(evaluation_path)}"
+        )
+    expected_seeds = record.get("evaluation_training_seeds")
+    if evaluation.get("training_seeds") != expected_seeds:
+        raise PreflightError(
+            f"Manual-completion evaluation seed mismatch: "
+            f"{_relative(evaluation_path)}"
+        )
+    members = evaluation.get("members")
+    if not isinstance(members, list) or not any(
+        isinstance(member, Mapping)
+        and int(member.get("training_seed", -1)) == seed
+        and int(member.get("checkpoint_epoch", -1)) == best_epoch
+        for member in members
+    ):
+        raise PreflightError(
+            f"Manual-completion evaluation does not contain the frozen "
+            f"seed-{seed} checkpoint at epoch {best_epoch}: "
+            f"{_relative(evaluation_path)}"
+        )
+
+    return {
+        "record": _relative(record_path),
+        "reason": str(record.get("reason", "")),
+        "evaluation": _relative(evaluation_path),
+    }
 
 
 def _iter_jsonl(path: Path) -> Iterable[dict[str, Any]]:
@@ -609,7 +724,17 @@ def validate_completed_checkpoint(
     early_count = int(trainer_state.get("early_count", -1))
     horizon_complete = configured_epochs > 0 and last_epoch >= configured_epochs
     early_complete = patience > 0 and early_count >= patience
+    manual_completion = None
     if not (horizon_complete or early_complete):
+        manual_completion = _validate_manual_training_completion(
+            run_dir,
+            seed=seed,
+            last_epoch=last_epoch,
+            best_epoch=best_epoch,
+            best_path=best_path,
+            last_path=last_path,
+        )
+    if not (horizon_complete or early_complete or manual_completion is not None):
         raise PreflightError(
             f"Training is incomplete for {_relative(run_dir)}: "
             f"last_epoch={last_epoch}, configured_epochs={configured_epochs}, "
@@ -704,7 +829,14 @@ def validate_completed_checkpoint(
         "configured_epochs": configured_epochs,
         "early_count": early_count,
         "patience": patience,
-        "completion": "horizon" if horizon_complete else "early_stopping",
+        "completion": (
+            "horizon"
+            if horizon_complete
+            else "early_stopping"
+            if early_complete
+            else "manual_resource_stop"
+        ),
+        "manual_completion": manual_completion,
         "training_data_identity_strength": (
             None
             if checkpoint_entry is None
