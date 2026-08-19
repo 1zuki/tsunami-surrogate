@@ -1,0 +1,92 @@
+\pdfoutput=1
+\documentclass[11pt,a4paper,fleqn]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{makecell}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xurl}
+\usepackage{placeins}
+\usepackage{tikz}
+\usepackage[hidelinks]{hyperref}
+\usetikzlibrary{arrows.meta, positioning, calc, fit}
+
+% The shared Elsevier sections use the CAS placement form [pos=htbp].
+% The neutral article class expects [htbp], so the wrapper normalizes all
+% shared table and figure placements without modifying the manuscript source.
+\let\ArxivTable\table
+\let\EndArxivTable\endtable
+\renewenvironment{table}[1][htbp]
+  {\ArxivTable[htbp]}
+  {\EndArxivTable}
+
+\let\ArxivFigure\figure
+\let\EndArxivFigure\endfigure
+\renewenvironment{figure}[1][htbp]
+  {\ArxivFigure[htbp]}
+  {\EndArxivFigure}
+
+\emergencystretch=2em
+\Urlmuskip=0mu plus 2mu
+
+\title{Reference-Aware Evaluation of Neural PDE Surrogates:\\
+A Controlled Multi-Reference Benchmark for Tsunami-Like Waves}
+
+\author{%
+Nguyen Tho Binh An\textsuperscript{1,2},
+Le Minh Nhut Tan\textsuperscript{1,2},
+Mai Tien Dung\textsuperscript{1,2,*}\\[0.6em]
+\small \textsuperscript{1}Faculty of Computer Science,
+University of Information Technology, Ho Chi Minh City, Viet Nam\\
+\small \textsuperscript{2}Vietnam National University,
+Ho Chi Minh City, Viet Nam\\[0.4em]
+\small \textsuperscript{*}Corresponding author:
+\texttt{dungmt@uit.edu.vn}\\
+\small Nguyen Tho Binh An:
+\href{https://orcid.org/0009-0001-1635-225X}{ORCID 0009-0001-1635-225X}}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\input{sections/abstract}
+
+\noindent\textbf{Keywords:}
+neural PDE surrogates;
+reference-solver discrepancy;
+numerical verification;
+neural operators;
+shallow-water equations;
+scientific machine learning
+
+\input{sections/introduction}
+\input{sections/related_work}
+\input{sections/data_gen}
+\input{sections/methods}
+\input{sections/models}
+\input{sections/training}
+\input{sections/results}
+\input{sections/discussion}
+\input{sections/limitations}
+\input{sections/conclusion}
+\input{sections/acknowledgment}
+\input{sections/declarations}
+\input{sections/data_availability}
+
+\appendix
+\input{sections/appendix}
+
+\clearpage
+\bibliographystyle{plainnat}
+\bibliography{sections/references}
+
+\end{document}
