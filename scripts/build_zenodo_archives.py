@@ -18,9 +18,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RUN = ROOT / "evaluation_runs/final-v2-paper-full-r1"
 DEFAULT_RELEASE_ROOT = ROOT / "release/common-time-v2-zenodo"
 DEFAULT_PROJECT_PYTHON = ROOT / ".venv/bin/python"
-RELEASE_VERSION = "2.0.0"
-DEFAULT_PREPARED_DATE = "2026-08-15"
-REPRODUCTION_DOI_URL = "https://doi.org/10.5281/zenodo.21956834"
+RELEASE_VERSION = "2.1.0"
+DEFAULT_PREPARED_DATE = "2026-08-19"
+PREVIOUS_REPRODUCTION_DOI_URL = "https://doi.org/10.5281/zenodo.21956834"
 RAW_MIRROR_URL = (
     "https://drive.google.com/drive/folders/"
     "1avJBArJGgdoosuNRyZMHKqgd3kWX3U84?usp=sharing"
@@ -28,6 +28,18 @@ RAW_MIRROR_URL = (
 DATA_LICENSE_ID = "cc-by-4.0"
 DATA_LICENSE_NAME = (
     "Creative Commons Attribution 4.0 International (CC BY 4.0)"
+)
+MULTISEED_RESULTS_ROOT = ROOT / "results/multiseed_v2"
+GEOCLAW_BUNDLE_HASH = (
+    "3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460"
+)
+GEOCLAW_BUNDLE_ROOT = (
+    ROOT / "artifacts/common_time_v2/level_b_minimum" / GEOCLAW_BUNDLE_HASH
+)
+GEOCLAW_EXTERNAL_ROOT = (
+    ROOT
+    / "artifacts/common_time_v2/level_b_minimum_external"
+    / GEOCLAW_BUNDLE_HASH
 )
 
 
@@ -153,6 +165,85 @@ def _selected_model_files(run_manifest: dict[str, Any]) -> tuple[Path, ...]:
     return tuple(selected)
 
 
+def _multiseed_model_files(
+    run_manifest: dict[str, Any],
+) -> tuple[Path, ...]:
+    base_checkpoints = set(_checkpoint_hashes(run_manifest))
+    labels = (
+        "convlstm_hydrostatic",
+        "ffno_hydrostatic",
+        "fno_boussinesq",
+        "fno_hydrostatic",
+        "fno_muscl_hr",
+        "unet_hydrostatic",
+    )
+    selected: list[Path] = []
+    additional_checkpoints: set[str] = set()
+    for label in labels:
+        metrics_path = (
+            MULTISEED_RESULTS_ROOT / "seed_metrics" / f"{label}.json"
+        )
+        payload = _load_json(metrics_path)
+        checkpoints = [str(path) for path in payload.get("checkpoints", [])]
+        member_checkpoints = [
+            str(row.get("checkpoint"))
+            for row in payload.get("members", [])
+        ]
+        if (
+            payload.get("evaluation_type") != "v2_seed_stability"
+            or payload.get("training_seeds") != [18, 36, 67]
+            or int(payload.get("member_count", -1)) != 3
+            or checkpoints != member_checkpoints
+        ):
+            raise ValueError(f"Invalid multiseed metrics: {metrics_path}")
+        for relative in checkpoints:
+            if relative in base_checkpoints:
+                continue
+            additional_checkpoints.add(relative)
+            checkpoint = ROOT / relative
+            if not checkpoint.is_file():
+                raise FileNotFoundError(
+                    f"Missing multiseed checkpoint: {checkpoint}"
+                )
+            selected.append(checkpoint)
+            for name in ("config_resolved.yaml", "history.json"):
+                companion = checkpoint.parent / name
+                if not companion.is_file():
+                    raise FileNotFoundError(
+                        f"Missing multiseed checkpoint companion: {companion}"
+                    )
+                selected.append(companion)
+            for name in (
+                "manual_completion.json",
+                "manual_stop_test_metrics.json",
+                "run_metadata.json",
+                "run_status.json",
+                "split_sizes.json",
+            ):
+                companion = checkpoint.parent / name
+                if companion.is_file():
+                    selected.append(companion)
+    if len(additional_checkpoints) != 12:
+        raise ValueError(
+            "Expected 12 additional seed-36/67 checkpoints, found "
+            f"{len(additional_checkpoints)}"
+        )
+    return tuple(dict.fromkeys(selected))
+
+
+def _geoclaw_external_sources() -> tuple[Path, ...]:
+    frozen = _load_json(GEOCLAW_BUNDLE_ROOT / "frozen_contract.json")
+    sources = [
+        GEOCLAW_EXTERNAL_ROOT / "RUN_MANIFEST.json",
+        GEOCLAW_EXTERNAL_ROOT / "SHA256SUMS.txt",
+    ]
+    for row in frozen.get("external_results", []):
+        sources.append(
+            GEOCLAW_EXTERNAL_ROOT / Path(str(row["relative_path"]))
+        )
+    return tuple(sources)
+
+
 def _strict_holdout_eval_sources() -> tuple[Path, ...]:
     root = ROOT / "data/processed_strict_holdout/hydrostatic"
     sources: list[Path] = [root / "strict_holdout_index.json"]
@@ -181,18 +272,6 @@ def _native_muscl_eval_sources() -> tuple[Path, ...]:
         root = ROOT / f"data/processed_res{resolution}/muscl_hr"
         sources.extend((root / "normalization_stats.json", root / "test"))
     return tuple(sources)
-
-
-def _paper_sources() -> tuple[Path, ...]:
-    return (
-        ROOT / "paper/main.tex",
-        ROOT / "paper/sections",
-        ROOT / "paper/figures",
-        ROOT / "paper/cas-common.sty",
-        ROOT / "paper/cas-model2-names.bst",
-        ROOT / "paper/cas-sc.cls",
-        ROOT / "paper/build/main.pdf",
-    )
 
 
 def _assert_sources(specs: Iterable[ArchiveSpec]) -> None:
@@ -252,6 +331,14 @@ def _reproduction_specs(
             "All 33 selected checkpoints with resolved configs and histories.",
         ),
         ArchiveSpec(
+            "models/multiseed_checkpoints.tar.zst",
+            _multiseed_model_files(run_manifest),
+            (
+                "Twelve additional seed-36/67 checkpoints used by the "
+                "three-seed direct-model analysis."
+            ),
+        ),
+        ArchiveSpec(
             "results/final_paper_evaluation.tar.zst",
             (
                 run_root,
@@ -277,9 +364,28 @@ def _reproduction_specs(
             ),
         ),
         ArchiveSpec(
-            "paper/paper_snapshot.tar.zst",
-            _paper_sources(),
-            "Elsevier manuscript sources, figures, template files, and compiled PDF.",
+            "results/multiseed_geoclaw_evidence.tar.zst",
+            (
+                MULTISEED_RESULTS_ROOT / "seed_metrics",
+                MULTISEED_RESULTS_ROOT / "reference_analysis",
+                ROOT / "configs/model/multiseed",
+                ROOT / "scripts/eval_v2_seed_metrics.py",
+                ROOT / "scripts/eval_v2_reference_analysis.py",
+                ROOT / "scripts/summarize_v2_multiseed_reference.py",
+                ROOT / "scripts/run_multiseed_evaluation.sh",
+                ROOT / "scripts/run_geoclaw_discrepancy_ablation.py",
+                ROOT / "paper/figures/geoclaw_discrepancy_ablation.json",
+                ROOT / "paper/figures/geoclaw_discrepancy_ablation.csv",
+                ROOT / "paper/notes/geoclaw_discrepancy_ablation.md",
+                ROOT / "configs/data/dataset.yaml",
+                GEOCLAW_BUNDLE_ROOT,
+                *_geoclaw_external_sources(),
+            ),
+            (
+                "Three-seed metrics and cross-reference analyses, plus the "
+                "inputs, external fields, outputs, and scripts for the "
+                "GeoClaw discrepancy ablation."
+            ),
         ),
     )
 
@@ -492,8 +598,8 @@ def _write_release_files(
     if profile == "reproduction":
         title = "Tsunami-Surrogate Common-Time V2 Reproduction Package"
         description = (
-            "Processed benchmark datasets, selected checkpoints, validated "
-            "evaluation artifacts, numerical evidence, and manuscript snapshot "
+            "Processed benchmark datasets, selected and replicated "
+            "checkpoints, evaluation outputs, and numerical evidence "
             "for the common-time-v2 multi-reference tsunami-surrogate benchmark."
         )
         scope = """This package is intended as a new version of the existing
@@ -503,6 +609,14 @@ train/validation/test splits. Strict-holdout and native-resolution archives
 include the evaluation subsets required for the reported auxiliary analyses;
 their selected checkpoints, resolved configurations, and training histories
 are included, but their full auxiliary train/validation arrays are not.
+
+The multiseed archive adds the twelve seed-36/67 checkpoints used with the six
+seed-18 checkpoints in the three-seed direct-model analysis. Its paired
+evaluation outputs and the complete GeoClaw discrepancy-ablation evidence are
+included in a separate results archive.
+
+The paper manuscript, editable source, and compiled PDF are intentionally
+excluded and are handled separately through the journal submission workflow.
 
 `direct_model_statistics.json` contains the paired scenario-bootstrap
 statistics reported for the direct Hydrostatic models."""
@@ -526,7 +640,11 @@ The main processed containers carry common-time-v2 payloads in an older
 manifest envelope. The final evaluation preflight found no legacy saved-step
 payloads, but checkpoint-to-training-data identity is manifest-bound rather
 than independently bound to every shard content hash. This limitation is
-disclosed in the manuscript and retained evaluation report."""
+disclosed in the manuscript and retained evaluation report.
+
+The added three-seed and GeoClaw-ablation outputs are packaged separately from
+the original validated full-suite run so that their provenance and replication
+scope remain explicit."""
         gebco = """## GEBCO attribution
 
 The real-bathymetry transfer suite contains derived GEBCO_2026 material.
@@ -584,17 +702,25 @@ contract and code state."""
     if profile == "reproduction":
         availability = f"""## Archive locations
 
-- Version DOI: {REPRODUCTION_DOI_URL}
+- Previous published version DOI: {PREVIOUS_REPRODUCTION_DOI_URL}
+- New-version DOI: assigned automatically by Zenodo when this draft is
+  published
 - Complete raw-publication mirror:
   {RAW_MIRROR_URL}
 
-The Zenodo record is the persistent citation for this reproduction package.
+Use the existing Zenodo record's **New version** action. Do not enter the
+previous DOI as an external or replacement DOI; Zenodo retains the version
+relationship and assigns a new DOI to the new version.
+
+The newly published Zenodo version is the persistent citation for this
+reproduction package.
 The Google Drive folder provides the approximately 31 GB eta-primary raw
 publications as a supplementary distribution mirror. Because that folder is
 mutable, verify downloaded raw archives with their supplied checksums and do
 not treat the Drive URL as an immutable identifier."""
         metadata_notes = (
-            f"Version DOI: {REPRODUCTION_DOI_URL}. Complete raw numerical "
+            f"Previous version DOI: {PREVIOUS_REPRODUCTION_DOI_URL}. Zenodo "
+            f"will assign a new DOI to this version. Complete raw numerical "
             f"publications are distributed through the supplementary mutable "
             f"mirror at {RAW_MIRROR_URL}."
         )
@@ -604,47 +730,52 @@ The Zenodo dataset record declares Creative Commons Attribution 4.0
 International (CC BY 4.0) for the deposited research data and documentation.
 This dataset license does not replace the repository's code license or
 third-party terms. The GEBCO-derived suite retains its required source
-attribution, and the Elsevier template files retain their original terms.
+attribution.
 
 ## Citation
 
-Cite the versioned reproduction package at
-{REPRODUCTION_DOI_URL}. The DOI becomes active when the
-Zenodo draft is published. The Google Drive raw mirror is not a persistent
-citation."""
+Cite the DOI assigned by Zenodo to this version after publication. The
+previous version remains available at {PREVIOUS_REPRODUCTION_DOI_URL}.
+The Google Drive raw mirror is not a persistent citation."""
         checklist = f"""# Manual Zenodo upload checklist
 
 1. Verify `sha256sum -c SHA256SUMS.txt`.
 2. Open the existing processed-data record and choose **New version**.
-3. Confirm the reserved version DOI is
-   `{REPRODUCTION_DOI_URL}`.
-4. Copy and review `ZENODO_METADATA_TEMPLATE.json`.
-5. Confirm the dataset license is Creative Commons Attribution 4.0
+3. Do not copy `{PREVIOUS_REPRODUCTION_DOI_URL}` into the DOI field. It is the
+   previous version DOI; Zenodo assigns the new version DOI automatically.
+4. If Zenodo offers a reserved DOI in the draft, record it; otherwise record
+   the new DOI after publication. Update the manuscript only after the new
+   version is published.
+5. Copy and review `ZENODO_METADATA_TEMPLATE.json`.
+6. Confirm the dataset license is Creative Commons Attribution 4.0
    International (CC BY 4.0).
-6. Set `publication_date` to the actual publication date.
-7. Test the raw mirror in a private browser window with no Google account:
+7. Set `publication_date` to the actual publication date.
+8. Test the raw mirror in a private browser window with no Google account:
    {RAW_MIRROR_URL}
-8. Upload `README.md`, `RELEASE_MANIFEST.json`, `ARCHIVE_CONTENTS.tsv`,
+9. Remove or replace the previous version's files in the draft, then upload
+   `README.md`, `RELEASE_MANIFEST.json`, `ARCHIVE_CONTENTS.tsv`,
    `SHA256SUMS.txt`, `direct_model_statistics.json`, and every archive.
-9. Confirm the displayed total size, every filename, and the raw-mirror link
+10. Confirm the displayed total size, every filename, and the raw-mirror link
    before publishing.
-10. Publish the Zenodo version and verify that the DOI resolves.
-11. Download one archive from Zenodo and re-run its SHA-256 check as an
+11. Publish the Zenodo version and verify that its new DOI resolves.
+12. Download one archive from Zenodo and re-run its SHA-256 check as an
     independent post-upload smoke test.
 """
     else:
         availability = f"""## Distribution
 
 - Raw-publication mirror: {RAW_MIRROR_URL}
-- Citable reproduction package: {REPRODUCTION_DOI_URL}
+- Previous published reproduction package:
+  {PREVIOUS_REPRODUCTION_DOI_URL}
 
 This Google Drive folder is a supplementary, mutable distribution mirror
 rather than an immutable archive. Verify every downloaded archive against
-`SHA256SUMS.txt`. Cite the Zenodo reproduction package, not the Drive URL."""
+`SHA256SUMS.txt`. Cite the latest published Zenodo reproduction package, not
+the Drive URL."""
         metadata_notes = (
             f"Raw numerical publications are distributed through the mutable "
-            f"mirror at {RAW_MIRROR_URL}; cite the reproduction package at "
-            f"{REPRODUCTION_DOI_URL}."
+            f"mirror at {RAW_MIRROR_URL}; the previous reproduction version "
+            f"is {PREVIOUS_REPRODUCTION_DOI_URL}."
         )
         license_and_citation = f"""## License
 
@@ -655,10 +786,9 @@ third-party terms.
 
 ## Citation
 
-Cite the versioned reproduction package at
-{REPRODUCTION_DOI_URL}. The DOI becomes active when the
-Zenodo draft is published. Do not cite the mutable Drive folder as an archival
-record."""
+Cite the latest published Zenodo reproduction package. The previous version
+is available at {PREVIOUS_REPRODUCTION_DOI_URL}. Do not cite the mutable Drive
+folder as an archival record."""
         checklist = f"""# Raw mirror upload checklist
 
 1. Verify `sha256sum -c SHA256SUMS.txt`.
@@ -671,8 +801,9 @@ record."""
    account.
 6. Keep the folder read-only and verify downloaded archives against
    `SHA256SUMS.txt`.
-7. Cite the persistent reproduction package at {REPRODUCTION_DOI_URL}; do not
-   cite the mutable Drive folder as an archival record.
+7. Cite the latest published reproduction package; the previous version is
+   {PREVIOUS_REPRODUCTION_DOI_URL}. Do not cite the mutable Drive folder as an
+   archival record.
 """
 
     readme = f"""# {title}
@@ -725,6 +856,7 @@ sha256sum -c SHA256SUMS.txt
                 "affiliation": (
                     "VNUHCM - University of Information Technology"
                 ),
+                "orcid": "0009-0001-1635-225X",
             },
             {
                 "name": "Le, Minh Nhut Tan",
