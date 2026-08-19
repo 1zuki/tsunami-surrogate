@@ -1,0 +1,3195 @@
+{
+  "bundle_hash": "3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460",
+  "cases": [
+    {
+      "case_hash": "612a4d1936e8a75e13452069b41834d9d3d21cc73c5f86f19ab2d261fce12902",
+      "case_id": "production_input_canaries_train_scenario_000002",
+      "nested_input_identity": {
+        "bathymetry": true,
+        "eta0": true,
+        "eta_t0": true,
+        "hu0": true,
+        "hv0": true,
+        "initial_depth": true
+      },
+      "qualified_id": "train:scenario_000002",
+      "rows": [
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250068747643902,
+            "minimum_depth": 0.7398302655992076,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 987,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.013048069812269632,
+            "boundary_band_relative_l2": 0.5844265228126252,
+            "field_cosine_similarity": 0.8644695804651423,
+            "field_norm_ratio": 0.6025768961533247,
+            "interior_relative_l2": 0.5578165611851592,
+            "per_time_scaled_l2_p95_active": 0.8082859785917945,
+            "shape_relative_l2_after_scale": 0.3029064480913087,
+            "trajectory_relative_l2": 0.5668157747861932
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "d14b045d129b02a5428c8ad295e3ee88c359ebc221676c2d870d380e1b50b7ba",
+          "variant_id": "production_96_radiation_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250068747643902,
+            "minimum_depth": 0.7391537588252387,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 987,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.01306187199803231,
+            "boundary_band_relative_l2": 0.5855696176757891,
+            "field_cosine_similarity": 0.8637617060439144,
+            "field_norm_ratio": 0.6029083679117005,
+            "interior_relative_l2": 0.5581319033234218,
+            "per_time_scaled_l2_p95_active": 0.8119886596130188,
+            "shape_relative_l2_after_scale": 0.3038058288057671,
+            "trajectory_relative_l2": 0.5674153497983884
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "6e5a89cb7f61b72d616b3d0ec403e442ddc5b373aad30225ff3ce6359f1566f4",
+          "variant_id": "production_96_radiation_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250068747643902,
+            "minimum_depth": 0.7391580400581924,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 987,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.013062038571278634,
+            "boundary_band_relative_l2": 0.5855920567304556,
+            "field_cosine_similarity": 0.863759593254119,
+            "field_norm_ratio": 0.6028975111934041,
+            "interior_relative_l2": 0.5581311797076662,
+            "per_time_scaled_l2_p95_active": 0.8120590042215743,
+            "shape_relative_l2_after_scale": 0.3038025415680464,
+            "trajectory_relative_l2": 0.5674225858375138
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "e18af6cc0e663959323405ceb1a09920754ba268fea4020bcca3ff1f24470848",
+          "variant_id": "production_96_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250068747643902,
+            "minimum_depth": 0.7391538129127508,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 987,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.013061890877362153,
+            "boundary_band_relative_l2": 0.5855722278209469,
+            "field_cosine_similarity": 0.8637616130131135,
+            "field_norm_ratio": 0.6029067989685662,
+            "interior_relative_l2": 0.558131786279497,
+            "per_time_scaled_l2_p95_active": 0.8119985626436453,
+            "shape_relative_l2_after_scale": 0.3038051343593795,
+            "trajectory_relative_l2": 0.5674161699275052
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "6b738f6c621ab8c87213e145d2e4898a7f5fd69d7fc65372302fa60e49b9ec19",
+          "variant_id": "extended_192_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250066258114683,
+            "minimum_depth": 0.7246340361510434,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 1973,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.009066696185839052,
+            "boundary_band_relative_l2": 0.3993224827635754,
+            "field_cosine_similarity": 0.9443468979285033,
+            "field_norm_ratio": 0.7277394314644886,
+            "interior_relative_l2": 0.3911084992288596,
+            "per_time_scaled_l2_p95_active": 0.6482553748118886,
+            "shape_relative_l2_after_scale": 0.23939080837111834,
+            "trajectory_relative_l2": 0.39386257870070807
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "7c7b7fcad709ecf76fea8846e479d032e1598a2e4407c7a9e66b0061bb2974c9",
+          "variant_id": "refined_192_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.2250049056904403,
+            "minimum_depth": 0.7101954391780345,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 494,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.005309006698832221,
+            "boundary_band_relative_l2": 0.22636971266747866,
+            "field_cosine_similarity": 0.9810744469616434,
+            "field_norm_ratio": 0.8557924256826983,
+            "interior_relative_l2": 0.23272211544597032,
+            "per_time_scaled_l2_p95_active": 0.41116736148709876,
+            "shape_relative_l2_after_scale": 0.16570786662338444,
+            "trajectory_relative_l2": 0.2306263522987877
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "790e65ac84654997086ed124642f2fbe092bf816863b9344d7a2a3d402188151",
+          "variant_id": "production_96_radiation_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.2250049056904403,
+            "minimum_depth": 0.7094686451659438,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 494,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.005320938935928502,
+            "boundary_band_relative_l2": 0.228075050335331,
+            "field_cosine_similarity": 0.9810477613227517,
+            "field_norm_ratio": 0.855021651635708,
+            "interior_relative_l2": 0.2326618942091925,
+            "per_time_scaled_l2_p95_active": 0.4135504583837255,
+            "shape_relative_l2_after_scale": 0.16567418546794302,
+            "trajectory_relative_l2": 0.2311446956485683
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "2aff0910ac7f2bf5b50da1030de376558973764e81323b915d272a91f68e217f",
+          "variant_id": "production_96_radiation_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.2250049056904403,
+            "minimum_depth": 0.70946862011525,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 494,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.005320941573351779,
+            "boundary_band_relative_l2": 0.2280761904511704,
+            "field_cosine_similarity": 0.9810477437039158,
+            "field_norm_ratio": 0.8550215610350766,
+            "interior_relative_l2": 0.23266150693186344,
+            "per_time_scaled_l2_p95_active": 0.41355537192688485,
+            "shape_relative_l2_after_scale": 0.1656742441848693,
+            "trajectory_relative_l2": 0.23114481021977612
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "630e2a35a68e16b9bcbc68ad3fa3dc37338b6ef6ee2b8912babe604458b30c51",
+          "variant_id": "production_96_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.2250049056904403,
+            "minimum_depth": 0.7094686138712705,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 494,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.005320935409286119,
+            "boundary_band_relative_l2": 0.22807487582119096,
+            "field_cosine_similarity": 0.9810477999516322,
+            "field_norm_ratio": 0.8550216705420315,
+            "interior_relative_l2": 0.23266175143025758,
+            "per_time_scaled_l2_p95_active": 0.41355076773767613,
+            "shape_relative_l2_after_scale": 0.16567402190609343,
+            "trajectory_relative_l2": 0.2311445424491631
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "f7dc07b076ed4b9d950f05b70ae4f67d51e985e2c3f11ece4a47d0a9711590b8",
+          "variant_id": "extended_192_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.22500283472875435,
+            "minimum_depth": 0.6984439872954551,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 987,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.0018598395821302187,
+            "boundary_band_relative_l2": 0.06925968157230228,
+            "field_cosine_similarity": 0.9968058279560553,
+            "field_norm_ratio": 0.9845874158668556,
+            "interior_relative_l2": 0.085972683533371,
+            "per_time_scaled_l2_p95_active": 0.21319058284764666,
+            "shape_relative_l2_after_scale": 0.07863236728944087,
+            "trajectory_relative_l2": 0.08079251788888155
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "e2f2f65dfbfc7f4ab369e741bd421d09b1dca5f336496b6e81ac6ebbb91cde08",
+          "variant_id": "refined_192_open_no_sponge"
+        }
+      ]
+    },
+    {
+      "case_hash": "8fd0cf36a1ff80f4453dd6cf1560113e465f570e38b2d16b6e15ac07809136ea",
+      "case_id": "production_input_canaries_train_scenario_000008",
+      "nested_input_identity": {
+        "bathymetry": true,
+        "eta0": true,
+        "eta_t0": true,
+        "hu0": true,
+        "hv0": true,
+        "initial_depth": true
+      },
+      "qualified_id": "train:scenario_000008",
+      "rows": [
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250333030204411,
+            "minimum_depth": 0.7499968534013963,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 987,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.0032099591112600538,
+            "boundary_band_relative_l2": 0.46286219487041363,
+            "field_cosine_similarity": 0.8524348793911053,
+            "field_norm_ratio": 0.6728390238137401,
+            "interior_relative_l2": 0.626855866932353,
+            "per_time_scaled_l2_p95_active": 0.7753166384861693,
+            "shape_relative_l2_after_scale": 0.3517827223503302,
+            "trajectory_relative_l2": 0.552819543556517
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "ee8e34937b25698a0004754d70cb3e02c0d3081e1d662296402dbc585586de20",
+          "variant_id": "production_96_radiation_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250333030204411,
+            "minimum_depth": 0.7499968534013964,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 987,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.003198730944264012,
+            "boundary_band_relative_l2": 0.45661473445550693,
+            "field_cosine_similarity": 0.8526578333781893,
+            "field_norm_ratio": 0.678013693687461,
+            "interior_relative_l2": 0.6279052199033053,
+            "per_time_scaled_l2_p95_active": 0.7708933212605776,
+            "shape_relative_l2_after_scale": 0.35424163174486584,
+            "trajectory_relative_l2": 0.5508858272883083
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "90832f101b385ee1b734338251b1078bcf87039c8a0607797e80fcbc15202fe2",
+          "variant_id": "production_96_radiation_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250333030204411,
+            "minimum_depth": 0.7499968534013964,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 987,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.0031984081253631906,
+            "boundary_band_relative_l2": 0.4565029028738589,
+            "field_cosine_similarity": 0.8526997226518094,
+            "field_norm_ratio": 0.6780264252909707,
+            "interior_relative_l2": 0.6278875509913678,
+            "per_time_scaled_l2_p95_active": 0.7700400564718802,
+            "shape_relative_l2_after_scale": 0.3542019280245727,
+            "trajectory_relative_l2": 0.5508302313784487
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "3341476c78687bfe25a865214e68f897fc577506e0bddc3748bf8b03d443bc52",
+          "variant_id": "production_96_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250333030204411,
+            "minimum_depth": 0.7499968534013964,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 987,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.003198607188754611,
+            "boundary_band_relative_l2": 0.45657663083188,
+            "field_cosine_similarity": 0.8526764110883809,
+            "field_norm_ratio": 0.6780087984042472,
+            "interior_relative_l2": 0.627895133378352,
+            "per_time_scaled_l2_p95_active": 0.770604966950431,
+            "shape_relative_l2_after_scale": 0.3542185171661622,
+            "trajectory_relative_l2": 0.5508645140996202
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "22b4bcc482bce476a51e51c3ec72e3a35d9afa6d648144aa7967f4a1fad5a624",
+          "variant_id": "extended_192_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250405566747451,
+            "minimum_depth": 0.749810390882423,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 1973,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.0023914934908496645,
+            "boundary_band_relative_l2": 0.3330179582334049,
+            "field_cosine_similarity": 0.9263122718401241,
+            "field_norm_ratio": 0.7599217683046487,
+            "interior_relative_l2": 0.47515456171569304,
+            "per_time_scaled_l2_p95_active": 0.6429421874324525,
+            "shape_relative_l2_after_scale": 0.2863055814223209,
+            "trajectory_relative_l2": 0.411863296137415
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "c52aa3360578318ee5b17c99e8f9c817281a8a9a8e00f0319f8057e9fa366410",
+          "variant_id": "refined_192_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.22501184335994937,
+            "minimum_depth": 0.7497003643008195,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 494,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.001502689496339042,
+            "boundary_band_relative_l2": 0.21479579936926413,
+            "field_cosine_similarity": 0.9734902370477102,
+            "field_norm_ratio": 0.8524231166291741,
+            "interior_relative_l2": 0.29477432617066074,
+            "per_time_scaled_l2_p95_active": 0.3965465876750088,
+            "shape_relative_l2_after_scale": 0.19497351982800631,
+            "trajectory_relative_l2": 0.2587933654853406
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "66105185e9ada9acb9a6639c4747fbe9f09875b84db945a82fb8cc4854a1a3e8",
+          "variant_id": "production_96_radiation_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.22501184335994937,
+            "minimum_depth": 0.7496998297556292,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 494,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.0014877386951012304,
+            "boundary_band_relative_l2": 0.20818095132891465,
+            "field_cosine_similarity": 0.9737110215942362,
+            "field_norm_ratio": 0.8564033401606937,
+            "interior_relative_l2": 0.2949114924168599,
+            "per_time_scaled_l2_p95_active": 0.3885935002467006,
+            "shape_relative_l2_after_scale": 0.19507741428393074,
+            "trajectory_relative_l2": 0.2562185367010427
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "b43dc8fb711dfca13eda9d844c35c892de2dbed68577b8026fd669ebc9016c77",
+          "variant_id": "production_96_radiation_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.22501184335994937,
+            "minimum_depth": 0.7496998297556292,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 494,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.0014875916393299062,
+            "boundary_band_relative_l2": 0.2081565057073511,
+            "field_cosine_similarity": 0.9737208960257567,
+            "field_norm_ratio": 0.8563865677766096,
+            "interior_relative_l2": 0.2948849518178333,
+            "per_time_scaled_l2_p95_active": 0.3884092775130792,
+            "shape_relative_l2_after_scale": 0.19503744229531944,
+            "trajectory_relative_l2": 0.25619321073844864
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "49ddbce840022263f3e1d1ad20b92ab6c54324253eb1225cc12e676ba16a9638",
+          "variant_id": "production_96_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.22501184335994937,
+            "minimum_depth": 0.7496998297556292,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 494,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.0014876371603678733,
+            "boundary_band_relative_l2": 0.2081546853648111,
+            "field_cosine_similarity": 0.9737164821715041,
+            "field_norm_ratio": 0.8564016669657304,
+            "interior_relative_l2": 0.2948995016042224,
+            "per_time_scaled_l2_p95_active": 0.3884255596996199,
+            "shape_relative_l2_after_scale": 0.19505704185472425,
+            "trajectory_relative_l2": 0.25620105037707286
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "1f5ae6de9e7cd98a4395c7836d2f2d8cb879b6bb6cb53859ad8f39f3756a9445",
+          "variant_id": "extended_192_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.22501266681064483,
+            "minimum_depth": 0.7489627283541082,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 987,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.001000282346027359,
+            "boundary_band_relative_l2": 0.12515987790581753,
+            "field_cosine_similarity": 0.9857272203143418,
+            "field_norm_ratio": 0.9491940350457856,
+            "interior_relative_l2": 0.20753350874089832,
+            "per_time_scaled_l2_p95_active": 0.32115673219635665,
+            "shape_relative_l2_after_scale": 0.15979716714897182,
+            "trajectory_relative_l2": 0.17226874573533704
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "e0fa4042a48eacd40ae2a2b3619193e0530eab6edeb06b9cb2673931b30323d4",
+          "variant_id": "refined_192_open_no_sponge"
+        }
+      ]
+    },
+    {
+      "case_hash": "0043bf0a52365d673f7cb0020901434bcae1b879186d3b31a31a812a860dde1c",
+      "case_id": "production_input_canaries_train_scenario_000016",
+      "nested_input_identity": {
+        "bathymetry": true,
+        "eta0": true,
+        "eta_t0": true,
+        "hu0": true,
+        "hv0": true,
+        "initial_depth": true
+      },
+      "qualified_id": "train:scenario_000016",
+      "rows": [
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250833430458462,
+            "minimum_depth": 0.7240911081950666,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 987,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.007480905838655633,
+            "boundary_band_relative_l2": 0.5150709138828713,
+            "field_cosine_similarity": 0.894508800333637,
+            "field_norm_ratio": 0.7105782716823665,
+            "interior_relative_l2": 0.47087687401981654,
+            "per_time_scaled_l2_p95_active": 0.9933021234895815,
+            "shape_relative_l2_after_scale": 0.3176642576594041,
+            "trajectory_relative_l2": 0.4834091905369779
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "9b75dc409016c6308fbf0c16037ea05a68615fec1b9e1ba8727db670f942dfd5",
+          "variant_id": "production_96_radiation_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250833430458462,
+            "minimum_depth": 0.7242259353775061,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 987,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.0074515366413776705,
+            "boundary_band_relative_l2": 0.5123659675669623,
+            "field_cosine_similarity": 0.8948169043675022,
+            "field_norm_ratio": 0.714399328520658,
+            "interior_relative_l2": 0.4693105519949755,
+            "per_time_scaled_l2_p95_active": 0.9093547500908834,
+            "shape_relative_l2_after_scale": 0.31893166279861757,
+            "trajectory_relative_l2": 0.4815113802732134
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "9159209b776e4e3f1fad1b90a31ba46e43264db6a4f3294da63e0a1901a32912",
+          "variant_id": "production_96_radiation_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250833430458462,
+            "minimum_depth": 0.7242263338486415,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 987,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.007474715695307732,
+            "boundary_band_relative_l2": 0.516049752935874,
+            "field_cosine_similarity": 0.892685138582769,
+            "field_norm_ratio": 0.7189478843227095,
+            "interior_relative_l2": 0.4699046762549224,
+            "per_time_scaled_l2_p95_active": 0.934721702738133,
+            "shape_relative_l2_after_scale": 0.324016055414499,
+            "trajectory_relative_l2": 0.4830091892203393
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "a4afded5af8865fe080d573664a20eec6ad5348d750c8639fc7079f7824758b3",
+          "variant_id": "production_96_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250833430458462,
+            "minimum_depth": 0.7242259801638327,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 987,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.007440019653220803,
+            "boundary_band_relative_l2": 0.5116791167854601,
+            "field_cosine_similarity": 0.8950368034409896,
+            "field_norm_ratio": 0.7155153709720009,
+            "interior_relative_l2": 0.46854179769076365,
+            "per_time_scaled_l2_p95_active": 0.8994439732473956,
+            "shape_relative_l2_after_scale": 0.31911433702248176,
+            "trajectory_relative_l2": 0.4807671631900938
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "b6840baff50a1e4919998bed21a8ccc3597f5bd5bd405cb35822c650b3709dc4",
+          "variant_id": "extended_192_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.113625,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": null,
+              "operator_muscl_face_velocity_clip_count": null,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.11250652252881183,
+            "minimum_depth": 0.7020447401354575,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 1974,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.005576233497740395,
+            "boundary_band_relative_l2": 0.3824340180420213,
+            "field_cosine_similarity": 0.9435432733694564,
+            "field_norm_ratio": 0.8017252161022544,
+            "interior_relative_l2": 0.3516074283853698,
+            "per_time_scaled_l2_p95_active": 0.8624300470766736,
+            "shape_relative_l2_after_scale": 0.2655709075848693,
+            "trajectory_relative_l2": 0.36033103203345274
+          },
+          "solver": "swe_hydrostatic",
+          "target_cfl": 0.1125,
+          "trajectory_sha256": "892ac43d3595e25f57b9cec26f6d782a1e22be9938136ee3d920dfdc90072536",
+          "variant_id": "refined_192_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.22510203489096367,
+            "minimum_depth": 0.6775079285431596,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 494,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.0034836328218568863,
+            "boundary_band_relative_l2": 0.23015016607912303,
+            "field_cosine_similarity": 0.9778848348371372,
+            "field_norm_ratio": 0.894621003228242,
+            "interior_relative_l2": 0.22317240853758613,
+            "per_time_scaled_l2_p95_active": 0.8377642145955175,
+            "shape_relative_l2_after_scale": 0.18710469436093133,
+            "trajectory_relative_l2": 0.22510911898398078
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "6841bccee4da75479ddda43cfb12f7d68ddd5e4fb7b8eac5fb0201f89a0b7e99",
+          "variant_id": "production_96_radiation_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.22510203489096367,
+            "minimum_depth": 0.6775321780784482,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 494,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.0033690877155686957,
+            "boundary_band_relative_l2": 0.2186547168144981,
+            "field_cosine_similarity": 0.9795363797479981,
+            "field_norm_ratio": 0.8965424241157416,
+            "interior_relative_l2": 0.2173478442449452,
+            "per_time_scaled_l2_p95_active": 0.6776806111442408,
+            "shape_relative_l2_after_scale": 0.1804445721450848,
+            "trajectory_relative_l2": 0.21770732055141323
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "e74c8865dad9d25df89d65145f10f19f44a81c6b5ed89f3028841ea069c025b9",
+          "variant_id": "production_96_radiation_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.22510203489096367,
+            "minimum_depth": 0.6775321758235859,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 494,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.00338440550018044,
+            "boundary_band_relative_l2": 0.2218111240108307,
+            "field_cosine_similarity": 0.9790577127614614,
+            "field_norm_ratio": 0.8991675090445791,
+            "interior_relative_l2": 0.21750750061243518,
+            "per_time_scaled_l2_p95_active": 0.6874738188864695,
+            "shape_relative_l2_after_scale": 0.1830551244613564,
+            "trajectory_relative_l2": 0.21869714157304945
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "7e11c5c3ff77d12d9718379e6cf47baf3bd49b44f155713971108c5f9b99b4bb",
+          "variant_id": "production_96_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.22510203489096367,
+            "minimum_depth": 0.6775321774639513,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 494,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.0033168746866512155,
+            "boundary_band_relative_l2": 0.21317649282431342,
+            "field_cosine_similarity": 0.9803053280163833,
+            "field_norm_ratio": 0.8970147122641648,
+            "interior_relative_l2": 0.2147693821495593,
+            "per_time_scaled_l2_p95_active": 0.5970145167790146,
+            "shape_relative_l2_after_scale": 0.1771495363878987,
+            "trajectory_relative_l2": 0.21433336309374013
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "373efaa9b6bd613e832a6891ed8e10387fd021e01aaca14884c3b4b23dfd6bf2",
+          "variant_id": "extended_192_open_no_sponge"
+        },
+        {
+          "health": {
+            "allowed_post_step_cfl": 0.22725,
+            "counter_maxima": {
+              "operator_dry_projection_count": 0.0,
+              "operator_muscl_cell_velocity_clip_count": 0.0,
+              "operator_muscl_face_velocity_clip_count": 0.0,
+              "operator_nan_to_num_replacement_count": 0.0,
+              "operator_positivity_projection_count": 0.0
+            },
+            "max_post_step_cfl": 0.2250580905961356,
+            "minimum_depth": 0.6310728793579665,
+            "minimum_depth_tolerance": -1e-06,
+            "natural_steps": 988,
+            "passed": true,
+            "violations": []
+          },
+          "metrics": {
+            "absolute_rms": 0.0023208312849874674,
+            "boundary_band_relative_l2": 0.1421842913156455,
+            "field_cosine_similarity": 0.9895100220324327,
+            "field_norm_ratio": 0.9492474644173802,
+            "interior_relative_l2": 0.1528118999835289,
+            "per_time_scaled_l2_p95_active": 0.5708136465823269,
+            "shape_relative_l2_after_scale": 0.13713231239732834,
+            "trajectory_relative_l2": 0.14996996313621583
+          },
+          "solver": "swe_muscl_hr",
+          "target_cfl": 0.225,
+          "trajectory_sha256": "651347f47e1779da28da3bbb67681aae43df6e02a0f418457716adb38597974a",
+          "variant_id": "refined_192_open_no_sponge"
+        }
+      ]
+    }
+  ],
+  "code_state": {
+    "code_state_hash": "76812d4ac1a21d93f5dad6cbff3a1c94a0ba18589a2b8ef8d74e3fb7a99f1635",
+    "dirty": true,
+    "git_commit": "8fe9fa7a3d5bef2dc73cac3b30cabdd067bd4318",
+    "source_file_count": 328,
+    "source_inventory_hash": "e3652b6e77e7008c9acef96812ebb78c5e75ef1753dac5b6d2e8a09f78adbd1b"
+  },
+  "decision_role": "post_hoc_causal_diagnostic_not_acceptance_gate",
+  "diagnostic_hash": "4abee08f15f884e4841c4bdeecfa30dd763ced537ec8a5cc8c772cb450c8537f",
+  "interpretation": {
+    "causal_status": "partially_isolated",
+    "not_supported": [
+      "GeoClaw is physical truth.",
+      "One reconstruction component is the unique cause.",
+      "The nested 2x refinement is formal convergence against an independently generated high-resolution physical input.",
+      "The controlled gap changes are additive causal shares; interactions remain possible."
+    ],
+    "supported": [
+      "Sponge, boundary, domain extent, and nested spatial refinement are changed in explicit controlled contrasts.",
+      "The 96x96 and extended 192x192 domains share the same cell size and an exactly nested central 96x96 initial state.",
+      "The extended/open/no-sponge residual matches GeoClaw's domain, input, cell size, requested times, and broad open boundary class, leaving a combined numerical-method residual."
+    ]
+  },
+  "protocol": {
+    "controlled_contrasts": {
+      "domain_extent_and_exterior": "production_96_open_no_sponge -> extended_192_open_no_sponge",
+      "outer_boundary": "production_96_radiation_no_sponge -> production_96_open_no_sponge",
+      "spatial_resolution": "production_96_open_no_sponge -> refined_192_open_no_sponge",
+      "sponge": "production_96_radiation_sponge -> production_96_radiation_no_sponge"
+    },
+    "min_depth_tolerance": -1e-06,
+    "production_cfl": {
+      "swe_hydrostatic": 0.1125,
+      "swe_muscl_hr": 0.225
+    },
+    "publication_crop_shape": [
+      64,
+      64
+    ],
+    "requested_times": [
+      0.0035,
+      0.007,
+      0.0105,
+      0.014,
+      0.0175,
+      0.021,
+      0.0245,
+      0.028,
+      0.0315,
+      0.035,
+      0.0385,
+      0.042,
+      0.0455,
+      0.049,
+      0.0525,
+      0.056,
+      0.059500000000000004,
+      0.063,
+      0.0665,
+      0.07,
+      0.0735,
+      0.077,
+      0.0805,
+      0.084,
+      0.08750000000000001,
+      0.091,
+      0.0945,
+      0.098,
+      0.1015,
+      0.105,
+      0.1085,
+      0.112,
+      0.1155,
+      0.11900000000000001,
+      0.1225,
+      0.126,
+      0.1295,
+      0.133,
+      0.1365,
+      0.14,
+      0.14350000000000002,
+      0.147,
+      0.1505,
+      0.154,
+      0.1575,
+      0.161,
+      0.1645,
+      0.168,
+      0.1715,
+      0.175
+    ],
+    "variants": [
+      {
+        "boundary": "radiation",
+        "bounds": [
+          -0.25,
+          1.25,
+          -0.25,
+          1.25
+        ],
+        "dx": 0.015625,
+        "input_source": "inhouse",
+        "interpretation": "Final-v2 production baseline.",
+        "isolated_dimension": null,
+        "label": "Production 96, radiation + sponge",
+        "output_crop": [
+          16,
+          80,
+          16,
+          80
+        ],
+        "output_restriction": 1,
+        "parent_variant": null,
+        "shape": [
+          96,
+          96
+        ],
+        "sponge": {
+          "axes": "xy",
+          "enabled": true,
+          "min_factor": 0.8,
+          "profile": "cosine",
+          "reference_dt": 0.0035,
+          "time_mode": "elapsed_time_consistent",
+          "width": 16
+        },
+        "variant_id": "production_96_radiation_sponge"
+      },
+      {
+        "boundary": "radiation",
+        "bounds": [
+          -0.25,
+          1.25,
+          -0.25,
+          1.25
+        ],
+        "dx": 0.015625,
+        "input_source": "inhouse",
+        "interpretation": "Removes only the elapsed-time cosine sponge.",
+        "isolated_dimension": "sponge",
+        "label": "Production 96, radiation, no sponge",
+        "output_crop": [
+          16,
+          80,
+          16,
+          80
+        ],
+        "output_restriction": 1,
+        "parent_variant": "production_96_radiation_sponge",
+        "shape": [
+          96,
+          96
+        ],
+        "sponge": {
+          "axes": "xy",
+          "enabled": false,
+          "min_factor": 0.8,
+          "profile": "cosine",
+          "reference_dt": 0.0035,
+          "time_mode": "elapsed_time_consistent",
+          "width": 16
+        },
+        "variant_id": "production_96_radiation_no_sponge"
+      },
+      {
+        "boundary": "open",
+        "bounds": [
+          -0.25,
+          1.25,
+          -0.25,
+          1.25
+        ],
+        "dx": 0.015625,
+        "input_source": "inhouse",
+        "interpretation": "Changes only radiation to zero-gradient open faces.",
+        "isolated_dimension": "outer_boundary",
+        "label": "Production 96, open, no sponge",
+        "output_crop": [
+          16,
+          80,
+          16,
+          80
+        ],
+        "output_restriction": 1,
+        "parent_variant": "production_96_radiation_no_sponge",
+        "shape": [
+          96,
+          96
+        ],
+        "sponge": {
+          "axes": "xy",
+          "enabled": false,
+          "min_factor": 0.8,
+          "profile": "cosine",
+          "reference_dt": 0.0035,
+          "time_mode": "elapsed_time_consistent",
+          "width": 16
+        },
+        "variant_id": "production_96_open_no_sponge"
+      },
+      {
+        "boundary": "open",
+        "bounds": [
+          -1.0,
+          2.0,
+          -1.0,
+          2.0
+        ],
+        "dx": 0.015625,
+        "input_source": "external",
+        "interpretation": "Moves the open boundary outward using the exact frozen GeoClaw-domain input; cell size and shared central 96x96 state remain unchanged.",
+        "isolated_dimension": "domain_extent_and_exterior",
+        "label": "Extended 192, open, no sponge",
+        "output_crop": [
+          64,
+          128,
+          64,
+          128
+        ],
+        "output_restriction": 1,
+        "parent_variant": "production_96_open_no_sponge",
+        "shape": [
+          192,
+          192
+        ],
+        "sponge": {
+          "axes": "xy",
+          "enabled": false,
+          "min_factor": 0.8,
+          "profile": "cosine",
+          "reference_dt": 0.0035,
+          "time_mode": "elapsed_time_consistent",
+          "width": 16
+        },
+        "variant_id": "extended_192_open_no_sponge"
+      },
+      {
+        "boundary": "open",
+        "bounds": [
+          -0.25,
+          1.25,
+          -0.25,
+          1.25
+        ],
+        "dx": 0.0078125,
+        "input_source": "refined_inhouse",
+        "interpretation": "Halves dx on the same physical domain using nested piecewise-constant cell averages, then area-restricts the 128x128 publication crop to 64x64. This is a discretization sensitivity, not a new high-resolution physical input.",
+        "isolated_dimension": "spatial_resolution",
+        "label": "2x refined production domain, open, no sponge",
+        "output_crop": [
+          32,
+          160,
+          32,
+          160
+        ],
+        "output_restriction": 2,
+        "parent_variant": "production_96_open_no_sponge",
+        "shape": [
+          192,
+          192
+        ],
+        "sponge": {
+          "axes": "xy",
+          "enabled": false,
+          "min_factor": 0.8,
+          "profile": "cosine",
+          "reference_dt": 0.0035,
+          "time_mode": "elapsed_time_consistent",
+          "width": 16
+        },
+        "variant_id": "refined_192_open_no_sponge"
+      }
+    ]
+  },
+  "schema_id": "tsunami-surrogate.geoclaw-discrepancy-ablation.v1",
+  "source_artifacts": [
+    {
+      "path": "artifacts/common_time_v2/level_b_minimum/3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460/frozen_contract.json",
+      "sha256": "ae4ae4622148b3afc4052fb48d03eb24b53ff17aa62d331b5fd051cce7544fc7"
+    },
+    {
+      "path": "artifacts/common_time_v2/level_b_minimum_external/3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460/RUN_MANIFEST.json",
+      "sha256": "ff2b697300a05cde44673eac9e87a8143d0e0082d7732cb38e2240460296be49"
+    },
+    {
+      "path": "configs/data/dataset.yaml",
+      "sha256": "ffb42792b19dbf3d318d1f496d31126be034cfd67b44bba4ef83eed86582be77"
+    },
+    {
+      "path": "scripts/run_geoclaw_discrepancy_ablation.py",
+      "sha256": "84d8b4b9721c2c0e7dd36a32a9b8706ad360f414aa99db200bfda9469c02a48f"
+    },
+    {
+      "path": "artifacts/common_time_v2/level_b_minimum_external/3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460/production_input_canaries_train_scenario_000002/geoclaw_swe.npz",
+      "sha256": "54ff670bcb2a7d17f0c927253a0e284bf103df3f4b7001379fe00ca4142500e1"
+    },
+    {
+      "path": "artifacts/common_time_v2/level_b_minimum_external/3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460/production_input_canaries_train_scenario_000008/geoclaw_swe.npz",
+      "sha256": "c4b4584eca943475da3ce65fd89b704f17c74a70259ea48b56a1c174986ca80c"
+    },
+    {
+      "path": "artifacts/common_time_v2/level_b_minimum_external/3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460/production_input_canaries_train_scenario_000016/geoclaw_swe.npz",
+      "sha256": "e3947218bacebe95a90a06d220edb10fb11902d626ae85b88e027e8e2043615f"
+    }
+  ],
+  "status": "completed_descriptive_ablation",
+  "summary": {
+    "controlled_contrasts": [
+      {
+        "after_variant": "production_96_radiation_no_sponge",
+        "before_variant": "production_96_radiation_sponge",
+        "case_count": 3,
+        "closer_to_geoclaw_count": 2,
+        "delta_after_minus_before": {
+          "max": 0.0005995750121952081,
+          "mean": -0.0010773171732593363,
+          "min": -0.0019337162682087072
+        },
+        "gap_reduction_fraction": {
+          "max": 0.00392588784184346,
+          "mean": 0.002122002841725474,
+          "min": -0.0010577952111889828
+        },
+        "isolated_dimension": "sponge",
+        "per_case": [
+          {
+            "after": 0.5674153497983884,
+            "before": 0.5668157747861932,
+            "case_id": "production_input_canaries_train_scenario_000002",
+            "delta_after_minus_before": 0.0005995750121952081,
+            "gap_reduction_fraction": -0.0010577952111889828
+          },
+          {
+            "after": 0.5508858272883083,
+            "before": 0.552819543556517,
+            "case_id": "production_input_canaries_train_scenario_000008",
+            "delta_after_minus_before": -0.0019337162682087072,
+            "gap_reduction_fraction": 0.0034979158945219447
+          },
+          {
+            "after": 0.4815113802732134,
+            "before": 0.4834091905369779,
+            "case_id": "production_input_canaries_train_scenario_000016",
+            "delta_after_minus_before": -0.00189781026376451,
+            "gap_reduction_fraction": 0.00392588784184346
+          }
+        ],
+        "solver": "swe_hydrostatic"
+      },
+      {
+        "after_variant": "production_96_open_no_sponge",
+        "before_variant": "production_96_radiation_no_sponge",
+        "case_count": 3,
+        "closer_to_geoclaw_count": 1,
+        "delta_after_minus_before": {
+          "max": 0.0014978089471259226,
+          "mean": 0.0004831496921305911,
+          "min": -5.559590985959595e-05
+        },
+        "gap_reduction_fraction": {
+          "max": 0.00010092092972016071,
+          "mean": -0.0010074908354538216,
+          "min": -0.00311064080411984
+        },
+        "isolated_dimension": "outer_boundary",
+        "per_case": [
+          {
+            "after": 0.5674225858375138,
+            "before": 0.5674153497983884,
+            "case_id": "production_input_canaries_train_scenario_000002",
+            "delta_after_minus_before": 7.2360391254466805e-06,
+            "gap_reduction_fraction": -1.2752631961785593e-05
+          },
+          {
+            "after": 0.5508302313784487,
+            "before": 0.5508858272883083,
+            "case_id": "production_input_canaries_train_scenario_000008",
+            "delta_after_minus_before": -5.559590985959595e-05,
+            "gap_reduction_fraction": 0.00010092092972016071
+          },
+          {
+            "after": 0.4830091892203393,
+            "before": 0.4815113802732134,
+            "case_id": "production_input_canaries_train_scenario_000016",
+            "delta_after_minus_before": 0.0014978089471259226,
+            "gap_reduction_fraction": -0.00311064080411984
+          }
+        ],
+        "solver": "swe_hydrostatic"
+      },
+      {
+        "after_variant": "extended_192_open_no_sponge",
+        "before_variant": "production_96_open_no_sponge",
+        "case_count": 3,
+        "closer_to_geoclaw_count": 2,
+        "delta_after_minus_before": {
+          "max": 3.42827211715635e-05,
+          "mean": -0.0007380530730275078,
+          "min": -0.002242026030245481
+        },
+        "gap_reduction_fraction": {
+          "max": 0.004641787527613087,
+          "mean": 0.001530285455807537,
+          "min": -6.223827092019121e-05
+        },
+        "isolated_dimension": "domain_extent_and_exterior",
+        "per_case": [
+          {
+            "after": 0.5674161699275052,
+            "before": 0.5674225858375138,
+            "case_id": "production_input_canaries_train_scenario_000002",
+            "delta_after_minus_before": -6.415910008605863e-06,
+            "gap_reduction_fraction": 1.1307110729714789e-05
+          },
+          {
+            "after": 0.5508645140996202,
+            "before": 0.5508302313784487,
+            "case_id": "production_input_canaries_train_scenario_000008",
+            "delta_after_minus_before": 3.42827211715635e-05,
+            "gap_reduction_fraction": -6.223827092019121e-05
+          },
+          {
+            "after": 0.4807671631900938,
+            "before": 0.4830091892203393,
+            "case_id": "production_input_canaries_train_scenario_000016",
+            "delta_after_minus_before": -0.002242026030245481,
+            "gap_reduction_fraction": 0.004641787527613087
+          }
+        ],
+        "solver": "swe_hydrostatic"
+      },
+      {
+        "after_variant": "refined_192_open_no_sponge",
+        "before_variant": "production_96_open_no_sponge",
+        "case_count": 3,
+        "closer_to_geoclaw_count": 3,
+        "delta_after_minus_before": {
+          "max": -0.12267815718688657,
+          "mean": -0.14506836652157531,
+          "min": -0.17356000713680575
+        },
+        "gap_reduction_fraction": {
+          "max": 0.30587433681483045,
+          "mean": 0.2707159581153031,
+          "min": 0.25228632584901867
+        },
+        "isolated_dimension": "spatial_resolution",
+        "per_case": [
+          {
+            "after": 0.39386257870070807,
+            "before": 0.5674225858375138,
+            "case_id": "production_input_canaries_train_scenario_000002",
+            "delta_after_minus_before": -0.17356000713680575,
+            "gap_reduction_fraction": 0.30587433681483045
+          },
+          {
+            "after": 0.411863296137415,
+            "before": 0.5508302313784487,
+            "case_id": "production_input_canaries_train_scenario_000008",
+            "delta_after_minus_before": -0.13896693524103365,
+            "gap_reduction_fraction": 0.25228632584901867
+          },
+          {
+            "after": 0.36033103203345274,
+            "before": 0.4830091892203393,
+            "case_id": "production_input_canaries_train_scenario_000016",
+            "delta_after_minus_before": -0.12267815718688657,
+            "gap_reduction_fraction": 0.2539872116820602
+          }
+        ],
+        "solver": "swe_hydrostatic"
+      },
+      {
+        "after_variant": "production_96_radiation_no_sponge",
+        "before_variant": "production_96_radiation_sponge",
+        "case_count": 3,
+        "closer_to_geoclaw_count": 2,
+        "delta_after_minus_before": {
+          "max": 0.0005183433497805978,
+          "mean": -0.0031527612890282775,
+          "min": -0.007401798432567552
+        },
+        "gap_reduction_fraction": {
+          "max": 0.03288093554794766,
+          "mean": 0.013527583710179905,
+          "min": -0.0022475460614711485
+        },
+        "isolated_dimension": "sponge",
+        "per_case": [
+          {
+            "after": 0.2311446956485683,
+            "before": 0.2306263522987877,
+            "case_id": "production_input_canaries_train_scenario_000002",
+            "delta_after_minus_before": 0.0005183433497805978,
+            "gap_reduction_fraction": -0.0022475460614711485
+          },
+          {
+            "after": 0.2562185367010427,
+            "before": 0.2587933654853406,
+            "case_id": "production_input_canaries_train_scenario_000008",
+            "delta_after_minus_before": -0.002574828784297878,
+            "gap_reduction_fraction": 0.009949361644063204
+          },
+          {
+            "after": 0.21770732055141323,
+            "before": 0.22510911898398078,
+            "case_id": "production_input_canaries_train_scenario_000016",
+            "delta_after_minus_before": -0.007401798432567552,
+            "gap_reduction_fraction": 0.03288093554794766
+          }
+        ],
+        "solver": "swe_muscl_hr"
+      },
+      {
+        "after_variant": "production_96_open_no_sponge",
+        "before_variant": "production_96_radiation_no_sponge",
+        "case_count": 3,
+        "closer_to_geoclaw_count": 1,
+        "delta_after_minus_before": {
+          "max": 0.0009898210216362224,
+          "mean": 0.00032153654341665616,
+          "min": -2.5325962594080487e-05
+        },
+        "gap_reduction_fraction": {
+          "max": 9.884516132269917e-05,
+          "mean": -0.001482739325872568,
+          "min": -0.0045465674701667584
+        },
+        "isolated_dimension": "outer_boundary",
+        "per_case": [
+          {
+            "after": 0.23114481021977612,
+            "before": 0.2311446956485683,
+            "case_id": "production_input_canaries_train_scenario_000002",
+            "delta_after_minus_before": 1.1457120782654151e-07,
+            "gap_reduction_fraction": -4.956687736444328e-07
+          },
+          {
+            "after": 0.25619321073844864,
+            "before": 0.2562185367010427,
+            "case_id": "production_input_canaries_train_scenario_000008",
+            "delta_after_minus_before": -2.5325962594080487e-05,
+            "gap_reduction_fraction": 9.884516132269917e-05
+          },
+          {
+            "after": 0.21869714157304945,
+            "before": 0.21770732055141323,
+            "case_id": "production_input_canaries_train_scenario_000016",
+            "delta_after_minus_before": 0.0009898210216362224,
+            "gap_reduction_fraction": -0.0045465674701667584
+          }
+        ],
+        "solver": "swe_muscl_hr"
+      },
+      {
+        "after_variant": "extended_192_open_no_sponge",
+        "before_variant": "production_96_open_no_sponge",
+        "case_count": 3,
+        "closer_to_geoclaw_count": 2,
+        "delta_after_minus_before": {
+          "max": 7.839638624218548e-06,
+          "mean": -0.0014520688704327083,
+          "min": -0.004363778479309327
+        },
+        "gap_reduction_fraction": {
+          "max": 0.019953523159568744,
+          "mean": 0.006641360373404293,
+          "min": -3.06004932824787e-05
+        },
+        "isolated_dimension": "domain_extent_and_exterior",
+        "per_case": [
+          {
+            "after": 0.2311445424491631,
+            "before": 0.23114481021977612,
+            "case_id": "production_input_canaries_train_scenario_000002",
+            "delta_after_minus_before": -2.6777061301608285e-07,
+            "gap_reduction_fraction": 1.1584539266163162e-06
+          },
+          {
+            "after": 0.25620105037707286,
+            "before": 0.25619321073844864,
+            "case_id": "production_input_canaries_train_scenario_000008",
+            "delta_after_minus_before": 7.839638624218548e-06,
+            "gap_reduction_fraction": -3.06004932824787e-05
+          },
+          {
+            "after": 0.21433336309374013,
+            "before": 0.21869714157304945,
+            "case_id": "production_input_canaries_train_scenario_000016",
+            "delta_after_minus_before": -0.004363778479309327,
+            "gap_reduction_fraction": 0.019953523159568744
+          }
+        ],
+        "solver": "swe_muscl_hr"
+      },
+      {
+        "after_variant": "refined_192_open_no_sponge",
+        "before_variant": "production_96_open_no_sponge",
+        "case_count": 3,
+        "closer_to_geoclaw_count": 3,
+        "delta_after_minus_before": {
+          "max": -0.06872717843683362,
+          "mean": -0.10100131192361328,
+          "min": -0.1503522923308946
+        },
+        "gap_reduction_fraction": {
+          "max": 0.6504679563773778,
+          "mean": 0.4307693284324447,
+          "min": 0.3142573238154432
+        },
+        "isolated_dimension": "spatial_resolution",
+        "per_case": [
+          {
+            "after": 0.08079251788888155,
+            "before": 0.23114481021977612,
+            "case_id": "production_input_canaries_train_scenario_000002",
+            "delta_after_minus_before": -0.1503522923308946,
+            "gap_reduction_fraction": 0.6504679563773778
+          },
+          {
+            "after": 0.17226874573533704,
+            "before": 0.25619321073844864,
+            "case_id": "production_input_canaries_train_scenario_000008",
+            "delta_after_minus_before": -0.0839244650031116,
+            "gap_reduction_fraction": 0.3275827051045131
+          },
+          {
+            "after": 0.14996996313621583,
+            "before": 0.21869714157304945,
+            "case_id": "production_input_canaries_train_scenario_000016",
+            "delta_after_minus_before": -0.06872717843683362,
+            "gap_reduction_fraction": 0.3142573238154432
+          }
+        ],
+        "solver": "swe_muscl_hr"
+      }
+    ],
+    "metrics_by_solver_and_variant": {
+      "swe_hydrostatic": {
+        "extended_192_open_no_sponge": {
+          "absolute_rms": {
+            "max": 0.013061890877362153,
+            "mean": 0.007900172573112521,
+            "min": 0.003198607188754611
+          },
+          "boundary_band_relative_l2": {
+            "max": 0.5855722278209469,
+            "mean": 0.517942658479429,
+            "min": 0.45657663083188
+          },
+          "field_cosine_similarity": {
+            "max": 0.8950368034409896,
+            "mean": 0.8704916091808279,
+            "min": 0.8526764110883809
+          },
+          "field_norm_ratio": {
+            "max": 0.7155153709720009,
+            "mean": 0.6654769894482714,
+            "min": 0.6029067989685662
+          },
+          "interior_relative_l2": {
+            "max": 0.627895133378352,
+            "mean": 0.5515229057828709,
+            "min": 0.46854179769076365
+          },
+          "per_time_scaled_l2_p95_active": {
+            "max": 0.8994439732473956,
+            "mean": 0.827349167613824,
+            "min": 0.770604966950431
+          },
+          "shape_relative_l2_after_scale": {
+            "max": 0.3542185171661622,
+            "mean": 0.3257126628493412,
+            "min": 0.3038051343593795
+          },
+          "trajectory_relative_l2": {
+            "max": 0.5674161699275052,
+            "mean": 0.5330159490724065,
+            "min": 0.4807671631900938
+          }
+        },
+        "production_96_open_no_sponge": {
+          "absolute_rms": {
+            "max": 0.013062038571278634,
+            "mean": 0.007911720797316519,
+            "min": 0.0031984081253631906
+          },
+          "boundary_band_relative_l2": {
+            "max": 0.5855920567304556,
+            "mean": 0.5193815708467295,
+            "min": 0.4565029028738589
+          },
+          "field_cosine_similarity": {
+            "max": 0.892685138582769,
+            "mean": 0.8697148181628992,
+            "min": 0.8526997226518094
+          },
+          "field_norm_ratio": {
+            "max": 0.7189478843227095,
+            "mean": 0.666623940269028,
+            "min": 0.6028975111934041
+          },
+          "interior_relative_l2": {
+            "max": 0.6278875509913678,
+            "mean": 0.5519744689846521,
+            "min": 0.4699046762549224
+          },
+          "per_time_scaled_l2_p95_active": {
+            "max": 0.934721702738133,
+            "mean": 0.8389402544771959,
+            "min": 0.7700400564718802
+          },
+          "shape_relative_l2_after_scale": {
+            "max": 0.3542019280245727,
+            "mean": 0.3273401750023727,
+            "min": 0.3038025415680464
+          },
+          "trajectory_relative_l2": {
+            "max": 0.5674225858375138,
+            "mean": 0.533754002145434,
+            "min": 0.4830091892203393
+          }
+        },
+        "production_96_radiation_no_sponge": {
+          "absolute_rms": {
+            "max": 0.01306187199803231,
+            "mean": 0.007904046527891331,
+            "min": 0.003198730944264012
+          },
+          "boundary_band_relative_l2": {
+            "max": 0.5855696176757891,
+            "mean": 0.5181834398994194,
+            "min": 0.45661473445550693
+          },
+          "field_cosine_similarity": {
+            "max": 0.8948169043675022,
+            "mean": 0.8704121479298687,
+            "min": 0.8526578333781893
+          },
+          "field_norm_ratio": {
+            "max": 0.714399328520658,
+            "mean": 0.6651071300399399,
+            "min": 0.6029083679117005
+          },
+          "interior_relative_l2": {
+            "max": 0.6279052199033053,
+            "mean": 0.5517825584072341,
+            "min": 0.4693105519949755
+          },
+          "per_time_scaled_l2_p95_active": {
+            "max": 0.9093547500908834,
+            "mean": 0.8307455769881601,
+            "min": 0.7708933212605776
+          },
+          "shape_relative_l2_after_scale": {
+            "max": 0.35424163174486584,
+            "mean": 0.32565970778308356,
+            "min": 0.3038058288057671
+          },
+          "trajectory_relative_l2": {
+            "max": 0.5674153497983884,
+            "mean": 0.5332708524533033,
+            "min": 0.4815113802732134
+          }
+        },
+        "production_96_radiation_sponge": {
+          "absolute_rms": {
+            "max": 0.013048069812269632,
+            "mean": 0.007912978254061774,
+            "min": 0.0032099591112600538
+          },
+          "boundary_band_relative_l2": {
+            "max": 0.5844265228126252,
+            "mean": 0.5207865438553033,
+            "min": 0.46286219487041363
+          },
+          "field_cosine_similarity": {
+            "max": 0.894508800333637,
+            "mean": 0.8704710867299615,
+            "min": 0.8524348793911053
+          },
+          "field_norm_ratio": {
+            "max": 0.7105782716823665,
+            "mean": 0.6619980638831438,
+            "min": 0.6025768961533247
+          },
+          "interior_relative_l2": {
+            "max": 0.626855866932353,
+            "mean": 0.5518497673791095,
+            "min": 0.47087687401981654
+          },
+          "per_time_scaled_l2_p95_active": {
+            "max": 0.9933021234895815,
+            "mean": 0.8589682468558485,
+            "min": 0.7753166384861693
+          },
+          "shape_relative_l2_after_scale": {
+            "max": 0.3517827223503302,
+            "mean": 0.32411780936701434,
+            "min": 0.3029064480913087
+          },
+          "trajectory_relative_l2": {
+            "max": 0.5668157747861932,
+            "mean": 0.5343481696265627,
+            "min": 0.4834091905369779
+          }
+        },
+        "refined_192_open_no_sponge": {
+          "absolute_rms": {
+            "max": 0.009066696185839052,
+            "mean": 0.005678141058143037,
+            "min": 0.0023914934908496645
+          },
+          "boundary_band_relative_l2": {
+            "max": 0.3993224827635754,
+            "mean": 0.3715914863463339,
+            "min": 0.3330179582334049
+          },
+          "field_cosine_similarity": {
+            "max": 0.9443468979285033,
+            "mean": 0.938067481046028,
+            "min": 0.9263122718401241
+          },
+          "field_norm_ratio": {
+            "max": 0.8017252161022544,
+            "mean": 0.763128805290464,
+            "min": 0.7277394314644886
+          },
+          "interior_relative_l2": {
+            "max": 0.47515456171569304,
+            "mean": 0.40595682977664077,
+            "min": 0.3516074283853698
+          },
+          "per_time_scaled_l2_p95_active": {
+            "max": 0.8624300470766736,
+            "mean": 0.7178758697736716,
+            "min": 0.6429421874324525
+          },
+          "shape_relative_l2_after_scale": {
+            "max": 0.2863055814223209,
+            "mean": 0.26375576579276955,
+            "min": 0.23939080837111834
+          },
+          "trajectory_relative_l2": {
+            "max": 0.411863296137415,
+            "mean": 0.3886856356238586,
+            "min": 0.36033103203345274
+          }
+        }
+      },
+      "swe_muscl_hr": {
+        "extended_192_open_no_sponge": {
+          "absolute_rms": {
+            "max": 0.005320935409286119,
+            "mean": 0.003375149085435069,
+            "min": 0.0014876371603678733
+          },
+          "boundary_band_relative_l2": {
+            "max": 0.22807487582119096,
+            "mean": 0.21646868467010516,
+            "min": 0.2081546853648111
+          },
+          "field_cosine_similarity": {
+            "max": 0.9810477999516322,
+            "mean": 0.9783565367131732,
+            "min": 0.9737164821715041
+          },
+          "field_norm_ratio": {
+            "max": 0.8970147122641648,
+            "mean": 0.8694793499239756,
+            "min": 0.8550216705420315
+          },
+          "interior_relative_l2": {
+            "max": 0.2948995016042224,
+            "mean": 0.24744354506134644,
+            "min": 0.2147693821495593
+          },
+          "per_time_scaled_l2_p95_active": {
+            "max": 0.5970145167790146,
+            "mean": 0.46633028140543686,
+            "min": 0.3884255596996199
+          },
+          "shape_relative_l2_after_scale": {
+            "max": 0.19505704185472425,
+            "mean": 0.17929353338290546,
+            "min": 0.16567402190609343
+          },
+          "trajectory_relative_l2": {
+            "max": 0.25620105037707286,
+            "mean": 0.2338929853066587,
+            "min": 0.21433336309374013
+          }
+        },
+        "production_96_open_no_sponge": {
+          "absolute_rms": {
+            "max": 0.005320941573351779,
+            "mean": 0.0033976462376207085,
+            "min": 0.0014875916393299062
+          },
+          "boundary_band_relative_l2": {
+            "max": 0.2280761904511704,
+            "mean": 0.21934794005645072,
+            "min": 0.2081565057073511
+          },
+          "field_cosine_similarity": {
+            "max": 0.9810477437039158,
+            "mean": 0.9779421174970446,
+            "min": 0.9737208960257567
+          },
+          "field_norm_ratio": {
+            "max": 0.8991675090445791,
+            "mean": 0.8701918792854219,
+            "min": 0.8550215610350766
+          },
+          "interior_relative_l2": {
+            "max": 0.2948849518178333,
+            "mean": 0.24835131978737732,
+            "min": 0.21750750061243518
+          },
+          "per_time_scaled_l2_p95_active": {
+            "max": 0.6874738188864695,
+            "mean": 0.4964794894421445,
+            "min": 0.3884092775130792
+          },
+          "shape_relative_l2_after_scale": {
+            "max": 0.19503744229531944,
+            "mean": 0.18125560364718174,
+            "min": 0.1656742441848693
+          },
+          "trajectory_relative_l2": {
+            "max": 0.25619321073844864,
+            "mean": 0.2353450541770914,
+            "min": 0.21869714157304945
+          }
+        },
+        "production_96_radiation_no_sponge": {
+          "absolute_rms": {
+            "max": 0.005320938935928502,
+            "mean": 0.003392588448866143,
+            "min": 0.0014877386951012304
+          },
+          "boundary_band_relative_l2": {
+            "max": 0.228075050335331,
+            "mean": 0.2183035728262479,
+            "min": 0.20818095132891465
+          },
+          "field_cosine_similarity": {
+            "max": 0.9810477613227517,
+            "mean": 0.9780983875549953,
+            "min": 0.9737110215942362
+          },
+          "field_norm_ratio": {
+            "max": 0.8965424241157416,
+            "mean": 0.8693224719707144,
+            "min": 0.855021651635708
+          },
+          "interior_relative_l2": {
+            "max": 0.2949114924168599,
+            "mean": 0.2483070769569992,
+            "min": 0.2173478442449452
+          },
+          "per_time_scaled_l2_p95_active": {
+            "max": 0.6776806111442408,
+            "mean": 0.4932748565915556,
+            "min": 0.3885935002467006
+          },
+          "shape_relative_l2_after_scale": {
+            "max": 0.19507741428393074,
+            "mean": 0.18039872396565285,
+            "min": 0.16567418546794302
+          },
+          "trajectory_relative_l2": {
+            "max": 0.2562185367010427,
+            "mean": 0.2350235176336747,
+            "min": 0.21770732055141323
+          }
+        },
+        "production_96_radiation_sponge": {
+          "absolute_rms": {
+            "max": 0.005309006698832221,
+            "mean": 0.0034317763390093827,
+            "min": 0.001502689496339042
+          },
+          "boundary_band_relative_l2": {
+            "max": 0.23015016607912303,
+            "mean": 0.2237718927052886,
+            "min": 0.21479579936926413
+          },
+          "field_cosine_similarity": {
+            "max": 0.9810744469616434,
+            "mean": 0.9774831729488302,
+            "min": 0.9734902370477102
+          },
+          "field_norm_ratio": {
+            "max": 0.894621003228242,
+            "mean": 0.8676121818467047,
+            "min": 0.8524231166291741
+          },
+          "interior_relative_l2": {
+            "max": 0.29477432617066074,
+            "mean": 0.2502229500514057,
+            "min": 0.22317240853758613
+          },
+          "per_time_scaled_l2_p95_active": {
+            "max": 0.8377642145955175,
+            "mean": 0.5484927212525417,
+            "min": 0.3965465876750088
+          },
+          "shape_relative_l2_after_scale": {
+            "max": 0.19497351982800631,
+            "mean": 0.18259536027077403,
+            "min": 0.16570786662338444
+          },
+          "trajectory_relative_l2": {
+            "max": 0.2587933654853406,
+            "mean": 0.23817627892270302,
+            "min": 0.22510911898398078
+          }
+        },
+        "refined_192_open_no_sponge": {
+          "absolute_rms": {
+            "max": 0.0023208312849874674,
+            "mean": 0.0017269844043816818,
+            "min": 0.001000282346027359
+          },
+          "boundary_band_relative_l2": {
+            "max": 0.1421842913156455,
+            "mean": 0.11220128359792177,
+            "min": 0.06925968157230228
+          },
+          "field_cosine_similarity": {
+            "max": 0.9968058279560553,
+            "mean": 0.9906810234342766,
+            "min": 0.9857272203143418
+          },
+          "field_norm_ratio": {
+            "max": 0.9845874158668556,
+            "mean": 0.9610096384433405,
+            "min": 0.9491940350457856
+          },
+          "interior_relative_l2": {
+            "max": 0.20753350874089832,
+            "mean": 0.14877269741926608,
+            "min": 0.085972683533371
+          },
+          "per_time_scaled_l2_p95_active": {
+            "max": 0.5708136465823269,
+            "mean": 0.3683869872087768,
+            "min": 0.21319058284764666
+          },
+          "shape_relative_l2_after_scale": {
+            "max": 0.15979716714897182,
+            "mean": 0.12518728227858034,
+            "min": 0.07863236728944087
+          },
+          "trajectory_relative_l2": {
+            "max": 0.17226874573533704,
+            "mean": 0.13434374225347814,
+            "min": 0.08079251788888155
+          }
+        }
+      }
+    },
+    "ranked_controlled_effect_magnitudes": {
+      "swe_hydrostatic": [
+        {
+          "closer_to_geoclaw_count": 3,
+          "isolated_dimension": "spatial_resolution",
+          "mean_absolute_gap_change": 0.14506836652157531,
+          "mean_signed_gap_change": -0.14506836652157531
+        },
+        {
+          "closer_to_geoclaw_count": 2,
+          "isolated_dimension": "sponge",
+          "mean_absolute_gap_change": 0.0014770338480561418,
+          "mean_signed_gap_change": -0.0010773171732593363
+        },
+        {
+          "closer_to_geoclaw_count": 2,
+          "isolated_dimension": "domain_extent_and_exterior",
+          "mean_absolute_gap_change": 0.0007609082204752168,
+          "mean_signed_gap_change": -0.0007380530730275078
+        },
+        {
+          "closer_to_geoclaw_count": 1,
+          "isolated_dimension": "outer_boundary",
+          "mean_absolute_gap_change": 0.0005202136320369884,
+          "mean_signed_gap_change": 0.0004831496921305911
+        }
+      ],
+      "swe_muscl_hr": [
+        {
+          "closer_to_geoclaw_count": 3,
+          "isolated_dimension": "spatial_resolution",
+          "mean_absolute_gap_change": 0.10100131192361328,
+          "mean_signed_gap_change": -0.10100131192361328
+        },
+        {
+          "closer_to_geoclaw_count": 2,
+          "isolated_dimension": "sponge",
+          "mean_absolute_gap_change": 0.003498323522215343,
+          "mean_signed_gap_change": -0.0031527612890282775
+        },
+        {
+          "closer_to_geoclaw_count": 2,
+          "isolated_dimension": "domain_extent_and_exterior",
+          "mean_absolute_gap_change": 0.0014572952961821872,
+          "mean_signed_gap_change": -0.0014520688704327083
+        },
+        {
+          "closer_to_geoclaw_count": 1,
+          "isolated_dimension": "outer_boundary",
+          "mean_absolute_gap_change": 0.0003384205184793765,
+          "mean_signed_gap_change": 0.00032153654341665616
+        }
+      ]
+    },
+    "rows": [
+      {
+        "case_id": "production_input_canaries_train_scenario_000002",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250068747643902,
+          "minimum_depth": 0.7398302655992076,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 987,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.013048069812269632,
+          "boundary_band_relative_l2": 0.5844265228126252,
+          "field_cosine_similarity": 0.8644695804651423,
+          "field_norm_ratio": 0.6025768961533247,
+          "interior_relative_l2": 0.5578165611851592,
+          "per_time_scaled_l2_p95_active": 0.8082859785917945,
+          "shape_relative_l2_after_scale": 0.3029064480913087,
+          "trajectory_relative_l2": 0.5668157747861932
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "d14b045d129b02a5428c8ad295e3ee88c359ebc221676c2d870d380e1b50b7ba",
+        "variant_id": "production_96_radiation_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000008",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250333030204411,
+          "minimum_depth": 0.7499968534013963,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 987,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.0032099591112600538,
+          "boundary_band_relative_l2": 0.46286219487041363,
+          "field_cosine_similarity": 0.8524348793911053,
+          "field_norm_ratio": 0.6728390238137401,
+          "interior_relative_l2": 0.626855866932353,
+          "per_time_scaled_l2_p95_active": 0.7753166384861693,
+          "shape_relative_l2_after_scale": 0.3517827223503302,
+          "trajectory_relative_l2": 0.552819543556517
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "ee8e34937b25698a0004754d70cb3e02c0d3081e1d662296402dbc585586de20",
+        "variant_id": "production_96_radiation_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000016",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250833430458462,
+          "minimum_depth": 0.7240911081950666,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 987,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.007480905838655633,
+          "boundary_band_relative_l2": 0.5150709138828713,
+          "field_cosine_similarity": 0.894508800333637,
+          "field_norm_ratio": 0.7105782716823665,
+          "interior_relative_l2": 0.47087687401981654,
+          "per_time_scaled_l2_p95_active": 0.9933021234895815,
+          "shape_relative_l2_after_scale": 0.3176642576594041,
+          "trajectory_relative_l2": 0.4834091905369779
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "9b75dc409016c6308fbf0c16037ea05a68615fec1b9e1ba8727db670f942dfd5",
+        "variant_id": "production_96_radiation_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000002",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250068747643902,
+          "minimum_depth": 0.7391537588252387,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 987,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.01306187199803231,
+          "boundary_band_relative_l2": 0.5855696176757891,
+          "field_cosine_similarity": 0.8637617060439144,
+          "field_norm_ratio": 0.6029083679117005,
+          "interior_relative_l2": 0.5581319033234218,
+          "per_time_scaled_l2_p95_active": 0.8119886596130188,
+          "shape_relative_l2_after_scale": 0.3038058288057671,
+          "trajectory_relative_l2": 0.5674153497983884
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "6e5a89cb7f61b72d616b3d0ec403e442ddc5b373aad30225ff3ce6359f1566f4",
+        "variant_id": "production_96_radiation_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000008",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250333030204411,
+          "minimum_depth": 0.7499968534013964,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 987,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.003198730944264012,
+          "boundary_band_relative_l2": 0.45661473445550693,
+          "field_cosine_similarity": 0.8526578333781893,
+          "field_norm_ratio": 0.678013693687461,
+          "interior_relative_l2": 0.6279052199033053,
+          "per_time_scaled_l2_p95_active": 0.7708933212605776,
+          "shape_relative_l2_after_scale": 0.35424163174486584,
+          "trajectory_relative_l2": 0.5508858272883083
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "90832f101b385ee1b734338251b1078bcf87039c8a0607797e80fcbc15202fe2",
+        "variant_id": "production_96_radiation_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000016",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250833430458462,
+          "minimum_depth": 0.7242259353775061,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 987,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.0074515366413776705,
+          "boundary_band_relative_l2": 0.5123659675669623,
+          "field_cosine_similarity": 0.8948169043675022,
+          "field_norm_ratio": 0.714399328520658,
+          "interior_relative_l2": 0.4693105519949755,
+          "per_time_scaled_l2_p95_active": 0.9093547500908834,
+          "shape_relative_l2_after_scale": 0.31893166279861757,
+          "trajectory_relative_l2": 0.4815113802732134
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "9159209b776e4e3f1fad1b90a31ba46e43264db6a4f3294da63e0a1901a32912",
+        "variant_id": "production_96_radiation_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000002",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250068747643902,
+          "minimum_depth": 0.7391580400581924,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 987,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.013062038571278634,
+          "boundary_band_relative_l2": 0.5855920567304556,
+          "field_cosine_similarity": 0.863759593254119,
+          "field_norm_ratio": 0.6028975111934041,
+          "interior_relative_l2": 0.5581311797076662,
+          "per_time_scaled_l2_p95_active": 0.8120590042215743,
+          "shape_relative_l2_after_scale": 0.3038025415680464,
+          "trajectory_relative_l2": 0.5674225858375138
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "e18af6cc0e663959323405ceb1a09920754ba268fea4020bcca3ff1f24470848",
+        "variant_id": "production_96_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000008",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250333030204411,
+          "minimum_depth": 0.7499968534013964,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 987,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.0031984081253631906,
+          "boundary_band_relative_l2": 0.4565029028738589,
+          "field_cosine_similarity": 0.8526997226518094,
+          "field_norm_ratio": 0.6780264252909707,
+          "interior_relative_l2": 0.6278875509913678,
+          "per_time_scaled_l2_p95_active": 0.7700400564718802,
+          "shape_relative_l2_after_scale": 0.3542019280245727,
+          "trajectory_relative_l2": 0.5508302313784487
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "3341476c78687bfe25a865214e68f897fc577506e0bddc3748bf8b03d443bc52",
+        "variant_id": "production_96_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000016",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250833430458462,
+          "minimum_depth": 0.7242263338486415,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 987,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.007474715695307732,
+          "boundary_band_relative_l2": 0.516049752935874,
+          "field_cosine_similarity": 0.892685138582769,
+          "field_norm_ratio": 0.7189478843227095,
+          "interior_relative_l2": 0.4699046762549224,
+          "per_time_scaled_l2_p95_active": 0.934721702738133,
+          "shape_relative_l2_after_scale": 0.324016055414499,
+          "trajectory_relative_l2": 0.4830091892203393
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "a4afded5af8865fe080d573664a20eec6ad5348d750c8639fc7079f7824758b3",
+        "variant_id": "production_96_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000002",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250068747643902,
+          "minimum_depth": 0.7391538129127508,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 987,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.013061890877362153,
+          "boundary_band_relative_l2": 0.5855722278209469,
+          "field_cosine_similarity": 0.8637616130131135,
+          "field_norm_ratio": 0.6029067989685662,
+          "interior_relative_l2": 0.558131786279497,
+          "per_time_scaled_l2_p95_active": 0.8119985626436453,
+          "shape_relative_l2_after_scale": 0.3038051343593795,
+          "trajectory_relative_l2": 0.5674161699275052
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "6b738f6c621ab8c87213e145d2e4898a7f5fd69d7fc65372302fa60e49b9ec19",
+        "variant_id": "extended_192_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000008",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250333030204411,
+          "minimum_depth": 0.7499968534013964,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 987,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.003198607188754611,
+          "boundary_band_relative_l2": 0.45657663083188,
+          "field_cosine_similarity": 0.8526764110883809,
+          "field_norm_ratio": 0.6780087984042472,
+          "interior_relative_l2": 0.627895133378352,
+          "per_time_scaled_l2_p95_active": 0.770604966950431,
+          "shape_relative_l2_after_scale": 0.3542185171661622,
+          "trajectory_relative_l2": 0.5508645140996202
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "22b4bcc482bce476a51e51c3ec72e3a35d9afa6d648144aa7967f4a1fad5a624",
+        "variant_id": "extended_192_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000016",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250833430458462,
+          "minimum_depth": 0.7242259801638327,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 987,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.007440019653220803,
+          "boundary_band_relative_l2": 0.5116791167854601,
+          "field_cosine_similarity": 0.8950368034409896,
+          "field_norm_ratio": 0.7155153709720009,
+          "interior_relative_l2": 0.46854179769076365,
+          "per_time_scaled_l2_p95_active": 0.8994439732473956,
+          "shape_relative_l2_after_scale": 0.31911433702248176,
+          "trajectory_relative_l2": 0.4807671631900938
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "b6840baff50a1e4919998bed21a8ccc3597f5bd5bd405cb35822c650b3709dc4",
+        "variant_id": "extended_192_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000002",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250066258114683,
+          "minimum_depth": 0.7246340361510434,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 1973,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.009066696185839052,
+          "boundary_band_relative_l2": 0.3993224827635754,
+          "field_cosine_similarity": 0.9443468979285033,
+          "field_norm_ratio": 0.7277394314644886,
+          "interior_relative_l2": 0.3911084992288596,
+          "per_time_scaled_l2_p95_active": 0.6482553748118886,
+          "shape_relative_l2_after_scale": 0.23939080837111834,
+          "trajectory_relative_l2": 0.39386257870070807
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "7c7b7fcad709ecf76fea8846e479d032e1598a2e4407c7a9e66b0061bb2974c9",
+        "variant_id": "refined_192_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000008",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250405566747451,
+          "minimum_depth": 0.749810390882423,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 1973,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.0023914934908496645,
+          "boundary_band_relative_l2": 0.3330179582334049,
+          "field_cosine_similarity": 0.9263122718401241,
+          "field_norm_ratio": 0.7599217683046487,
+          "interior_relative_l2": 0.47515456171569304,
+          "per_time_scaled_l2_p95_active": 0.6429421874324525,
+          "shape_relative_l2_after_scale": 0.2863055814223209,
+          "trajectory_relative_l2": 0.411863296137415
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "c52aa3360578318ee5b17c99e8f9c817281a8a9a8e00f0319f8057e9fa366410",
+        "variant_id": "refined_192_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000016",
+        "health": {
+          "allowed_post_step_cfl": 0.113625,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": null,
+            "operator_muscl_face_velocity_clip_count": null,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.11250652252881183,
+          "minimum_depth": 0.7020447401354575,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 1974,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.005576233497740395,
+          "boundary_band_relative_l2": 0.3824340180420213,
+          "field_cosine_similarity": 0.9435432733694564,
+          "field_norm_ratio": 0.8017252161022544,
+          "interior_relative_l2": 0.3516074283853698,
+          "per_time_scaled_l2_p95_active": 0.8624300470766736,
+          "shape_relative_l2_after_scale": 0.2655709075848693,
+          "trajectory_relative_l2": 0.36033103203345274
+        },
+        "solver": "swe_hydrostatic",
+        "target_cfl": 0.1125,
+        "trajectory_sha256": "892ac43d3595e25f57b9cec26f6d782a1e22be9938136ee3d920dfdc90072536",
+        "variant_id": "refined_192_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000002",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.2250049056904403,
+          "minimum_depth": 0.7101954391780345,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 494,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.005309006698832221,
+          "boundary_band_relative_l2": 0.22636971266747866,
+          "field_cosine_similarity": 0.9810744469616434,
+          "field_norm_ratio": 0.8557924256826983,
+          "interior_relative_l2": 0.23272211544597032,
+          "per_time_scaled_l2_p95_active": 0.41116736148709876,
+          "shape_relative_l2_after_scale": 0.16570786662338444,
+          "trajectory_relative_l2": 0.2306263522987877
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "790e65ac84654997086ed124642f2fbe092bf816863b9344d7a2a3d402188151",
+        "variant_id": "production_96_radiation_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000008",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.22501184335994937,
+          "minimum_depth": 0.7497003643008195,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 494,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.001502689496339042,
+          "boundary_band_relative_l2": 0.21479579936926413,
+          "field_cosine_similarity": 0.9734902370477102,
+          "field_norm_ratio": 0.8524231166291741,
+          "interior_relative_l2": 0.29477432617066074,
+          "per_time_scaled_l2_p95_active": 0.3965465876750088,
+          "shape_relative_l2_after_scale": 0.19497351982800631,
+          "trajectory_relative_l2": 0.2587933654853406
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "66105185e9ada9acb9a6639c4747fbe9f09875b84db945a82fb8cc4854a1a3e8",
+        "variant_id": "production_96_radiation_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000016",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.22510203489096367,
+          "minimum_depth": 0.6775079285431596,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 494,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.0034836328218568863,
+          "boundary_band_relative_l2": 0.23015016607912303,
+          "field_cosine_similarity": 0.9778848348371372,
+          "field_norm_ratio": 0.894621003228242,
+          "interior_relative_l2": 0.22317240853758613,
+          "per_time_scaled_l2_p95_active": 0.8377642145955175,
+          "shape_relative_l2_after_scale": 0.18710469436093133,
+          "trajectory_relative_l2": 0.22510911898398078
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "6841bccee4da75479ddda43cfb12f7d68ddd5e4fb7b8eac5fb0201f89a0b7e99",
+        "variant_id": "production_96_radiation_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000002",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.2250049056904403,
+          "minimum_depth": 0.7094686451659438,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 494,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.005320938935928502,
+          "boundary_band_relative_l2": 0.228075050335331,
+          "field_cosine_similarity": 0.9810477613227517,
+          "field_norm_ratio": 0.855021651635708,
+          "interior_relative_l2": 0.2326618942091925,
+          "per_time_scaled_l2_p95_active": 0.4135504583837255,
+          "shape_relative_l2_after_scale": 0.16567418546794302,
+          "trajectory_relative_l2": 0.2311446956485683
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "2aff0910ac7f2bf5b50da1030de376558973764e81323b915d272a91f68e217f",
+        "variant_id": "production_96_radiation_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000008",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.22501184335994937,
+          "minimum_depth": 0.7496998297556292,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 494,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.0014877386951012304,
+          "boundary_band_relative_l2": 0.20818095132891465,
+          "field_cosine_similarity": 0.9737110215942362,
+          "field_norm_ratio": 0.8564033401606937,
+          "interior_relative_l2": 0.2949114924168599,
+          "per_time_scaled_l2_p95_active": 0.3885935002467006,
+          "shape_relative_l2_after_scale": 0.19507741428393074,
+          "trajectory_relative_l2": 0.2562185367010427
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "b43dc8fb711dfca13eda9d844c35c892de2dbed68577b8026fd669ebc9016c77",
+        "variant_id": "production_96_radiation_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000016",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.22510203489096367,
+          "minimum_depth": 0.6775321780784482,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 494,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.0033690877155686957,
+          "boundary_band_relative_l2": 0.2186547168144981,
+          "field_cosine_similarity": 0.9795363797479981,
+          "field_norm_ratio": 0.8965424241157416,
+          "interior_relative_l2": 0.2173478442449452,
+          "per_time_scaled_l2_p95_active": 0.6776806111442408,
+          "shape_relative_l2_after_scale": 0.1804445721450848,
+          "trajectory_relative_l2": 0.21770732055141323
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "e74c8865dad9d25df89d65145f10f19f44a81c6b5ed89f3028841ea069c025b9",
+        "variant_id": "production_96_radiation_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000002",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.2250049056904403,
+          "minimum_depth": 0.70946862011525,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 494,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.005320941573351779,
+          "boundary_band_relative_l2": 0.2280761904511704,
+          "field_cosine_similarity": 0.9810477437039158,
+          "field_norm_ratio": 0.8550215610350766,
+          "interior_relative_l2": 0.23266150693186344,
+          "per_time_scaled_l2_p95_active": 0.41355537192688485,
+          "shape_relative_l2_after_scale": 0.1656742441848693,
+          "trajectory_relative_l2": 0.23114481021977612
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "630e2a35a68e16b9bcbc68ad3fa3dc37338b6ef6ee2b8912babe604458b30c51",
+        "variant_id": "production_96_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000008",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.22501184335994937,
+          "minimum_depth": 0.7496998297556292,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 494,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.0014875916393299062,
+          "boundary_band_relative_l2": 0.2081565057073511,
+          "field_cosine_similarity": 0.9737208960257567,
+          "field_norm_ratio": 0.8563865677766096,
+          "interior_relative_l2": 0.2948849518178333,
+          "per_time_scaled_l2_p95_active": 0.3884092775130792,
+          "shape_relative_l2_after_scale": 0.19503744229531944,
+          "trajectory_relative_l2": 0.25619321073844864
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "49ddbce840022263f3e1d1ad20b92ab6c54324253eb1225cc12e676ba16a9638",
+        "variant_id": "production_96_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000016",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.22510203489096367,
+          "minimum_depth": 0.6775321758235859,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 494,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.00338440550018044,
+          "boundary_band_relative_l2": 0.2218111240108307,
+          "field_cosine_similarity": 0.9790577127614614,
+          "field_norm_ratio": 0.8991675090445791,
+          "interior_relative_l2": 0.21750750061243518,
+          "per_time_scaled_l2_p95_active": 0.6874738188864695,
+          "shape_relative_l2_after_scale": 0.1830551244613564,
+          "trajectory_relative_l2": 0.21869714157304945
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "7e11c5c3ff77d12d9718379e6cf47baf3bd49b44f155713971108c5f9b99b4bb",
+        "variant_id": "production_96_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000002",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.2250049056904403,
+          "minimum_depth": 0.7094686138712705,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 494,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.005320935409286119,
+          "boundary_band_relative_l2": 0.22807487582119096,
+          "field_cosine_similarity": 0.9810477999516322,
+          "field_norm_ratio": 0.8550216705420315,
+          "interior_relative_l2": 0.23266175143025758,
+          "per_time_scaled_l2_p95_active": 0.41355076773767613,
+          "shape_relative_l2_after_scale": 0.16567402190609343,
+          "trajectory_relative_l2": 0.2311445424491631
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "f7dc07b076ed4b9d950f05b70ae4f67d51e985e2c3f11ece4a47d0a9711590b8",
+        "variant_id": "extended_192_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000008",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.22501184335994937,
+          "minimum_depth": 0.7496998297556292,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 494,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.0014876371603678733,
+          "boundary_band_relative_l2": 0.2081546853648111,
+          "field_cosine_similarity": 0.9737164821715041,
+          "field_norm_ratio": 0.8564016669657304,
+          "interior_relative_l2": 0.2948995016042224,
+          "per_time_scaled_l2_p95_active": 0.3884255596996199,
+          "shape_relative_l2_after_scale": 0.19505704185472425,
+          "trajectory_relative_l2": 0.25620105037707286
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "1f5ae6de9e7cd98a4395c7836d2f2d8cb879b6bb6cb53859ad8f39f3756a9445",
+        "variant_id": "extended_192_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000016",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.22510203489096367,
+          "minimum_depth": 0.6775321774639513,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 494,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.0033168746866512155,
+          "boundary_band_relative_l2": 0.21317649282431342,
+          "field_cosine_similarity": 0.9803053280163833,
+          "field_norm_ratio": 0.8970147122641648,
+          "interior_relative_l2": 0.2147693821495593,
+          "per_time_scaled_l2_p95_active": 0.5970145167790146,
+          "shape_relative_l2_after_scale": 0.1771495363878987,
+          "trajectory_relative_l2": 0.21433336309374013
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "373efaa9b6bd613e832a6891ed8e10387fd021e01aaca14884c3b4b23dfd6bf2",
+        "variant_id": "extended_192_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000002",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.22500283472875435,
+          "minimum_depth": 0.6984439872954551,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 987,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.0018598395821302187,
+          "boundary_band_relative_l2": 0.06925968157230228,
+          "field_cosine_similarity": 0.9968058279560553,
+          "field_norm_ratio": 0.9845874158668556,
+          "interior_relative_l2": 0.085972683533371,
+          "per_time_scaled_l2_p95_active": 0.21319058284764666,
+          "shape_relative_l2_after_scale": 0.07863236728944087,
+          "trajectory_relative_l2": 0.08079251788888155
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "e2f2f65dfbfc7f4ab369e741bd421d09b1dca5f336496b6e81ac6ebbb91cde08",
+        "variant_id": "refined_192_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000008",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.22501266681064483,
+          "minimum_depth": 0.7489627283541082,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 987,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.001000282346027359,
+          "boundary_band_relative_l2": 0.12515987790581753,
+          "field_cosine_similarity": 0.9857272203143418,
+          "field_norm_ratio": 0.9491940350457856,
+          "interior_relative_l2": 0.20753350874089832,
+          "per_time_scaled_l2_p95_active": 0.32115673219635665,
+          "shape_relative_l2_after_scale": 0.15979716714897182,
+          "trajectory_relative_l2": 0.17226874573533704
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "e0fa4042a48eacd40ae2a2b3619193e0530eab6edeb06b9cb2673931b30323d4",
+        "variant_id": "refined_192_open_no_sponge"
+      },
+      {
+        "case_id": "production_input_canaries_train_scenario_000016",
+        "health": {
+          "allowed_post_step_cfl": 0.22725,
+          "counter_maxima": {
+            "operator_dry_projection_count": 0.0,
+            "operator_muscl_cell_velocity_clip_count": 0.0,
+            "operator_muscl_face_velocity_clip_count": 0.0,
+            "operator_nan_to_num_replacement_count": 0.0,
+            "operator_positivity_projection_count": 0.0
+          },
+          "max_post_step_cfl": 0.2250580905961356,
+          "minimum_depth": 0.6310728793579665,
+          "minimum_depth_tolerance": -1e-06,
+          "natural_steps": 988,
+          "passed": true,
+          "violations": []
+        },
+        "metrics": {
+          "absolute_rms": 0.0023208312849874674,
+          "boundary_band_relative_l2": 0.1421842913156455,
+          "field_cosine_similarity": 0.9895100220324327,
+          "field_norm_ratio": 0.9492474644173802,
+          "interior_relative_l2": 0.1528118999835289,
+          "per_time_scaled_l2_p95_active": 0.5708136465823269,
+          "shape_relative_l2_after_scale": 0.13713231239732834,
+          "trajectory_relative_l2": 0.14996996313621583
+        },
+        "solver": "swe_muscl_hr",
+        "target_cfl": 0.225,
+        "trajectory_sha256": "651347f47e1779da28da3bbb67681aae43df6e02a0f418457716adb38597974a",
+        "variant_id": "refined_192_open_no_sponge"
+      }
+    ],
+    "solver_formulation_contrasts": [
+      {
+        "case_count": 3,
+        "hydrostatic_mean": 0.5343481696265627,
+        "hydrostatic_minus_muscl_hr": {
+          "max": 0.33618942248740546,
+          "mean": 0.2961718907038597,
+          "min": 0.2583000715529971
+        },
+        "interpretation": "Combined solver-formulation contrast; reconstruction, topographic-source treatment, time integration, and final solver-specific CFL differ together.",
+        "muscl_closer_count": 3,
+        "muscl_hr_mean": 0.23817627892270302,
+        "variant_id": "production_96_radiation_sponge"
+      },
+      {
+        "case_count": 3,
+        "hydrostatic_mean": 0.5332708524533033,
+        "hydrostatic_minus_muscl_hr": {
+          "max": 0.33627065414982005,
+          "mean": 0.29824733481962856,
+          "min": 0.26380405972180015
+        },
+        "interpretation": "Combined solver-formulation contrast; reconstruction, topographic-source treatment, time integration, and final solver-specific CFL differ together.",
+        "muscl_closer_count": 3,
+        "muscl_hr_mean": 0.2350235176336747,
+        "variant_id": "production_96_radiation_no_sponge"
+      },
+      {
+        "case_count": 3,
+        "hydrostatic_mean": 0.533754002145434,
+        "hydrostatic_minus_muscl_hr": {
+          "max": 0.3362777756177377,
+          "mean": 0.29840894796834255,
+          "min": 0.2643120476472899
+        },
+        "interpretation": "Combined solver-formulation contrast; reconstruction, topographic-source treatment, time integration, and final solver-specific CFL differ together.",
+        "muscl_closer_count": 3,
+        "muscl_hr_mean": 0.2353450541770914,
+        "variant_id": "production_96_open_no_sponge"
+      },
+      {
+        "case_count": 3,
+        "hydrostatic_mean": 0.5330159490724065,
+        "hydrostatic_minus_muscl_hr": {
+          "max": 0.3362716274783421,
+          "mean": 0.29912296376574776,
+          "min": 0.2664338000963537
+        },
+        "interpretation": "Combined solver-formulation contrast; reconstruction, topographic-source treatment, time integration, and final solver-specific CFL differ together.",
+        "muscl_closer_count": 3,
+        "muscl_hr_mean": 0.2338929853066587,
+        "variant_id": "extended_192_open_no_sponge"
+      },
+      {
+        "case_count": 3,
+        "hydrostatic_mean": 0.3886856356238586,
+        "hydrostatic_minus_muscl_hr": {
+          "max": 0.31307006081182653,
+          "mean": 0.2543418933703805,
+          "min": 0.2103610688972369
+        },
+        "interpretation": "Combined solver-formulation contrast; reconstruction, topographic-source treatment, time integration, and final solver-specific CFL differ together.",
+        "muscl_closer_count": 3,
+        "muscl_hr_mean": 0.13434374225347814,
+        "variant_id": "refined_192_open_no_sponge"
+      }
+    ]
+  },
+  "thread_environment": {
+    "BLIS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "VECLIB_MAXIMUM_THREADS": "1"
+  }
+}

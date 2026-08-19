@@ -46,7 +46,7 @@ and the published state is
 \]
 For the shallow-water references, $Z = [h, hu, hv] ^ \top$ and the free surface is then recovered using the time-independent bathymetry; for Boussinesq, $\eta$ is already part of the evolved state. If $t_k$ exactly equals a natural time, the corresponding state is copied without interpolation. Several requested times may fall inside one natural-step interval, but every output is formed only from that adjacent pair.
 
-The interpolation is performed in float64 before the publication frame is cast to float32. It is output-only: interpolated states are never fed back into the time integrator, so the natural solver trajectory is unchanged. For each published frame, the generator records the bracketing times, interpolation weight, bracket width, exact-knot status, and natural-step index. This design prevents the cross-reference time mismatch that would arise from solver-step-indexed sampling while retaining solver-specific natural stepping, It does not remove the interpolation approximation or make the three governing models equivalent.
+The interpolation is performed in float64 before the reported frame is cast to float32. It is output-only: interpolated states are never fed back into the time integrator, so the natural solver trajectory is unchanged. For each reported frame, the generator records the bracketing times, interpolation weight, bracket width, exact-knot status, and natural-step index. This design prevents the cross-reference time mismatch that would arise from solver-step-indexed sampling while retaining solver-specific natural stepping. It does not remove the interpolation approximation or make the three governing models equivalent.
 
 The central publication domain contains $64 \times 64$ cells with $\Delta x = \Delta y = 1/64$. Numerical integration is performed on $96 \times 96$ cells at the same spacing, adding 16 cells around every side rather than refining the reported region. Bathymetry is extended by its edge values into the buffer, and the source is tapered over the outer eight buffer cells. Only the central crop enters the learning target. The buffer and elapsed-time sponge reduce direct boundary exposure over the finite horizon, but they do not establish a generally non-reflecting boundary condition.
 
@@ -169,7 +169,7 @@ Two acceleration solves form one velocity-Verlet step:
 \qquad
 \eta_t ^ {n + 1} = \eta_t ^ n + \frac{\Delta t}{2} \left(a_\eta ^ n + a_\eta ^ {n + 1} \right).
 \]
-The production path fails the sample if either solve does not meet its residual tolerance; a nonconverged iterate is not retained as a label. For each fixed bathymetry, the natural step is selected from the maximum shallow long-wave speed,
+A sample is excluded if either solve fails to meet its residual tolerance; a nonconverged iterate is not retained as a label. For each fixed bathymetry, the natural step is selected from the maximum shallow long-wave speed,
 \[
 \Delta t = \frac{0.35}{\sqrt{g\max(H)}\left(\Delta x ^ {-1} + \Delta y ^ {-1}\right)}.
 \]
@@ -178,24 +178,26 @@ This is an elevation-only linear weakly dispersive comparison, not a full nonlin
 \paragraph{Boundaries, damping, and shared scope.}
 The shallow-water references use bathymetry-aware linearized radiation states at all four outer edges. The outgoing free-surface characteristic is continued through the face around the local rest depth, while the tangential velocity is carried from the adjacent interior cell. This treatment reduces direct reflection for small outgoing waves but is not an exact non-reflecting condition for nonlinear, oblique, or strongly heterogeneous propagation. The Boussinesq comparison instead uses open zero-gradient scalar boundaries.
 
-All three references additionally use the same 16-cell cosine sponge in the outer computational buffer. If $D(x, y) \in [0.8, 1]$ is the reference mask and $\Delta t_{\mathrm{ref}} = 0.0035$, a natural step applies $D ^ {\Delta t/\Delta t_{\mathrm{ref}}}$. Consequently, two trajectories covering the same elapsed time receive approximately the same cumulative damping even when their natural step sizes or counts differ. The shallow-water sponge damps momentum and free-surface displacement about rest depth; the Boussinesq sponge damps $\eta$ and $\eta_t$. The Boussinesq production filter is disabled. Across all three references, the benchmark omits Coriolis acceleration, bottom friction, moving bathymetry, and event-specific forcing after initialization.
+All three references additionally use the same 16-cell cosine sponge in the outer computational buffer. If $D(x, y) \in [0.8, 1]$ is the reference mask and $\Delta t_{\mathrm{ref}} = 0.0035$, a natural step applies $D ^ {\Delta t/\Delta t_{\mathrm{ref}}}$. Consequently, two trajectories covering the same elapsed time receive approximately the same cumulative damping even when their natural step sizes or counts differ. The shallow-water sponge damps momentum and free-surface displacement about rest depth; the Boussinesq sponge damps $\eta$ and $\eta_t$. The optional Boussinesq smoothing filter is disabled. Across all three references, the benchmark omits Coriolis acceleration, bottom friction, moving bathymetry, and event-specific forcing after initialization.
 
 \subsection{Numerical verification and validation scope}
 \label{subsec:reference-validation}
 
-The numerical-label contract was assessed before the final surrogate analysis through five complementary forms of evidence:
+The numerical-reference and temporal-output protocol was assessed before the final surrogate analysis through five complementary forms of evidence:
 
 \begin{enumerate}[leftmargin=2.2em]
     \item \textbf{Input identity:} all $13{,}500$ scenario definitions were checked for split-qualified identity, array equality, horizon coverage, and exact reuse across the three references.
-    \item \textbf{Internal verification:} analytical-wave, lake-at-rest, conservation, spatial/temporal sensitivity, requested-output, boundary/sponge, dispersive, health, and deterministic-replay checks were run with thresholds fixed before evaluation.
-    \item \textbf{Independent comparison:} matched analytical and small production-like cases were compared with GeoClaw/Clawpack. The analytical and refinement checks passed, but most exploratory production-like comparisons exceeded their descriptive limits. The external solver is therefore an independent comparator, not automatic truth or evidence of pointwise equivalence.
-    \item \textbf{Generation-path checks:} the exact buffered-domain, adaptive-step, interpolation, and quality-screening path was exercised on cases separate from the implementation checks.
-    \item \textbf{Independent sensitivity set:} additional training-pool cases, excluded from the earlier diagnostic selections, tested the fixed production/reference CFL pairs, time extraction, health criteria, and replay consistency.
+    \item \textbf{Internal verification:} analytical-wave, lake-at-rest, conservation, spatial/temporal sensitivity, requested-output, boundary/sponge, dispersive, numerical-stability, and deterministic-repeatability checks were run with thresholds fixed before evaluation.
+    \item \textbf{Independent comparison:} matched analytical and representative finite-horizon cases were compared with GeoClaw/Clawpack. The analytical and refinement comparisons satisfied their criteria, but most exploratory full-configuration comparisons exceeded their descriptive limits. The external solver is therefore an independent comparator, not automatic truth or evidence of pointwise equivalence.
+    \item \textbf{Integrated numerical procedure:} the buffered-domain integration, adaptive stepping, requested-time interpolation, and quality screening were assessed on cases separate from the lower-level implementation checks.
+    \item \textbf{Independent sensitivity set:} additional training-pool cases, excluded from the earlier diagnostic selections, tested the reported and comparison CFL settings, time extraction, numerical-admissibility criteria, and repeatability.
 \end{enumerate}
 
-Decision thresholds and case selections were fixed before the corresponding outcomes were inspected. Validation and test scenarios used to evaluate the surrogates were not used to tune these numerical gates. The full chain was repeated under a fixed source revision before the reported model evaluation. Passing it supports the implemented finite-horizon label contract; it does not establish observed-event validity, shoreline accuracy, generally non-reflecting boundaries, or equivalence with an operational tsunami code.
+For three prespecified representative finite-horizon shallow-water cases, a controlled follow-up ablation removes the sponge, changes the outer boundary from radiation to open, moves that boundary farther from the reported crop at unchanged cell spacing, and then halves the in-house cell size on the original physical domain. The comparison is descriptive: it identifies sensitivity among the tested configurations but is not a formal convergence study and does not isolate one numerical component.
 
-Each mass-generation rollout must additionally pass finiteness, positivity/depth, amplitude, velocity, sanitization, projection, clipping, post-step CFL, and, where relevant, conjugate-gradient checks. Rejected or incompatible outputs are not silently reused.
+Decision thresholds and case selections were fixed before the corresponding outcomes were inspected. Validation and test scenarios used to evaluate the surrogates were not used to tune these numerical acceptance criteria. The complete verification program was repeated without altering the numerical implementation before the reported model evaluation. Satisfying these criteria supports the implemented finite-horizon protocol; it does not establish observed-event validity, shoreline accuracy, generally non-reflecting boundaries, or equivalence with an operational tsunami code.
+
+Each dataset trajectory is additionally screened for finiteness, positivity/depth, amplitude, velocity, sanitization, projection, clipping, post-step CFL, and, where relevant, conjugate-gradient convergence. Trajectories that do not satisfy these criteria are excluded.
 
 \subsection{Field and physics metrics}
 \label{subsec:eval-metrics}
@@ -213,9 +215,11 @@ For field accuracy, with $k$ indexing every element of the trajectory,
 \]
 MAE, RMSE, and the headline relative $L_2$ are computed after reversing target normalization. Main-table max-err remains in normalized target units unless marked physical.
 
-For a full split, the underlying sums are accumulated before reduction, giving one global relative $L_2$ and one global maximum, Metadata subgroup tables instead compute per-scenario metrics first and then average within the group. These two aggregations answer different questions and are labelled separately.
+For a full split, the underlying sums are accumulated before reduction, giving one global relative $L_2$ and one global maximum. Metadata subgroup tables instead compute per-scenario metrics first and then average within the group. These two aggregations answer different questions and are labelled separately.
 
 For the selected single-seed Hydrostatic architecture comparison, we also use a paired nonparametric bootstrap: one shared index draw resamples the same $2{,}500$ scenario identities $2{,}000$ times with seed $20260814$. We report mean per-scenario denormalized relative $L_2$ and paired differences from FNO. These are test-scenario intervals for fixed checkpoints, not training-seed uncertainty or population-level architecture rankings.
+
+Training-seed variation is assessed separately with seeds $\{18, 36, 67\}$ for Hydrostatic FNO, F-FNO, ConvLSTM, and U-Net, together with FNO trained on MUSCL-HR and Boussinesq. Every checkpoint is evaluated on the same held-out scenarios. We report the mean, sample standard deviation, and range of the three checkpoint-level mean per-scenario metrics. With only three seeds, these summaries are descriptive and are not treated as confidence intervals. Architectures outside this replicated subset retain their selected single-seed results.
 
 Per-frame relative $L_2$ uses the same norm ratio after restricting the tensors to one requested time. Physics diagnostics additionally use the spatial means
 \[
@@ -239,7 +243,7 @@ The proxy resolution diagnostic resizes the processed Hydrostatic test fields to
 \subsection{Runtime benchmarking}
 \label{subsec:runtime}
 
-The numerical references are timed on CPU using the exact common-time $96 \times 96$ rollout and central-crop contract, excluding bathymetry and source generation. These are vectorized NumPy/SciPy implementations. Each reference timing uses eight fixed scenarios, one warm-up pass, and three measured repeats. Surrogates are timed on the RTX 4050 Laptop GPU in fp32 at batch size one, with TF32 disabled, five warm-up passes, twenty measured passes, and device synchronization around timing. The implementation-level speedup is
+The numerical references are timed on CPU using the common-time $96 \times 96$ rollout and central-crop protocol, excluding bathymetry and source generation. These are vectorized NumPy/SciPy implementations. Each reference timing uses eight fixed scenarios, one warm-up pass, and three measured repeats. Surrogates are timed on the RTX 4050 Laptop GPU in fp32 at batch size one, with TF32 disabled, five warm-up passes, twenty measured passes, and device synchronization around timing. The implementation-level speedup is
 \[
 \mathrm{speedup} =
 \frac{\text{reference rollout time per sample}}
@@ -256,7 +260,7 @@ The raw solver gap compares two numerical references on the same scenarios and r
 \frac{\mathrm{RMSE}(f_\theta ^ A, \mathrm{ref}\, B)}
      {\mathrm{RMSE}(\mathrm{ref}\, A, \mathrm{ref}\, B)}.
 \]
-All terms use the global denormalized benchmark-scale RMSE, and confidence intervals use 2,000 scenario bootstrap resamples. A value $\rho < 1$ means that the surrogate is closer to reference $B$ in this benchmark metric than reference $A$ is. Without observational truth or a stronger physical reference, this is not evidence of physical superiority.
+All terms use the global denormalized benchmark-scale RMSE, and confidence intervals use 2,000 scenario bootstrap resamples. The ratio is also evaluated independently for the three FNO training seeds $\{18, 36, 67\}$; their mean, sample standard deviation, and range are reported separately from the within-checkpoint scenario-bootstrap interval. A value $\rho < 1$ means that the surrogate is closer to reference $B$ in this benchmark metric than reference $A$ is. Without observational truth or a stronger physical reference, this is not evidence of physical superiority.
 
 \subsection{Gauge, arrival, and peak diagnostics}
 \label{subsec:wave-metrics}

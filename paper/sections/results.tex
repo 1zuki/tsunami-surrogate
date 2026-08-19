@@ -3,33 +3,53 @@
 
 Unless stated otherwise, model accuracy is measured on the $N = 2500$ held-out test scenarios. MAE, RMSE, and headline relative $L_2$ values are computed after reversing target normalization; max-err remains in normalized target units. Every table uses the same completed common-time evaluation and the checkpoint, dataset, and metric definitions stated in Sections~\ref{sec:methods}--\ref{sec:training}.
 
-\subsection{Common-time contract and numerical evidence}
+\subsection{Temporal alignment and numerical verification}
 \label{subsec:res-dataset}
 
-All three main datasets contain $10{,}000$ training, $1{,}000$ validation, and $2{,}500$ test scenarios. Each processed target has shape $50 \times 64 \times 64$, and all $40{,}500$ solver-specific trajectories passed the configured numerical-health checks. The scenario populations match across references: six source families, five bathymetry families, and source strength in $[0.45, 0.85]$.
+All three main datasets contain $10{,}000$ training, $1{,}000$ validation, and $2{,}500$ test scenarios. Each processed target has shape $50 \times 64 \times 64$, and all $40{,}500$ solver-specific trajectories satisfy the predefined numerical-stability and solution-quality criteria. The scenario populations match across references: six source families, five bathymetry families, and source strength in $[0.45, 0.85]$.
 
-Table~\ref{tab:solver-validation} summarizes the numerical evidence used to accept the finite-horizon label contract. The categories are grouped by their scientific purpose.
+Table~\ref{tab:solver-validation} summarizes the numerical evidence supporting the finite-horizon temporal-output protocol. The categories are grouped by their scientific purpose.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Numerical verification and inter-code comparison supporting the common-time label contract. Passing these checks supports the stated finite-horizon implementation, not event-scale physical validity.}
+\caption{Numerical verification and inter-code comparison for the finite-horizon temporal-output protocol. This evidence assesses numerical consistency, not event-scale physical validity.}
 \label{tab:solver-validation}
 \small
 \begin{tabular}{p{0.23\linewidth}p{0.55\linewidth}p{0.13\linewidth}}
     \toprule
-    Evidence & Scope & Outcome \\
+    Evidence & Scope & Finding \\
     \midrule
-    Input identity & $13{,}500$ shared scenarios, split identities, arrays, and horizon coverage & passed \\
-    Internal verification & $86$ cases and $48$ analytical, numerical, and health criteria & passed \\
-    Matched-regime comparison & $3$ primary, $2$ verification, and $7$ refinement GeoClaw/Clawpack checks & passed \\
-    Exploratory comparison & $12$ production-like GeoClaw/Clawpack comparisons & $1 / 12$ within limit \\
-    Generation-path checks & $90$ buffered common-time cases and $3$ repeatability checks & passed \\
-    Independent sensitivity set & $363$ paired cases, $726$ executions, and $42$ fixed criteria & passed \\
+    Shared inputs & $13{,}500$ scenarios; split identities, arrays, and horizon & exact agreement \\
+    Internal verification & $86$ cases; $48$ analytical, numerical, and stability criteria & within criteria \\
+    Matched GeoClaw/Clawpack & $3$ primary, $2$ verification, and $7$ refinement cases & within criteria \\
+    Exploratory GeoClaw/Clawpack & $12$ representative finite-horizon cases & $11 / 12$ above limits \\
+    Integrated procedure & $90$ buffered common-time cases; $3$ repeatability checks & repeatable \\
+    Independent sensitivity & $363$ pairs; $726$ executions; $42$ fixed criteria & within criteria \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-The independent-comparator evidence is deliberately limited. All analytical, verification, and refinement comparisons passed, whereas $11$ of $12$ exploratory descriptive comparisons exceeded their provisional limits. On three production-like cases, trajectory relative $L_2$ against GeoClaw ranged from $0.414$ to $0.537$ for Hydrostatic and from $0.231$ to $0.259$ for MUSCL-HR. These discrepancies remain part of the interpretation: the package supports matched-regime verification, but not pointwise production equivalence or the designation of GeoClaw as physical truth.
+The independent-comparator evidence is deliberately limited. All analytical, verification, and refinement comparisons satisfied their predefined criteria, whereas $11$ of $12$ exploratory descriptive comparisons exceeded their provisional limits. Table~\ref{tab:geoclaw-ablation} summarizes a controlled follow-up on three prespecified representative finite-horizon shallow-water cases.
+
+\begin{table}[pos=htbp]
+\centering
+\caption{Mean trajectory relative $L_2$ against GeoClaw over three prespecified representative finite-horizon shallow-water cases. The extended domain retains the reported cell spacing; only the $2 \times$ refined variant halves the in-house cell size. GeoClaw is an independent comparator, not physical truth.}
+\label{tab:geoclaw-ablation}
+\small
+\begin{tabular}{lcc}
+    \toprule
+    In-house configuration & Hydrostatic & MUSCL-HR \\
+    \midrule
+    Reported $96$, radiation + sponge & $0.5343$ & $0.2382$ \\
+    Reported $96$, radiation, no sponge & $0.5333$ & $0.2350$ \\
+    Reported $96$, open, no sponge & $0.5338$ & $0.2353$ \\
+    Extended $192$, open, no sponge & $0.5330$ & $0.2339$ \\
+    $2 \times$ refined domain, open, no sponge & $0.3887$ & $0.1343$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+Removing the sponge, changing the boundary type, and moving the boundary outward alter the mean discrepancy by only $0.0003$--$0.0032$. Halving the cell size moves all six solver--case comparisons closer to GeoClaw and reduces the mean discrepancy by $0.1451$ for Hydrostatic and $0.1010$ for MUSCL-HR, making refinement the dominant tested sensitivity. A material residual remains, however, and MUSCL-HR is closer in every tested setup. Because the Hydrostatic--MUSCL-HR contrast changes reconstruction, source treatment, time integration, and CFL together, the ablation neither identifies one unique cause nor establishes formal convergence or pointwise equivalence.
 
 The linear weakly dispersive implementation also reproduces its discrete constant-depth phase-speed trend over eight Fourier modes. The maximum relative error is $2.45 \times 10 ^ {-4}$ for the non-dispersive branch and $1.91 \times 10 ^ {-8}$ for $\alpha_B = 1 / 3$, with no conjugate-gradient failures and at most $35$ iterations in the latter branch (Table~\ref{tab:app-bouss-dispersion}). This is a local implementation diagnostic rather than external or event-scale validation.
 
@@ -38,7 +58,7 @@ The central evaluation result is that the remaining reference discrepancy is not
 \subsection{Direct same-reference accuracy}
 \label{subsec:res-accuracy}
 
-Table~\ref{tab:accuracy} contains all eleven direct model--reference configurations. Among the selected single-seed Hydrostatic configurations, F-FNO has the lowest relative $L_2$ ($0.190$), followed by ConvLSTM ($0.211$). U-FNO, the two mode ablations, and the base FNO form a narrow $0.238$--$0.244$ group. WNO, U-Net, and the small CNN are less accurate. F-FNO uses $0.411$M parameters, about thirteen times fewer than the $5.443$M-parameter FNO, so its improvement is not explained by parameter count.
+Table~\ref{tab:accuracy} contains the selected seed-$18$ results for all eleven direct model--reference configurations. Among the Hydrostatic configurations, F-FNO has the lowest global relative $L_2$ ($0.190$), followed by ConvLSTM ($0.211$). U-FNO, the two mode ablations, and the base FNO form a narrow $0.238$--$0.244$ group. WNO, U-Net, and the small CNN are less accurate. F-FNO uses $0.411$M parameters, about thirteen times fewer than the $5.443$M-parameter FNO, so its improvement is not explained by parameter count.
 
 \begin{table}[pos=htbp]
 \centering
@@ -70,7 +90,29 @@ The Boussinesq FNO has the lowest relative $L_2$ among the three FNO targets but
 \paragraph{Paired scenario uncertainty.}
 The paired scenario bootstrap gives mean per-scenario relative $L_2$ values of $0.222$ ($95\%$ interval $[0.218, 0.226]$) for F-FNO, $0.272$ ($[0.266, 0.278]$) for ConvLSTM, and $0.304$ ($[0.298, 0.310]$) for FNO. Relative to FNO, the paired mean differences are $-0.082$ ($[-0.085, -0.079]$) for F-FNO and $-0.032$ ($[-0.036, -0.028]$) for ConvLSTM. Their per-scenario errors are lower than FNO on $93.2\%$ and $64.0\%$ of the test scenarios, respectively. These intervals describe variation over the fixed test scenarios for the selected checkpoints; they are not multi-seed significance claims.
 
-Relative to the base Hydrostatic FNO, F-FNO reduces the global relative $L_2$ by approximately $22\%$ while using about $7.6\%$ as many parameters. ConvLSTM reduces the same error by about $14\%$ and has the lowest final-frame error among the three models shown in Table~\ref{tab:perframe}. These results are consistent with benefits from axis-factorized global mixing and explicit temporal recurrence, respectively, but the direct architecture table uses one selected seed per configuration. The ranking should therefore be read as a controlled comparison of these runs, not as a population-level significance claim across architectures.
+\paragraph{Training-seed variation.}
+Table~\ref{tab:multiseed-direct} reports the replicated subset. The Hydrostatic ordering F-FNO $<$ ConvLSTM $<$ FNO $<$ U-Net holds separately for seeds $18$, $36$, and $67$, and the four seed-wise ranges do not overlap. The three-seed summaries therefore strengthen this key comparison, but they are not a population-level significance test and do not replicate U-FNO, WNO, CNN, the mode ablations, or the other single-seed stress tests.
+
+\begin{table}[pos=htbp]
+\centering
+\caption{Three-seed stability on the common $N = 2500$ test split. Values are checkpoint-level means of per-scenario denormalized relative $L_2$ for seeds $\{18, 36, 67\}$, reported as mean $\pm$ sample standard deviation and range. They are descriptive seed summaries, not confidence intervals.}
+\label{tab:multiseed-direct}
+\small
+\begin{tabular}{llcc}
+    \toprule
+    Model & Reference & mean $\pm$ SD & range \\
+    \midrule
+    F-FNO    & Hydrostatic & $0.2199 \pm 0.0107$ & $0.2084$--$0.2296$ \\
+    ConvLSTM & Hydrostatic & $0.2640 \pm 0.0106$ & $0.2519$--$0.2716$ \\
+    FNO      & Hydrostatic & $0.3037 \pm 0.0029$ & $0.3007$--$0.3065$ \\
+    U-Net    & Hydrostatic & $0.7468 \pm 0.0075$ & $0.7400$--$0.7549$ \\
+    FNO      & MUSCL-HR    & $0.3663 \pm 0.0063$ & $0.3607$--$0.3731$ \\
+    FNO      & Boussinesq  & $0.1992 \pm 0.0062$ & $0.1927$--$0.2051$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+For the seed-$18$ global metric in Table~\ref{tab:accuracy}, F-FNO reduces Hydrostatic relative $L_2$ by approximately $22\%$ while using about $7.6\%$ as many parameters as FNO, and ConvLSTM reduces it by about $14\%$. ConvLSTM also has the lowest final-frame error among the three models shown in Table~\ref{tab:perframe}. Figure~\ref{fig:rollout} illustrates one direct Hydrostatic FNO rollout at the first, middle, and final requested times. The replicated ordering is consistent with benefits from axis-factorized global mixing and explicit temporal recurrence, but three seeds remain too few for a broad population-level architecture claim.
 
 \begin{figure}[pos=htbp]
 \centering
@@ -100,7 +142,7 @@ Table~\ref{tab:perframe} reports denormalized benchmark-scale relative $L_2$ at 
 \end{table}
 
 \paragraph{Physics diagnostics.}
-F-FNO lowers the Hydrostatic integral and spectral errors relative to FNO. ConvLSTM has competitive low- and mid-frequency errors but a larger high-frequency error. These quantities diagnose where the error lies; they do not imply conservation enforcement.
+Table~\ref{tab:physics-diag} compares the Hydrostatic integral and spectral diagnostics. F-FNO lowers these errors relative to FNO. ConvLSTM has competitive low- and mid-frequency errors but a larger high-frequency error. These quantities diagnose where the error lies; they do not imply conservation enforcement.
 
 \begin{table}[pos=htbp]
 \centering
@@ -120,7 +162,7 @@ F-FNO lowers the Hydrostatic integral and spectral errors relative to FNO. ConvL
 \subsection{Runtime and implementation-level speedup}
 \label{subsec:res-speed}
 
-The matched reference rollouts take $2.43$~s for Hydrostatic, $3.47$~s for MUSCL-HR, and $1.44$~s for Boussinesq per sample on the local CPU. Direct GPU inference ranges from $0.138$~ms for CNN to $21.0$~ms for recurrent ConvLSTM. The corresponding implementation-level acceleration spans about $116 \times$ to $17{,}639 \times$. For the main FNO, the measured speedups are $2{,}114 \times$, $3{,}030 \times$, and $1{,}200 \times$ against Hydrostatic, MUSCL-HR, and Boussinesq, respectively.
+Table~\ref{tab:speed} reports the matched reference and batch-one inference timings. The reference rollouts take $2.43$~s for Hydrostatic, $3.47$~s for MUSCL-HR, and $1.44$~s for Boussinesq per sample on the local CPU. Direct GPU inference ranges from $0.138$~ms for CNN to $21.0$~ms for recurrent ConvLSTM. The corresponding implementation-level acceleration spans about $116 \times$ to $17{,}639 \times$. For the main FNO, the measured speedups are $2{,}114 \times$, $3{,}030 \times$, and $1{,}200 \times$ against Hydrostatic, MUSCL-HR, and Boussinesq, respectively.
 
 \begin{table}[pos=htbp]
 \centering
@@ -171,7 +213,7 @@ Table~\ref{tab:ood} groups the Hydrostatic FNO by source family using means of p
 \end{tabular}
 \end{table}
 
-The strict holdouts are more demanding. Trench bathymetry produces only a $1.09 \times$ held-out/ID increase, while continental bathymetry and rough sources exceed $2 \times$. The full-distribution model is better on every excluded family, indicating that removing the family costs more than any benefit from specializing the normalization and training distribution. This remains a single-seed comparison and does not separate representation limits from reduced training-set diversity.
+The strict holdouts in Table~\ref{tab:strict-holdout} are more demanding. Trench bathymetry produces only a $1.09 \times$ held-out/ID increase, while continental bathymetry and rough sources exceed $2 \times$. The full-distribution model is better on every excluded family, indicating that removing the family costs more than any benefit from specializing the normalization and training distribution. This remains a single-seed comparison and does not separate representation limits from reduced training-set diversity.
 
 \begin{table}[pos=htbp]
 \centering
@@ -194,7 +236,7 @@ The six seed-$42$ sample-scaling runs are monotone: relative $L_2$ falls from $0
 \subsection{Resolution transfer}
 \label{subsec:res-crossres}
 
-The proxy Hydrostatic experiment applies the same $64 \times 64$ FNO checkpoint after resizing the processed test fields. Error rises in both directions, to $0.517$ at $32 \times 32$ and $0.398$ at $128 \times 128$.
+Table~\ref{tab:crossres} reports the proxy Hydrostatic experiment, which applies the same $64 \times 64$ FNO checkpoint after resizing the processed test fields. Error rises in both directions, to $0.517$ at $32 \times 32$ and $0.398$ at $128 \times 128$.
 
 \begin{table}[pos=htbp]
 \centering
@@ -211,7 +253,7 @@ The proxy Hydrostatic experiment applies the same $64 \times 64$ FNO checkpoint 
 \end{tabular}
 \end{table}
 
-The stronger native experiment uses paired MUSCL-HR simulations and three separately trained checkpoints. The diagonal errors are $0.434$, $0.501$, and $0.551$ for $32$, $64$, and $128$ grids. Off-diagonal transfer is consistently worse than or close to the corresponding diagonal, but the degradation is not a uniform collapse.
+The stronger native experiment in Table~\ref{tab:crossres-native-transfer} uses paired MUSCL-HR simulations and three separately trained checkpoints. The diagonal errors are $0.434$, $0.501$, and $0.551$ for $32$, $64$, and $128$ grids. Off-diagonal transfer is consistently worse than or close to the corresponding diagonal, but the degradation is not a uniform collapse.
 
 \begin{table}[pos=htbp]
 \centering
@@ -233,7 +275,7 @@ Each native model sees only $700$ training scenarios, so the matrix should not b
 \subsection{Synthetic-forcing transfer to real bathymetry}
 \label{subsec:res-real}
 
-The main morphology suite contains ten GEBCO-derived fully wet crops rescaled into the training depth range and paired with synthetic sources. Direct F-FNO transfers better than direct FNO, with denormalized benchmark-scale relative $L_2$ $0.218$ versus $0.299$. The seeded window results are lower but are not like-for-like direct forecasts.
+Table~\ref{tab:real-bath} summarizes the main morphology suite of ten GEBCO-derived fully wet crops rescaled into the training depth range and paired with synthetic sources, while Figure~\ref{fig:real-bath} illustrates one offshore crop at the final requested time. Direct F-FNO transfers better than direct FNO, with denormalized benchmark-scale relative $L_2$ $0.218$ versus $0.299$. The seeded window results are lower but are not like-for-like direct forecasts.
 
 \begin{table}[pos=htbp]
 \centering
@@ -263,7 +305,7 @@ The fully wet coastline ablation remains usable, but the coastline stress case w
 \subsection{Common-time solver gaps and cross-reference ratios}
 \label{subsec:res-solver-fidelity}
 
-The common-time Hydrostatic--MUSCL-HR gap is the smallest pairwise discrepancy. Its global field RMSE is $0.00508$, compared with $0.04425$ and $0.04540$ for the two shallow-water--Boussinesq pairs. The relative $L_2$ is directional because it divides by the second reference's norm.
+Table~\ref{tab:solvergap} reports the common-time solver discrepancies. The Hydrostatic--MUSCL-HR gap is the smallest pairwise discrepancy: its global field RMSE is $0.00508$, compared with $0.04425$ and $0.04540$ for the two shallow-water--Boussinesq pairs. The relative $L_2$ is directional because it divides by the second reference's norm.
 
 \begin{table}[pos=htbp]
 \centering
@@ -280,48 +322,51 @@ The common-time Hydrostatic--MUSCL-HR gap is the smallest pairwise discrepancy. 
 \end{tabular}
 \end{table}
 
-Figure~\ref{fig:solver-gap-scale} places the selected same-reference surrogate controls and raw solver gaps on one denormalized RMSE scale. For the shallow-water pair, the Hydrostatic FNO and F-FNO controls give the $1.6\times$ and $2.1\times$ comparisons used in the main text. For the two cross-family pairs, the Boussinesq FNO is the more conservative same-reference control because its RMSE is larger than the Hydrostatic and MUSCL-HR FNO errors.
+Figure~\ref{fig:solver-gap-scale} places the same-reference errors of the Hydrostatic FNO, Hydrostatic F-FNO, and Boussinesq FNO alongside the raw solver gaps on one denormalized RMSE scale. For the shallow-water pair, the Hydrostatic FNO and F-FNO give the $1.6\times$ and $2.1\times$ comparisons used in the main text. For the two cross-family pairs, the Boussinesq FNO provides the more conservative comparison because its RMSE is larger than the Hydrostatic and MUSCL-HR FNO errors.
 
 \begin{figure}[pos=htbp]
 \centering
 \includegraphics[width=0.88\linewidth]{figures/solver_gap_vs_surrogate_error.pdf}
-\caption{Raw common-time solver gaps compared with selected same-reference surrogate errors in the same denormalized global-RMSE units. Lines connect each surrogate control to its paired solver gap; annotations give the gap-to-surrogate ratio.}
+\caption{Raw common-time solver gaps compared with the same-reference errors of the Hydrostatic FNO, Hydrostatic F-FNO, and Boussinesq FNO in the same denormalized global-RMSE units. Lines connect each surrogate error to its paired solver gap; annotations give the gap-to-surrogate ratio.}
 \label{fig:solver-gap-scale}
 \end{figure}
 
-Table~\ref{tab:superiority} reports all six cross-reference directions. The two shallow-water directions remain above one. Several cross-family directions lie only slightly below one, and Hydrostatic $\rightarrow$ Boussinesq is statistically indistinguishable from one at the reported precision. The below-one values are small benchmark-relative shifts, not evidence that the surrogate becomes a more accurate physical model.
+Table~\ref{tab:superiority} reports all six directions at seed $18$ and across the three replicated FNO seeds. Hydrostatic $\rightarrow$ MUSCL-HR and the reverse direction remain above one for every seed, with means $1.2590$ and $1.1149$, respectively. The shallow-water conclusion is therefore stable to the tested initializations: neither FNO bridges the raw Hydrostatic--MUSCL-HR gap.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Cross-reference discrepancy ratio $\rho$ with $95\%$ scenario-bootstrap intervals. Values below one mean closer to the second numerical reference in global RMSE, not physical superiority.}
+\caption{Cross-reference discrepancy ratio $\rho$. The seed-$18$ column includes a $95\%$ scenario-bootstrap interval; the remaining columns summarize seeds $\{18, 36, 67\}$ as mean $\pm$ sample standard deviation and range. Values below one mean closer to the second numerical reference in global RMSE, not physical superiority.}
 \label{tab:superiority}
-\begin{tabular}{llcc}
+\small
+\begin{tabular}{llccc}
     \toprule
-    Surrogate trained on & Compared with & $\rho$ & $95\%$ CI \\
+    Trained on & Compared with & seed $18$ $\rho$ [$95\%$ CI] & seed mean $\pm$ SD & seed range \\
     \midrule
-    Hydrostatic & MUSCL-HR   & $1.265$ & $[1.248,\,1.285]$ \\
-    MUSCL-HR    & Hydrostatic& $1.121$ & $[1.096,\,1.145]$ \\
-    Hydrostatic & Boussinesq & $0.999$ & $[0.998,\,1.000]$ \\
-    MUSCL-HR    & Boussinesq & $0.997$ & $[0.996,\,0.999]$ \\
-    Boussinesq  & Hydrostatic& $0.985$ & $[0.973,\,0.996]$ \\
-    Boussinesq  & MUSCL-HR   & $0.985$ & $[0.973,\,0.997]$ \\
+    Hydrostatic & MUSCL-HR    & $1.265$ $[1.248, 1.285]$ & $1.2590 \pm 0.0053$ & $1.2555$--$1.2650$ \\
+    MUSCL-HR    & Hydrostatic & $1.121$ $[1.096, 1.145]$ & $1.1149 \pm 0.0053$ & $1.1101$--$1.1206$ \\
+    Hydrostatic & Boussinesq  & $0.999$ $[0.998, 1.000]$ & $1.0000 \pm 0.0005$ & $0.9994$--$1.0003$ \\
+    MUSCL-HR    & Boussinesq  & $0.997$ $[0.996, 0.999]$ & $0.9971 \pm 0.0002$ & $0.9969$--$0.9973$ \\
+    Boussinesq  & Hydrostatic & $0.985$ $[0.973, 0.996]$ & $0.9964 \pm 0.0103$ & $0.9847$--$1.0042$ \\
+    Boussinesq  & MUSCL-HR    & $0.985$ $[0.973, 0.997]$ & $0.9964 \pm 0.0098$ & $0.9853$--$1.0040$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-Figure~\ref{fig:cross-reference-forest} shows the same six ratios with their paired-bootstrap intervals. The reference line at $\rho=1$ is the raw solver-gap scale: values below it indicate only that the surrogate lies marginally closer to the second numerical reference under this global norm.
+The cross-family effects are much weaker. Hydrostatic $\rightarrow$ Boussinesq is essentially equality, MUSCL-HR $\rightarrow$ Boussinesq is only slightly below one for all three seeds, and both Boussinesq-origin directions cross from below to above one across seeds. Thus the strongest seed-replicated statement is the failure to bridge the shallow-water gap; the below-one cross-family values are small, direction-dependent benchmark effects rather than evidence that an emulator recovers a more accurate physical solution.
+
+Figure~\ref{fig:cross-reference-forest} shows the seed-$18$ ratios with their paired scenario-bootstrap intervals. The reference line at $\rho = 1$ is the raw solver-gap scale; Table~\ref{tab:superiority} separately reports training-seed variation.
 
 \begin{figure}[pos=htbp]
 \centering
 \includegraphics[width=0.88\linewidth]{figures/cross_reference_ratio_forest.pdf}
-\caption{Cross-reference discrepancy ratios with $95\%$ paired scenario-bootstrap intervals. The dashed line denotes equality with the corresponding raw solver gap, not equality with physical truth.}
+\caption{Seed-$18$ cross-reference discrepancy ratios with $95\%$ paired scenario-bootstrap intervals. The dashed line denotes equality with the corresponding raw solver gap, not equality with physical truth; three-seed summaries are given in Table~\ref{tab:superiority}.}
 \label{fig:cross-reference-forest}
 \end{figure}
 
 \subsection{Gauge, arrival, and peak diagnostics}
 \label{subsec:res-wave}
 
-Table~\ref{tab:wave-metrics} summarizes nine virtual gauges per scenario. Hydrostatic and MUSCL-HR have similar median waveform errors and small median arrival errors among eligible gauges. Boussinesq has a much larger waveform tail and far fewer arrival-eligible gauges: $22{,}132$ of $22{,}500$ target gauges are already active at the first requested time, and two additional eligible gauges have no predicted threshold crossing. The resulting $366$ compared arrivals describe only the remaining eligible subset.
+Table~\ref{tab:wave-metrics} summarizes nine virtual gauges per scenario. Hydrostatic and MUSCL-HR have similar median waveform errors and small median arrival errors among eligible gauges. Boussinesq has a much larger waveform tail and far fewer arrival-eligible gauges: $22{,}132$ of $22{,}500$ target gauges are already active at the first requested time, and two additional eligible gauges have no predicted threshold crossing. This is an arrival-eligibility effect rather than a shortage of virtual gauges: the threshold is defined from each target gauge's own waveform, and any gauge already above it at the first supervised frame has an arrival before the observable target window. The resulting $366$ compared arrivals describe only the remaining eligible subset.
 
 \begin{table}[pos=htbp]
 \centering
@@ -348,7 +393,7 @@ First-target-frame-seeded Window-FNO-5 and Window-F-FNO-5 provide long-horizon d
 \subsection{Ensemble uncertainty and seed stability}
 \label{subsec:res-uncertainty}
 
-The raw seven-member ensemble is under-dispersed. On the ordinary test split, raw coverage is $0.419$, $0.654$, $0.742$, and $0.798$ for nominal $50\%$, $80\%$, $90\%$, and $95\%$ intervals. The error--uncertainty correlation is $0.562$, indicating useful but only moderate spatial ranking.
+Table~\ref{tab:uncertainty} summarizes the seven-member ensemble reliability. The raw ensemble is under-dispersed: on the ordinary test split, coverage is $0.419$, $0.654$, $0.742$, and $0.798$ for nominal $50\%$, $80\%$, $90\%$, and $95\%$ intervals. The error--uncertainty correlation is $0.562$, indicating useful but only moderate spatial ranking.
 
 A validation-only variance multiplier $\gamma = 3.981$ (standard-deviation scale $1.995$) raises test $90\%$ coverage from $0.742$ to $0.920$. It also improves the multi-Gaussian subgroup from $0.664$ to $0.888$ and trench from $0.748$ to $0.924$, while the high-strength tail remains under-covered at $0.821$.
 
@@ -369,6 +414,6 @@ A validation-only variance multiplier $\gamma = 3.981$ (standard-deviation scale
 \end{tabular}
 \end{table}
 
-Across the seven individual seeds, the mean per-scenario relative $L_2$ ranges from $0.288$ to $0.306$, with member mean $0.297$ and standard deviation $0.0074$. This is evidence of stability for the Hydrostatic FNO ensemble only; it is not a replicated multi-architecture matrix.
+Across the seven individual seeds, the mean per-scenario relative $L_2$ ranges from $0.288$ to $0.306$, with member mean $0.297$ and standard deviation $0.0074$. This seven-member set supports the Hydrostatic FNO uncertainty analysis; the separate replicated direct-model subset is reported in Table~\ref{tab:multiseed-direct}.
 
 Variance inflation improves interval scale but does not make the ensemble uniformly calibrated. The corrected test coverage is close to nominal at $90\%$, while the high-strength subgroup remains almost ten percentage points below nominal. Together with the moderate error--uncertainty correlation, this supports using ensemble spread as a relative warning signal within the benchmark rather than as a calibrated hazard probability.

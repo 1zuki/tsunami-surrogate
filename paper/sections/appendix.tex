@@ -29,6 +29,7 @@ The experiments share a base training configuration with per-model settings. Tab
                  & checkpoint metric & validation relative $L_2$ \\
     \midrule
     Data         & train / validation / test pools & $10{,}000$ / $1{,}000$ / $2{,}500$ \\
+    Replicated direct subset & training seeds & $\{18, 36, 67\}$ \\
     Ensemble     & member seeds & $\{11,22,33,44,55,66,77\}$ \\
     \bottomrule
 \end{tabular}
@@ -37,7 +38,7 @@ The experiments share a base training configuration with per-model settings. Tab
 \subsection{Supplementary numerical evidence}
 \label{app:validation-details}
 
-The numerical checks were repeated from a clean source revision before the reported surrogate evaluation. Table~\ref{tab:app-validation-chain} expands the summary in Table~\ref{tab:solver-validation}. The important distinction is between evidence that supports the implemented finite-horizon contract and exploratory comparisons that reveal remaining reference-solver disagreement. The 50 learning targets are adjacent-natural-step common-time outputs; no solver-step-indexed output is mixed into the reported evaluation.
+The numerical checks were repeated using the same documented code revision and numerical configuration before the reported surrogate evaluation. Table~\ref{tab:app-validation-chain} expands the summary in Table~\ref{tab:solver-validation}. The important distinction is between evidence that supports the implemented finite-horizon protocol and exploratory comparisons that reveal remaining reference-solver disagreement. The 50 learning targets are adjacent-natural-step common-time outputs; no solver-step-indexed output is mixed into the reported evaluation.
 
 \begin{table}[pos=htbp]
 \centering
@@ -49,16 +50,16 @@ The numerical checks were repeated from a clean source revision before the repor
     Evidence & Quantitative scope & Interpretation \\
     \midrule
     Shared inputs & $13{,}500$ scenarios reused exactly across three references & identity established \\
-    Internal checks & $86$ cases; $48$ analytical, numerical, and health criteria fixed before evaluation & all passed \\
-    Independent comparison & $3$ primary comparisons, $2$ verification checks, and $7$ refinement checks & all passed \\
+    Internal checks & $86$ cases; $48$ analytical, numerical, and stability criteria fixed before evaluation & within criteria \\
+    Independent comparison & $3$ primary comparisons, $2$ verification checks, and $7$ refinement checks & within criteria \\
     Descriptive comparison & $12$ exploratory GeoClaw/Clawpack comparisons & $11$ outside provisional limits \\
-    Generation-path checks & $90$ cases plus $3$ deterministic repeatability checks & no failures \\
-    Held-out sensitivity & $363$ paired cases and $726$ solver executions under $42$ criteria & all passed \\
+    Integrated numerical procedure & $90$ cases plus $3$ deterministic repeatability checks & repeatable \\
+    Held-out sensitivity & $363$ paired cases and $726$ solver executions under $42$ criteria & within criteria \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-The exploratory production-like shallow-water comparisons are the main qualification on this evidence. Across three production-like cases, trajectory relative $L_2$ against GeoClaw is $0.414$--$0.537$ for Hydrostatic and $0.231$--$0.259$ for MUSCL-HR. The numerical program therefore supports the specific implementation and refinement checks needed for the benchmark, but does not establish pointwise equivalence, general boundary independence, or event-scale validity.
+The exploratory finite-horizon shallow-water comparisons are the main qualification on this evidence. Across three prespecified representative cases, trajectory relative $L_2$ against GeoClaw is $0.414$--$0.537$ for Hydrostatic and $0.231$--$0.259$ for MUSCL-HR. The controlled ablation in Table~\ref{tab:geoclaw-ablation} shows that refinement is the dominant tested sensitivity, while a material residual remains. The numerical program therefore supports the specific implementation and refinement checks needed for the benchmark, but does not establish pointwise equivalence, general boundary independence, formal convergence, or event-scale validity.
 
 \paragraph{Boussinesq dispersion diagnostic.}
 Small-amplitude periodic sinusoidal waves are propagated on a $256 \times 32$ constant-depth grid for modes $1, 2, 4, 8, 12, 16, 24, 32$ at $\Delta t = 1.25 \times 10 ^ {-4}$ and final time $1.5$. Fourier phase tracking is compared with the discrete relation
@@ -86,7 +87,7 @@ The $\alpha_B = 0$ branch approaches the non-dispersive shallow-water relation, 
     $\alpha_B$ & modes & maximum relative error & CG status \\
     \midrule
     $0$     & $1, 2, 4, 8, 12, 16, 24, 32$ & $2.45 \times 10 ^ {-4}$ & direct path \\
-    $1 / 3$ & $1, 2, 4, 8, 12, 16, 24, 32$ & $1.91 \times 10 ^ {-8}$ & $0$ failed; max.\ $35$ iterations \\
+    $1 / 3$ & $1, 2, 4, 8, 12, 16, 24, 32$ & $1.91 \times 10 ^ {-8}$ & all solves converged; max.\ $35$ iterations \\
     \bottomrule
 \end{tabular}
 \end{table}
@@ -95,7 +96,7 @@ The $\alpha_B = 0$ branch approaches the non-dispersive shallow-water relation, 
 \label{app:add-result-tab}
 
 \paragraph{Seed stability and ensemble calibration.}
-The seven FNO members in Table~\ref{tab:app-ensemble} differ only in seed. Their held-out Hydrostatic denormalized benchmark-scale relative $L_2$ values range from $0.288$ to $0.306$ (mean $0.297$, standard deviation $0.007$). This quantifies stability of this FNO configuration, not a replicated architecture-comparison matrix.
+The seven FNO members in Table~\ref{tab:app-ensemble} differ only in seed. Their held-out Hydrostatic denormalized benchmark-scale relative $L_2$ values range from $0.288$ to $0.306$ (mean $0.297$, standard deviation $0.007$). This quantifies the stability of the uncertainty ensemble; the distinct three-seed direct-model subset is reported in Table~\ref{tab:multiseed-direct}.
 
 \begin{table}[pos=htbp]
 \centering
@@ -116,7 +117,7 @@ The seven FNO members in Table~\ref{tab:app-ensemble} differ only in seed. Their
 \end{tabular}
 \end{table}
 
-Figure~\ref{fig:app-ensemble-reliability} summarizes the ensemble coverage before and after scalar variance inflation. Raw intervals under-cover; on the ordinary test split their marginal coverages at nominal $50/80/90/95\%$ are $0.419/0.654/0.742/0.798$. A scalar variance inflation $\sigma ^ 2 \mapsto\gamma\sigma ^ 2$, fitted on validation labels only with $\gamma = 3.981$ (standard-deviation scale $1.995$), raises test $90\%$ coverage to $0.920$. The error--uncertainty correlation on the test split is $0.562$. These coverages are per-element summaries over correlated pixels and frames, so they diagnose interval scale rather than independent-sample probabilities or operational risk.
+Figure~\ref{fig:app-ensemble-reliability} summarizes the ensemble coverage before and after scalar variance inflation, while Table~\ref{tab:app-ensemble-calibration} reports the suite-wise $90\%$ values. Raw intervals under-cover; on the ordinary test split their marginal coverages at nominal $50/80/90/95\%$ are $0.419/0.654/0.742/0.798$. A scalar variance inflation $\sigma ^ 2 \mapsto\gamma\sigma ^ 2$, fitted on validation labels only with $\gamma = 3.981$ (standard-deviation scale $1.995$), raises test $90\%$ coverage to $0.920$. The error--uncertainty correlation on the test split is $0.562$. These coverages are per-element summaries over correlated pixels and frames, so they diagnose interval scale rather than independent-sample probabilities or operational risk.
 
 \begin{figure}[pos=htbp]
 \centering
@@ -145,7 +146,7 @@ Figure~\ref{fig:app-ensemble-reliability} summarizes the ensemble coverage befor
 \subsection{Sample-scaling diagnostic}
 \label{app:sample-scaling}
 
-The six seed-$42$ Hydrostatic FNO subset runs in Figures~\ref{fig:sample-scaling}--\ref{fig:sample-scaling-metrics} use the same held-out test split and training protocol. Their test relative $L_2$ decreases monotonically from $0.613$ at $N = 100$ to $0.263$ at $N = 5{,}000$. The $N = 10{,}000$ marker is the separately trained seed-$18$ direct FNO and is shown as a comparator rather than connected as a seventh same-seed point. This is a diagnostic learning curve, not a fitted or multi-seed scaling law.
+The six seed-$42$ Hydrostatic FNO subset runs in Figures~\ref{fig:sample-scaling}--\ref{fig:sample-scaling-metrics} use the same held-out test split and training protocol; Table~\ref{tab:sample-scaling} gives the corresponding numerical values. Their test relative $L_2$ decreases monotonically from $0.613$ at $N = 100$ to $0.263$ at $N = 5{,}000$. The $N = 10{,}000$ marker is the separately trained seed-$18$ direct FNO and is shown as a comparator rather than connected as a seventh same-seed point. This is a diagnostic learning curve, not a fitted or multi-seed scaling law.
 
 \begin{figure}[pos=htbp]
 \centering
@@ -201,7 +202,7 @@ The windowed models predict in $K = 5$ frame blocks after receiving the first tr
 \subsection{Real-bathymetry diagnostics}
 \label{app:real-bathymetry}
 
-The real-bathymetry extension remains a synthetic-forcing transfer study. The ten-crop offshore morphology suite and the fully wet coastline ablation rescale bathymetry into the fully wet training range. The wet--dry coastline stress case preserves positive topography and is outside the main training distribution. Figure~\ref{fig:app-real-bath} shows representative reference fields, while Table~\ref{tab:app-real-bath-window} reports aggregate model errors for the four suites.
+The real-bathymetry extension remains a synthetic-forcing transfer study. Table~\ref{tab:app-real-bath-status} defines the role of each suite. The ten-crop offshore morphology suite and the fully wet coastline ablation rescale bathymetry into the fully wet training range, while the wet--dry coastline stress case preserves positive topography and is outside the main training distribution. Figure~\ref{fig:app-real-bath} shows representative reference fields, and Table~\ref{tab:app-real-bath-window} reports aggregate model errors for the four suites.
 
 \begin{table}[pos=htbp]
 \centering

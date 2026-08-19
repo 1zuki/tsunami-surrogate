@@ -3,7 +3,7 @@
 
 The feedforward direct models use the interface fixed in Section~\ref{subsec:forward-task}: three static input fields are mapped to all 50 target frames in one pass. ConvLSTM uses the same static inputs but emits the trajectory recurrently, beginning with zero feedback and feeding each predicted frame into the next step. The seeded window models define a separate conditional task with four input channels---two static fields and two dynamic elevation frames---and five output frames per block. These interfaces are kept explicit because a common final trajectory shape does not make the internal prediction tasks identical. The Fourier Neural Operator is the main direct model; the others provide spectral, convolutional, encoder--decoder, and recurrent comparisons.
 
-The canonical sources are cited in the direct-comparison table and at first use below. Each concrete model is a repository adaptation to the shared three-input, 50-output benchmark contract rather than a claim of byte-for-byte reproduction of upstream code.
+The canonical sources are cited in the direct-comparison table and at first use below. Each implementation adapts the cited architecture to the shared three-input, 50-output task and is not intended as an exact reproduction of the original training setup.
 
 \subsection{Fourier Neural Operator}
 \label{subsec:fno}
@@ -123,7 +123,7 @@ The \textbf{U-Net} adds a single encoder--decoder with a skip connection \citep{
 
 The \textbf{ConvLSTM} baseline adapts the recurrent convolutional state update of \citet{shi2015convlstm}. It uses two recurrent convolutional layers with $48$ hidden channels and a $3 \times 3$ kernel. A two-layer convolutional encoder maps the three static fields to a spatial context and initializes the hidden and cell states. Within each recurrent layer,
 \[
-\begin{bmatrix} i_t \\ f_t \\ o_t \\ g_t \end{bmatrix} = \begin{bmatrix} sigma \\ \sigma \\ \sigma \\ \tanh \end{bmatrix} \!\left(W_\mathrm{gate} * [r_t, h_{t - 1}]\right),
+\begin{bmatrix} i_t \\ f_t \\ o_t \\ g_t \end{bmatrix} = \begin{bmatrix} \sigma \\ \sigma \\ \sigma \\ \tanh \end{bmatrix} \!\left(W_\mathrm{gate} * [r_t, h_{t - 1}]\right),
 \]
 \[
 c_t = f_t \odot c_{t - 1} + i_t \odot g_t,
