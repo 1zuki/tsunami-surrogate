@@ -151,6 +151,12 @@ def main() -> None:
     parser.add_argument("--bootstrap-seed", type=int, default=20260813)
     parser.add_argument("--bootstrap-resamples", type=int, default=2000)
     parser.add_argument("--horizon", type=float, default=0.175)
+    parser.add_argument(
+        "--training-seed",
+        type=int,
+        default=None,
+        help="Optional training-seed label for replicated reference analyses.",
+    )
     parser.add_argument("--output-dir", required=True)
     args = parser.parse_args()
 
@@ -283,6 +289,7 @@ def main() -> None:
     requested_times = [0.0035 * index for index in range(1, 51)]
     gap_result = {
         "evaluation_type": "v2_solver_gap",
+        "training_seed": args.training_seed,
         "output_mode": "common_time_v2_processed",
         "common_time_v2": {
             "requested_times": requested_times,
@@ -370,6 +377,7 @@ def main() -> None:
 
     cross_result = {
         "evaluation_type": "v2_cross_reference_discrepancy",
+        "training_seed": args.training_seed,
         "output_mode": "common_time_v2_processed",
         "common_time_v2": gap_result["common_time_v2"],
         "num_samples": int(scenario_count),

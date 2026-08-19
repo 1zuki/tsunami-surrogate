@@ -1,0 +1,9 @@
+defaults:
+  - ../fno_boussinesq.yaml
+
+# Seed 18 is already complete at experiments/fno_boussinesq/best.pt.
+seeds: [36, 67]
+output_dir: experiments/multiseed_v2/fno_boussinesq
+
+eval:
+  output_dir: experiments/multiseed_v2/fno_boussinesq/eval

@@ -1,0 +1,10 @@
+defaults:
+  - ../fno.yaml
+
+# Seed 18 is already complete at experiments/fno/best.pt. These two fresh
+# runs complete the frozen three-seed architecture/reference matrix.
+seeds: [36, 67]
+output_dir: experiments/multiseed_v2/fno_hydrostatic
+
+eval:
+  output_dir: experiments/multiseed_v2/fno_hydrostatic/eval

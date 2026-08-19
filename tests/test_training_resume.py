@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pickle
 import random
 from pathlib import Path
 
@@ -9,7 +10,12 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from src.training.train import Trainer, _as_cpu_rng_state, _restore_rng_state
-from src.utils.seed import make_torch_generator, seed_everything
+from src.utils.seed import (
+    make_torch_generator,
+    make_worker_init_fn,
+    seed_everything,
+    seed_worker,
+)
 
 
 class _DictDataset(Dataset):
@@ -34,6 +40,33 @@ class _RandomScaleModel(torch.nn.Module):
         random_scale = 0.9 + 0.05 * random.random() + 0.05 * np.random.random()
         dropped = torch.nn.functional.dropout(x, p=0.25, training=self.training)
         return dropped * self.weight * random_scale
+
+
+def test_dataloader_worker_init_is_spawn_picklable_and_deterministic() -> None:
+    callback = pickle.loads(pickle.dumps(make_worker_init_fn(36)))
+
+    callback(4)
+    observed = (random.random(), float(np.random.random()), float(torch.rand(())))
+
+    seed_worker(4, 36)
+    expected = (random.random(), float(np.random.random()), float(torch.rand(())))
+
+    assert observed == expected
+
+
+def test_spawn_dataloader_can_read_first_batch() -> None:
+    loader = DataLoader(
+        _DictDataset(),
+        batch_size=2,
+        num_workers=1,
+        worker_init_fn=make_worker_init_fn(36),
+        multiprocessing_context="spawn",
+    )
+
+    batch = next(iter(loader))
+
+    assert batch["x"].shape == (2, 1, 2, 2)
+    assert batch["y"].shape == (2, 1, 2, 2)
 
 
 def _loaders(

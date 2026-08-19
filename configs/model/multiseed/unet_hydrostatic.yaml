@@ -1,0 +1,9 @@
+defaults:
+  - ../unet.yaml
+
+# Seed 18 is already complete at experiments/unet/best.pt.
+seeds: [36, 67]
+output_dir: experiments/multiseed_v2/unet_hydrostatic
+
+eval:
+  output_dir: experiments/multiseed_v2/unet_hydrostatic/eval

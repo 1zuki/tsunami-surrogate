@@ -1,0 +1,10 @@
+defaults:
+  - ../convlstm.yaml
+
+# Seeds 18, 36, and 67 are already complete. This generic configuration is
+# retained only for reproducibility or an explicitly requested local resume.
+seeds: [36, 67]
+output_dir: experiments/multiseed_v2/convlstm_hydrostatic
+
+eval:
+  output_dir: experiments/multiseed_v2/convlstm_hydrostatic/eval

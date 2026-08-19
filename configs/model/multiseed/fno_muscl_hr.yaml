@@ -1,0 +1,10 @@
+defaults:
+  - ../fno_muscl_hr.yaml
+
+# Seed 18 is already complete at
+# experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt.
+seeds: [36, 67]
+output_dir: experiments/multiseed_v2/fno_muscl_hr
+
+eval:
+  output_dir: experiments/multiseed_v2/fno_muscl_hr/eval

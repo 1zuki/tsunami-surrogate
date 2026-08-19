@@ -57,6 +57,23 @@ def _ci(values: np.ndarray, seed: int, resamples: int) -> dict[str, float]:
     }
 
 
+def _validate_training_seeds(
+    member_rows: list[dict[str, Any]],
+    expected_seeds: list[int] | None,
+) -> list[int]:
+    seeds = [int(row["training_seed"]) for row in member_rows]
+    if any(seed < 0 for seed in seeds):
+        raise ValueError(f"Checkpoint training seed is missing: {seeds}")
+    if len(seeds) != len(set(seeds)):
+        raise ValueError(f"Checkpoint training seeds are not unique: {seeds}")
+    if expected_seeds is not None and seeds != expected_seeds:
+        raise ValueError(
+            f"Checkpoint training seeds do not match the requested order: "
+            f"{seeds} != {expected_seeds}"
+        )
+    return seeds
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
@@ -66,6 +83,9 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--bootstrap-seed", type=int, default=20260813)
     parser.add_argument("--bootstrap-resamples", type=int, default=2000)
+    parser.add_argument("--label", default="seed_stability")
+    parser.add_argument("--reference", default=None)
+    parser.add_argument("--expected-seeds", nargs="+", type=int, default=None)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
@@ -110,6 +130,12 @@ def main() -> None:
             {
                 "checkpoint": str(checkpoint),
                 "checkpoint_epoch": int(payload.get("epoch", -1)),
+                "training_seed": int(
+                    payload.get("config", {}).get(
+                        "seed",
+                        payload.get("seed", -1),
+                    )
+                ),
                 "metrics": {
                     key: _ci(
                         np.asarray(values, dtype=np.float64),
@@ -121,6 +147,7 @@ def main() -> None:
             }
         )
 
+    training_seeds = _validate_training_seeds(member_rows, args.expected_seeds)
     seed_summary: dict[str, Any] = {}
     for metric in ("mae", "rmse", "rel_l2", "max_error"):
         values = np.asarray(
@@ -136,10 +163,13 @@ def main() -> None:
 
     result = {
         "evaluation_type": "v2_seed_stability",
+        "label": str(args.label),
+        "reference": args.reference,
         "config_path": str(args.config),
         "dataset_path": str(args.dataset),
         "num_samples": int(len(loader.dataset)),
         "member_count": len(member_rows),
+        "training_seeds": training_seeds,
         "checkpoints": [str(path) for path in args.checkpoint],
         "bootstrap": {
             "seed": int(args.bootstrap_seed),
@@ -149,9 +179,10 @@ def main() -> None:
         "members": member_rows,
         "seed_summary": seed_summary,
         "interpretation": (
-            "This is seed stability for the completed seven-member hydrostatic "
-            "ensemble, not a replacement for a preregistered multi-seed "
-            "architecture-comparison matrix."
+            "Scenario-bootstrap intervals describe test-scenario variation "
+            "within each fixed checkpoint. The member standard deviation "
+            "describes variation across the supplied training seeds; it is "
+            "not a population-level confidence interval by itself."
         ),
     }
     save_json(result, args.output)
