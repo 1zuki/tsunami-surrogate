@@ -63,12 +63,12 @@ The exploratory finite-horizon shallow-water comparisons are the main qualificat
 
 \paragraph{Boussinesq dispersion diagnostic.}
 Small-amplitude periodic sinusoidal waves are propagated on a $256 \times 32$ constant-depth grid for modes $1, 2, 4, 8, 12, 16, 24, 32$ at $\Delta t = 1.25 \times 10 ^ {-4}$ and final time $1.5$. Fourier phase tracking is compared with the discrete relation
-\[
+\begin{equation}
     \omega ^ 2 =
     \frac{g H k_d ^ 2}{1 + \alpha_B H ^ 2 k_d ^ 2},
     \qquad
     k_d = \frac{2 \sin(k \Delta x / 2)}{\Delta x}.
-\]
+\end{equation}
 The $\alpha_B = 0$ branch approaches the non-dispersive shallow-water relation, while $\alpha_B = 1/3$ slows higher modes according to the implemented weakly dispersive operator. Figure~\ref{fig:app-bouss-dispersion} shows the phase-speed comparison, and Table~\ref{tab:app-bouss-dispersion} gives the maximum errors and linear-solver status. This is a local implementation diagnostic, not external-solver or event validation.
 
 \begin{figure}[pos=htbp]

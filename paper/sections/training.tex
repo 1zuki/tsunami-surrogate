@@ -12,11 +12,11 @@ Normalization statistics are estimated on the training split only and then appli
 All models are trained with the AdamW optimizer at an initial learning rate of $5 \times 10 ^ {-4}$ and a weight decay of $10 ^ {-6}$. The learning rate follows a cosine-annealing schedule that decays to a floor of $5 \times 10 ^ {-5}$ over the training budget, and the gradients are clipped to a maximum norm of $1.0$ for stability. Most direct models use a batch size of $64$; U-FNO uses $8$, and ConvLSTM uses $4$ because their architecture-specific activation footprints are larger.
 
 Because the target is a $50$-frame trajectory, we train with a horizon-weighted mean-squared error that increases the weight of later frames,
-\[
+\begin{equation}
 \mathcal{L} = \frac{\sum_{t = 1} ^ {T} w_t\, \mathrm{MSE}_t}{\sum_{t = 1} ^ {T} w_t},
 \qquad
 w_t = w_{\min} + (w_{\max} - w_{\min})\left(\tfrac{t - 1}{T - 1}\right) ^ {p},
-\]
+\end{equation}
 where $\mathrm{MSE}_t$ is the mean-squared error of frame $t$ and we use $w_{\min} = 0.8$, $w_{\max} = 2.0$, and $p = 1.7$. Without this weighting, the optimizer tends to fit the easy early frames and leave the later, lower-amplitude part of the rollout blurry, which is exactly the regime that matters for a forecast horizon. The relative $L_2$ error on the validation split is used both as the checkpoint-selection metric, keeping the best epoch, and as the early-stopping criterion with a patience of $20$ epochs. One detail worth stating: this selection metric is the relative $L_2$ computed on the \emph{normalized} validation targets, whereas the accuracy tables we report later are in denormalized benchmark-scale units after the normalization is reversed. Because standardization subtracts the channel mean, the normalized and denormalized relative $L_2$ have different denominators and are not the same number, so the best epoch is chosen on the normalized criterion and then scored on the denormalized metrics rather than being selected directly on the denormalized error. To keep the comparison fair, the same-protocol direct models share a common upper training budget: each model is allowed up to $256$ epochs, the largest budget used by any model, and the same optimizer, schedule, loss, and stopping rule are applied to all of them unless a model-specific configuration explicitly changes only the architecture. Early stopping then halts each model on its own, when its validation error stops improving, so a faster-converging baseline is not penalized and a slower model is not cut short. In practice the budget is an upper bound rather than a fixed number of epochs, and most models stop well before reaching it.
 
 \subsection{Experiment configurations}

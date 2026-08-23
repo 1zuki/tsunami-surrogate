@@ -8,11 +8,7 @@ The dataset is built around shared synthetic scenarios rather than solver-specif
 
 The main benchmark contains three independently generated pools of $10{,}000$, $1{,}000$, and $2{,}500$ scenarios ($13{,}500$ in total). Separate split-qualified seeds and identities are used instead of randomly partitioning one pool, and the same authoritative scenario arrays are reused across the three numerical references. The numerical computation is performed on a $96 \times 96$ grid. The central $64 \times 64$ publication resolution is retained, while a 16-cell buffer and an 8-cell source taper separate the reported region from the outer boundary treatment.
 
-The common-time protocol requests
-\[
-t_k = 0.0035k, \qquad k = 1, \ldots, 50,
-\]
-ending at $t = 0.175$ in normalized benchmark-time units. Each solver keeps its own natural steps: the shallow-water steps adapt to the evolving state, while the Boussinesq step is fixed within each scenario after a depth-based CFL calculation. Whenever a requested time is bracketed by two adjacent natural states, the generator interpolates only between those two states and emits the requested $\eta$ frame. This is output-only interpolation: it does not alter the solver update or force a shared internal time step. The initial state at $t = 0$ is stored for provenance but is not a supervised target.
+Under the common-time protocol, target evaluation times are defined as: $t_k = 0.0035k, k = 1, \dots, 50$, terminating at $t = 0.175$ in normalized benchmark time. Each solver keeps its own natural steps: the shallow-water steps adapt to the evolving state, while the Boussinesq step is fixed within each scenario after a depth-based CFL calculation. Whenever a requested time is bracketed by two adjacent natural states, the generator interpolates only between those two states and emits the requested $\eta$ frame. This is output-only interpolation: it does not alter the solver update or force a shared internal time step. The initial state at $t = 0$ is stored for provenance but is not a supervised target.
 
 \begin{figure}[pos=htbp]
 \centering
@@ -26,67 +22,62 @@ The benchmark is intentionally synthetic and fully wet in its core configuration
 \subsection{Procedural bathymetry}
 \label{subsec:procedural-bathymetry}
 
-Bathymetry is represented by a signed bed-elevation field $b(x,y)$, where $b(x,y)\leq 0$ denotes submerged cells below mean sea level. In the default configuration, every generated field is mapped into the range
-\[
+Bathymetry is represented by a signed bed-elevation field $b(x,y)$, where $b(x,y)\leq 0$ denotes submerged cells below mean sea level. In the default configuration, all generated fields are rescaled to the interval:
+$$
 [d_{\min}, d_{\max}] = [-10, -0.75].
-\]
-This keeps the whole computational domain wet. The corresponding still-water depth is computed as
-\[
+$$
+This formulation guarantees a wet domain throughout computation. The quiescent water depth $h_{\mathrm{rest}}(x,y)$ is evaluated as:
+\begin{equation}
 h_{\mathrm{rest}}(x,y)=\max\{-b(x,y)+\eta_{\mathrm{sea}},0\},
-\]
-where $\eta_{\mathrm{sea}}$ is a configurable sea-level offset, set to zero in the default experiments.
+\end{equation}
+where $\eta_{\mathrm{sea}}$ represents an adjustable sea-level offset parameter ($\eta_{\mathrm{sea}} = 0$ by default).
 
-For each scenario, the bathymetry generator samples one of five terrain families:
-\[
-\{\texttt{trench},\ \texttt{continental},\ \texttt{seamounts},\ \texttt{canyon},\ \texttt{island}\}.
-\]
-The generator first creates a low-frequency base field. In the current default configuration, this base is a weak rotated slope with slope components sampled from $[0.02,0.12]$, although flat and basin-like base modes are also supported. To reduce grid-aligned artifacts, the normalized coordinates are smoothly warped before the terrain-family morphology is evaluated:
-\[
-x_w=\operatorname{clip}(x+\alpha g_x(x,y),0,1),\qquad
+For each scenario, the bathymetry generator randomly selects a profile from five predefined terrain classes:
+$$
+\{\texttt{trench}, \texttt{continental}, \texttt{seamounts}, \texttt{canyon}, \texttt{island}\}.
+$$
+
+The generator first creates a low-frequency base field. In the current default configuration, this base is a weak rotated slope with slope components sampled from $[0.02,0.12]$, although flat and basin-like base modes are also supported. To mitigate spurious grid-aligned artifacts, a smooth spatial warping transformation is applied to the normalized coordinates prior to evaluating the bathymetric morphology:
+\begin{equation}
+\begin{split}
+x_w=\operatorname{clip}(x+\alpha g_x(x,y),0,1), \\
 y_w=\operatorname{clip}(y+\alpha g_y(x,y),0,1),
-\]
-where $g_x$ and $g_y$ are Gaussian-filtered random displacement fields and $\alpha$ is the configured warp scale.
+\end{split}
+\end{equation}
+where $g_x$ and $g_y$ denote Gaussian-filtered spatial displacement fields, and $\alpha$ specifies the warping intensity parameter.
 
-The final unnormalized bathymetry is assembled as
-\[
-\tilde{b}(x,y)=b_{\mathrm{base}}(x,y)
-+b_{\mathrm{family}}(x_w,y_w)
-+\sum_i G_i(x,y)
-+\sum_j R_j(x,y)
-+N(x,y),
-\]
+The complete unnormalized bathymetric field $\tilde{b}(x,y)$ is synthesized via linear superposition of its constituent morphological components:
+\begin{equation}
+\tilde{b}(x,y) = b_{\mathrm{base}}(x,y) + b_{\mathrm{family}}(x_w,y_w) + \sum_i G_i(x,y) + \sum_j R_j(x,y) + N(x,y),
+\end{equation}
 where $b_{\mathrm{family}}$ is the dominant terrain-family term, $G_i$ are random Gaussian perturbations, $R_j$ are elongated ridge-like structures, and $N$ is multi-scale smoothed roughness. Trench and canyon samples emphasize elongated negative channels, seamount and island samples emphasize localized positive relief, and continental samples combine broad slopes with shelf-break-like structure. The stochastic Gaussian and ridge terms are sign-biased by family so that small-scale structure reinforces the selected morphology rather than erasing it.
 
-After all components are combined, the field is min--max normalized and clipped:
-\[
-b(x,y)=d_{\min}
-+\frac{\tilde{b}(x,y)-\min_{x,y}\tilde{b}}{\max_{x,y}\tilde{b}-\min_{x,y}\tilde{b}}
-(d_{\max}-d_{\min}).
-\]
+To enforce the target depth bounds, the composite field $b(x,y)$ is mapped onto the interval $[d_{\min}, d_{\max}]$ via min–max normalization:
+\begin{equation}
+b(x,y) = d_{\min} + \frac{\tilde{b}(x,y) - \min_{x,y}\tilde{b}}{\max_{x,y}\tilde{b} - \min_{x,y}\tilde{b}} (d_{\max} - d_{\min}).
+\end{equation}
+
 This normalization deliberately prioritizes morphological diversity over site-specific amplitude realism. It also keeps the numerical problem bounded, which is useful when generating thousands of trajectories for model training. The procedural terrain construction follows the broader idea of synthetic terrain generation for controlled experiments, but the resulting fields should be interpreted as benchmark bathymetries rather than surveyed seafloor products \citep{musgrave1989terrain,sandwell2014gravity}.
 
 \subsection{Initial-displacement sources}
 \label{subsec:initial-displacement-sources}
 
 The source generator produces a raw stored source template $q(x, y)$, saved as \texttt{source\_field}, on the same grid as the bathymetry. The default source family set is
-\[
+$$
 \{\texttt{gaussian},\ \texttt{multi-gauss},\ \texttt{dipole},\ \texttt{fault},\ \texttt{rough},\ \texttt{okada-like}\}.
-\]
+$$
 Gaussian and multi-Gaussian sources provide localized smooth uplift patterns. Dipole sources create paired uplift and subsidence lobes. Fault sources create elongated rotated uplift structures. Rough sources are generated from smoothed random fields and broaden the distribution of source geometries. The \texttt{okada-like} family samples simplified fault parameters such as length, width, slip, angle, dip, and source depth, and constructs an anisotropic deformation pattern inspired by elastic half-space source models \citep{okada1985surface}. It is used only as a synthetic source family, not as a full geophysical rupture model.
 
-In the default forward benchmark, per-sample source normalization is disabled. Thus each family preserves its sampled amplitude semantics instead of being forced into a common height interval. A separate independent strength factor
-\[
-s\sim\mathcal{U}(0.45, 0.85)
-\]
-is then applied during scenario construction to form the initial perturbation
-\[
-\eta_0(x, y) = s\, q(x, y).
-\]
-The initial water depth passed to the shallow-water solvers is
-\[
-h_0(x,y)=\max\{h_{\mathrm{rest}}(x,y)+\eta_0(x,y),0\},
-\]
-and the horizontal momenta are initialized to zero. Therefore, each rollout starts from a displaced but initially motionless free surface over a synthetic seabed.
+By default, the forward benchmark bypasses per-sample source normalization, thereby retaining the physical amplitude variations inherent to each source class. The initial free-surface displacement field is then established by scaling the normalized profile $q(x,y)$ with an independent strength factor $s \sim \mathcal{U}(0.45, 0.85)$:
+\begin{equation}
+\eta_0(x, y) = s\,q(x, y).
+\end{equation}
+
+The initial total fluid depth prescribed for the shallow-water solvers is defined as:
+\begin{equation}
+h_0(x,y) = \max\{h_{\mathrm{rest}}(x,y) + \eta_0(x,y), 0\},
+\end{equation}
+with the initial horizontal momentum fields set identically to zero. Consequently, each forward simulation originates from an initially quiescent, perturbed free surface over the synthetic bathymetry.
 
 An auxiliary Boussinesq diagnostic configuration uses smoother bathymetries, lower source amplitudes, and a smaller source-strength range for propagation checks. The reported Boussinesq dataset uses the same bathymetry and source scenario definitions as the shallow-water solvers, so sample IDs stay aligned across targets.
 
@@ -95,10 +86,11 @@ An auxiliary Boussinesq diagnostic configuration uses smoother bathymetries, low
 
 The primary reference labels are generated with finite-volume shallow-water solvers. The Hydrostatic solver is used as the main reference because it enforces nonnegative depth and is designed to preserve lake-at-rest balance over non-flat bathymetry \citep{audusse2004hydrostatic}. MUSCL-HR adds limited second-order reconstruction and a two-stage update, giving a less diffusive comparison reference on the same scenarios. The reported solver configurations use fixed target CFL numbers $0.1125$ and $0.225$ for Hydrostatic and MUSCL-HR with state-adaptive time steps, radiation boundaries, and an elapsed-time-consistent cosine sponge. The Boussinesq comparison uses target CFL $0.35$, an open zero-gradient boundary, the same elapsed-time sponge convention, an optional smoothing filter that is disabled here, and a cached sparse-LU preconditioner for its conjugate-gradient acceleration solve.
 
-For each shared scenario, every enabled reference produces a surface-elevation trajectory record: a compressed float32 \texttt{trajectory\_eta} is stored together with the requested times, adjacent-step brackets, interpolation weights, exact-knot flags, natural-step counts, quality summaries, and identifiers for the scenario and numerical configuration. Full internal states are not duplicated. For the shallow-water solvers, the free surface is reconstructed as
-\[
+For each shared scenario, every enabled reference produces a surface-elevation trajectory record: a compressed float32 \texttt{trajectory\_eta} is stored together with the requested times, adjacent-step brackets, interpolation weights, exact-knot flags, natural-step counts, quality summaries, and identifiers for the scenario and numerical configuration. Full internal states are not duplicated. For the shallow-water solvers, the free surface is reconstructed as follows:
+\begin{equation}
 \eta(x,y,t)=h(x,y,t)+b(x,y).
-\]
+\end{equation}
+
 For Boussinesq, $\eta$ is the evolved surface state. Scenario-level metadata record the shared scenario definition, while per-solver records link the corresponding labels to their numerical configurations. This layout allows single-solver training, paired cross-reference analysis, and reproduction of the requested-time extraction without resampling the bathymetry--source pair.
 
 Numerical-admissibility criteria are applied during generation before a sample is accepted. The default policy rejects non-finite states, depth or positivity violations, excessive free-surface amplitude or velocity, sanitization, velocity clipping, projection, post-step CFL violations, and Boussinesq linear-solver failures. These criteria prevent unstable or numerically altered rollouts from entering the supervised-learning labels.
@@ -110,7 +102,7 @@ Preprocessing converts accepted trajectory records into model-ready sharded arra
 
 The raw scenario stores the source template $q$, scalar \texttt{source\_strength} $s$, scaled perturbation \texttt{eta0}, initial depth $h_0$, and initial free surface separately. The default model inputs are bathymetry, the raw source template, and initial depth; the target is the 50-frame common-time $\eta$ trajectory. Optional initial-surface and solver-identity channels exist in the code but are not used by the direct single-reference models reported here.
 
-Normalization statistics are computed from the training split only and reused unchanged for validation and test. Bathymetry and source channels and the trajectory target are standardized; initial depth remains in its stored scale. Processed archives retain sample identifiers, bathymetry/source families, solver name, source strength, and normalization parameters. The processed arrays were verified agaisnt the accepted common-time trajectory records before evaluation. The versioned data and evaluation release and the separate raw-trajectory mirror are identified in the data-availability statement; the repository alone should not be interpreted as the complete reproduction package.
+Normalization statistics are computed from the training split only and reused unchanged for validation and test. Bathymetry and source channels and the trajectory target are standardized; initial depth remains in its stored scale. Processed archives retain sample identifiers, bathymetry/source families, solver name, source strength, and normalization parameters. The processed arrays were verified against the accepted common-time trajectory records before evaluation. The versioned data and evaluation release and the separate raw-trajectory mirror are identified in the data-availability statement; the repository alone should not be interpreted as the complete reproduction package.
 
 \subsection{Distribution-shift and resolution-transfer datasets}
 \label{subsec:shift-resolution-data}
