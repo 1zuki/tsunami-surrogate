@@ -1,7 +1,7 @@
 \section{Results}
 \label{sec:results}
 
-Unless stated otherwise, model accuracy is measured on the $N = 2500$ held-out test scenarios. MAE, RMSE, and headline relative $L_2$ values are computed after reversing target normalization; max-err remains in normalized target units. Every table uses the same completed common-time evaluation and the checkpoint, dataset, and metric definitions stated in Sections~\ref{sec:methods}--\ref{sec:training}.
+Unless stated otherwise, model accuracy is measured on the $N = 2500$ held-out test scenarios. MAE, RMSE, and headline relative $L_2$ values are computed after reversing target normalization; max-err remains in normalized target units. The main model tables use the completed common-time evaluation; multiseed, numerical-verification, GeoClaw-ablation, and selected failure-case analyses are separately completed follow-up evaluations under the checkpoint, dataset, and metric definitions stated in Sections~\ref{sec:methods}--\ref{sec:training}.
 
 \subsection{Temporal alignment and numerical verification}
 \label{subsec:res-dataset}
@@ -193,7 +193,7 @@ These values compare the study's vectorized CPU references with laptop-GPU infer
 \subsection{Distribution shift and sample scaling}
 \label{subsec:res-ood}
 
-Table~\ref{tab:ood} groups the Hydrostatic FNO by source family using means of per-scenario physical metrics. Rough sources are the hardest group ($0.384$), while the other families lie between $0.246$ and $0.329$. The bathymetry grouping similarly identifies continental fields as the hardest family ($0.365$). Because every family appears in training, these are subgroup diagnostics, not unseen-family tests.
+Table~\ref{tab:ood} groups the Hydrostatic FNO by source family using means of per-scenario denormalized benchmark-scale metrics. Rough sources are the hardest group ($0.384$), while the other families lie between $0.246$ and $0.329$. The bathymetry grouping similarly identifies continental fields as the hardest family ($0.365$). Because every family appears in training, these are subgroup diagnostics, not unseen-family tests.
 
 \begin{table}[pos=htbp]
 \centering
@@ -296,7 +296,7 @@ Table~\ref{tab:real-bath} summarizes the main morphology suite of ten GEBCO-deri
 \begin{figure}[pos=htbp]
 \centering
 \includegraphics[width=0.72\linewidth]{figures/real_bathymetry_offshore.pdf}
-\caption{Synthetic-forcing morphology transfer on one illustrative fully wet offshore crop. At the final requested time, the figure compares the reference field with direct-FNO and first-frame-seeded Window-FNO-5 errors. Their full-trajectory denormalized benchmark-scale relative $L_2$ values are $0.291$ and $0.038$. This is not real-event validation.}
+\caption{Synthetic-forcing morphology transfer on one illustrative fully wet offshore crop derived from the GEBCO\_2026 Grid \citep{gebco2026}. At the final requested time, the figure compares the reference field with direct-FNO and first-frame-seeded Window-FNO-5 errors. Their full-trajectory denormalized benchmark-scale relative $L_2$ values are $0.291$ and $0.038$. This is not real-event validation.}
 \label{fig:real-bath}
 \end{figure}
 

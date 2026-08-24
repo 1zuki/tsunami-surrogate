@@ -134,7 +134,7 @@ S_{hu} = -\frac{g}{2}(h_E + h_W)\frac{b_E - b_W}{\Delta x},
 \qquad
 S_{hv} = -\frac{g}{2}(h_N + h_S)\frac{b_N - b_S}{\Delta y},
 \end{equation}
-where subscripts $\{E, W, N, S\}$ denote limited face states reconstructed at cell boundaries. Applied prior to the Heun stage averaging, this source term operates alongside hydrostatic interface corrections to maintain strict topographic equilibrium.
+where subscripts $\{E, W, N, S\}$ denote limited face states reconstructed at cell boundaries. Applied prior to the Heun stage averaging, this source term operates alongside hydrostatic interface corrections to support topographic balance.
 
 Time integration uses a two-stage Heun form. Denoting one explicit limited finite-volume Euler step by $\Phi_{\Delta t}(U)$, the cell update reads:
 \begin{equation}
@@ -146,7 +146,7 @@ U ^ {n + 1} = \frac{1}{2} U ^ n +
 Positivity and dry-momentum projections are checked after the stage updates and after the final average. Consequently, MUSCL-HR differs from the primary reference through both its piecewise-linear spatial reconstruction and two-stage temporal integration, rather than a simple CFL adjustment.
 
 \paragraph{Weakly dispersive Boussinesq comparison.}
-The Boussinesq comparison evolves surface elevation and its time derivative, $[\eta, \eta_t] ^ \top$, rather than depth and discharge. Its linear variable-depth formulation solves the elliptic system:
+The Boussinesq comparison evolves surface elevation and its time derivative, $[\eta, \eta_t] ^ \top$, rather than depth and discharge. We define it as a study-specific linear, elevation-only dispersive benchmark rather than an implementation of a complete coastal Boussinesq model. Its variable-depth elliptic acceleration system is:
 \begin{equation}
 \left(I - \alpha_B \nabla \cdot(H ^ 2 \nabla)\right) a_\eta = g \nabla \cdot(H \nabla \eta),
 \end{equation}
@@ -171,7 +171,7 @@ Designed as a linear, elevation-only benchmark, this weakly dispersive formulati
 \paragraph{Boundaries, damping, and shared scope.}
 The shallow-water references use bathymetry-aware linearized radiation states at all four outer edges. The outgoing free-surface characteristic is continued through the face around the local rest depth, while the tangential velocity is carried from the adjacent interior cell. This treatment reduces direct reflection for small outgoing waves but is not an exact non-reflecting condition for nonlinear, oblique, or strongly heterogeneous propagation. The Boussinesq comparison instead uses open zero-gradient scalar boundaries.
 
-All references apply a 16-cell cosine sponge layer within the outer domain boundary. Given reference mask $D(x, y) \in [0.8, 1]$ and baseline step $\Delta t_{\mathrm{ref}} = 0.0035$, per-step damping follows $D^{\Delta t/\Delta t_{\mathrm{ref}}}$, ensuring uniform cumulative dissipation over equivalent integration physical times regardless of step size. The shallow-water sponge damps momentum and free-surface displacement about rest depth; the Boussinesq sponge damps $\eta$ and $\eta_t$. The optional Boussinesq smoothing filter is disabled. Across all three references, the benchmark omits Coriolis acceleration, bottom friction, moving bathymetry, and event-specific forcing after initialization.
+All references apply a 16-cell cosine sponge layer within the outer domain boundary. Given reference mask $D(x, y) \in [0.8, 1]$ and baseline step $\Delta t_{\mathrm{ref}} = 0.0035$, per-step damping follows $D^{\Delta t/\Delta t_{\mathrm{ref}}}$, ensuring uniform cumulative dissipation over equivalent elapsed benchmark times regardless of step size. The shallow-water sponge damps momentum and free-surface displacement about rest depth; the Boussinesq sponge damps $\eta$ and $\eta_t$. The optional Boussinesq smoothing filter is disabled. Across all three references, the benchmark omits Coriolis acceleration, bottom friction, moving bathymetry, and event-specific forcing after initialization.
 
 \subsection{Numerical verification and validation scope}
 \label{subsec:reference-validation}
@@ -181,7 +181,7 @@ The numerical-reference and temporal-output protocol was assessed before the fin
 \begin{enumerate}[leftmargin=2.2em]
     \item \textbf{Input identity:} all $13{,}500$ scenario definitions were checked for split-qualified identity, array equality, horizon coverage, and exact reuse across the three references.
     \item \textbf{Internal verification:} analytical-wave, lake-at-rest, conservation, spatial/temporal sensitivity, requested-output, boundary/sponge, dispersive, numerical-stability, and deterministic-repeatability checks were run with thresholds fixed before evaluation.
-    \item \textbf{Independent comparison:} matched analytical and representative finite-horizon cases were compared with GeoClaw/Clawpack. The analytical and refinement comparisons satisfied their criteria, but most exploratory full-configuration comparisons exceeded their descriptive limits. The external solver is therefore an independent comparator, not automatic truth or evidence of pointwise equivalence.
+    \item \textbf{Independent comparison:} matched analytical and representative finite-horizon cases were compared with GeoClaw/Clawpack 5.14.0 under the archived configuration \citep{leveque2011tsunami,berger2011geoclaw}. The analytical and refinement comparisons satisfied their criteria, but most exploratory full-configuration comparisons exceeded their descriptive limits. The external solver is therefore an independent comparator, not automatic truth or evidence of pointwise equivalence.
     \item \textbf{Integrated numerical procedure:} the buffered-domain integration, adaptive stepping, requested-time interpolation, and quality screening were assessed on cases separate from the lower-level implementation checks.
     \item \textbf{Independent sensitivity set:} additional training-pool cases, excluded from the earlier diagnostic selections, tested the reported and comparison CFL settings, time extraction, numerical-admissibility criteria, and repeatability.
 \end{enumerate}
@@ -205,7 +205,7 @@ Field errors are evaluated elementwise across entire trajectories using standard
 \qquad
 \mathrm{max\text{-}err}=\max_k | \widehat{y}_k - y_k |.
 \end{equation}
-where $k$ indexes all space-time grid points. MAE, RMSE, and relative $L_2$ are computed in physical units after un-normalizing predictions. Maximum absolute error ($\mathrm{max\text{-}err}$) is reported in normalized target units unless explicitly noted otherwise.
+where $k$ indexes all space-time grid points. MAE, RMSE, and relative $L_2$ are computed in denormalized benchmark-scale units. Maximum absolute error ($\mathrm{max\text{-}err}$) is reported in normalized target units unless explicitly noted otherwise.
 
 For a full split, the underlying sums are accumulated before reduction, giving one global relative $L_2$ and one global maximum. Metadata subgroup tables instead compute per-scenario metrics first and then average within the group. These two aggregations answer different questions and are labelled separately.
 
@@ -268,21 +268,20 @@ A separate arrival-map diagnostic uses a single target-only threshold equal to $
 
 \subsection{Uncertainty quantification}
 \label{subsec:uncertainty}
-
-A seven-member FNO ensemble differs only in seed. For member predictions $\widehat{Y} ^ {(m)}$,
+A seven-member FNO deep ensemble differs only in seed \citep{lakshminarayanan2017deepensembles}. For member predictions $\widehat{Y} ^ {(m)}$, the ensemble mean $\bar{Y}$ and variance $\sigma^2$ are computed pointwise via:
 \begin{equation}
 \bar{Y} = \frac{1}{M}\sum_{m = 1} ^ {M}\widehat{Y} ^ {(m)},
 \qquad
 \sigma ^ 2 = \frac{1}{M}\sum_{m = 1} ^ {M}\left(\widehat{Y} ^ {(m)} - \bar{Y}\right) ^ 2.
 \end{equation}
-For a central Gaussian interval with nominal coverage $p$, we use
+Under a Gaussian error assumption, the central prediction interval corresponding to a nominal coverage probability $p$ is given by:
 \begin{equation}
 \bar{Y}\pm z_p\sigma,
 \qquad
 z_p = \sqrt{2}\, \operatorname{erf} ^ {-1}(p).
 \end{equation}
-We report empirical coverage and the Pearson correlation between $\sigma$ and $| \bar{Y} - Y |$. Because the raw ensemble is under-dispersed, one scalar variance factor is estimated on validation elements only:
+We report the empirical coverage and the Pearson correlation coefficient between $\sigma$ and $|\bar{Y} - Y|$. As a study-defined interval-scale correction for raw ensemble under-dispersion, a single scalar variance scaling factor $\gamma$ is estimated using only the validation subset:
 \begin{equation}
-\gamma = \max\!\left\{1,\, \frac{1}{N_{\mathrm{val}}} \sum_k\frac{(Y_k - \bar{Y}_k) ^ 2}{\max(\sigma_k ^ 2, \varepsilon)} \right\}.
+\gamma = \max\left\{1,\, \frac{1}{N_{\mathrm{val}}} \sum_{k=1}^{N_{\mathrm{val}}} \frac{(Y_k - \bar{Y}_k)^2}{\max(\sigma_k^2, \varepsilon)}\right\}.
 \end{equation}
-The calibrated interval replaces $\sigma$ by $\sqrt{\gamma}\sigma$ and applies the same factor unchanged to test and subgroup suites. Coverage is marginal over correlated pixels and frames, so these are interval-scale reliability diagnostics rather than calibrated event probabilities.
+The calibrated predictive interval is obtained by rescaling $\sigma$ to $\sqrt{\gamma}\sigma$, applying this factor directly to both the test and subgroup evaluation sets without further tuning. Because the empirical coverage is computed marginally across correlated pixels and frames, these metrics serve as interval-scale reliability diagnostics rather than calibrated event probabilities.

@@ -34,7 +34,7 @@ where $\eta_{\mathrm{sea}}$ represents an adjustable sea-level offset parameter 
 
 For each scenario, the bathymetry generator randomly selects a profile from five predefined terrain classes:
 $$
-\{\texttt{trench}, \texttt{continental}, \texttt{seamounts}, \texttt{canyon}, \texttt{island}\}.
+\{\text{trench}, \text{continental}, \text{seamounts}, \text{canyon}, \text{island}\}.
 $$
 
 The generator first creates a low-frequency base field. In the current default configuration, this base is a weak rotated slope with slope components sampled from $[0.02,0.12]$, although flat and basin-like base modes are also supported. To mitigate spurious grid-aligned artifacts, a smooth spatial warping transformation is applied to the normalized coordinates prior to evaluating the bathymetric morphology:
@@ -57,7 +57,7 @@ To enforce the target depth bounds, the composite field $b(x,y)$ is mapped onto 
 b(x,y) = d_{\min} + \frac{\tilde{b}(x,y) - \min_{x,y}\tilde{b}}{\max_{x,y}\tilde{b} - \min_{x,y}\tilde{b}} (d_{\max} - d_{\min}).
 \end{equation}
 
-This normalization deliberately prioritizes morphological diversity over site-specific amplitude realism. It also keeps the numerical problem bounded, which is useful when generating thousands of trajectories for model training. The procedural terrain construction follows the broader idea of synthetic terrain generation for controlled experiments, but the resulting fields should be interpreted as benchmark bathymetries rather than surveyed seafloor products \citep{musgrave1989terrain,sandwell2014gravity}.
+This normalization deliberately prioritizes morphological diversity over site-specific amplitude realism. It also keeps the numerical problem bounded, which is useful when generating thousands of trajectories for model training. The procedural terrain construction follows the broader idea of synthetic terrain generation for controlled experiments, but the resulting fields should be interpreted as benchmark bathymetries rather than surveyed seafloor products \citep{musgrave1989terrain}.
 
 \subsection{Initial-displacement sources}
 \label{subsec:initial-displacement-sources}
@@ -68,7 +68,7 @@ $$
 $$
 Gaussian and multi-Gaussian sources provide localized smooth uplift patterns. Dipole sources create paired uplift and subsidence lobes. Fault sources create elongated rotated uplift structures. Rough sources are generated from smoothed random fields and broaden the distribution of source geometries. The \texttt{okada-like} family samples simplified fault parameters such as length, width, slip, angle, dip, and source depth, and constructs an anisotropic deformation pattern inspired by elastic half-space source models \citep{okada1985surface}. It is used only as a synthetic source family, not as a full geophysical rupture model.
 
-By default, the forward benchmark bypasses per-sample source normalization, thereby retaining the physical amplitude variations inherent to each source class. The initial free-surface displacement field is then established by scaling the normalized profile $q(x,y)$ with an independent strength factor $s \sim \mathcal{U}(0.45, 0.85)$:
+By default, the forward benchmark bypasses per-sample source normalization, thereby retaining the unscaled amplitude variation within each source class. The initial free-surface displacement field is then established by scaling the raw source template $q(x,y)$ with an independent strength factor $s \sim \mathcal{U}(0.45, 0.85)$:
 \begin{equation}
 \eta_0(x, y) = s\,q(x, y).
 \end{equation}

@@ -1,7 +1,7 @@
 \section{Surrogate models}
 \label{sec:models}
 
-The feedforward direct models use the interface fixed in Section~\ref{subsec:forward-task}: three static input fields are mapped to all 50 target frames in one pass. ConvLSTM uses the same static inputs but emits the trajectory recurrently, beginning with zero feedback and feeding each predicted frame into the next step. The seeded window models define a separate conditional task with four input channels---two static fields and two dynamic elevation frames---and five output frames per block. These interfaces are kept explicit because a common final trajectory shape does not make the internal prediction tasks identical. The Fourier Neural Operator is the main direct model; the others provide spectral, convolutional, encoder--decoder, and recurrent comparisons.
+The feedforward direct models map three static input fields to all 50 target frames in a single pass using the interface in Section~\ref{subsec:forward-task}. Conversely, ConvLSTM processes the same static inputs to emit the trajectory recurrently, initializing with zero feedback and feeding autoregressive predictions into subsequent steps. The seeded window models formulate a distinct task, taking four input channels (two static, two dynamic elevation) to predict five output frames per block. Despite sharing a final output shape, these explicitly distinct interfaces reflect non-equivalent internal prediction dynamics. Here, the Fourier Neural Operator serves as the primary direct benchmark, with remaining models offering spectral, convolutional, encoder--decoder, and recurrent baselines.
 
 The canonical sources are cited in the direct-comparison table and at first use below. Each implementation adapts the cited architecture to the shared three-input, 50-output task and is not intended as an exact reproduction of the original training setup.
 
@@ -10,13 +10,13 @@ The canonical sources are cited in the direct-comparison table and at first use 
 
 The Fourier Neural Operator (FNO) is our primary model because it learns a mapping between discretized functions rather than a fixed pixel-to-pixel function, and its spectral layer gives it a global receptive field at every depth \citep{li2021fno}. This suits tsunami-like propagation, where a disturbance influences distant parts of the domain within the forecast horizon and a purely local model would need many layers to reach the same range.
 
-The overall architecture is shown in Figure~\ref{fig:fno-arch}. The input is first lifted to a width-$d$ feature map by a $1 \times 1$ convolution. Following common practice, we also concatenate two normalized coordinate channels before lifting, so the operator has access to absolute position. The lifted features are then processed by a stack of $L$ Fourier blocks. Each block combines a spectral convolution with an ordinary $1 \times 1$ convolution and a GELU nonlinearity,
+Figure~\ref{fig:fno-arch} illustrates the overall architecture. The input, concatenated with two normalized coordinate channels for spatial awareness, is first lifted to a width-$d$ feature map via a $1 \times 1$ convolution. The features are then processed by a stack of $L$ Fourier blocks combining a spectral convolution $\mathcal{K}$ and a local path $W$ with a GELU activation:
 \begin{equation}
-z \mapsto \mathrm{GELU} \!\left(\mathcal{K}(z) + W z \right),
+z \mapsto \mathrm{GELU}\!\left(\mathcal{K}(z) + W z\right).
 \end{equation}
-where $W$ is the pointwise (local) path and $\mathcal{K}$ is the spectral (global) path. The spectral path transforms the features with a two-dimensional real Fast-Fourier-Transform (FFT), keeps only the lowest $m_1 \times m_2$ Fourier modes, multiplies them by a learnable complex weight tensor, and maps back with an inverse FFT. Truncating to the low modes is both a regularizer and the reason the layer is resolution-flexible: because the trained mode count is fixed, the full FFT grid is rebuilt from the current input size, so the same trained weights can be applied at a different grid resolution, which is what we exploit in the cross-resolution experiments. After the Fourier blocks, a two-layer pointwise head with GELU in between projects the width-$d$ features to the $T$ output frames. To reduce warp-around artifacts from a periodic FFT on a non-periodic domain, the features are slightly zero-padded before the blocks and cropped back afterwards.
+In the spectral path, features are transformed via a 2D real Fast Fourier Transform (FFT), truncated to the lowest $m_1 \times m_2$ modes, multiplied by learnable complex weight tensors, and inverted back. Mode truncation acts as a regularizer and permits the same learned mode weights to be applied on different grid sizes, enabling cross-resolution evaluation without retraining; it does not imply resolution independence. Boundary reflection artifacts from FFT periodicity are mitigated by zero-padding prior to the blocks and cropping afterward. A two-layer pointwise head then projects features to $T$ output frames.
 
-In the main configuration we use $L = 6$ Fourier blocks, width $d = 48$, and $m_1 = m_2 = 14$ retained modes in each spatial direction, with a padding of $6$ cells. The same architecture is trained separately on the hydrostatic, MUSCL-HR, and Boussinesq labels; only the output channel count would change if the forecast horizon were changed. We also train two hydrostatic mode-count ablations, FNO-modes8 and FNO-modes20, that keep the rest of the configuration fixed while changing the retained Fourier modes to $8$ and $20$ per axis.
+The baseline configuration uses $L = 6$ blocks, width $d = 48$, modes $m_1 = m_2 = 14$, and 6-cell padding, trained independently across hydrostatic, MUSCL-HR, and Boussinesq labels. Two hydrostatic ablations (FNO-modes8 and FNO-modes20) evaluate mode counts of 8 and 20 per axis while keeping all other hyperparameters fixed.
 
 \begin{figure}[pos=htbp]
 \centering
@@ -89,50 +89,40 @@ In the main configuration we use $L = 6$ Fourier blocks, width $d = 48$, and $m_
 
 \subsection{Operator variants}
 \label{subsec:operator-variants}
-
-The final comparison set includes three additional neural-operator variants under the same direct single-pass interface. The \textbf{F-FNO} replaces the dense two-dimensional spectral mixing with a factorized Fourier structure, reducing the parameter coupling across axes while preserving global spectral propagation \citep{tran2023ffno}. In the implementation used here, each block applies separate one-dimensional transforms along the two spatial axes,
+Three additional neural-operator variants extend the single-pass baseline. The Factorized Fourier Neural Operator (\textbf{F-FNO}) replaces dense 2D spectral mixing with separable 1D Fourier transforms along each spatial axis \citep{tran2023ffno}:
 \begin{equation}
-\mathcal{K}_{\mathrm{F\text{-}FNO}}(z) = \mathcal{F}_x ^ {-1}\!\left(R_x\,
-\mathcal{F}_x z\right) + \mathcal{F}_y ^ {-1}\!\left(R_y\, \mathcal{F}_y z\right),
+\mathcal{K}_{\mathrm{F\text{-}FNO}}(z) = \mathcal{F}_x^{-1}\!\left(R_x \mathcal{F}_x z\right) + \mathcal{F}_y^{-1}\!\left(R_y \mathcal{F}_y z\right).
 \end{equation}
-then adds the pointwise path and applies GELU. The retained weights therefore scale with $d ^ 2(m_1 + m_2)$ per block rather than $d ^ 2m_1m_2$ for dense two-dimensional spectral mixing, up to real-transform and conjugate-symmetry constants. This distinction explains the large parameter reduction in Table~\ref{tab:accuracy}; it does not by itself guarantee lower error.
 
-The \textbf{U-FNO} combines Fourier blocks with a U-Net-like multiscale path \citep{wen2022ufno}, and the \textbf{WNO} replaces the Fourier basis with a wavelet-style multiresolution operator \citep{tripura2023wno}. These are used as established architecture baselines rather than as new methods proposed here, so they share the same input channels, target frames, normalization, loss, and evaluation metrics as the main FNO wherever possible.
+This structural factorization reduces the parameter complexity per block from $\mathcal{O}(d^2 m_1 m_2)$ to $\mathcal{O}(d^2 (m_1 + m_2))$, accounting for the parameter reduction in Table~\ref{tab:accuracy}. Additionally, we evaluate the U-shaped FNO (\textbf{U-FNO}), which incorporates multiscale U-Net skip connections \citep{wen2022ufno}, and the Wavelet Neural Operator (\textbf{WNO}), which replaces Fourier bases with multiresolution wavelets \citep{tripura2023wno}. All variants share identical input features, loss functions, and evaluation metrics to isolate architectural performance.
 
 \subsection{Windowed rollout variants}
 \label{subsec:window-models}
-
-The direct models predict all $50$ target frames from the static input stack alone. For the long-horizon drift diagnostic, we also train Window-FNO-5 and Window-F-FNO-5 on the hydrostatic reference. Let $Y_j$ denote the $j$th requested target frame. A training window beginning at index $s$ uses
+To assess long-horizon autoregressive drift, we train two seeded window models—Window-FNO-5 and Window-F-FNO-5—on the hydrostatic reference data. Let $Y_j$, $j = 0,\ldots,49$, denote the 50 target frames. A training window starting at frame index $s$ maps input $X_s^{\mathrm{win}} = [b, q, Y_s, Y_{s-1}]$ to target block $Y_s^{\mathrm{win}} = [Y_{s+1}, \dots, Y_{s+5}]$, setting $Y_{-1} = Y_0$ for the initial step:
 \begin{equation}
-X_s ^ {\mathrm{win}} = [\, b, q, Y_s, Y_{s - 1}\,],
-\qquad
-Y_s ^ {\mathrm{win}} = [\, Y_{s + 1}, \ldots, Y_{s + 5}\,],
+X_s^{\mathrm{win}} \mapsto Y_s^{\mathrm{win}} = [Y_{s+1}, \dots, Y_{s+5}].
 \end{equation}
-with $Y_{-1} = Y_0$ for the first window. Non-overlapping starts $s = 0, 5, \ldots, 40$ are used, followed by a final start at $s = 44$, so each 40-frame trajectory contributes ten five-frame training targets while the last block remains in range.
+Window starts $s \in \{0, 5, \dots, 40, 44\}$ yield ten five-frame targets per 50-frame trajectory; the clamped final window overlaps the preceding target block by one frame to remain in range.
 
-At evaluation time the first requested target frame is supplied as the rollout seed. The model predicts the next block, feeds its last two predictions into the next call, and continues until frames $2$--$50$ have been produced. Metrics therefore exclude the supplied seed and cover the remaining $49$ frames. The windowed results measure conditional autoregressive drift after one observation; they are not like-for-like replacements for the direct forecast from static inputs alone.
+During inference, given the initial observation $Y_0$ as a rollout seed, the model predicts sequential five-frame blocks autoregressively by feeding its final two predictions into subsequent iterations. Evaluation metrics cover predicted frames $Y_1,\ldots,Y_{49}$ and exclude the seed. These windowed configurations measure conditional error accumulation and are not like-for-like direct forecasts.
 
 \subsection{Convolutional and recurrent baselines}
 \label{subsec:conv-baseline}
-
-To check whether the spectral, global structure of the FNO actually helps, we include local convolutional, encoder--decoder, and recurrent baselines.
+To check whether the spectral, global structure of the FNO actually helps, we include local convolutional, encoder-decoder, and recurrent baselines.
 
 The \textbf{CNN} is a small fully convolutional neural network: $3 \times 3$ convolutions followed by a GELU activation, then a $1 \times 1$ output convolution that produces $T$ output frames at a width-$d = 48$. It has no down-sampling and no global mixing, so its receptive field grows only with depth. It therefore represents the simplest reasonable local predictor and is useful as a lower comparison anchor.
 
-The \textbf{U-Net} adds a single encoder--decoder with a skip connection \citep{ronneberger2015unet}. An input double convolution block is followed by average pooling with down-sampling and a second double convolution at double the width; the coarse features are then bilinearly upsampled, concatenated with a high-resolution skip feature, and decoded by a final double convolution and $1 \times 1$ output convolution at a base width of $32$. The pooling gives it a larger effective receptive field compared to the plain \textbf{CNN} at a modest cost, which is why it is a stronger convolution comparison.
+The \textbf{U-Net} incorporates a single-level encoder-decoder with bilinear upsampling and skip connections at a base width of 32 \citep{ronneberger2015unet}. Spatial average pooling expands its effective receptive field, offering a stronger multiscale convolutional baseline.
 
-The \textbf{ConvLSTM} baseline adapts the recurrent convolutional state update of \citet{shi2015convlstm}. It uses two recurrent convolutional layers with $48$ hidden channels and a $3 \times 3$ kernel. A two-layer convolutional encoder maps the three static fields to a spatial context and initializes the hidden and cell states. Within each recurrent layer,
+The \textbf{ConvLSTM} baseline evaluates explicit temporal recurrence \citep{shi2015convlstm}. A two-layer encoder maps the three static fields $[b,q,h_0]$ to a static context and the initial hidden and cell states. At step $t$, $r_t$ combines this context with a $1 \times 1$ projection of the previous predicted frame; feedback is zero initially, and no true target frame is supplied. Two recurrent layers ($48$ hidden channels, $3 \times 3$ kernels) update states via spatial convolutions ($*$):
 \begin{equation}
 \begin{bmatrix} i_t \\ f_t \\ o_t \\ g_t \end{bmatrix} = \begin{bmatrix} \sigma \\ \sigma \\ \sigma \\ \tanh \end{bmatrix} \!\left(W_\mathrm{gate} * [r_t, h_{t - 1}]\right),
 \end{equation}
 \begin{equation}
-c_t = f_t \odot c_{t - 1} + i_t \odot g_t,
-\qquad
-h_t = o_t \odot \tanh(c_t),
+c_t = f_t \odot c_{t - 1} + i_t \odot g_t, \qquad h_t = o_t \odot \tanh(c_t).
 \end{equation}
-where $*$ is a spatial convolution and $r_t$ is the static context plus the projected previous prediction. Feedback is initialized to zero; no true target frame is supplied. A $1 \times 1$ readout produces one surface frame, which is then projected back into the next recurrent input. Unlike the direct FNO and F-FNO, ConvLSTM therefore has explicit temporal recurrence without privileged observations. It is substantially slower at inference, but it tests whether prediction feedback helps the long-horizon trajectory.
+Single-frame surface predictions are produced sequentially via a $1 \times 1$ readout and fed autoregressively into the next step, initializing with zero feedback. This baseline tests whether recurrent feedback improves long-horizon trajectory fidelity despite higher computational cost.
 
 \subsection{Ensemble uncertainty}
 \label{subsec:model-ensemble}
-
-For uncertainty, we do not change the base architecture; we instead train a deep ensemble \citep{lakshminarayanan2017deepensembles} of independently seeded FNO models and aggregate their predictions, as defined in Section~\ref{subsec:uncertainty}. The ensemble mean is used as the point prediction and the per-element spread across members as the uncertainty, which keeps the uncertainty mechanism simple and architecture-agnostic. Because all members share the same data and deterministic architecture, this spread reflects seed-dependent optimization variability; it does not separately model observation noise or other aleatoric effects. A single member gives a degenerate zero variance, so the ensemble requires at least two members, and we use seven in the reported experiments.
+Uncertainty estimation is implemented via a deep ensemble \citep{lakshminarayanan2017deepensembles} of $M = 7$ independently seeded FNO models without structural modifications. Point predictions are defined by the ensemble mean, while the per-element predictive spread serves as the variance metric (Section~\ref{subsec:uncertainty}). Because members share deterministic architectures and training data, this variance primarily reflects seed-dependent optimization variability rather than aleatoric observation noise.

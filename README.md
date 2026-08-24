@@ -30,30 +30,32 @@ Separate follow-up track (not part of the current forward-surrogate paper):
 ## 3) What Is Implemented vs Planned
 
 - Implemented core: synthetic data generation, preprocessing, forward surrogate training, and benchmark evaluation.
-- Implemented models: FNO (primary) with CNN/U-Net and ensemble paths for comparison. (A ConvLSTM baseline exists in the code but is experimental and not part of the paper results.)
+- Implemented models: FNO (primary), F-FNO, CNN, U-Net, ConvLSTM, U-FNO,
+  WNO, mode ablations, native-resolution variants, and ensemble paths for
+  comparison. The released evaluation includes the completed ConvLSTM
+  baseline; no further ConvLSTM training is required for the current study.
 - Implemented evaluations: accuracy, speed, generalization, resolution transfer, and uncertainty.
 - Separate follow-up work: dedicated inverse-problem experiments and a separate paper track.
 
-### 3a) Current development checkpoint
+### 3a) Current benchmark status
 
-Updated: 2026-08-13.
+Updated: 2026-08-24.
 
-The selected non-ensemble training campaign is complete and the repository is in its replacement-evaluation stage. Read these before resuming development:
+The selected training campaign and seven-member Hydrostatic FNO ensemble are
+complete. The repository documents both the released-result path and the
+from-scratch generation path. The current benchmark status, evaluation
+commands, and reproducibility guidance are summarized in this README.
 
-- [`HANDOFF.md`](HANDOFF.md): current operational state, artifacts, known
-  risks, and next-session startup order;
-- [`PROJECT_STATUS.md`](PROJECT_STATUS.md): plain-language progress and current
-  work order;
-- [`plan.md`](plan.md): scientific gates, scope boundaries, and experiment
-  decisions.
-
-The main processed roots contain common-time-v2 payloads for
-10,000/1,000/2,500 train/validation/test scenarios per reference. Their outer shard manifests still use the older version-1 envelope, so describe them as **v2 payloads in a legacy manifest envelope**. Native MUSCL-HR, strict-holdout, and rebuilt real-bathymetry lanes have explicit v2 provenance.
+The main processed roots contain common-time payloads for
+10,000/1,000/2,500 train/validation/test scenarios per reference. Their outer
+shard manifests use an older envelope, so describe them as **current payloads
+with an older manifest envelope**. Native MUSCL-HR, strict-holdout, and rebuilt
+real-bathymetry lanes have explicit provenance.
 
 Completed training includes 11 direct models, both FNO/F-FNO window-5 models,
-six sample-scaling runs, native MUSCL-HR at 32/64/128, and four strict-holdout
-models. All seven ensemble members 11/22/33/44/55/66/77 are complete and pass
-the ensemble-inclusive evaluation preflight. No more ConvLSTM runs are planned.
+six sample-scaling runs, native MUSCL-HR at 32/64/128, four strict-holdout
+models, and all seven ensemble members 11/22/33/44/55/66/77. No more
+ConvLSTM runs are planned.
 
 The final evaluation interface is deliberately small:
 
@@ -64,11 +66,11 @@ bash scripts/run_eval_suite.sh
 # Read-only preflight including all seven ensemble members.
 bash scripts/run_eval_suite.sh --include-ensemble
 
-# Read-only preflight for every currently supported v2 paper metric.
+# Read-only preflight for every metric declared in the core paper suite.
 # This implies the seven-member ensemble.
 bash scripts/run_eval_suite.sh --include-paper-evidence
 
-# Full final execution after reviewing and committing the scientific patch.
+# Full final execution for a new reproducible evaluation run.
 bash scripts/run_eval_suite.sh \
   --execute \
   --run-id <immutable-run-id> \
@@ -79,17 +81,17 @@ bash scripts/run_eval_suite.sh \
   --rerun-numerical-validation
 ```
 
-Real-bathymetry-v2 is included by default. Paper evidence implies the ensemble;
+The real-bathymetry suite is included by default. Paper evidence implies the
+ensemble;
 speed and the fresh numerical-validation chain remain explicit because they are
 the longest lanes. Numerical validation requires a clean committed
 `src/`/`scripts/`/`configs/` source state and creates a checksum-bound archive
-inside the isolated evaluation run. Legacy cleanup remains a separate,
-replacement-aware step and requires a validated completion manifest from the
-new run.
+inside the isolated evaluation run. The command writes a new run directory;
+remove older results only after the new run has been checked.
 
 All later work should meet the project standard of polished research software: scientifically defensible scope, explicit provenance, fail-closed data and checkpoint boundaries, reproducible commands, proportionate tests, and no paper/production claim stronger than the artifacts support.
 
-## 4) Canonical Workflow
+## 4) Main Workflow
 
 The default full-module pipeline in this repo is:
 
@@ -100,15 +102,28 @@ The default full-module pipeline in this repo is:
 5. Export plots/tables and map outputs into paper sections.
 6. Keep inverse-problem workflow as a separate follow-up track (outside current forward-paper claims).
 
+For the released results, restore the benchmark package before evaluation. For
+a new rebuild, start with the raw-data generation path in Section 5b.5 and
+continue through the detailed from-scratch command archive in Appendix A.
+
 ## 5) Setup
 
 ```bash
 git clone https://github.com/1zuki/tsunami-surrogate.git
 cd tsunami-surrogate
-python -m venv .venv
+python3 --version  # must report Python 3.10.x
+python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
+
+For a fresh Linux or Google Cloud VM, install Git, Python 3.10, and the
+`zstd` command-line tools (`tar` must be able to run `unzstd`). A source-only
+check needs only the repository and Python environment. The released reproduction
+archives total about 40.6 GB before extraction and their recorded source
+payloads are about 41.0 GB; keep at least 100 GB free if the VM retains both
+the downloaded archives and extracted data/checkpoints. The raw publication
+mirror is much larger and is not needed for the normal check.
 
 ## 5a) Reproducibility notes
 
@@ -119,15 +134,250 @@ selected checkpoints together with their resolved configurations and training
 histories. This archive supports research benchmark reproducibility, not
 operational tsunami prediction.
 
-## 5b) Reproduce from the released benchmark data (recommended)
+## 5b) Fresh-machine checks, generation, and result verification (recommended)
+
+Cloning the GitHub repository does **not** download the ignored datasets,
+checkpoints, or evaluation archives. Do not start by running every historical
+command in Appendix A. You can either restore the released benchmark package
+or rebuild the solver data from scratch:
+
+- **Released-result path:** restore the processed data, checkpoints, and
+  archived evidence described in Section 5b.2.
+- **From-scratch path:** generate the raw solver publications with the
+  split-specific configs in Section 5b.5, then continue with the detailed
+  generation, preprocessing, training, and evaluation commands in Appendix A.
+
+The sections below cover source checks, released data, evaluation, and
+from-scratch generation:
+
+### 5b.1 Source check
+
+This checks the installed dependencies, imports, Python compilation, and shell
+syntax. It does not regenerate solver data, retrain models, or establish
+scientific validity.
+
+```bash
+PYTHONPATH=. python -c "import numpy, torch, scipy, yaml; import src"
+python -m compileall -q src scripts
+bash -n scripts/*.sh
+```
+
+The broader non-slow pytest collection is optional. It can take substantially
+longer than this check and some tests exercise release-only scientific
+fixtures (for example, strict-holdout manifests):
+
+For a fast contract-level check that works from a bare clone:
+
+```bash
+python -m pytest -q \
+  tests/test_alignment.py \
+  tests/test_model_io.py \
+  tests/test_device_precision.py
+```
+
+```bash
+# pytest is an optional test dependency and may need a separate install.
+python -m pip install pytest
+OPENBLAS_NUM_THREADS=1 \
+OMP_NUM_THREADS=1 \
+MKL_NUM_THREADS=1 \
+NUMEXPR_NUM_THREADS=1 \
+VECLIB_MAXIMUM_THREADS=1 \
+BLIS_NUM_THREADS=1 \
+PYTHONPATH=. \
+python -m pytest -q -m 'not slow'
+```
+
+Run it after restoring the release artifacts when you want the broader
+implementation check. Passing it is still not a replacement for the
+data/evaluation and numerical-validation checks below.
+
+### 5b.2 Released-data check
+
+Download the released reproduction package from the Zenodo record and verify
+its contents before extracting it:
+
+```bash
+REPO="$PWD"
+BUNDLE="$HOME/tsunami-surrogate-reproduction"
+
+(cd "$BUNDLE" && sha256sum -c SHA256SUMS.txt)
+
+# Required for the main direct-model and paper-evidence datasets.
+for f in "$BUNDLE"/main_processed/*.tar.zst; do
+  tar --use-compress-program=unzstd -xf "$f" -C "$REPO"
+done
+tar --use-compress-program=unzstd \
+  -xf "$BUNDLE/models/selected_checkpoints.tar.zst" \
+  -C "$REPO"
+
+# Required by the auxiliary/paper matrix.
+tar --use-compress-program=unzstd \
+  -xf "$BUNDLE/models/multiseed_checkpoints.tar.zst" \
+  -C "$REPO"
+for f in "$BUNDLE"/supplementary/*.tar.zst; do
+  tar --use-compress-program=unzstd -xf "$f" -C "$REPO"
+done
+```
+
+Keep the archived result bundles outside the repository source directory so they cannot
+silently overwrite current helper scripts:
+
+```bash
+EVIDENCE="$HOME/tsunami-surrogate-evidence"
+mkdir -p "$EVIDENCE"
+tar --use-compress-program=unzstd \
+  -xf "$BUNDLE/results/final_paper_evaluation.tar.zst" \
+  -C "$EVIDENCE"
+tar --use-compress-program=unzstd \
+  -xf "$BUNDLE/results/multiseed_geoclaw_evidence.tar.zst" \
+  -C "$EVIDENCE"
+```
+
+The extracted evidence contains the validated archived paper run and the later
+multiseed/GeoClaw analysis outputs. The release archive records the historical
+evaluation code state as commit
+`043fff969ebd887b2b4b5dbf1e3f5db00584d97b`; current `main`
+contains later analysis/documentation changes. Do not mix a historical
+evidence directory with a newly generated run.
+
+For a small independent model/data check after extraction, run one metric
+directly and write its output outside the repository:
+
+```bash
+mkdir -p "$HOME/tsunami-source-check"
+python scripts/eval_accuracy.py \
+  --config configs/model/fno.yaml \
+  --checkpoint experiments/fno/best.pt \
+  --device cpu \
+  --output "$HOME/tsunami-source-check/fno_hydrostatic.json"
+```
+
+The full fail-closed `run_eval_suite.sh` additionally expects the complete
+project provenance used by the final run: frozen generation artifacts,
+training sidecars such as `checkpoints/last.pt`, and a clean evaluation source
+state. The release upload intentionally packages selected `best.pt` files,
+resolved configs, histories, processed data, and archived evidence rather than
+turning the Zenodo download into a full editable project copy. Therefore,
+on a bare fresh clone, use the source check and direct metric check above
+to verify the public source; run the full wrapper only from a fully restored
+project directory that contains those additional supporting run records.
+
+### 5b.3 Full evaluation
+
+On a fully restored project directory, first run the read-only preflight:
+
+```bash
+# CPU is portable; use --device cuda on a configured CUDA VM.
+bash scripts/run_eval_suite.sh --include-paper-evidence --device cpu
+```
+
+If it passes, execute the suite once with a new immutable run ID. Results are
+staged under `evaluation_runs/<run-id>.staging/` and promoted only after
+consolidation validates the declared outputs:
+
+```bash
+bash scripts/run_eval_suite.sh \
+  --execute \
+  --run-id source-check-20260824-r1 \
+  --device cpu \
+  --include-paper-evidence
+```
+
+Use `--device cuda` on a configured GPU VM. Add `--include-speed` only when
+timing rows are intentionally being regenerated, and add
+`--deep-payload-audit` when a full payload re-hash is wanted. Do not reuse an
+existing run ID, and do not run the complete suite twice unless the first run
+fails or the environment changes. The paper-evidence option already includes
+the seven-member ensemble and every metric declared in the paper suite.
+
+The separate three-seed direct-model and GeoClaw-discrepancy follow-up
+analyses are packaged and rerun separately; they are not silently folded into
+this wrapper. From a fully restored project directory, their commands are:
+
+```bash
+bash scripts/run_multiseed_evaluation.sh --preflight-only
+bash scripts/run_multiseed_evaluation.sh
+python scripts/run_geoclaw_discrepancy_ablation.py --workers 4
+```
+
+These commands write separate multiseed/GeoClaw outputs. If the archived
+outputs are sufficient for the review, inspect those instead of regenerating
+them.
+
+### 5b.4 Optional fresh numerical-validation replay
+
+The numerical-validation flag is a separate, much heavier H0/Level-A/Level-B/
+H1/H2 replay. It requires a clean committed `src/`/`scripts/`/`configs/` state,
+GeoClaw 5.14.0, PETSc, and the paths supplied through the environment:
+
+```bash
+export CLAW_ROOT=/path/to/clawpack-v5.14.0
+export PETSC_DIR=/path/to/petsc-3.25.3
+export PETSC_ARCH=arch-linux-c-opt
+export GEOCLAW_PYTHON="$PWD/.venv/bin/python"
+
+bash scripts/run_eval_suite.sh \
+  --execute \
+  --run-id source-check-20260824-numerical-r1 \
+  --device cpu \
+  --include-paper-evidence \
+  --deep-payload-audit \
+  --rerun-numerical-validation
+```
+
+If GeoClaw/PETSc are not installed, omit this flag and inspect the archived
+numerical evidence instead. Do not regenerate the approximately 31 GB raw
+publication set or retrain the ensemble merely to check out the source.
+
+### 5b.5 Generate the raw benchmark from scratch
+
+The repository also supports rebuilding the synthetic solver data instead of
+downloading the released processed archives. The full core campaign creates
+10,000 training, 1,000 validation, and 2,500 test scenarios for each of the
+three configured references (40,500 solver publications in total). This is a
+large CPU/storage workload; use the released package when you only need to
+inspect or replay the reported results.
+
+From the repository root, after completing Section 5, run the split-specific
+generation configs:
+
+```bash
+# Train split: 10,000 scenarios.
+python scripts/make_dataset.py --config configs/data/dataset.yaml
+
+# Validation/evaluation split: 1,000 scenarios.
+python scripts/make_dataset.py --config configs/data/dataset_eval.yaml
+
+# Final test split: 2,500 scenarios.
+python scripts/make_dataset.py --config configs/data/dataset_test.yaml
+```
+
+These commands write raw publications and provenance manifests under
+`data/train/`, `data/eval/`, and `data/test/`. They can be resumed with
+`--continue` after an interruption; keep the same config and sample-count
+overrides when resuming. The complete from-scratch order is documented in the
+detailed command archive in Appendix A.
+
+The frozen H0 input inventory referenced by these configs is included in the
+repository, so the bathymetry and source caches can be regenerated on a clean
+clone. The raw solver publications and processed training arrays are generated
+artifacts and are not stored in Git.
+
+The checked-in `configs/data/preprocess.yaml` is a fail-closed test-only
+common-time rebuild. It is useful for a small data-path check, but it is not
+the complete train/validation/test preprocessing recipe; do not mistake that
+test configuration for the full paper-scale rebuild.
+
+## 5c) Reproduce from the released benchmark data
 
 You do **not** need to regenerate the approximately 31 GB eta-primary raw
-publications to reproduce the paper. The released benchmark bundle ships the
-model-ready *processed* arrays and selected checkpoints, so you can go straight
-to training (Section 6.3) or evaluation (6.4+).
+publications to inspect or replay the reported paper outputs. The released
+benchmark bundle ships the model-ready *processed* arrays, selected
+checkpoints, and archived evidence.
 
-1. Download the reproduction package from
-   https://doi.org/10.5281/zenodo.21956834.
+1. Download the released reproduction package from
+   https://doi.org/10.5281/zenodo.21962844.
 2. Verify integrity, then extract the required archives into the repository
    root:
 
@@ -140,26 +390,153 @@ for f in main_processed/*.tar.zst; do
   tar --use-compress-program=unzstd -xf "$f" -C /path/to/tsunami-surrogate
 done
 
-# selected checkpoints and validated evaluation evidence
+# selected checkpoints
 tar --use-compress-program=unzstd -xf models/selected_checkpoints.tar.zst -C /path/to/tsunami-surrogate
-tar --use-compress-program=unzstd -xf results/final_paper_evaluation.tar.zst -C /path/to/tsunami-surrogate
 
-# optional: strict holdouts, native resolution, and real-bathymetry diagnostics
+# optional replicated checkpoints used by the later multiseed analysis
+tar --use-compress-program=unzstd -xf models/multiseed_checkpoints.tar.zst -C /path/to/tsunami-surrogate
+
+# strict holdouts, native resolution, and real-bathymetry diagnostics
 for f in supplementary/*.tar.zst; do
   tar --use-compress-program=unzstd -xf "$f" -C /path/to/tsunami-surrogate
 done
+
+# Keep archived results in a separate directory; see Section 5b.2.
 ```
 
 After extraction you should have `data/processed/hydrostatic/{train,val,test}`, `data/processed/muscl_hr/...`, and `data/processed/boussinesq/...`, which is what the training and evaluation configs expect. The exact archive layout, per-suite contents, and citation are documented in the bundle's own `README.md`.
 
-The complete raw numerical publications are also available through the
-supplementary mirror documented in the bundle README. Skipping the bundle?
-Generate everything from scratch via Sections 6.1--6.2 instead.
+The complete raw numerical publications are optional and are available through
+the supplementary mirror documented in the bundle README. Skipping the bundle
+means rebuilding the split-specific generation and preprocessing inputs
+yourself; this is a large CPU/storage workflow, not the normal source check.
 All data paths in `configs/` are repo-relative (`./data/...`), so commands run from the repository root without edits.
 
-## 6) Run Commands
+## 6) Command reference
 
-Core workflow order:
+For a fresh Google Cloud or Linux setup, choose one of these routes:
+
+1. **Released-result route**
+   1. Complete the source check in Section 5b.1.
+   2. Restore the released processed-data/checkpoint package if result replay is
+      required (Section 5c).
+   3. Run the read-only paper-evidence preflight:
+
+      ```bash
+      bash scripts/run_eval_suite.sh --include-paper-evidence --device cpu
+      ```
+
+2. **From-scratch route**
+   1. Generate the raw train, validation, and test splits in Section 5b.5.
+   2. Continue with the detailed preprocessing, training, and evaluation steps
+      in Appendix A.
+
+After the released-result preflight passes, execute one fresh immutable run:
+
+```bash
+bash scripts/run_eval_suite.sh \
+  --execute \
+  --run-id source-check-20260824-r1 \
+  --device cpu \
+  --include-paper-evidence
+```
+
+Use `--device cuda` on a configured GPU VM. Add `--include-speed` for timing
+rows and `--deep-payload-audit` for the expensive raw-payload pass. The wrapper
+stages under `evaluation_runs/<run-id>.staging/`, refuses reused run IDs, and
+promotes only after completeness validation.
+
+The paper-evidence option covers the current core paper matrix, including
+the seven-member Hydrostatic FNO ensemble, metadata slices, native MUSCL-HR
+transfer, reference-gap/cross-reference analysis, wave metrics, arrival maps,
+calibration, and the real-bathymetry suite. The three-seed direct-model analysis and
+the GeoClaw discrepancy ablation are separate follow-up lanes:
+
+```bash
+bash scripts/run_multiseed_evaluation.sh --preflight-only
+bash scripts/run_multiseed_evaluation.sh
+python scripts/run_geoclaw_discrepancy_ablation.py --workers 4
+```
+
+Their archived outputs are sufficient for inspection when a fresh rerun is not
+needed. Do not use the deprecated `compare_solvers_physical.py` wrapper for
+common-time comparisons; use the main paper wrapper.
+
+### 6.1 Optional from-scratch generation and training
+
+These commands are for intentionally rebuilding upstream artifacts, not for a
+normal source check:
+
+```bash
+# 10,000 train, 1,000 validation, and 2,500 test scenarios.
+python scripts/make_dataset.py --config configs/data/dataset.yaml
+python scripts/make_dataset.py --config configs/data/dataset_eval.yaml
+python scripts/make_dataset.py --config configs/data/dataset_test.yaml
+```
+
+This is a large CPU/storage workflow that generates 40,500 solver
+publications. The released package already contains the processed arrays and
+selected checkpoints. The checked-in `configs/data/preprocess.yaml` is
+test-only and writes its configured test output; it is not a complete
+production train/validation/test preprocessing recipe.
+
+If training is intentionally being rebuilt, use the target-specific configs:
+
+```bash
+python scripts/train.py --config configs/model/fno.yaml
+python scripts/train.py --config configs/model/fno_muscl_hr.yaml
+python scripts/train.py --config configs/model/fno_boussinesq.yaml
+```
+
+The ordinary released models use seed 18. The replicated subset uses the
+configs under `configs/model/multiseed/` for seeds 36 and 67; the seven-member
+uncertainty ensemble uses seeds 11, 22, 33, 44, 55, 66, and 77. Do not launch
+fresh training merely to verify a clone.
+
+### 6.2 Optional post-hoc figure regeneration
+
+These scripts read a validated evaluation run; they do not rerun the solvers:
+
+```bash
+python scripts/plot_reference_diagnostics.py \
+  --evaluation-run evaluation_runs/<run-id>
+python scripts/plot_sample_scaling.py \
+  --evaluation-run evaluation_runs/<run-id>
+```
+
+Paper figures belong under `paper/figures/`. Keep archived evaluation outputs
+outside the source directory unless you are deliberately restoring the full
+project and its evaluation artifacts.
+
+### 6.3 Optional fresh numerical-validation replay
+
+Only run this on a clean committed scientific source/config tree with GeoClaw
+5.14.0 and PETSc installed. See Section 5b.4 for the environment variables and
+the complete command. Otherwise, inspect the checksum-bound numerical evidence
+in the release package.
+
+## Appendix A) Additional workflows
+
+The material below contains detailed diagnostics and optional from-scratch
+runs. It is not the shortest reproduction path. Some entries
+describe exploratory or historical lanes and may intentionally use different
+data contracts; do not copy them as a fresh-machine checklist. Use Section 5b
+and the current command reference above for source/result verification.
+
+<details>
+<summary>Expand additional command archive</summary>
+
+The main evaluation entry point is
+`scripts/run_eval_suite.sh`. Its default mode is read-only preflight; actual
+execution requires `--execute` and a new `--run-id`. The numbered commands
+below are retained as advanced from-scratch workflows for
+regenerating raw data, preprocessing, training, or individual diagnostics.
+They are not the first command to run on a fresh clone and should not be used
+to overwrite a released evidence package accidentally. For a normal
+source/result check, use Section 5b and stop after the main wrapper or the
+archived evidence.
+
+From-scratch workflow order:
 1. `6.1` generate raw physics rollouts
 2. `6.2` preprocess all solver targets into train/val/test archives
 3. `6.3` train target-specific FNO checkpoints
@@ -170,11 +547,18 @@ Core workflow order:
 8. `6.8` run native 32/64/128 resolution experiments where configs exist
 9. `6.9` compare solver-vs-solver physical gaps
 10. `6.10` compute emulator-superiority ratios
-11. `6.11`-`6.17` run optional diagnostics, inverse scaffold, smoke checks, uncertainty, arrival maps, learning curves, and figure exports
+11. `6.11`-`6.17` run optional diagnostics, inverse scaffold, quick checks, uncertainty, arrival maps, learning curves, and figure exports
 
-The manual commands below are the source of truth. Treat wrapper scripts as convenience helpers only if they match this order.
+Use the wrapper for the final paper suite. Use the manual commands below
+only when you intentionally need to regenerate a particular upstream artifact.
 
-### 6.0 Full Paper Pipeline (Manual Local Run)
+### 6.0 Full Paper Pipeline (From Scratch)
+
+This section is intentionally expensive and is not required for a normal
+source or result check. It is a reference for rebuilding upstream artifacts,
+not the current paper-reproduction command. In particular, the checked-in
+`configs/data/preprocess.yaml` is a test-only common-time rebuild; it does
+not recreate the released production train/validation/test preprocessing.
 
 This is the condensed ordered run for the core paper-facing benchmark. It assumes `configs/data/dataset.yaml` is the shared-scenario dataset with hydrostatic, MUSCL-HR, and Boussinesq enabled. Use `--num-workers` and `--num-samples` as CLI overrides if the machine/run needs them; otherwise the YAML values are used. Extra diagnostics, uncertainty, arrival-map, learning-curve, and figure-export commands are listed in the detailed sections after `6.9`.
 
@@ -192,14 +576,14 @@ python scripts/train.py --config configs/model/fno_boussinesq.yaml
 
 # 4. Same-target accuracy.
 python scripts/eval_accuracy.py --config configs/model/fno.yaml          --checkpoint experiments/fno/best.pt
-python scripts/eval_accuracy.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt
+python scripts/eval_accuracy.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
 python scripts/eval_accuracy.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt
 
 # 5. Model inference speed. Keep CPU and CUDA rows if CUDA is available.
 python scripts/eval_speed.py --config configs/model/fno.yaml          --checkpoint experiments/fno/best.pt          --device cpu  --precision fp32 --allow-tf32 false --output results/speed/model_speed_fno_cpu.json
 python scripts/eval_speed.py --config configs/model/fno.yaml          --checkpoint experiments/fno/best.pt          --device cuda --precision fp32 --allow-tf32 true  --output results/speed/model_speed_fno_cuda.json
-python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt --device cpu  --precision fp32 --allow-tf32 false --output results/speed/model_speed_muscl_hr_cpu.json
-python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt --device cuda --precision fp32 --allow-tf32 true  --output results/speed/model_speed_muscl_hr_cuda.json
+python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt --device cpu  --precision fp32 --allow-tf32 false --output results/speed/model_speed_muscl_hr_cpu.json
+python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt --device cuda --precision fp32 --allow-tf32 true  --output results/speed/model_speed_muscl_hr_cuda.json
 python scripts/eval_speed.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt --device cpu  --precision fp32 --allow-tf32 false --output results/speed/model_speed_boussinesq_cpu.json
 python scripts/eval_speed.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt --device cuda --precision fp32 --allow-tf32 true  --output results/speed/model_speed_boussinesq_cuda.json
 
@@ -227,29 +611,29 @@ python scripts/make_ood_splits.py --config configs/data/ood_splits_hydrostatic.y
 python scripts/make_ood_splits.py --config configs/data/ood_splits_muscl_hr.yaml --overwrite
 python scripts/make_ood_splits.py --config configs/data/ood_splits_boussinesq.yaml --overwrite
 python scripts/eval_generalization.py --config configs/eval/ood_suites_hydrostatic.yaml --checkpoint experiments/fno/best.pt
-python scripts/eval_generalization.py --config configs/eval/ood_suites_muscl_hr.yaml   --checkpoint experiments/fno_muscl_hr/best.pt
+python scripts/eval_generalization.py --config configs/eval/ood_suites_muscl_hr.yaml   --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
 python scripts/eval_generalization.py --config configs/eval/ood_suites_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt
 
 # 9. Proxy cross-resolution transfer, no extra simulation.
 python scripts/eval_resolution_transfer.py --config configs/eval/resolution_transfer_proxy_hydrostatic.yaml --checkpoint experiments/fno/best.pt
-python scripts/eval_resolution_transfer.py --config configs/eval/resolution_transfer_proxy_muscl_hr.yaml   --checkpoint experiments/fno_muscl_hr/best.pt
+python scripts/eval_resolution_transfer.py --config configs/eval/resolution_transfer_proxy_muscl_hr.yaml   --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
 python scripts/eval_resolution_transfer.py --config configs/eval/resolution_transfer_proxy_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt
 
-# 10. Native cross-resolution. Currently configured for hydrostatic and MUSCL-HR.
+# 10. Native cross-resolution. The final paper lane is MUSCL-HR at 32/64/128.
 python scripts/make_dataset.py --config configs/data/multires/dataset_32.yaml
 python scripts/make_dataset.py --config configs/data/multires/dataset_64.yaml
 python scripts/make_dataset.py --config configs/data/multires/dataset_128.yaml
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_32.yaml
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_64.yaml
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_128.yaml
-python scripts/eval_full_resolution.py --config configs/eval/resolution_hydrostatic.yaml --checkpoint experiments/fno/best.pt
-python scripts/eval_full_resolution.py --config configs/eval/resolution_muscl_hr.yaml   --checkpoint experiments/fno_muscl_hr/best.pt
+# The native-resolution matrix is included in the paper-evidence evaluation.
+bash scripts/run_eval_suite.sh --include-paper-evidence --device cpu
 
 # 11. Solver-vs-solver physical gaps.
 # This shows the main Hydro/MUSCL denominator; see 6.9 for all pair directions.
 python scripts/compare_solvers_physical.py \
-  --solver-a-dir data/raw/hydrostatic/samples \
-  --solver-b-dir data/raw/muscl_hr/samples \
+  --solver-a-dir data/test/raw/hydrostatic/samples \
+  --solver-b-dir data/test/raw/muscl_hr/samples \
   --require-quality-ok --save-arrival-maps \
   --arrival-maps-output results/solver_compare_hydro_vs_muscl_hr_arrival_maps.npz \
   --output results/solver_compare_hydro_vs_muscl_hr.json
@@ -263,13 +647,13 @@ python scripts/compare_solvers_physical.py \
 | Runtime + speedup | `eval_speed.py` + `eval_solver_speed.py` -> `make_speed_table.py` | `results/speed/speed_table.{csv,json}` |
 | OOD generalization | `make_ood_splits.py` + `eval_generalization.py` | `experiments/<model>/eval_ood_suites/ood_generalization.json` |
 | Proxy cross-resolution | `eval_resolution_transfer.py` | `.../eval_resolution_proxy/resolution_transfer_proxy.json` |
-| Native 32/64/128 resolution | `eval_full_resolution.py` | `.../eval_resolution/real_resolution.json` |
+| Native 32/64/128 MUSCL-HR resolution | `run_eval_suite.sh --include-paper-evidence` | `evaluation_runs/<run-id>/...` |
 | Solver physical gap | `compare_solvers_physical.py` | `results/solver_compare_*.json` |
 | Emulator-superiority ratio | `eval_emulator_superiority.py` | `results/emulator_superiority_*.json` |
 | Arrival maps | `eval_arrival_maps.py`, `compare_solvers_physical.py --save-arrival-maps` | `...arrival_map*.{json,npz}` |
 | Learning curves | `run_sample_scaling.py` | `experiments/sample_scaling/*/sample_scaling_results.{csv,json}` |
 | Uncertainty | `train_ensemble.py` + `eval_uncertainty.py` | `.../eval_uncertainty*/uncertainty*.json` |
-| Qualitative maps | `export_figures.py` or `visualize_rollout.py` | `paper/figs/...` |
+| Qualitative maps | `export_figures.py` or `visualize_rollout.py` | `paper/figures/...` |
 
 ### 6.1 Step 1 - Generate Forward Raw Dataset (Required)
 
@@ -290,14 +674,14 @@ python scripts/make_dataset.py --config configs/data/dataset.yaml --num-workers 
 - stage 2: generate/cache all source samples first (default cache: `data/sources`)
 - stage 3: load cached bathymetry + source pairs and run configured FDE rollouts from `fdes.enabled`
 
-Raw rollouts are separated by solver under `data/raw/`:
-- `data/raw/hydrostatic/samples/...`
-- `data/raw/muscl_hr/samples/...`
-- `data/raw/boussinesq/samples/...`
+Raw rollouts are separated by split and solver under `data/{train,eval,test}/raw/`:
+- `data/<split>/raw/hydrostatic/samples/...`
+- `data/<split>/raw/muscl_hr/samples/...`
+- `data/<split>/raw/boussinesq/samples/...`
 
 Manifests are separated as:
-- scenario-level: `data/synthetic/scenario_manifest.jsonl`
-- solver-level: `data/synthetic/hydrostatic_manifest.jsonl`, `data/synthetic/muscl_hr_manifest.jsonl`, `data/synthetic/boussinesq_manifest.jsonl`
+- scenario-level: `data/<split>/synthetic/scenario_manifest.jsonl`
+- solver-level: `data/<split>/synthetic/{hydrostatic,muscl_hr,boussinesq}_manifest.jsonl`
 
 Runnable FDEs currently include `swe_hydrostatic`, `swe_muscl_hr`, and `boussinesq`.
 Default `configs/data/dataset.yaml` enables all three so the raw targets are comparable on the same bathymetry/source scenarios.
@@ -305,7 +689,8 @@ Legacy alias `swe_muscl` is still accepted and automatically mapped to `swe_musc
 
 Storage-limited server workflow:
 - On the server, generate only hydrostatic + MUSCL-HR if storage is tight.
-- Download `data/bathymetry`, `data/sources`, `data/raw/hydrostatic`, `data/raw/muscl_hr`, and `data/synthetic`.
+- Download the relevant split roots under `data/<split>/bathymetry`,
+  `data/<split>/sources`, `data/<split>/raw`, and `data/<split>/synthetic`.
 - Locally, run the default all-three config with `--continue`; completed hydrostatic/MUSCL folders are reused and only missing Boussinesq folders are generated.
 - Rebuild manifests after the local completion so the scenario manifest records all three solvers.
 - If you pass `--num-samples` on the server, pass the same value again for the local `--continue` run.
@@ -389,7 +774,7 @@ This keeps preprocessing and training RAM-bounded. Existing model config paths e
 For sharded training splits, the loader uses a shard-aware batch sampler: it shuffles shard order and sample order within each shard, but keeps each mini-batch inside one shard to avoid repeatedly reloading compressed shard files.
 
 The checked-in `configs/data/preprocess.yaml` is a fail-closed, test-only
-common-time-v2 rebuild into `data/processed_common_time_v2_test`. It reuses
+common-time rebuild into its configured test directory. It reuses
 frozen training normalization statistics and is not the complete
 train/validation/test preprocessing command.
 
@@ -440,7 +825,7 @@ To train replicated models sequentially, add a top-level seed list to the model
 config. The existing single `seed` behavior is unchanged when `seeds` is absent.
 
 ```yaml
-seeds: [18, 36, 67, 72, 154]
+seeds: [36, 67]
 ```
 
 For `output_dir: experiments/fno`, these runs are written to
@@ -448,20 +833,25 @@ For `output_dir: experiments/fno`, these runs are written to
 directory contains the complete run artifacts, including resolved config,
 metadata, history, and checkpoints.
 
-The current completed core scope uses one selected seed per ordinary model.
-The historical five-seed headline matrix remains a later replication protocol,
-not an implemented property of the current configs. The dedicated uncertainty
-ensemble uses members `[11, 22, 33, 44, 55, 66, 77]`.
+The current ordinary-model checkpoints use seed 18. The later replicated
+direct-model analysis adds seeds 36 and 67 through the configs under
+`configs/model/multiseed/`, giving the prespecified three-seed set
+`{18, 36, 67}`. The dedicated uncertainty ensemble uses members
+`[11, 22, 33, 44, 55, 66, 77]`.
 
 Optional training tracks:
 - Ensemble for uncertainty: `python scripts/train_ensemble.py --config configs/model/fno_ensemble.yaml`
-- Experimental (not reported in the paper): a ConvLSTM baseline exists in the code
-  (`configs/model/convlstm.yaml`) but did not converge under the training budget and
-  is excluded from all paper results.
+- Replicated direct-model subset: use the six configs in
+  `configs/model/multiseed/`, then validate/evaluate them with
+  `scripts/run_multiseed_evaluation.sh` from a fully restored project directory.
+- ConvLSTM is a reported Hydrostatic baseline in the current paper and release;
+  no additional ConvLSTM training is planned.
 
-Native-resolution training tracks (P2 extension):
-- Hydrostatic: `configs/model/fno_res{32,64,128}_hydrostatic.yaml`
-- MUSCL-HR: `configs/model/fno_res{32,64,128}_muscl_hr.yaml`
+Native-resolution training tracks:
+- Current paper lane: MUSCL-HR at 32/64/128, using
+  `configs/model/fno_res{32,64,128}_muscl_hr.yaml`.
+- Hydrostatic and shared-from-64 configurations remain exploratory
+  paths and are not part of the final paper-evaluation roster.
 - Shared-from64 normalization checkpoints:
   - `configs/model/fno_res64_shared_from64_hydrostatic.yaml`
   - `configs/model/fno_res64_shared_from64_muscl_hr.yaml`
@@ -472,7 +862,7 @@ After `6.3`, evaluate each model on its matching processed test set:
 
 ```bash
 python scripts/eval_accuracy.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt
-python scripts/eval_accuracy.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt
+python scripts/eval_accuracy.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
 python scripts/eval_accuracy.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt
 ```
 
@@ -491,8 +881,8 @@ Runtime speedup uses CPU NumPy solver timing as the denominator and FNO inferenc
 ```bash
 python scripts/eval_speed.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt --device cpu --precision fp32 --allow-tf32 false --output results/speed/model_speed_fno_cpu.json
 python scripts/eval_speed.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt --device cuda --precision fp32 --allow-tf32 true --output results/speed/model_speed_fno_cuda.json
-python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt --device cpu --precision fp32 --allow-tf32 false --output results/speed/model_speed_muscl_hr_cpu.json
-python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt --device cuda --precision fp32 --allow-tf32 true --output results/speed/model_speed_muscl_hr_cuda.json
+python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt --device cpu --precision fp32 --allow-tf32 false --output results/speed/model_speed_muscl_hr_cpu.json
+python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt --device cuda --precision fp32 --allow-tf32 true --output results/speed/model_speed_muscl_hr_cuda.json
 python scripts/eval_speed.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt --device cpu --precision fp32 --allow-tf32 false --output results/speed/model_speed_boussinesq_cpu.json
 python scripts/eval_speed.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt --device cuda --precision fp32 --allow-tf32 true --output results/speed/model_speed_boussinesq_cuda.json
 
@@ -537,7 +927,7 @@ Run suite-based generalization evaluation:
 
 ```bash
 python scripts/eval_generalization.py --config configs/eval/ood_suites_hydrostatic.yaml --checkpoint experiments/fno/best.pt
-python scripts/eval_generalization.py --config configs/eval/ood_suites_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt
+python scripts/eval_generalization.py --config configs/eval/ood_suites_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
 python scripts/eval_generalization.py --config configs/eval/ood_suites_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt
 ```
 
@@ -555,7 +945,7 @@ python scripts/eval_resolution_transfer.py \
   --checkpoint experiments/fno/best.pt
 python scripts/eval_resolution_transfer.py \
   --config configs/eval/resolution_transfer_proxy_muscl_hr.yaml \
-  --checkpoint experiments/fno_muscl_hr/best.pt
+  --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
 python scripts/eval_resolution_transfer.py \
   --config configs/eval/resolution_transfer_proxy_boussinesq.yaml \
   --checkpoint experiments/fno_boussinesq/best.pt
@@ -569,17 +959,20 @@ Output file:
 Prerequisites:
 - generate native-grid forward data per resolution
 - preprocess each resolution
-- use a checkpoint from `6.3` for cross-resolution evaluation
+- use the completed MUSCL-HR checkpoints from the final paper roster for
+  cross-resolution evaluation
 
-The native-resolution configs use the common-time-v2 three-reference policy.
-Every resolution deterministically regenerates the same seed-763 `128 x 128`
+The raw native-resolution configs use the common-time three-reference
+policy. Every resolution deterministically regenerates the same seed-763
+`128 x 128`
 master bathymetry/source scenario and area-averages that master to the target
 grid. Before the first rollout, `make_dataset.py` freezes and verifies the full
 1,000-scenario input inventory under `data/res*/synthetic/`. Hydrostatic and
 MUSCL-HR use radiation boundaries; Boussinesq uses the accepted open-boundary,
 sparse-LU policy. All sponges remain outside the published crop.
-Raw generation and preprocessing cover all three references; dedicated
-Boussinesq native-resolution model/evaluation configs are not frozen yet.
+Raw generation and preprocessing cover all three references, but the final
+paper model/evaluation roster uses MUSCL-HR only. Dedicated Boussinesq
+native-resolution model/evaluation configs are not frozen.
 
 Generate native-grid raw datasets:
 
@@ -603,15 +996,13 @@ python src/data_gen/preprocess.py --config configs/data/multires/preprocess_64.y
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_128.yaml
 ```
 
-Evaluate one trained checkpoint across all real resolutions in one JSON table:
+Evaluate the completed MUSCL-HR checkpoints across all real resolutions in one
+JSON table:
 
 ```bash
 python scripts/eval_full_resolution.py \
-  --config configs/eval/resolution_hydrostatic.yaml \
-  --checkpoint experiments/fno/best.pt
-python scripts/eval_full_resolution.py \
   --config configs/eval/resolution_muscl_hr.yaml \
-  --checkpoint experiments/fno_muscl_hr/best.pt
+  --checkpoint experiments/fno_res64_muscl_hr/best.pt
 ```
 
 Output file:
@@ -621,7 +1012,8 @@ Native-resolution normalization policy:
 - `configs/eval/resolution_*.yaml` now defaults to `real_resolution.normalization_policy: require_target_stats_match`.
 - This fails fast if suite target normalization does not match the configured training/reference dataset stats (`normalization_reference_path`), which avoids misleading cross-resolution claims.
 
-True cross-resolution transfer option (shared normalization from res64 reference):
+Optional shared-normalization cross-resolution transfer from
+the res64 reference:
 
 ```bash
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_32_shared_from64.yaml
@@ -641,53 +1033,55 @@ python scripts/eval_full_resolution.py \
 
 Important:
 - `eval_full_resolution.py` now validates that checkpoint training normalization stats match the configured reference stats.  
+- For the final paper claim, use the native MUSCL-HR roster. Do not present
+  the exploratory Hydrostatic/shared-from64 paths as part of that result.
 - For native/shared-from64 claims, do not reuse generic `6.3` checkpoints; use dedicated shared-from64 checkpoints.
 
-### 6.9 Step 9 - Solver-vs-Solver Physical Comparison
+### 6.9 Historical saved-index comparison (deprecated)
 
 Compare raw solver labels on shared scenarios in physical eta units. The Hydro/MUSCL pair is the main denominator for the emulator-superiority experiment; Boussinesq pairs are useful for physical-gap reporting if the Boussinesq quality gates pass.
 
 ```bash
 python scripts/compare_solvers_physical.py \
-  --solver-a-dir data/raw/hydrostatic/samples \
-  --solver-b-dir data/raw/muscl_hr/samples \
+  --solver-a-dir data/test/raw/hydrostatic/samples \
+  --solver-b-dir data/test/raw/muscl_hr/samples \
   --require-quality-ok --missing-quality-action include --save-arrival-maps \
   --output results/solver_compare_hydro_vs_muscl_hr.json
 
 python scripts/compare_solvers_physical.py \
-  --solver-a-dir data/raw/muscl_hr/samples \
-  --solver-b-dir data/raw/hydrostatic/samples \
+  --solver-a-dir data/test/raw/muscl_hr/samples \
+  --solver-b-dir data/test/raw/hydrostatic/samples \
   --require-quality-ok --missing-quality-action include --save-arrival-maps \
   --output results/solver_compare_muscl_hr_vs_hydro.json
 
 python scripts/compare_solvers_physical.py \
-  --solver-a-dir data/raw/hydrostatic/samples \
-  --solver-b-dir data/raw/boussinesq/samples \
+  --solver-a-dir data/test/raw/hydrostatic/samples \
+  --solver-b-dir data/test/raw/boussinesq/samples \
   --require-quality-ok --missing-quality-action include --save-arrival-maps \
   --output results/solver_compare_hydro_vs_boussinesq.json
 
 python scripts/compare_solvers_physical.py \
-  --solver-a-dir data/raw/boussinesq/samples \
-  --solver-b-dir data/raw/hydrostatic/samples \
+  --solver-a-dir data/test/raw/boussinesq/samples \
+  --solver-b-dir data/test/raw/hydrostatic/samples \
   --require-quality-ok --missing-quality-action include --save-arrival-maps \
   --output results/solver_compare_boussinesq_vs_hydro.json
 
 python scripts/compare_solvers_physical.py \
-  --solver-a-dir data/raw/muscl_hr/samples \
-  --solver-b-dir data/raw/boussinesq/samples \
+  --solver-a-dir data/test/raw/muscl_hr/samples \
+  --solver-b-dir data/test/raw/boussinesq/samples \
   --require-quality-ok --missing-quality-action include --save-arrival-maps \
   --output results/solver_compare_muscl_hr_vs_boussinesq.json
 
 python scripts/compare_solvers_physical.py \
-  --solver-a-dir data/raw/boussinesq/samples \
-  --solver-b-dir data/raw/muscl_hr/samples \
+  --solver-a-dir data/test/raw/boussinesq/samples \
+  --solver-b-dir data/test/raw/muscl_hr/samples \
   --require-quality-ok --missing-quality-action include --save-arrival-maps \
   --output results/solver_compare_boussinesq_vs_muscl_hr.json
 ```
 
 The comparison includes pointwise physical metrics, spectral differences, and arrival-time differences in timestep units and seconds when timestamps are available. Use `--arrival-threshold-fraction 0.05` to change the arrival threshold.
 
-### 6.10 Step 10 - Emulator Superiority Ratio
+### 6.10 Historical emulator-superiority workflow (deprecated)
 
 Compute:
 `error(FNO trained on A, solver B) / error(solver A, solver B)`
@@ -756,7 +1150,7 @@ Sparse exports include:
 - `gauge_observations` (`[N,G,T]`)
 - `gauge_summary` (`[N,H,W]`, sparse on gauge locations)
 
-### 6.13 Quick Smoke Run
+### 6.13 Quick Check
 
 ```bash
 bash scripts/quickstart.sh
@@ -769,7 +1163,7 @@ python scripts/visualize_rollout.py \
   --config configs/model/fno.yaml \
   --checkpoint experiments/fno/best.pt \
   --processed-path data/processed/hydrostatic/test \
-  --raw-dir data/raw/hydrostatic/samples \
+  --raw-dir data/test/raw/hydrostatic/samples \
   --sample-index 0
 ```
 
@@ -817,7 +1211,7 @@ python scripts/eval_arrival_maps.py \
   --checkpoint experiments/fno/best.pt
 python scripts/eval_arrival_maps.py \
   --config configs/model/fno_muscl_hr.yaml \
-  --checkpoint experiments/fno_muscl_hr/best.pt
+  --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
 python scripts/eval_arrival_maps.py \
   --config configs/model/fno_boussinesq.yaml \
   --checkpoint experiments/fno_boussinesq/best.pt
@@ -840,9 +1234,9 @@ python scripts/run_sample_scaling.py --config configs/model/fno_boussinesq.yaml 
 Qualitative prediction figures for the paper:
 
 ```bash
-python scripts/export_figures.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt --out paper/figs/fno_hydrostatic_prediction.png
-python scripts/export_figures.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/best.pt --out paper/figs/fno_muscl_hr_prediction.png
-python scripts/export_figures.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt --out paper/figs/fno_boussinesq_prediction.png
+python scripts/export_figures.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt --out paper/figures/fno_hydrostatic_prediction.png
+python scripts/export_figures.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt --out paper/figures/fno_muscl_hr_prediction.png
+python scripts/export_figures.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt --out paper/figures/fno_boussinesq_prediction.png
 ```
 
 ## 7) Current Repository Structure
@@ -864,7 +1258,7 @@ tsunami-surrogate/
 │  │  ├─ inverse_muscl_hr.yaml
 │  │  ├─ inverse_hydrostatic_sparse_gauges.yaml
 │  │  ├─ inverse_muscl_hr_sparse_gauges.yaml
-│  │  ├─ preprocess.yaml           # raw -> processed split/export config
+│  │  ├─ preprocess.yaml           # test-only common-time rebuild config
 │  │  ├─ preprocess_boussinesq.yaml
 │  │  ├─ bathymetry.yaml           # bathymetry synthesis controls
 │  │  ├─ bathymetry_boussinesq.yaml
@@ -916,30 +1310,37 @@ tsunami-surrogate/
 │  ├─ training/                    # trainer, losses, metrics, callbacks, checkpoints
 │  ├─ evaluation/                  # accuracy/speed/generalization/UQ evaluation utils
 │  └─ utils/                       # config/io/logger/device/seed/visualization helpers
-├─ data/                           # generated artifacts (raw, processed, manifests)
+├─ data/                           # generated artifacts (split raw/processed data)
 ├─ experiments/                    # run outputs (checkpoints, history, eval json)
-├─ figures/                        # exported figures/plots
+├─ evaluation_runs/                # ignored immutable evaluation evidence
+├─ release/                        # ignored Zenodo/raw release staging
 ├─ results/                        # aggregate result dumps
 ├─ tests/                          # unit/integration checks
 ├─ paper/                          # LaTeX manuscript workspace
 │  ├─ main.tex                     # paper entrypoint
-│  ├─ figs/                        # paper figures
+│  ├─ figures/                     # paper figures
 │  ├─ build/                       # latex build artifacts
 │  └─ sections/                    # section files (role-only naming)
 └─ references-notes/               # literature notes for writing and framing
 ```
+
+</details>
 
 ## 8) Paper Alignment
 
 This README follows the same framing as the paper abstract/introduction:
 
 - controlled synthetic benchmark setting;
-- FNO-centered surrogate evaluation against CNN/U-Net baselines;
+- FNO-centered surrogate evaluation against F-FNO, CNN/U-Net, ConvLSTM, and
+  other stated baselines;
 - emphasis on speed-accuracy-robustness trade-offs;
 - explicit non-operational scope (research benchmark, not production warning stack);
 - inverse-problem work kept as separate follow-up paper scope, not part of forward-surrogate claims here.
 
 ## 9) Notes
 
-- Development note: Portions of the codebase were developed with AI-assisted programming support. All code should be treated as author-reviewed research software, with tests and validation required before use in reported experiments.
-- Test split tip: quick CI/local smoke can use `pytest -q -m "not slow"`; full solver dynamics validation can use `pytest -q -m slow`.
+- Reproducibility note: Portions of the codebase were developed with
+  AI-assisted programming support. Treat all code as author-reviewed research
+  software, and run the relevant tests and validation before using it in
+  reported experiments.
+- Test split tip: a quick CI/local check can use `pytest -q -m "not slow"`; full solver dynamics validation can use `pytest -q -m slow`.

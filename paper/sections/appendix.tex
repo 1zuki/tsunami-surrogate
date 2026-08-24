@@ -158,7 +158,7 @@ The six seed-$42$ Hydrostatic FNO subset runs in Figures~\ref{fig:sample-scaling
 \begin{figure}[pos=htbp]
 \centering
 \includegraphics[width=0.74\linewidth]{figures/sample_scaling_metrics.pdf}
-\caption{Companion physical MAE, RMSE, and relative-$L_2$ curves, separating the seed-42 subset series from the seed-18 full-data comparator.}
+\caption{Companion denormalized benchmark-scale MAE, RMSE, and relative-$L_2$ curves, separating the seed-42 subset series from the seed-18 full-data comparator.}
 \label{fig:sample-scaling-metrics}
 \end{figure}
 
@@ -239,7 +239,7 @@ The real-bathymetry extension remains a synthetic-forcing transfer study. Table~
 \begin{figure}[pos=htbp]
 \centering
 \includegraphics[width=\linewidth]{figures/real_bathymetry_suites.pdf}
-\caption{Real-bathymetry suite snapshots at the final requested time, $t = 0.175$. Top: fully wet offshore morphology. Middle: coastline wet--dry stress case with positive topography retained. Bottom: the same coastline geometry rescaled into the fully wet range. These are synthetic-forcing transfer diagnostics, not real-event validation.}
+\caption{GEBCO\_2026-derived bathymetry-suite snapshots \citep{gebco2026} at the final requested time, $t = 0.175$. Top: fully wet offshore morphology. Middle: coastline wet--dry stress case with positive topography retained. Bottom: the same coastline geometry rescaled into the fully wet range. These are synthetic-forcing transfer diagnostics, not real-event validation.}
 \label{fig:app-real-bath}
 \end{figure}
 
@@ -252,7 +252,7 @@ Figure~\ref{fig:app-failure-cases} intentionally selects difficult examples, not
 \begin{figure}[pos=htbp]
 \centering
 \includegraphics[width=0.86\linewidth]{figures/appendix_failure_cases.pdf}
-\caption{Selected high-error cases, not average or representative examples. Columns are the three cases; rows show denormalized bathymetry, source, late-frame Hydrostatic reference $\eta$, FNO prediction, and absolute error.}
+\caption{Selected high-error cases, not average or representative examples. Columns are the three cases; rows show denormalized bathymetry, source, late-frame Hydrostatic reference $\eta$, FNO prediction, and absolute error. The coastline stress case uses GEBCO\_2026-derived morphology \citep{gebco2026}.}
 \label{fig:app-failure-cases}
 \end{figure}
 
