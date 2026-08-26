@@ -1,0 +1,69 @@
+raw:
+  publication_split: test
+  scenario_manifest: data/test/synthetic/scenario_manifest.jsonl
+  fde_manifests:
+    hydrostatic: data/test/synthetic/hydrostatic_manifest.jsonl
+    muscl_hr: data/test/synthetic/muscl_hr_manifest.jsonl
+    boussinesq: data/test/synthetic/boussinesq_manifest.jsonl
+  raw_dirs:
+    hydrostatic: data/test/raw/hydrostatic/samples
+    muscl_hr: data/test/raw/muscl_hr/samples
+    boussinesq: data/test/raw/boussinesq/samples
+
+processed_dir: data/processed
+
+fde:
+  mode: separate_all
+  targets: [hydrostatic, muscl_hr, boussinesq]
+  target_field: eta
+
+split:
+  train: 0
+  val: 0
+  test: 1
+  seed: 42
+
+input:
+  use_bathymetry: true
+  use_source: true
+  use_initial_depth: true
+  use_initial_surface: false
+  use_solver_id: false
+
+target:
+  mode: multi_step
+  variable: eta
+  forecast_steps: 50
+  stride: 1
+
+normalization:
+  method: standardize
+  # Test reuses the statistics fitted by preprocess_train.yaml.
+  reference_stats_by_fde:
+    hydrostatic: data/processed/hydrostatic/normalization_stats.json
+    muscl_hr: data/processed/muscl_hr/normalization_stats.json
+    boussinesq: data/processed/boussinesq/normalization_stats.json
+  channels:
+    bathymetry: true
+    source: true
+    solver_id: false
+    trajectory: true
+  eps: 1e-6
+
+saving:
+  format: npy
+  compress: true
+  include_meta: true
+  sharded: true
+  shard_size: 128
+  write_legacy_test_archive: false
+  publication_mode: merge_split
+
+test_export:
+  enabled: true
+  input_order: [bathymetry, source, initial_depth, initial_surface]
+  inputs_name: inputs.npy
+  targets_name: targets.npy
+  ids_name: sample_id.npy
+  archive_name: eval_dataset.npz
+  manifest_name: eval_manifest.json
