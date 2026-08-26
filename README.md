@@ -356,18 +356,37 @@ python scripts/make_dataset.py --config configs/data/dataset_test.yaml
 These commands write raw publications and provenance manifests under
 `data/train/`, `data/eval/`, and `data/test/`. They can be resumed with
 `--continue` after an interruption; keep the same config and sample-count
-overrides when resuming. The complete from-scratch order is documented in the
-detailed command archive in Appendix A.
+overrides when resuming.
+
+After all three raw splits exist, preprocess them in this order:
+
+```bash
+# 1. Required first: fits normalization statistics from training data only.
+python src/data_gen/preprocess.py --config configs/data/preprocess_train.yaml
+
+# 2. Reuses the frozen training statistics and writes data/processed/*/val.
+python src/data_gen/preprocess.py --config configs/data/preprocess_eval.yaml
+
+# 3. Reuses the same statistics and writes data/processed/*/test.
+python src/data_gen/preprocess.py --config configs/data/preprocess_test.yaml
+```
+
+The order matters: validation and test preprocessing fail closed if the
+training statistics are missing or do not match. Each later command replaces
+only its own split, so it does not erase the already processed training data.
+Rerunning train preprocessing replaces the per-solver processed roots, so run
+the validation and test commands again afterward.
+The complete from-scratch order is documented in the detailed command archive
+in Appendix A.
 
 The frozen H0 input inventory referenced by these configs is included in the
 repository, so the bathymetry and source caches can be regenerated on a clean
 clone. The raw solver publications and processed training arrays are generated
 artifacts and are not stored in Git.
 
-The checked-in `configs/data/preprocess.yaml` is a fail-closed test-only
-common-time rebuild. It is useful for a small data-path check, but it is not
-the complete train/validation/test preprocessing recipe; do not mistake that
-test configuration for the full paper-scale rebuild.
+The older `configs/data/preprocess.yaml` remains a standalone test-path
+configuration. Use the three split-specific configs above for the main
+train/validation/test dataset.
 
 ## 5c) Reproduce from the released benchmark data
 
@@ -472,15 +491,19 @@ normal source check:
 python scripts/make_dataset.py --config configs/data/dataset.yaml
 python scripts/make_dataset.py --config configs/data/dataset_eval.yaml
 python scripts/make_dataset.py --config configs/data/dataset_test.yaml
+
+# Preprocess in this exact order: train fits statistics; val/test reuse them.
+python src/data_gen/preprocess.py --config configs/data/preprocess_train.yaml
+python src/data_gen/preprocess.py --config configs/data/preprocess_eval.yaml
+python src/data_gen/preprocess.py --config configs/data/preprocess_test.yaml
 ```
 
 This is a large CPU/storage workflow that generates 40,500 solver
 publications. The released package already contains the processed arrays and
-selected checkpoints. The checked-in `configs/data/preprocess.yaml` is
-test-only and writes its configured test output; it is not a complete
-production train/validation/test preprocessing recipe.
+selected checkpoints.
 
-If training is intentionally being rebuilt, use the target-specific configs:
+If training is intentionally being rebuilt, the complete direct-model command
+list is in Section 6.3. The three reference-specific FNO commands are:
 
 ```bash
 python scripts/train.py --config configs/model/fno.yaml
@@ -556,23 +579,40 @@ only when you intentionally need to regenerate a particular upstream artifact.
 
 This section is intentionally expensive and is not required for a normal
 source or result check. It is a reference for rebuilding upstream artifacts,
-not the current paper-reproduction command. In particular, the checked-in
-`configs/data/preprocess.yaml` is a test-only common-time rebuild; it does
-not recreate the released production train/validation/test preprocessing.
+not the current paper-reproduction command.
 
-This is the condensed ordered run for the core paper-facing benchmark. It assumes `configs/data/dataset.yaml` is the shared-scenario dataset with hydrostatic, MUSCL-HR, and Boussinesq enabled. Use `--num-workers` and `--num-samples` as CLI overrides if the machine/run needs them; otherwise the YAML values are used. Extra diagnostics, uncertainty, arrival-map, learning-curve, and figure-export commands are listed in the detailed sections after `6.9`.
+This is the condensed ordered run for the core paper-facing benchmark. The
+three generation configs use the same solver settings but distinct
+train/validation/test scenario pools. Use `--num-workers` and `--num-samples`
+as CLI overrides if the machine/run needs them; otherwise the YAML values are
+used. Extra diagnostics, uncertainty, arrival-map, learning-curve, and
+figure-export commands are listed in the detailed sections after `6.9`.
 
 ```bash
-# 1. Raw data, same scenarios for all three solvers.
+# 1. Raw train, validation, and test data for all three solvers.
 python scripts/make_dataset.py --config configs/data/dataset.yaml
+python scripts/make_dataset.py --config configs/data/dataset_eval.yaml
+python scripts/make_dataset.py --config configs/data/dataset_test.yaml
 
-# 2. Preprocess all three solver targets with one shared split.
-python src/data_gen/preprocess.py --config configs/data/preprocess.yaml
+# 2. Preprocess in order. Train fits normalization; val/test reuse it.
+python src/data_gen/preprocess.py --config configs/data/preprocess_train.yaml
+python src/data_gen/preprocess.py --config configs/data/preprocess_eval.yaml
+python src/data_gen/preprocess.py --config configs/data/preprocess_test.yaml
 
-# 3. Train the three target-specific FNOs.
+# 3. Train the direct model matrix. Each command is independent.
 python scripts/train.py --config configs/model/fno.yaml
+python scripts/train.py --config configs/model/ffno.yaml
+python scripts/train.py --config configs/model/cnn.yaml
+python scripts/train.py --config configs/model/unet.yaml
+python scripts/train.py --config configs/model/convlstm.yaml
+python scripts/train.py --config configs/model/ufno.yaml
+python scripts/train.py --config configs/model/wno.yaml
+python scripts/train.py --config configs/model/fno_modes8.yaml
+python scripts/train.py --config configs/model/fno_modes20.yaml
 python scripts/train.py --config configs/model/fno_muscl_hr.yaml
 python scripts/train.py --config configs/model/fno_boussinesq.yaml
+python scripts/train.py --config configs/model/fno_window5_hydrostatic.yaml
+python scripts/train.py --config configs/model/ffno_window5_hydrostatic.yaml
 
 # 4. Same-target accuracy.
 python scripts/eval_accuracy.py --config configs/model/fno.yaml          --checkpoint experiments/fno/best.pt
@@ -660,7 +700,14 @@ python scripts/compare_solvers_physical.py \
 Main benchmark generation. The default paper-facing dataset is shared across hydrostatic, MUSCL-HR, and Boussinesq by sample ID:
 
 ```bash
+# Training scenarios.
 python scripts/make_dataset.py --config configs/data/dataset.yaml
+
+# Validation/evaluation scenarios.
+python scripts/make_dataset.py --config configs/data/dataset_eval.yaml
+
+# Final test scenarios.
+python scripts/make_dataset.py --config configs/data/dataset_test.yaml
 ```
 
 For a larger server run, prefer CLI overrides rather than editing committed YAML:
@@ -762,8 +809,23 @@ Quality guardrails (configured in `quality:` inside dataset YAML):
 Main benchmark preprocessing:
 
 ```bash
-python src/data_gen/preprocess.py --config configs/data/preprocess.yaml
+# Run first. This fits one normalization-statistics file per solver using only
+# the 10,000 training scenarios.
+python src/data_gen/preprocess.py --config configs/data/preprocess_train.yaml
+
+# Run second. The 1,000 evaluation scenarios become the validation split and
+# reuse the training statistics.
+python src/data_gen/preprocess.py --config configs/data/preprocess_eval.yaml
+
+# Run third. The 2,500 final-test scenarios reuse the same statistics.
+python src/data_gen/preprocess.py --config configs/data/preprocess_test.yaml
 ```
+
+Do not run validation or test preprocessing before training preprocessing.
+They intentionally refuse to fit their own normalization statistics. Their
+outputs are merged into the existing per-solver roots without replacing the
+other splits. If training preprocessing is rerun, rerun validation and test
+preprocessing afterward.
 
 Large paper-facing preprocess configs use bounded shards by default:
 - `saving.sharded: true`
@@ -772,11 +834,6 @@ Large paper-facing preprocess configs use bounded shards by default:
 
 This keeps preprocessing and training RAM-bounded. Existing model config paths ending in `.../eval_dataset.npz` still work: when the monolithic archive is absent and the split is sharded, the loader falls back to that file's parent directory and reads `shards_manifest.json`. Paths may also point directly at the split folder, e.g. `data/processed/hydrostatic/train`.
 For sharded training splits, the loader uses a shard-aware batch sampler: it shuffles shard order and sample order within each shard, but keeps each mini-batch inside one shard to avoid repeatedly reloading compressed shard files.
-
-The checked-in `configs/data/preprocess.yaml` is a fail-closed, test-only
-common-time rebuild into its configured test directory. It reuses
-frozen training normalization statistics and is not the complete
-train/validation/test preprocessing command.
 
 The preprocessor itself supports FDE-aware modes:
 - `fde.mode: single` writes one selected reference;
@@ -789,9 +846,9 @@ Boussinesq-only preprocessing for the separate diagnostic regime:
 python src/data_gen/preprocess.py --config configs/data/preprocess_boussinesq.yaml
 ```
 
-Use this only with `configs/data/dataset_boussinesq.yaml` outputs. Do not use
-the test-only `configs/data/preprocess.yaml` to rebuild the complete main
-train/validation/test dataset.
+Use this only with `configs/data/dataset_boussinesq.yaml` outputs. For the main
+benchmark, use `preprocess_train.yaml`, `preprocess_eval.yaml`, and
+`preprocess_test.yaml` in that order.
 
 Main outputs used by training/eval:
 - `data/processed/hydrostatic/{train,val,test}/shards_manifest.json`
@@ -803,23 +860,37 @@ Small/debug configs can still use the legacy single-archive format by setting `s
 
 ### 6.3 Step 3 - Train Forward Models (Required Before Eval)
 
-Train hydrostatic-label FNO:
+Train the main Hydrostatic architecture and mode comparisons:
 
 ```bash
 python scripts/train.py --config configs/model/fno.yaml
+python scripts/train.py --config configs/model/ffno.yaml
+python scripts/train.py --config configs/model/cnn.yaml
+python scripts/train.py --config configs/model/unet.yaml
+python scripts/train.py --config configs/model/convlstm.yaml
+python scripts/train.py --config configs/model/ufno.yaml
+python scripts/train.py --config configs/model/wno.yaml
+python scripts/train.py --config configs/model/fno_modes8.yaml
+python scripts/train.py --config configs/model/fno_modes20.yaml
 ```
 
-Train MUSCL-HR-label FNO:
+Train the alternate-reference FNOs:
 
 ```bash
 python scripts/train.py --config configs/model/fno_muscl_hr.yaml
-```
-
-Train Boussinesq-label FNO:
-
-```bash
 python scripts/train.py --config configs/model/fno_boussinesq.yaml
 ```
+
+Train the conditional window-5 variants:
+
+```bash
+python scripts/train.py --config configs/model/fno_window5_hydrostatic.yaml
+python scripts/train.py --config configs/model/ffno_window5_hydrostatic.yaml
+```
+
+Each command is independent; run only the model cells needed for the intended
+experiment. All of them expect the train, validation, and test preprocessing
+steps in Section 6.2 to be complete.
 
 To train replicated models sequentially, add a top-level seed list to the model
 config. The existing single `seed` behavior is unchanged when `seeds` is absent.
@@ -1258,7 +1329,10 @@ tsunami-surrogate/
 │  │  ├─ inverse_muscl_hr.yaml
 │  │  ├─ inverse_hydrostatic_sparse_gauges.yaml
 │  │  ├─ inverse_muscl_hr_sparse_gauges.yaml
-│  │  ├─ preprocess.yaml           # test-only common-time rebuild config
+│  │  ├─ preprocess_train.yaml     # fits training normalization statistics
+│  │  ├─ preprocess_eval.yaml      # reuses train stats and writes val
+│  │  ├─ preprocess_test.yaml      # reuses train stats and writes test
+│  │  ├─ preprocess.yaml           # standalone test-path compatibility config
 │  │  ├─ preprocess_boussinesq.yaml
 │  │  ├─ bathymetry.yaml           # bathymetry synthesis controls
 │  │  ├─ bathymetry_boussinesq.yaml
