@@ -14,6 +14,12 @@ Instead of running a numerical PDE solver online for every scenario, we train ne
 
 The scope is research and benchmarking, not an operational early-warning deployment system.
 
+### Representative rollout
+
+![Representative Hydrostatic rollout: bathymetry, reference elevation, prediction, and absolute error](representative_hydrostatic_surrogate_rollout.gif)
+
+This archived 50-frame Hydrostatic example shows bathymetry, the numerical-reference surface elevation, the surrogate prediction, and absolute error on a shared physical scale. It illustrates the model and visualization interface; it is not evidence from the accepted fresh-generation contract and must be regenerated after fresh training. Use the evaluation commands below for reported metrics.
+
 ## 2) Research Questions
 
 The current forward-surrogate benchmark focuses on:
@@ -39,23 +45,11 @@ Separate follow-up track (not part of the current forward-surrogate paper):
 
 ### 3a) Current benchmark status
 
-Updated: 2026-08-24.
+Updated: 2026-09-01.
 
-The selected training campaign and seven-member Hydrostatic FNO ensemble are
-complete. The repository documents both the released-result path and the
-from-scratch generation path. The current benchmark status, evaluation
-commands, and reproducibility guidance are summarized in this README.
+The canonical train, validation, and test configs now define the accepted fresh-generation contract: seeds 42/271/911; 10,000/1,000/2,500 scenarios; 50 requested times from 8.4 through 420.0; shared 384-grid master inputs; 128-grid solver inputs; buffered 192-grid computation; and central 64-grid publications for Hydrostatic, MUSCL-HR, and Boussinesq. The semantic contract hash is `288d19af5e8f5fe1658c098bf972ada97292a08fe35ed99c086406a291576d2f`.
 
-The main processed roots contain common-time payloads for
-10,000/1,000/2,500 train/validation/test scenarios per reference. Their outer
-shard manifests use an older envelope, so describe them as **current payloads
-with an older manifest envelope**. Native MUSCL-HR, strict-holdout, and rebuilt
-real-bathymetry lanes have explicit provenance.
-
-Completed training includes 11 direct models, both FNO/F-FNO window-5 models,
-six sample-scaling runs, native MUSCL-HR at 32/64/128, four strict-holdout
-models, and all seven ensemble members 11/22/33/44/55/66/77. No more
-ConvLSTM runs are planned.
+Earlier datasets, checkpoints, and evaluation results belong to the archived campaign and must not be mixed into this fresh rebuild. The current source has passed the full test suite and isolated all-reference generation/resume canaries, but fresh full generation, preprocessing, training, and evaluation are still required before manuscript values are updated. The native-resolution and real-bathymetry auxiliary generation configs remain deferred until they are independently ported to and verified against the accepted scaling contract.
 
 The final evaluation interface is deliberately small:
 
@@ -141,8 +135,7 @@ checkpoints, or evaluation archives. Do not start by running every historical
 command in Appendix A. You can either restore the released benchmark package
 or rebuild the solver data from scratch:
 
-- **Released-result path:** restore the processed data, checkpoints, and
-  archived evidence described in Section 5b.2.
+- **Archived-result inspection:** restore the processed data, checkpoints, and archived evidence described in Section 5b.2 only when inspecting the earlier campaign; do not mix those artifacts with a fresh rebuild.
 - **From-scratch path:** generate the raw solver publications with the
   split-specific configs in Section 5b.5, then continue with the detailed
   generation, preprocessing, training, and evaluation commands in Appendix A.
@@ -332,31 +325,47 @@ publication set or retrain the ensemble merely to check out the source.
 
 ### 5b.5 Generate the raw benchmark from scratch
 
-The repository also supports rebuilding the synthetic solver data instead of
-downloading the released processed archives. The full core campaign creates
-10,000 training, 1,000 validation, and 2,500 test scenarios for each of the
-three configured references (40,500 solver publications in total). This is a
-large CPU/storage workload; use the released package when you only need to
-inspect or replay the reported results.
+The repository supports rebuilding the synthetic solver data instead of downloading processed archives. The full core campaign creates 10,000 training, 1,000 validation, and 2,500 test scenarios for each of the three configured references (40,500 solver publications in total). This is a large CPU/storage workload; reserve at least 100 GB for the raw campaign and additional space for processed arrays, checkpoints, and evaluation outputs.
+
+For this core launch, use only `configs/data/dataset.yaml`, `configs/data/dataset_eval.yaml`, and `configs/data/dataset_test.yaml`. Do not launch `configs/data/multires/dataset_*.yaml` or `configs/data/real_bathymetry_v2/*_dataset.yaml`; those auxiliary configs are deliberately marked provisional until their spatial and temporal scaling is redesigned and validated.
 
 From the repository root, after completing Section 5, run the split-specific
 generation configs:
 
 ```bash
+set -o pipefail
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1 BLIS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1
+
 # Train split: 10,000 scenarios.
-python scripts/make_dataset.py --config configs/data/dataset.yaml
+python scripts/make_dataset.py --config configs/data/dataset.yaml 2>&1 | tee train-generation.log
 
 # Validation/evaluation split: 1,000 scenarios.
-python scripts/make_dataset.py --config configs/data/dataset_eval.yaml
-
-# Final test split: 2,500 scenarios.
-python scripts/make_dataset.py --config configs/data/dataset_test.yaml
+python scripts/make_dataset.py --config configs/data/dataset_eval.yaml 2>&1 | tee validation-generation.log
 ```
 
-These commands write raw publications and provenance manifests under
-`data/train/`, `data/eval/`, and `data/test/`. They can be resumed with
-`--continue` after an interruption; keep the same config and sample-count
-overrides when resuming.
+These commands write raw publications and provenance manifests under `data/train/` and `data/eval/`. Add `--continue` to the same command after an interruption and use `tee -a` to append to the existing log; completed publications are validated and reused. Keep the seed-911 final test split unopened until the model matrix and analysis choices are frozen, then generate it with `python scripts/make_dataset.py --config configs/data/dataset_test.yaml 2>&1 | tee test-generation.log`.
+
+Do not use a reduced `--num-samples` value against a canonical split root if that root will later be expanded to the full split: the paired-input inventory intentionally freezes the configured roster. Small canaries must use isolated output, bathymetry, source, manifest, and paired-inventory paths; the full production command should then start from the empty canonical root.
+
+An isolated eight-worker canary can be run without touching the canonical roots:
+
+```bash
+CANARY_ROOT="$(mktemp -d /tmp/tsunami-surrogate-canary.XXXXXX)"
+python scripts/make_dataset.py \
+  --config configs/data/dataset.yaml \
+  --num-samples 8 \
+  --num-workers 8 \
+  --stop-at 8 \
+  --bathymetry-dir "$CANARY_ROOT/bathymetry" \
+  --source-dir "$CANARY_ROOT/sources" \
+  --output-dir "$CANARY_ROOT/raw" \
+  --manifest-path "$CANARY_ROOT/synthetic/scenario_manifest.jsonl" \
+  --paired-inventory-path "$CANARY_ROOT/synthetic/native_input_inventory.jsonl" \
+  2>&1 | tee "$CANARY_ROOT/generation.log"
+```
+
+This canary root is disposable and must not be copied into `data/train/`. A successful run produces eight scenario rows, eight rows in each solver manifest, 24 quality-`ok` publications, and one complete operational shard bound to the accepted contract hash.
 
 After all three raw splits exist, preprocess them in this order:
 
@@ -371,18 +380,7 @@ python src/data_gen/preprocess.py --config configs/data/preprocess_eval.yaml
 python src/data_gen/preprocess.py --config configs/data/preprocess_test.yaml
 ```
 
-The order matters: validation and test preprocessing fail closed if the
-training statistics are missing or do not match. Each later command replaces
-only its own split, so it does not erase the already processed training data.
-Rerunning train preprocessing replaces the per-solver processed roots, so run
-the validation and test commands again afterward.
-The complete from-scratch order is documented in the detailed command archive
-in Appendix A.
-
-The frozen H0 input inventory referenced by these configs is included in the
-repository, so the bathymetry and source caches can be regenerated on a clean
-clone. The raw solver publications and processed training arrays are generated
-artifacts and are not stored in Git.
+The order matters: validation and test preprocessing fail closed if the training statistics are missing or do not match. Each later command replaces only its own split, so it does not erase the already processed training data. Rerunning train preprocessing replaces the per-solver processed roots, so run the validation and test commands again afterward. The raw solver publications and processed training arrays are generated artifacts and are not stored in Git.
 
 The older `configs/data/preprocess.yaml` remains a standalone test-path
 configuration. Use the three split-specific configs above for the main
@@ -487,20 +485,18 @@ These commands are for intentionally rebuilding upstream artifacts, not for a
 normal source check:
 
 ```bash
-# 10,000 train, 1,000 validation, and 2,500 test scenarios.
+# Generate and preprocess train/validation first.
 python scripts/make_dataset.py --config configs/data/dataset.yaml
 python scripts/make_dataset.py --config configs/data/dataset_eval.yaml
-python scripts/make_dataset.py --config configs/data/dataset_test.yaml
-
-# Preprocess in this exact order: train fits statistics; val/test reuse them.
 python src/data_gen/preprocess.py --config configs/data/preprocess_train.yaml
 python src/data_gen/preprocess.py --config configs/data/preprocess_eval.yaml
+
+# Freeze model and analysis choices, then open and preprocess the final test.
+python scripts/make_dataset.py --config configs/data/dataset_test.yaml
 python src/data_gen/preprocess.py --config configs/data/preprocess_test.yaml
 ```
 
-This is a large CPU/storage workflow that generates 40,500 solver
-publications. The released package already contains the processed arrays and
-selected checkpoints.
+This is a large CPU/storage workflow that generates 40,500 solver publications.
 
 If training is intentionally being rebuilt, the complete direct-model command
 list is in Section 6.3. The three reference-specific FNO commands are:
@@ -706,20 +702,16 @@ python scripts/make_dataset.py --config configs/data/dataset.yaml
 # Validation/evaluation scenarios.
 python scripts/make_dataset.py --config configs/data/dataset_eval.yaml
 
-# Final test scenarios.
+# Final test scenarios, only after model and analysis choices are frozen.
 python scripts/make_dataset.py --config configs/data/dataset_test.yaml
 ```
 
-For a larger server run, prefer CLI overrides rather than editing committed YAML:
-
-```bash
-python scripts/make_dataset.py --config configs/data/dataset.yaml --num-workers 64
-```
+The accepted launch policy uses the configured eight single-thread workers and `max_in_flight: 8`. Measure the target server with the isolated eight-scenario canary before changing this policy, and never change effective worker or path overrides between an original launch and its resume.
 
 `make_dataset.py` runs in three stages:
-- stage 1: generate/cache all bathymetry samples first (default cache: `data/bathymetry`)
-- stage 2: generate/cache all source samples first (default cache: `data/sources`)
-- stage 3: load cached bathymetry + source pairs and run configured FDE rollouts from `fdes.enabled`
+- stage 1: generate/cache all bathymetry samples for the selected split
+- stage 2: generate/cache all source samples for the selected split
+- stage 3: load the paired 384-grid master inputs, solve on the buffered 192-grid domain derived from 128-grid solver inputs, and publish the central 64-grid trajectories for every configured FDE
 
 Raw rollouts are separated by split and solver under `data/{train,eval,test}/raw/`:
 - `data/<split>/raw/hydrostatic/samples/...`
@@ -734,36 +726,7 @@ Runnable FDEs currently include `swe_hydrostatic`, `swe_muscl_hr`, and `boussine
 Default `configs/data/dataset.yaml` enables all three so the raw targets are comparable on the same bathymetry/source scenarios.
 Legacy alias `swe_muscl` is still accepted and automatically mapped to `swe_muscl_hr` for backward compatibility.
 
-Storage-limited server workflow:
-- On the server, generate only hydrostatic + MUSCL-HR if storage is tight.
-- Download the relevant split roots under `data/<split>/bathymetry`,
-  `data/<split>/sources`, `data/<split>/raw`, and `data/<split>/synthetic`.
-- Locally, run the default all-three config with `--continue`; completed hydrostatic/MUSCL folders are reused and only missing Boussinesq folders are generated.
-- Rebuild manifests after the local completion so the scenario manifest records all three solvers.
-- If you pass `--num-samples` on the server, pass the same value again for the local `--continue` run.
-
-One way to make the temporary server-only hydro/MUSCL config without committing another YAML file:
-
-```bash
-python - <<'PY'
-from pathlib import Path
-import yaml
-
-cfg = yaml.safe_load(Path("configs/data/dataset.yaml").read_text())
-cfg["fdes"]["enabled"] = ["swe_hydrostatic", "swe_muscl_hr"]
-cfg["fdes"]["primary"] = "swe_hydrostatic"
-Path("/tmp/dataset_hydro_muscl.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
-PY
-
-python scripts/make_dataset.py --config /tmp/dataset_hydro_muscl.yaml --num-workers 64
-```
-
-Then, after copying the generated folders down locally:
-
-```bash
-python scripts/make_dataset.py --config configs/data/dataset.yaml --continue
-python scripts/make_dataset.py --config configs/data/dataset.yaml --rebuild-manifests
-```
+Do not split the three-solver roster across temporary configs for the corrected campaign. Each canonical publication is bound to the complete config, code state, paired-input inventory, and solver roster; use storage large enough for the full split and resume only with the same canonical config.
 
 Do not use `configs/data/dataset_boussinesq.yaml` for the main same-scenario paper dataset. That file intentionally uses a separate diagnostic Boussinesq regime (`data/raw_bouss`, different bathymetry/source configs, and different depth/source scaling).
 
@@ -773,26 +736,7 @@ Resume an interrupted run:
 python scripts/make_dataset.py --config configs/data/dataset.yaml --continue
 ```
 
-`--continue` rolls back to the last completed worker batch boundary before resuming (using `num_workers`) to reduce partial-batch holes after interruptions.
-During resume, per-FDE sample folders that are already complete are reused as-is (not overwritten) unless `--allow-override` is set.
-
-Resume from an explicit sample index (1-based):
-
-```bash
-python scripts/make_dataset.py --config configs/data/dataset.yaml --start-at 142
-```
-
-Force regeneration in a range even if outputs already exist:
-
-```bash
-python scripts/make_dataset.py --config configs/data/dataset.yaml --start-at 142 --allow-override
-```
-
-Rebuild manifests from already-generated sample folders:
-
-```bash
-python scripts/make_dataset.py --config configs/data/dataset.yaml --rebuild-manifests
-```
+For accepted common-time generation, `--continue` validates from sample 1, reuses every compatible completed publication byte-for-byte, and generates only missing publications. `--allow-override` is forbidden for frozen paired inputs, and `--rebuild-manifests` is forbidden because reconstructing from `meta.json` would discard frozen lineage.
 
 Quality guardrails (configured in `quality:` inside dataset YAML):
 - `on_violation: warn|fail`
@@ -1025,7 +969,7 @@ python scripts/eval_resolution_transfer.py \
 Output file:
 - `.../eval_resolution_proxy/resolution_transfer_proxy.json`
 
-### 6.8 Step 8 - Real-Resolution Benchmark (Native 32/64/128)
+### 6.8 Deferred Real-Resolution Benchmark (Native 32/64/128)
 
 Prerequisites:
 - generate native-grid forward data per resolution
@@ -1033,19 +977,9 @@ Prerequisites:
 - use the completed MUSCL-HR checkpoints from the final paper roster for
   cross-resolution evaluation
 
-The raw native-resolution configs use the common-time three-reference
-policy. Every resolution deterministically regenerates the same seed-763
-`128 x 128`
-master bathymetry/source scenario and area-averages that master to the target
-grid. Before the first rollout, `make_dataset.py` freezes and verifies the full
-1,000-scenario input inventory under `data/res*/synthetic/`. Hydrostatic and
-MUSCL-HR use radiation boundaries; Boussinesq uses the accepted open-boundary,
-sparse-LU policy. All sponges remain outside the published crop.
-Raw generation and preprocessing cover all three references, but the final
-paper model/evaluation roster uses MUSCL-HR only. Dedicated Boussinesq
-native-resolution model/evaluation configs are not frozen.
+This auxiliary lane still encodes the superseded spatial/time scaling and is not approved for the fresh core rebuild. Its configs are marked provisional so an ordinary `make_dataset.py` launch fails closed. Port and validate the shared-master construction, physical scaling, requested times, solver spacing, and normalization lineage before regenerating or using this lane in the revised manuscript.
 
-Generate native-grid raw datasets:
+Historical command shape, retained for reference only:
 
 ```bash
 python scripts/make_dataset.py --config configs/data/multires/dataset_32.yaml
@@ -1053,13 +987,9 @@ python scripts/make_dataset.py --config configs/data/multires/dataset_64.yaml
 python scripts/make_dataset.py --config configs/data/multires/dataset_128.yaml
 ```
 
-On a new machine, run one fresh scenario first by adding `--stop-at 1`. After
-checking its 50 timestamps, quality status, crop, provenance, and peak memory,
-resume the exact same config with `--continue`. The conservative 128-grid
-default is eight single-thread workers; the local full-horizon canary for its
-actual `192 x 192` computational grid peaked near 208 MiB for one worker.
+Do not run these commands for the corrected campaign yet. After this lane is redesigned, its first gate must be an isolated canary that checks the new timestamps, quality status, crop, provenance, convergence behavior, and peak memory before any full native-resolution generation.
 
-Preprocess each native-grid dataset:
+Historical preprocessing command shape:
 
 ```bash
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_32.yaml
@@ -1235,10 +1165,11 @@ python scripts/visualize_rollout.py \
   --checkpoint experiments/fno/best.pt \
   --processed-path data/processed/hydrostatic/test \
   --raw-dir data/test/raw/hydrostatic/samples \
-  --sample-index 0
+  --sample-index 1
 ```
 
 Optional visualization controls:
+- `--sample-index <n>` is 1-based, so `1` selects `sample_000001`
 - `--wave-3d-mode eta|overlay` for eta-only 3D surfaces or bathymetry overlays
 - `--wave-scale <float>` to control vertical exaggeration in 3D plots (auto if omitted)
 - target/prediction frames are denormalized automatically when target stats exist in the processed archive
