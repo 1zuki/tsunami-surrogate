@@ -61,11 +61,29 @@ def test_config_owns_dataset_identity_and_layout(tmp_path: Path) -> None:
     assert not hasattr(args, "split")
 
 
+def test_paired_inventory_path_override_is_explicit(tmp_path: Path) -> None:
+    inventory = tmp_path / "native-inputs.jsonl"
+    cfg = {
+        "dataset": {},
+        "paired_inputs": {
+            "enabled": True,
+            "inventory_path": "old.jsonl",
+        },
+    }
+    args = _build_parser().parse_args(
+        ["--paired-inventory-path", str(inventory)]
+    )
+
+    _apply_overrides(cfg, args)
+
+    assert cfg["paired_inputs"]["inventory_path"] == str(inventory)
+
+
 def test_common_time_configs_define_split_seed_count_and_paths() -> None:
     expected = {
         "dataset.yaml": ("train", 42, 10000),
-        "dataset_eval.yaml": ("eval", 69, 1000),
-        "dataset_test.yaml": ("test", 367, 2500),
+        "dataset_eval.yaml": ("eval", 271, 1000),
+        "dataset_test.yaml": ("test", 911, 2500),
     }
     for name, (split, seed, count) in expected.items():
         cfg = _load_config(ROOT / "configs/data" / name)
@@ -86,6 +104,25 @@ def test_common_time_configs_define_split_seed_count_and_paths() -> None:
             ]
             == "sparse_lu"
         )
+        assert cfg["paired_inputs"]["master_shape"] == [384, 384]
+        assert cfg["paired_inputs"]["solver_shape"] == [128, 128]
+        assert cfg["paired_inputs"]["target_shape"] == [64, 64]
+        assert cfg["computational_domain"]["buffer_cells"] == 32
+        assert cfg["requested_output"]["start"] == 8.4
+        assert cfg["requested_output"]["horizon"] == 420.0
+
+
+def test_deferred_auxiliary_configs_are_not_accepted_for_production() -> None:
+    deferred = [
+        *(ROOT / "configs/data/multires").glob("dataset_*.yaml"),
+        *(ROOT / "configs/data/real_bathymetry_v2").glob("*_dataset.yaml"),
+    ]
+    assert len(deferred) == 7
+    for path in sorted(deferred):
+        requested = _load_config(path)["requested_output"]
+        assert requested["status"] == "provisional", path
+        assert requested["execution_scope"] == "preparation-only", path
+        assert requested["acknowledge_provisional"] is False, path
 
 
 def test_saved_step_configs_do_not_target_canonical_split_data() -> None:

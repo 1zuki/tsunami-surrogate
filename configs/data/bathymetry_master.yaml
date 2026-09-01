@@ -1,5 +1,5 @@
-nx: 64
-ny: 64
+nx: 384
+ny: 384
 seed: null
 
 base:
@@ -21,7 +21,7 @@ ridges:
 noise:
   enabled: true
   scale_range: [0.005, 0.03]
-  smoothing_sigma: [2.5, 6.0]
+  smoothing_sigma: [15.0, 36.0]
 
 normalization:
   depth_min: -10.0
@@ -29,5 +29,5 @@ normalization:
 
 terrain:
   warp_scale: 0.03
-  warp_sigma: 4.0
+  warp_sigma: 24.0
   bias_strength: 0.45

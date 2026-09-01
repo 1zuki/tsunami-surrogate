@@ -109,9 +109,66 @@ class SourceGenerator:
         self.smoothing_sigma_f = _parse_array_float("fault", "smoothing_sigma", [0.01, 0.03])
 
         # rough
-        self.enabled_r = bool(cfg.get("rough", {}).get("enabled", True))
+        rough_cfg = cfg.get("rough", {})
+        self.enabled_r = bool(rough_cfg.get("enabled", True))
         self.amp_range_r = _parse_array_float("rough", "amp_range", [0.5, 2.0])
         self.smoothing_sigma_r = _parse_array_float("rough", "smoothing_sigma", [1.0, 3.0])
+        self.rough_model = str(
+            rough_cfg.get("model", "legacy_multiscale")
+        ).strip().lower()
+        if self.rough_model not in ("legacy_multiscale", "correlated_grf"):
+            raise ValueError(
+                "rough.model must be one of: legacy_multiscale, correlated_grf"
+            )
+        self.rough_correlation_length_range = _parse_array_float(
+            "rough", "correlation_length_range", [0.10, 0.20]
+        )
+        if (
+            not np.isfinite(self.rough_correlation_length_range).all()
+            or self.rough_correlation_length_range[0] <= 0.0
+            or self.rough_correlation_length_range[1] > 1.0
+        ):
+            raise ValueError(
+                "rough.correlation_length_range must lie in (0, 1]"
+            )
+        self.rough_rms_range = _parse_array_float(
+            "rough", "rms_range", [0.05, 0.15]
+        )
+        if (
+            not np.isfinite(self.rough_rms_range).all()
+            or self.rough_rms_range[0] <= 0.0
+        ):
+            raise ValueError("rough.rms_range must contain positive finite values")
+        self.rough_fine_amplitude_fraction = float(
+            rough_cfg.get("fine_amplitude_fraction", 0.0)
+        )
+        if (
+            not np.isfinite(self.rough_fine_amplitude_fraction)
+            or not 0.0 <= self.rough_fine_amplitude_fraction <= 1.0
+        ):
+            raise ValueError("rough.fine_amplitude_fraction must be in [0, 1]")
+        self.rough_fine_correlation_fraction = _parse_array_float(
+            "rough", "fine_correlation_fraction", [0.50, 0.65]
+        )
+        if (
+            not np.isfinite(self.rough_fine_correlation_fraction).all()
+            or self.rough_fine_correlation_fraction[0] <= 0.0
+            or self.rough_fine_correlation_fraction[1] > 1.0
+        ):
+            raise ValueError(
+                "rough.fine_correlation_fraction must lie in (0, 1]"
+            )
+        self.rough_min_fine_sigma_cells = float(
+            rough_cfg.get("min_fine_sigma_cells", 2.0)
+        )
+        if (
+            not np.isfinite(self.rough_min_fine_sigma_cells)
+            or self.rough_min_fine_sigma_cells <= 0.0
+        ):
+            raise ValueError("rough.min_fine_sigma_cells must be positive")
+        self.rough_add_global_noise = bool(
+            rough_cfg.get("add_global_noise", True)
+        )
 
         # okada-like
         self.enabled_o = bool(cfg.get("okada", {}).get("enabled", True))
@@ -228,7 +285,12 @@ class SourceGenerator:
         else: # okada-like
             src = self._gen_okada_like()
 
-        src = self.build_output(src)
+        src = self.build_output(
+            src,
+            add_noise=not (
+                s_type == "rough" and not self.rough_add_global_noise
+            ),
+        )
 
         return src, s_type
 
@@ -253,30 +315,32 @@ class SourceGenerator:
         return self.rng.uniform(range_array[0], range_array[1])
 
     # generator
+    def _gen_gaussian_component(self) -> np.ndarray:
+        x0 = self.rng.uniform(0.0, 1.0)
+        y0 = self.rng.uniform(0.0, 1.0)
+        sigma_y = self._sample(self.sigma_range_g)
+        sigma_x = self._sample(self.sigma_range_g)
+        amp = self._sample(self.amp_range_g)
+        return self._gaussian_2d(x0, y0, sigma_x, sigma_y, amp)
+
     def _gen_gaussian(self) -> np.ndarray:
-        n_gaussian = self.rng.integers(self.num_range_g[0], self.num_range_g[1] + 1)
+        n_gaussian = self.rng.integers(
+            self.num_range_g[0],
+            self.num_range_g[1] + 1,
+        )
         src = np.zeros((self.nx, self.ny))
-
         for _ in range(n_gaussian):
-            x0 = self.rng.uniform(0.0, 1.0)
-            y0 = self.rng.uniform(0.0, 1.0)
-
-            sigma_y = self._sample(self.sigma_range_g)
-            sigma_x = self._sample(self.sigma_range_g)
-
-            amp = self._sample(self.amp_range_g)
-
-            src += self._gaussian_2d(x0, y0, sigma_x, sigma_y, amp)
-
+            src += self._gen_gaussian_component()
         return src
 
     def _gen_multi_gaussian(self) -> np.ndarray:
-        n_multi_gauss = self.rng.integers(self.num_sources[0], self.num_sources[1] + 1)
+        n_multi_gauss = self.rng.integers(
+            self.num_sources[0],
+            self.num_sources[1] + 1,
+        )
         field = np.zeros((self.nx, self.ny))
-
         for _ in range(n_multi_gauss):
-            field += self._gen_gaussian()
-
+            field += self._gen_gaussian_component()
         return field
 
     def _gen_dipole(self) -> np.ndarray:
@@ -390,6 +454,9 @@ class SourceGenerator:
         return uz
 
     def _gen_rough(self) -> np.ndarray:
+        if self.rough_model == "correlated_grf":
+            return self._gen_correlated_rough()
+
         amp = self._sample(self.amp_range_r)
         sigma_big = self._sample(self.smoothing_sigma_r)
 
@@ -405,6 +472,48 @@ class SourceGenerator:
         rough_field = coarse + micro
 
         return rough_field
+
+    def _gen_correlated_rough(self) -> np.ndarray:
+        """Generate a resolution-aware, explicitly amplitude-controlled GRF."""
+
+        correlation_length = self._sample(
+            self.rough_correlation_length_range
+        )
+        mean_grid_intervals = 0.5 * (
+            (self.nx - 1) + (self.ny - 1)
+        )
+        sigma_big = float(correlation_length * mean_grid_intervals)
+        field = gaussian_filter(
+            self.rng.standard_normal((self.nx, self.ny)),
+            sigma=sigma_big,
+            mode="reflect",
+        )
+
+        if self.rough_fine_amplitude_fraction > 0.0:
+            fine_fraction = self._sample(
+                self.rough_fine_correlation_fraction
+            )
+            sigma_small = max(
+                self.rough_min_fine_sigma_cells,
+                float(sigma_big * fine_fraction),
+            )
+            fine = gaussian_filter(
+                self.rng.standard_normal((self.nx, self.ny)),
+                sigma=sigma_small,
+                mode="reflect",
+            )
+            field = (
+                field
+                + self.rough_fine_amplitude_fraction * fine
+            )
+
+        field = np.asarray(field, dtype=float)
+        field -= float(np.mean(field))
+        field_rms = float(np.sqrt(np.mean(field * field)))
+        if not np.isfinite(field_rms) or field_rms <= 0.0:
+            raise RuntimeError("correlated rough field has invalid RMS")
+        target_rms = float(self._sample(self.rough_rms_range))
+        return field * (target_rms / field_rms)
 
     def add_noise(self, h: np.ndarray) -> np.ndarray:
         scale = self._sample(self.scale_range_n)
@@ -424,8 +533,13 @@ class SourceGenerator:
 
         return norm * (self.height_scale[1] - self.height_scale[0]) + self.height_scale[0]
 
-    def build_output(self, h: np.ndarray) -> np.ndarray:
-        if self.enabled_n:
+    def build_output(
+        self,
+        h: np.ndarray,
+        *,
+        add_noise: bool = True,
+    ) -> np.ndarray:
+        if self.enabled_n and add_noise:
             h = self.add_noise(h)
 
         if self.normalize_mode == "per_sample":

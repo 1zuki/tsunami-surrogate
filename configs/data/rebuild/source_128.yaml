@@ -1,5 +1,5 @@
-nx: 64
-ny: 64
+nx: 128
+ny: 128
 seed: null
 
 source_type: ["gaussian", "multi-gauss", "okada-like", "dipole", "fault", "rough"]
@@ -22,7 +22,7 @@ okada:
   angle_range: [0.0, 3.14]
   dip_range: [0.0, 0.6]
   depth_range: [0.06, 0.30]
-  smoothing_sigma: [1.5, 2.0]
+  smoothing_sigma: [3.0, 4.0]
 
 dipole:
   enabled: true
@@ -37,13 +37,13 @@ fault:
   length_range: [0.2, 0.8]
   width_range: [0.20, 0.27]
   angle_range: [0.0, 3.14]
-  smoothing_sigma: [0.01, 0.03]
+  smoothing_sigma: [0.02, 0.06]
 
 rough:
   enabled: true
   model: correlated_grf
   amp_range: [0.08, 0.45]
-  smoothing_sigma: [0.4, 2.0]
+  smoothing_sigma: [0.8, 4.0]
   correlation_length_range: [0.10, 0.20]
   rms_range: [0.05, 0.15]
   fine_amplitude_fraction: 0.0
@@ -54,7 +54,7 @@ rough:
 noise:
   enabled: false
   scale_range: [0.005, 0.035]
-  smoothing_sigma: [1.0, 3.0]
+  smoothing_sigma: [2.0, 6.0]
 
 normalization:
   mode: none

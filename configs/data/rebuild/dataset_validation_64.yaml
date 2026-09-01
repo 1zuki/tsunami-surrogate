@@ -1,10 +1,10 @@
 configs:
-  bathymetry: configs/data/bathymetry.yaml
-  source: configs/data/source.yaml
+  bathymetry: configs/data/rebuild/bathymetry_64.yaml
+  source: configs/data/rebuild/source_64.yaml
 
 dataset:
-  num_samples: 10000
-  seed: 42
+  num_samples: 1000
+  seed: 271
   num_workers: 8
   n_steps: 250
   save_every: 5
@@ -14,10 +14,10 @@ dataset:
   sea_level_offset: 0.0
   source_strength_range: [0.15, 0.30]
   max_initial_eta_over_depth: 0.10
-  bathymetry_dir: data/train/bathymetry
-  source_dir: data/train/sources
-  output_dir: data/train/raw
-  manifest_path: data/train/synthetic/scenario_manifest.jsonl
+  bathymetry_dir: rebuild/aspect2400-roughgrf-r1/data/validation/bathymetry
+  source_dir: rebuild/aspect2400-roughgrf-r1/data/validation/sources
+  output_dir: rebuild/aspect2400-roughgrf-r1/data/validation/raw
+  manifest_path: rebuild/aspect2400-roughgrf-r1/data/validation/synthetic/scenario_manifest.jsonl
   copy_configs: true
 
 requested_output:
@@ -25,7 +25,7 @@ requested_output:
   schema_id: tsunami-surrogate.common-time-v2.contract.v1
   status: accepted
   execution_scope: production
-  split: train
+  split: eval
   start: 8.4
   step: 8.4
   count: 50
@@ -45,14 +45,14 @@ requested_output:
 
 paired_inputs:
   enabled: true
-  lineage_id: aspect2400-roughgrf-r1-train-seed42-master384-solver128
+  lineage_id: aspect2400-roughgrf-r1-validation-seed271-master384-solver128
   master_shape: [384, 384]
   solver_shape: [128, 128]
   target_shape: [64, 64]
   downsample_method: block_mean_float64_v1
-  master_bathymetry_config: configs/data/bathymetry_master.yaml
-  master_source_config: configs/data/source_master.yaml
-  inventory_path: data/train/synthetic/native_input_inventory.jsonl
+  master_bathymetry_config: configs/data/rebuild/bathymetry_384.yaml
+  master_source_config: configs/data/rebuild/source_384.yaml
+  inventory_path: rebuild/aspect2400-roughgrf-r1/data/validation/synthetic/native_input_inventory.jsonl
   solver_input: solver
   source_taper_stage: master
   rough_zero_mean_rms_after_taper: true

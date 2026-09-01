@@ -76,6 +76,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bathymetry-dir")
     parser.add_argument("--source-dir")
     parser.add_argument("--manifest-path")
+    parser.add_argument("--paired-inventory-path")
     parser.add_argument("--continue", dest="continue_from_last", action="store_true")
     parser.add_argument("--start-at", type=int)
     parser.add_argument("--stop-at", type=int)
@@ -108,6 +109,13 @@ def _apply_overrides(cfg: dict[str, Any], args: argparse.Namespace) -> None:
         value = getattr(args, argument)
         if value is not None:
             dataset[argument] = str(value)
+    if args.paired_inventory_path is not None:
+        paired = cfg.get("paired_inputs")
+        if not isinstance(paired, dict) or not bool(paired.get("enabled", False)):
+            raise SystemExit(
+                "--paired-inventory-path requires paired_inputs.enabled=true"
+            )
+        paired["inventory_path"] = str(args.paired_inventory_path)
 
     operations = cfg.setdefault("operations", {})
     if args.max_in_flight is not None:
@@ -152,19 +160,13 @@ def main() -> None:
         builder = TsunamiDatasetBuilder(
             str(temporary_config), provenance_config_path=config_path
         )
-        requested = cfg.get("requested_output")
-        acknowledge = bool(args.acknowledge_provisional) or (
-            isinstance(requested, dict)
-            and bool(requested.get("enabled", False))
-            and str(requested.get("status", "provisional")) == "provisional"
-        )
         builder.run(
             continue_from_last=bool(args.continue_from_last),
             start_at=args.start_at,
             stop_at=args.stop_at,
             allow_override=bool(args.allow_override),
             rebuild_manifests=bool(args.rebuild_manifests),
-            acknowledge_provisional=acknowledge,
+            acknowledge_provisional=bool(args.acknowledge_provisional),
         )
         print(f"Dataset generation complete using {config_path}")
     finally:

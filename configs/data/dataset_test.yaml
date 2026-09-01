@@ -1,20 +1,19 @@
-# Common-time final-test dataset configuration. This file defines the split,
-# seed, sample count, and all output paths used by scripts/make_dataset.py.
 configs:
   bathymetry: configs/data/bathymetry.yaml
   source: configs/data/source.yaml
 
 dataset:
   num_samples: 2500
-  seed: 367
-  num_workers: 10
+  seed: 911
+  num_workers: 8
   n_steps: 250
   save_every: 5
   auto_dt: true
   target_cfl: 0.45
   include_initial_state: true
   sea_level_offset: 0.0
-  source_strength_range: [0.45, 0.85]
+  source_strength_range: [0.15, 0.30]
+  max_initial_eta_over_depth: 0.10
   bathymetry_dir: data/test/bathymetry
   source_dir: data/test/sources
   output_dir: data/test/raw
@@ -27,27 +26,49 @@ requested_output:
   status: accepted
   execution_scope: production
   split: test
-  start: 0.0035
-  step: 0.0035
+  start: 8.4
+  step: 8.4
   count: 50
-  horizon: 0.175
+  horizon: 420.0
   max_natural_steps: 20000
   collect_natural_step_health: true
   eta_primary: true
   debug_full_states: false
   acknowledge_provisional: false
+  physical_scaling:
+    horizontal_scale: 2400.0
+    time_scale: 2400.0
+    vertical_scale: 1.0
+    aspect_ratio: 2400.0
+    length_unit: m
+    time_unit: s
 
-authoritative_inputs:
-  inventory_path: artifacts/common_time_v2/h0/830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b/h0_input_inventory.jsonl
-  inventory_sha256: c4f34bc504ca60d4b1c74fc88b7c6c239ae1dbbaa0f15f3bf2c501038eb438e3
-  h0_contract_hash: 830f219cee525d08adb3567c1b135da2ae25572d9f246477ca5f7687f07ecb6b
-  require_exact_arrays: true
-  allow_input_generation: true
+paired_inputs:
+  enabled: true
+  lineage_id: aspect2400-roughgrf-r1-test-seed911-master384-solver128
+  master_shape: [384, 384]
+  solver_shape: [128, 128]
+  target_shape: [64, 64]
+  downsample_method: block_mean_float64_v1
+  master_bathymetry_config: configs/data/bathymetry_master.yaml
+  master_source_config: configs/data/source_master.yaml
+  inventory_path: data/test/synthetic/native_input_inventory.jsonl
+  solver_input: solver
+  source_taper_stage: master
+  rough_zero_mean_rms_after_taper: true
+  source_spectral_acceptance:
+    enabled: true
+    stage: post_master_taper_solver
+    reference_shape: [128, 128]
+    min_points_per_p90_wavelength: 32.0
+    comparison_tolerance: 1.0e-9
+    preserve_source_family: true
+    max_attempts: 64
 
 computational_domain:
   enabled: true
-  buffer_cells: 16
-  source_taper_cells: 8
+  buffer_cells: 32
+  source_taper_cells: 16
   bathymetry_extension: edge
   output_crop: central
 
@@ -60,30 +81,28 @@ solver_profiles:
     cfl: 0.1125
     boundary: radiation
     sponge_time_mode: elapsed_time_consistent
-    sponge_reference_dt: 0.0035
+    sponge_reference_dt: 8.4
   swe_muscl_hr:
     cfl: 0.225
     boundary: radiation
     sponge_time_mode: elapsed_time_consistent
-    sponge_reference_dt: 0.0035
+    sponge_reference_dt: 8.4
   boussinesq:
     cfl: 0.35
     boundary: open
     depth_scale: 1.0
     linear_solver_preconditioner: sparse_lu
     sponge_time_mode: elapsed_time_consistent
-    sponge_reference_dt: 0.0035
+    sponge_reference_dt: 8.4
     filter_time_mode: disabled
-    filter_reference_dt: 0.0035
+    filter_reference_dt: 8.4
     cg_failure_mode: strict_v2
 
 operations:
   enabled: true
   progress_every: 1
   solver_progress: true
-  max_in_flight: 10
-  # Optional provenance fields belong here when known: cloud_provider,
-  # cloud_zone, machine_type, storage_class, and hourly_cost_usd.
+  max_in_flight: 8
 
 quality:
   on_violation: fail
@@ -99,13 +118,11 @@ quality:
   max_post_step_cfl_ratio: 1.01
 
 solver:
-  nx: 96
-  ny: 96
-  # Preserve the original 64x64 physical resolution; the extra cells enlarge
-  # the computational domain rather than refining the central crop.
-  dx: 0.015625
-  dy: 0.015625
-  dt: 0.001
+  nx: 192
+  ny: 192
+  dx: 18.75
+  dy: 18.75
+  dt: 2.4
   g: 9.81
   rho: 1000
   cfl: 0.45
@@ -113,7 +130,7 @@ solver:
   max_velocity: 30.0
   boundary: open
   use_sponge: true
-  sponge_width: 16
+  sponge_width: 32
   sponge_min_factor: 0.8
   sponge_axes: xy
   sponge_profile: cosine

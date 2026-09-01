@@ -22,6 +22,9 @@ from src.evaluation.uncertainty import (
 )
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 def _suite_contract() -> dict:
     return {
         "suite_id": "test-suite",
@@ -188,6 +191,16 @@ def test_cleanup_patterns_only_cover_validated_replacement_groups() -> None:
 
 def test_live_manifest_declares_paper_and_numerical_rerun_cells() -> None:
     contract = load_suite_contract("configs/eval/final_v2_suite.yaml")
+    missing_holdouts = [
+        ROOT / str(row["manifest"])
+        for row in contract.get("strict_holdouts", [])
+        if not (ROOT / str(row["manifest"])).is_file()
+    ]
+    if missing_holdouts:
+        pytest.skip(
+            "requires generated strict-holdout manifests "
+            f"({len(missing_holdouts)} missing)"
+        )
     manifest = build_manifest(
         contract,
         run_id="paper-test",

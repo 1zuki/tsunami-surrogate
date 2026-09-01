@@ -57,6 +57,7 @@ class PreprocessConfig:
     sharded: bool
     shard_size: int
     write_legacy_eval_archive: bool
+    publication_mode: str # replace / merge_split
 
     export_eval_arrays: bool
     eval_input_order: List[str]
@@ -151,6 +152,13 @@ class TsunamiPreprocessor:
                 ),
             )
         )
+        publication_mode = str(
+            saving_cfg.get("publication_mode", "replace")
+        ).strip().lower()
+        if publication_mode not in {"replace", "merge_split"}:
+            raise ValueError(
+                "saving.publication_mode must be one of: replace, merge_split"
+            )
 
         eval_cfg = cfg.get(
             "eval_export",
@@ -206,6 +214,29 @@ class TsunamiPreprocessor:
 
         if not np.isclose(total, 1.0):
             raise ValueError("splits ratio must sum to 1")
+        if min(train_ratio, val_ratio, test_ratio) < 0.0:
+            raise ValueError("split ratios must be non-negative")
+        active_splits = [
+            name
+            for name, ratio in (
+                ("train", train_ratio),
+                ("val", val_ratio),
+                ("test", test_ratio),
+            )
+            if ratio > 0.0
+        ]
+        if publication_mode == "merge_split":
+            if len(active_splits) != 1:
+                raise ValueError(
+                    "saving.publication_mode=merge_split requires exactly one "
+                    "non-zero split"
+                )
+            if active_splits[0] == "train":
+                raise ValueError(
+                    "Training preprocessing must use publication_mode=replace "
+                    "because fitting new normalization statistics invalidates "
+                    "existing validation/test splits"
+                )
 
         self.cfg = PreprocessConfig(
             raw_dir=raw_dir,
@@ -234,6 +265,7 @@ class TsunamiPreprocessor:
             sharded=sharded,
             shard_size=shard_size,
             write_legacy_eval_archive=write_legacy_eval_archive,
+            publication_mode=publication_mode,
             export_eval_arrays=export_eval_arrays,
             eval_input_order=eval_input_order,
             eval_inputs_name=eval_inputs_name,
@@ -1222,6 +1254,47 @@ class TsunamiPreprocessor:
             raise RuntimeError(f"Unexpected preprocessing staging path: {staging_dir}")
 
         try:
+            split_to_merge: Optional[str] = None
+            if self.cfg.publication_mode == "merge_split":
+                active_splits = [
+                    name
+                    for name, records in (
+                        ("train", train_records),
+                        ("val", val_records),
+                        ("test", test_records),
+                    )
+                    if records
+                ]
+                if len(active_splits) != 1:
+                    raise RuntimeError(
+                        "merge_split preprocessing expected exactly one populated "
+                        f"split, found {active_splits}"
+                    )
+                split_to_merge = active_splits[0]
+                if norm_reference_stats_path is None:
+                    raise ValueError(
+                        "merge_split preprocessing requires an explicit training "
+                        "normalization reference"
+                    )
+                published_stats = output_dir / "normalization_stats.json"
+                if not published_stats.is_file():
+                    raise FileNotFoundError(
+                        "Training normalization statistics are missing from "
+                        f"{published_stats}. Run train preprocessing first."
+                    )
+                if not norm_reference_stats_path.is_file():
+                    raise FileNotFoundError(
+                        "Normalization reference stats not found: "
+                        f"{norm_reference_stats_path}"
+                    )
+                if sha256_file(published_stats) != sha256_file(
+                    norm_reference_stats_path
+                ):
+                    raise RuntimeError(
+                        "merge_split normalization reference does not match the "
+                        f"published training statistics in {output_dir}"
+                    )
+
             self._write_normalized_dataset(
                 train_records,
                 val_records,
@@ -1229,7 +1302,14 @@ class TsunamiPreprocessor:
                 staging_dir,
                 norm_reference_stats_path=norm_reference_stats_path,
             )
-            self._publish_processed_directory(staging_dir, output_dir)
+            if split_to_merge is None:
+                self._publish_processed_directory(staging_dir, output_dir)
+            else:
+                self._publish_processed_split(
+                    staging_dir,
+                    output_dir,
+                    split_to_merge,
+                )
         except Exception:
             if staging_dir.exists():
                 shutil.rmtree(staging_dir)
@@ -1337,6 +1417,71 @@ class TsunamiPreprocessor:
         else:
             if backup_dir.exists():
                 shutil.rmtree(backup_dir)
+
+    @staticmethod
+    def _publish_processed_split(
+        staging_dir: pathlib.Path,
+        output_dir: pathlib.Path,
+        split_name: str,
+    ) -> None:
+        if split_name not in {"train", "val", "test"}:
+            raise ValueError(f"Unsupported processed split: {split_name}")
+        if not output_dir.is_dir():
+            raise FileNotFoundError(
+                f"Processed output root does not exist: {output_dir}"
+            )
+
+        staging_stats = staging_dir / "normalization_stats.json"
+        output_stats = output_dir / "normalization_stats.json"
+        if not staging_stats.is_file() or not output_stats.is_file():
+            raise FileNotFoundError(
+                "Split publication requires staged and published "
+                "normalization_stats.json files"
+            )
+        if sha256_file(staging_stats) != sha256_file(output_stats):
+            raise RuntimeError(
+                "Refusing to publish a split with normalization statistics "
+                "that differ from the training dataset"
+            )
+
+        staged_split = staging_dir / split_name
+        output_split = output_dir / split_name
+        if not staged_split.is_dir():
+            raise FileNotFoundError(
+                f"Staged processed split does not exist: {staged_split}"
+            )
+        unexpected_splits = [
+            name
+            for name in ("train", "val", "test")
+            if name != split_name and (staging_dir / name).exists()
+        ]
+        if unexpected_splits:
+            raise RuntimeError(
+                "merge_split staging contains unexpected sibling splits: "
+                f"{unexpected_splits}"
+            )
+
+        backup_dir = output_dir / (
+            f".{split_name}.backup-{uuid.uuid4().hex}"
+        )
+        moved_existing = False
+        try:
+            if output_split.exists():
+                os.replace(output_split, backup_dir)
+                moved_existing = True
+            os.replace(staged_split, output_split)
+        except Exception:
+            if (
+                moved_existing
+                and backup_dir.exists()
+                and not output_split.exists()
+            ):
+                os.replace(backup_dir, output_split)
+            raise
+        else:
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir)
+            shutil.rmtree(staging_dir)
 
     def _resolved_eval_input_order(self, sample_inputs: Dict[str, np.ndarray]) -> List[str]:
         preferred = [name for name in self.cfg.eval_input_order if name in sample_inputs]
@@ -1748,6 +1893,14 @@ class TsunamiPreprocessor:
                 self._normalization_stats_sha256 = reference["sha256"]
                 self._normalization_provenance = {
                     "mode": "explicit_reference_in_place",
+                    "reference": reference,
+                }
+                return
+            if self.cfg.publication_mode == "merge_split":
+                shutil.copyfile(reference_path, stats_path)
+                self._normalization_stats_sha256 = reference["sha256"]
+                self._normalization_provenance = {
+                    "mode": "explicit_reference",
                     "reference": reference,
                 }
                 return

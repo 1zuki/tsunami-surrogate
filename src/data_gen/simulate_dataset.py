@@ -205,12 +205,38 @@ class AuthoritativeInputsConfig:
 
 
 @dataclass(frozen=True)
+class SourceSpectralAcceptanceConfig:
+    enabled: bool = False
+    stage: str = "post_master_taper_solver"
+    reference_shape: tuple[int, int] = (0, 0)
+    min_points_per_p90_wavelength: float = 0.0
+    comparison_tolerance: float = 1.0e-9
+    preserve_source_family: bool = True
+    max_attempts: int = 1
+
+    def semantics(self) -> dict[str, Any] | None:
+        if not self.enabled:
+            return None
+        return {
+            "stage": self.stage,
+            "reference_shape": list(self.reference_shape),
+            "min_points_per_p90_wavelength": (
+                self.min_points_per_p90_wavelength
+            ),
+            "comparison_tolerance": self.comparison_tolerance,
+            "preserve_source_family": self.preserve_source_family,
+            "max_attempts": self.max_attempts,
+        }
+
+
+@dataclass(frozen=True)
 class PairedInputsConfig:
     """Deterministic master-grid construction for paired native resolutions."""
 
     enabled: bool = False
     lineage_id: str = ""
     master_shape: tuple[int, int] = (0, 0)
+    solver_shape: tuple[int, int] | None = None
     target_shape: tuple[int, int] = (0, 0)
     downsample_method: str = "block_mean_float64_v1"
     master_bathymetry_config: Path | None = None
@@ -218,11 +244,17 @@ class PairedInputsConfig:
     inventory_path: Path | None = None
     lineage_hash: str = ""
     target_contract_hash: str = ""
+    solver_input: str = "target"
+    source_taper_stage: str = "target"
+    rough_zero_mean_rms_after_taper: bool = False
+    source_spectral_acceptance: SourceSpectralAcceptanceConfig = field(
+        default_factory=SourceSpectralAcceptanceConfig
+    )
 
     def semantics(self) -> dict[str, Any] | None:
         if not self.enabled:
             return None
-        return {
+        payload = {
             "schema_id": NATIVE_INPUT_SCHEMA_ID,
             "lineage_id": self.lineage_id,
             "master_shape": list(self.master_shape),
@@ -231,6 +263,39 @@ class PairedInputsConfig:
             "lineage_hash": self.lineage_hash,
             "target_contract_hash": self.target_contract_hash,
         }
+        if self.solver_shape is not None:
+            payload["solver_shape"] = list(self.solver_shape)
+        if (
+            self.solver_input != "target"
+            or self.source_taper_stage != "target"
+            or self.rough_zero_mean_rms_after_taper
+            or self.source_spectral_acceptance.enabled
+        ):
+            payload.update(
+                {
+                    "solver_input": self.solver_input,
+                    "source_taper_stage": self.source_taper_stage,
+                    "rough_zero_mean_rms_after_taper": (
+                        self.rough_zero_mean_rms_after_taper
+                    ),
+                }
+            )
+            acceptance = self.source_spectral_acceptance.semantics()
+            if acceptance is not None:
+                payload["source_spectral_acceptance"] = acceptance
+        return payload
+
+
+def _paired_solver_input_shape(
+    config: PairedInputsConfig,
+) -> tuple[int, int]:
+    if config.solver_input == "master":
+        return config.master_shape
+    if config.solver_input == "solver":
+        if config.solver_shape is None:
+            raise RuntimeError("paired solver input shape is unavailable")
+        return config.solver_shape
+    return config.target_shape
 
 
 @dataclass
@@ -256,6 +321,7 @@ class DatasetConfig:
     primary_fde: str
     quality_policy: QualityPolicy
     requested_output: RequestedOutputConfig | None
+    max_initial_eta_over_depth: float | None = None
     authoritative_inputs: AuthoritativeInputsConfig | None = None
     solver_profiles: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     buffered_domain: BufferedDomainConfig = field(default_factory=BufferedDomainConfig)
@@ -294,21 +360,238 @@ def _block_mean_downsample(
     return np.asarray(reduced, dtype=np.float32)
 
 
-def _cosine_source_window(shape: tuple[int, int], taper_cells: int) -> np.ndarray:
+def _block_mean_downsample_spatial(
+    values: np.ndarray,
+    target_shape: tuple[int, int],
+) -> np.ndarray:
+    """Area-average the final two axes while preserving leading dimensions."""
+
+    array = np.asarray(values)
+    if array.ndim < 2:
+        raise ValueError("spatial downsampling requires at least two dimensions")
+    tx, ty = map(int, target_shape)
+    mx, my = map(int, array.shape[-2:])
+    if tx <= 0 or ty <= 0 or mx % tx != 0 or my % ty != 0:
+        raise ValueError(
+            f"spatial shape {(mx, my)} must be integer-divisible by "
+            f"target shape {target_shape}"
+        )
+    if (mx, my) == (tx, ty):
+        return array.copy()
+    fx, fy = mx // tx, my // ty
+    reshaped = array.reshape(*array.shape[:-2], tx, fx, ty, fy)
+    reduced = reshaped.mean(axis=(-3, -1), dtype=np.float64)
+    return np.asarray(reduced, dtype=array.dtype)
+
+
+def _points_per_p90_wavelength(source_field: np.ndarray) -> float:
+    """Return the p90 spectral wavelength measured in grid cells."""
+
+    source = np.asarray(source_field, dtype=np.float64)
+    if source.ndim != 2 or min(source.shape) <= 1:
+        raise ValueError("source spectrum requires a valid two-dimensional field")
+    centered = source - float(np.mean(source))
+    power = np.abs(np.fft.fft2(centered)) ** 2
+    kx = 2.0 * np.pi * np.fft.fftfreq(source.shape[0], d=1.0)
+    ky = 2.0 * np.pi * np.fft.fftfreq(source.shape[1], d=1.0)
+    k_grid = np.sqrt(kx[:, None] ** 2 + ky[None, :] ** 2)
+    mask = k_grid > 0.0
+    k_values = k_grid[mask]
+    weights = power[mask]
+    total = float(np.sum(weights))
+    if not np.isfinite(total) or total <= 0.0:
+        raise RuntimeError("source spectrum is empty or non-finite")
+    order = np.argsort(k_values)
+    ordered_k = k_values[order]
+    cumulative = np.cumsum(weights[order])
+    index = int(np.searchsorted(cumulative, 0.90 * total))
+    k90 = float(ordered_k[min(index, ordered_k.size - 1)])
+    return float(2.0 * np.pi / max(k90, 1.0e-30))
+
+
+def _cosine_source_window(
+    shape: tuple[int, int],
+    taper_cells: int,
+    *,
+    zero_edge_cells: int = 1,
+) -> np.ndarray:
     if min(shape) <= 1:
         raise ValueError("source-window shape must contain two valid axes")
     if taper_cells < 2 or 2 * taper_cells >= min(shape):
         raise ValueError(
             "source_taper_cells must be at least 2 and leave an untapered interior"
         )
+    if zero_edge_cells < 1 or zero_edge_cells >= taper_cells:
+        raise ValueError(
+            "zero_edge_cells must be at least 1 and smaller than taper_cells"
+        )
     nx, ny = shape
     x_distance = np.minimum(np.arange(nx), np.arange(nx)[::-1])
     y_distance = np.minimum(np.arange(ny), np.arange(ny)[::-1])
     edge_distance = np.minimum(x_distance[:, None], y_distance[None, :])
     coordinate = np.clip(
-        edge_distance.astype(np.float64) / float(taper_cells - 1), 0.0, 1.0
+        (
+            edge_distance.astype(np.float64)
+            - float(zero_edge_cells - 1)
+        )
+        / float(taper_cells - zero_edge_cells),
+        0.0,
+        1.0,
     )
     return 0.5 * (1.0 - np.cos(np.pi * coordinate))
+
+
+def _prepare_tapered_source(
+    source_field: np.ndarray,
+    *,
+    taper_cells: int,
+    zero_edge_cells: int = 1,
+    source_type: str | None = None,
+    rough_zero_mean_rms_after_taper: bool = False,
+) -> np.ndarray:
+    source = np.asarray(source_field, dtype=np.float64)
+    if source.ndim != 2:
+        raise ValueError("source_field must be two-dimensional")
+    window = _cosine_source_window(
+        source.shape,
+        taper_cells,
+        zero_edge_cells=zero_edge_cells,
+    )
+
+    if rough_zero_mean_rms_after_taper and str(source_type) == "rough":
+        target_rms = float(np.sqrt(np.mean(source * source)))
+        if not np.isfinite(target_rms) or target_rms <= 0.0:
+            raise RuntimeError("rough source has invalid pre-taper RMS")
+        weighted_mean = float(np.sum(window * source) / np.sum(window))
+        effective = window * (source - weighted_mean)
+        effective_rms = float(np.sqrt(np.mean(effective * effective)))
+        if not np.isfinite(effective_rms) or effective_rms <= 0.0:
+            raise RuntimeError("rough source has invalid post-taper RMS")
+        effective *= target_rms / effective_rms
+        mean_tolerance = max(1.0e-12, 1.0e-12 * target_rms)
+        if abs(float(np.mean(effective))) > mean_tolerance:
+            raise RuntimeError("rough source taper did not preserve zero mean")
+    else:
+        effective = window * source
+
+    edge_max = max(
+        float(np.max(np.abs(effective[[0, -1], :]))),
+        float(np.max(np.abs(effective[:, [0, -1]]))),
+    )
+    if edge_max != 0.0:
+        raise RuntimeError("source taper did not produce an exact-zero edge")
+    return np.asarray(effective, dtype=np.float32)
+
+
+def _generate_paired_source_fields(
+    *,
+    sample_seed: int,
+    master_config_path: str,
+    paired: PairedInputsConfig,
+    buffered_domain: BufferedDomainConfig,
+) -> dict[str, Any]:
+    acceptance = paired.source_spectral_acceptance
+    max_attempts = acceptance.max_attempts if acceptance.enabled else 1
+    source_type: str | None = None
+    best_points = -np.inf
+
+    for attempt_index in range(max_attempts):
+        generator = SourceGenerator(master_config_path)
+        if attempt_index == 0:
+            generator.rng = np.random.default_rng([sample_seed, 23])
+            raw_master, generated_type = generator.generate()
+            source_type = str(generated_type)
+        else:
+            if source_type is None:
+                raise RuntimeError("source family was not resolved")
+            generator.s_type = (source_type,)
+            generator.rng = np.random.default_rng(
+                [sample_seed, 23, attempt_index]
+            )
+            raw_master, generated_type = generator.generate()
+            if str(generated_type) != source_type:
+                raise RuntimeError("source retry changed the source family")
+
+        raw_master = np.asarray(raw_master, dtype=np.float32)
+        if raw_master.shape != paired.master_shape:
+            raise RuntimeError(
+                "paired source generator did not produce the master shape"
+            )
+        if paired.source_taper_stage == "master":
+            if not buffered_domain.enabled:
+                raise RuntimeError(
+                    "master source taper requires an enabled buffered domain"
+                )
+            solver_shape = _paired_solver_input_shape(paired)
+            taper_ratios = tuple(
+                master // solver
+                for master, solver in zip(paired.master_shape, solver_shape)
+            )
+            if taper_ratios[0] != taper_ratios[1]:
+                raise RuntimeError(
+                    "master source taper requires equal solver-grid scale factors"
+                )
+            master = _prepare_tapered_source(
+                raw_master,
+                taper_cells=(
+                    buffered_domain.source_taper_cells * taper_ratios[0]
+                ),
+                zero_edge_cells=max(
+                    master // target
+                    for master, target in zip(
+                        paired.master_shape, paired.target_shape
+                    )
+                ),
+                source_type=source_type,
+                rough_zero_mean_rms_after_taper=(
+                    paired.rough_zero_mean_rms_after_taper
+                ),
+            )
+        else:
+            master = raw_master
+
+        target = _block_mean_downsample(master, paired.target_shape)
+        solver = (
+            None
+            if paired.solver_shape is None
+            else _block_mean_downsample(master, paired.solver_shape)
+        )
+        points = (
+            None
+            if not acceptance.enabled
+            else _points_per_p90_wavelength(
+                (
+                    solver
+                    if acceptance.reference_shape == paired.solver_shape
+                    else _block_mean_downsample(
+                        master, acceptance.reference_shape
+                    )
+                )
+            )
+        )
+        if points is not None:
+            best_points = max(best_points, points)
+        if (
+            points is None
+            or points + acceptance.comparison_tolerance
+            >= acceptance.min_points_per_p90_wavelength
+        ):
+            return {
+                "raw_master": raw_master,
+                "master": master,
+                "target": target,
+                "solver": solver,
+                "source_type": source_type,
+                "attempt_index": attempt_index,
+                "attempt_count": attempt_index + 1,
+                "points_per_p90_wavelength": points,
+            }
+
+    raise RuntimeError(
+        "source spectral acceptance exhausted "
+        f"{max_attempts} attempts for family={source_type!r}; "
+        f"best_points_per_p90_wavelength={best_points:.17g}"
+    )
 
 
 def _prepare_buffered_domain(
@@ -317,6 +600,10 @@ def _prepare_buffered_domain(
     source_strength: float,
     sea_level_offset: float,
     config: BufferedDomainConfig,
+    *,
+    source_type: str | None = None,
+    rough_zero_mean_rms_after_taper: bool = False,
+    source_already_tapered: bool = False,
 ) -> dict[str, Any]:
     """Build solver-sized arrays while retaining a source-consistent core."""
 
@@ -327,9 +614,15 @@ def _prepare_buffered_domain(
     if not config.enabled:
         raise ValueError("buffered-domain preparation requires enabled=true")
 
-    window = _cosine_source_window(bathy.shape, config.source_taper_cells)
-    effective_source = np.asarray(
-        np.asarray(source, dtype=np.float64) * window, dtype=np.float32
+    effective_source = (
+        source.copy()
+        if source_already_tapered
+        else _prepare_tapered_source(
+            source,
+            taper_cells=config.source_taper_cells,
+            source_type=source_type,
+            rough_zero_mean_rms_after_taper=rough_zero_mean_rms_after_taper,
+        )
     )
     eta0 = np.asarray(float(source_strength) * effective_source, dtype=np.float32)
     rest_depth = np.maximum(-bathy + sea_level_offset, 0.0)
@@ -386,6 +679,23 @@ def _crop_rollout(rollout: RolloutResult, crop: tuple[slice, slice]) -> RolloutR
     return RolloutResult(
         trajectory=trajectory[..., crop[0], crop[1]].copy(),
         trajectory_eta=trajectory_eta[..., crop[0], crop[1]].copy(),
+        timestamps=rollout.timestamps,
+        dt_history=rollout.dt_history,
+        diagnostics=rollout.diagnostics,
+    )
+
+
+def _downsample_rollout(
+    rollout: RolloutResult,
+    target_shape: tuple[int, int],
+) -> RolloutResult:
+    return RolloutResult(
+        trajectory=_block_mean_downsample_spatial(
+            rollout.trajectory, target_shape
+        ),
+        trajectory_eta=_block_mean_downsample_spatial(
+            rollout.trajectory_eta, target_shape
+        ),
         timestamps=rollout.timestamps,
         dt_history=rollout.dt_history,
         diagnostics=rollout.diagnostics,
@@ -1512,27 +1822,46 @@ def _generate_paired_bathymetry_worker(
     master, bathy_type = generator.generate()
     master = np.asarray(master, dtype=np.float32)
     target = _block_mean_downsample(master, paired.target_shape)
+    solver = (
+        None
+        if paired.solver_shape is None
+        else _block_mean_downsample(master, paired.solver_shape)
+    )
     master_hash = hash_array(master)["sha256"]
     out_path = _bathymetry_file_path(bathymetry_dir, sample_idx)
-    _write_npz_atomic(
-        out_path,
-        bathymetry=target,
-        master_bathymetry=master,
-        bathymetry_type=np.asarray([str(bathy_type)], dtype="U64"),
-        sample_seed=np.asarray([sample_seed], dtype=np.int64),
-        native_input_schema_id=np.asarray([NATIVE_INPUT_SCHEMA_ID], dtype="U96"),
-        native_lineage_id=np.asarray([paired.lineage_id], dtype="U128"),
-        native_lineage_hash=np.asarray([paired.lineage_hash], dtype="U64"),
-        native_target_contract_hash=np.asarray(
+    arrays: dict[str, Any] = {
+        "bathymetry": target,
+        "master_bathymetry": master,
+        "bathymetry_type": np.asarray([str(bathy_type)], dtype="U64"),
+        "sample_seed": np.asarray([sample_seed], dtype=np.int64),
+        "native_input_schema_id": np.asarray(
+            [NATIVE_INPUT_SCHEMA_ID], dtype="U96"
+        ),
+        "native_lineage_id": np.asarray([paired.lineage_id], dtype="U128"),
+        "native_lineage_hash": np.asarray([paired.lineage_hash], dtype="U64"),
+        "native_target_contract_hash": np.asarray(
             [paired.target_contract_hash], dtype="U64"
         ),
-        native_master_shape=np.asarray(paired.master_shape, dtype=np.int64),
-        native_target_shape=np.asarray(paired.target_shape, dtype=np.int64),
-        native_downsample_method=np.asarray(
+        "native_master_shape": np.asarray(paired.master_shape, dtype=np.int64),
+        "native_target_shape": np.asarray(paired.target_shape, dtype=np.int64),
+        "native_downsample_method": np.asarray(
             [paired.downsample_method], dtype="U64"
         ),
-        native_master_array_sha256=np.asarray([master_hash], dtype="U64"),
-    )
+        "native_master_array_sha256": np.asarray([master_hash], dtype="U64"),
+    }
+    if solver is not None and paired.solver_shape is not None:
+        arrays.update(
+            {
+                "solver_bathymetry": solver,
+                "native_solver_shape": np.asarray(
+                    paired.solver_shape, dtype=np.int64
+                ),
+                "native_solver_array_sha256": np.asarray(
+                    [hash_array(solver)["sha256"]], dtype="U64"
+                ),
+            }
+        )
+    _write_npz_atomic(out_path, **arrays)
     return {
         "sample_index": sample_idx,
         "bathymetry_type": str(bathy_type),
@@ -1578,43 +1907,126 @@ def _generate_paired_source_worker(
     run_seed: int,
     master_config_path: str,
     source_dir: str,
+    bathymetry_dir: str,
     source_strength_range: Tuple[float, float],
+    max_initial_eta_over_depth: float | None,
     paired: PairedInputsConfig,
+    buffered_domain: BufferedDomainConfig,
 ) -> Dict[str, Any]:
     sample_seed = _seed_for_sample(run_seed, sample_idx)
-    generator = SourceGenerator(master_config_path)
-    generator.rng = np.random.default_rng([sample_seed, 23])
     strength_rng = np.random.default_rng([sample_seed, 37])
-    master, source_type = generator.generate()
-    master = np.asarray(master, dtype=np.float32)
-    target = _block_mean_downsample(master, paired.target_shape)
-    source_strength = float(strength_rng.uniform(*source_strength_range))
+    fields = _generate_paired_source_fields(
+        sample_seed=sample_seed,
+        master_config_path=master_config_path,
+        paired=paired,
+        buffered_domain=buffered_domain,
+    )
+    raw_master = fields["raw_master"]
+    master = fields["master"]
+    target = fields["target"]
+    solver = fields["solver"]
+    source_type = str(fields["source_type"])
+    sampled_source_strength = float(
+        np.float32(strength_rng.uniform(*source_strength_range))
+    )
+    source_strength = sampled_source_strength
+    if max_initial_eta_over_depth is not None:
+        bathymetry_path = _bathymetry_file_path(
+            bathymetry_dir, sample_idx
+        )
+        if not bathymetry_path.is_file():
+            raise FileNotFoundError(
+                "Missing paired bathymetry cache for amplitude cap: "
+                f"{bathymetry_path}"
+            )
+        with np.load(bathymetry_path, allow_pickle=False) as payload:
+            depth_bathymetry = np.asarray(
+                (
+                    payload["master_bathymetry"]
+                    if paired.source_taper_stage == "master"
+                    else payload["bathymetry"]
+                ),
+                dtype=np.float64,
+            )
+        cap_source = (
+            np.asarray(master, dtype=np.float64)
+            if paired.source_taper_stage == "master"
+            else np.asarray(target, dtype=np.float64)
+        )
+        depth = np.maximum(-depth_bathymetry, 1.0e-4)
+        unit_ratio = float(np.max(np.abs(cap_source) / depth))
+        if not np.isfinite(unit_ratio):
+            raise RuntimeError("source amplitude-to-depth ratio is non-finite")
+        if unit_ratio > 0.0:
+            source_strength = min(
+                source_strength,
+                float(max_initial_eta_over_depth) / unit_ratio,
+            )
+    source_strength = float(np.float32(source_strength))
+    if not np.isfinite(source_strength) or source_strength <= 0.0:
+        raise RuntimeError("resolved source strength is invalid")
     master_hash = hash_array(master)["sha256"]
     out_path = _source_file_path(source_dir, sample_idx)
-    _write_npz_atomic(
-        out_path,
-        source_field=target,
-        master_source_field=master,
-        source_type=np.asarray([str(source_type)], dtype="U64"),
-        source_strength=np.asarray([source_strength], dtype=np.float32),
-        sample_seed=np.asarray([sample_seed], dtype=np.int64),
-        native_input_schema_id=np.asarray([NATIVE_INPUT_SCHEMA_ID], dtype="U96"),
-        native_lineage_id=np.asarray([paired.lineage_id], dtype="U128"),
-        native_lineage_hash=np.asarray([paired.lineage_hash], dtype="U64"),
-        native_target_contract_hash=np.asarray(
+    arrays = {
+        "source_field": target,
+        "master_source_field": master,
+        "raw_master_source_field": raw_master,
+        "source_type": np.asarray([str(source_type)], dtype="U64"),
+        "source_strength": np.asarray([source_strength], dtype=np.float32),
+        "sampled_source_strength": np.asarray(
+            [sampled_source_strength], dtype=np.float32
+        ),
+        "sample_seed": np.asarray([sample_seed], dtype=np.int64),
+        "native_input_schema_id": np.asarray(
+            [NATIVE_INPUT_SCHEMA_ID], dtype="U96"
+        ),
+        "native_lineage_id": np.asarray([paired.lineage_id], dtype="U128"),
+        "native_lineage_hash": np.asarray([paired.lineage_hash], dtype="U64"),
+        "native_target_contract_hash": np.asarray(
             [paired.target_contract_hash], dtype="U64"
         ),
-        native_master_shape=np.asarray(paired.master_shape, dtype=np.int64),
-        native_target_shape=np.asarray(paired.target_shape, dtype=np.int64),
-        native_downsample_method=np.asarray(
+        "native_master_shape": np.asarray(paired.master_shape, dtype=np.int64),
+        "native_target_shape": np.asarray(paired.target_shape, dtype=np.int64),
+        "native_downsample_method": np.asarray(
             [paired.downsample_method], dtype="U64"
         ),
-        native_master_array_sha256=np.asarray([master_hash], dtype="U64"),
-    )
+        "native_master_array_sha256": np.asarray([master_hash], dtype="U64"),
+        "native_raw_master_array_sha256": np.asarray(
+            [hash_array(raw_master)["sha256"]], dtype="U64"
+        ),
+        "source_generation_attempt_index": np.asarray(
+            [fields["attempt_index"]], dtype=np.int64
+        ),
+        "source_generation_attempt_count": np.asarray(
+            [fields["attempt_count"]], dtype=np.int64
+        ),
+    }
+    if fields["points_per_p90_wavelength"] is not None:
+        arrays["source_spectral_points_per_p90_wavelength"] = np.asarray(
+            [fields["points_per_p90_wavelength"]], dtype=np.float64
+        )
+    if solver is not None and paired.solver_shape is not None:
+        arrays.update(
+            {
+                "solver_source_field": solver,
+                "native_solver_shape": np.asarray(
+                    paired.solver_shape, dtype=np.int64
+                ),
+                "native_solver_array_sha256": np.asarray(
+                    [hash_array(solver)["sha256"]], dtype="U64"
+                ),
+            }
+        )
+    _write_npz_atomic(out_path, **arrays)
     return {
         "sample_index": sample_idx,
         "source_type": str(source_type),
         "source_strength": source_strength,
+        "sampled_source_strength": sampled_source_strength,
+        "source_generation_attempt_count": fields["attempt_count"],
+        "source_spectral_points_per_p90_wavelength": fields[
+            "points_per_p90_wavelength"
+        ],
         "source_path": str(out_path),
     }
 
@@ -1800,7 +2212,7 @@ def _requested_dataset_semantics(dataset: DatasetConfig) -> dict[str, Any]:
     requested = dataset.requested_output
     if requested is None:
         raise RuntimeError("Requested semantics require requested_output config")
-    return {
+    semantics = {
         "auto_dt": dataset.auto_dt,
         "target_cfl": dataset.target_cfl,
         "sea_level_offset": dataset.sea_level_offset,
@@ -1817,6 +2229,11 @@ def _requested_dataset_semantics(dataset: DatasetConfig) -> dict[str, Any]:
         "paired_inputs": dataset.paired_inputs.semantics(),
         "paired_input_inventory_sha256": dataset.paired_input_inventory_sha256,
     }
+    if dataset.max_initial_eta_over_depth is not None:
+        semantics["max_initial_eta_over_depth"] = (
+            dataset.max_initial_eta_over_depth
+        )
+    return semantics
 
 
 def _generation_resolved_config_hashes(
@@ -2061,6 +2478,10 @@ def _generate_sample_worker(
 
     bathymetry_master_hash: str | None = None
     source_master_hash: str | None = None
+    solver_bathymetry_hash: str | None = None
+    solver_source_hash: str | None = None
+    paired_solver_bathymetry: np.ndarray | None = None
+    paired_solver_source: np.ndarray | None = None
     external_input_lineage: dict[str, Any] | None = None
     with np.load(bathy_path, allow_pickle=False) as bathy_npz:
         bathymetry = np.asarray(bathy_npz["bathymetry"], dtype=np.float32)
@@ -2087,6 +2508,19 @@ def _generate_sample_worker(
             bathymetry_master_hash = str(
                 np.asarray(bathy_npz["native_master_array_sha256"]).reshape(-1)[0]
             )
+            if dataset.paired_inputs.solver_input == "master":
+                paired_solver_bathymetry = np.asarray(
+                    bathy_npz["master_bathymetry"], dtype=np.float32
+                )
+            elif dataset.paired_inputs.solver_input == "solver":
+                paired_solver_bathymetry = np.asarray(
+                    bathy_npz["solver_bathymetry"], dtype=np.float32
+                )
+                solver_bathymetry_hash = str(
+                    np.asarray(
+                        bathy_npz["native_solver_array_sha256"]
+                    ).reshape(-1)[0]
+                )
 
     with np.load(source_path, allow_pickle=False) as src_npz:
         source_field = np.asarray(src_npz["source_field"], dtype=np.float32)
@@ -2097,6 +2531,19 @@ def _generate_sample_worker(
             source_master_hash = str(
                 np.asarray(src_npz["native_master_array_sha256"]).reshape(-1)[0]
             )
+            if dataset.paired_inputs.solver_input == "master":
+                paired_solver_source = np.asarray(
+                    src_npz["master_source_field"], dtype=np.float32
+                )
+            elif dataset.paired_inputs.solver_input == "solver":
+                paired_solver_source = np.asarray(
+                    src_npz["solver_source_field"], dtype=np.float32
+                )
+                solver_source_hash = str(
+                    np.asarray(
+                        src_npz["native_solver_array_sha256"]
+                    ).reshape(-1)[0]
+                )
 
     scenario_id = f"scenario_{sample_idx:06d}"
     authoritative_input: dict[str, Any] | None = None
@@ -2132,16 +2579,59 @@ def _generate_sample_worker(
             "master_bathymetry_sha256": bathymetry_master_hash,
             "master_source_sha256": source_master_hash,
         }
+        if dataset.paired_inputs.solver_input == "solver":
+            input_lineage.update(
+                {
+                    "solver_bathymetry_sha256": solver_bathymetry_hash,
+                    "solver_source_sha256": solver_source_hash,
+                }
+            )
     elif external_input_lineage is not None:
         input_lineage = external_input_lineage
 
-    if dataset.buffered_domain.enabled:
+    if (
+        dataset.paired_inputs.enabled
+        and dataset.paired_inputs.solver_input in {"solver", "master"}
+    ):
+        if paired_solver_bathymetry is None or paired_solver_source is None:
+            raise RuntimeError("paired solver inputs are missing")
+        if not dataset.buffered_domain.enabled:
+            raise RuntimeError("paired non-target solver input requires buffering")
+        prepared = _prepare_buffered_domain(
+            paired_solver_bathymetry,
+            paired_solver_source,
+            source_strength,
+            dataset.sea_level_offset,
+            dataset.buffered_domain,
+            source_type=source_type,
+            source_already_tapered=(
+                dataset.paired_inputs.source_taper_stage == "master"
+            ),
+        )
+        rest_depth = np.maximum(
+            -bathymetry + dataset.sea_level_offset, 0.0
+        ).astype(np.float32, copy=False)
+        eta0 = np.asarray(source_strength * source_field, dtype=np.float32)
+        h0 = np.maximum(rest_depth + eta0, 0.0).astype(
+            np.float32, copy=False
+        )
+        free_surface0 = np.asarray(h0 + bathymetry, dtype=np.float32)
+        solver_bathymetry = prepared["solver_bathymetry"]
+        solver_eta0 = prepared["solver_eta0"]
+        solver_rest_depth = prepared["solver_rest_depth"]
+        solver_h0 = prepared["solver_h0"]
+        output_crop = prepared["crop"]
+    elif dataset.buffered_domain.enabled:
         prepared = _prepare_buffered_domain(
             bathymetry,
             source_field,
             source_strength,
             dataset.sea_level_offset,
             dataset.buffered_domain,
+            source_type=source_type,
+            rough_zero_mean_rms_after_taper=(
+                dataset.paired_inputs.rough_zero_mean_rms_after_taper
+            ),
         )
         bathymetry = prepared["bathymetry"]
         source_field = prepared["source_field"]
@@ -2382,6 +2872,13 @@ def _generate_sample_worker(
             if output_crop is None
             else _crop_rollout(full_rollout, output_crop)
         )
+        if (
+            dataset.paired_inputs.enabled
+            and dataset.paired_inputs.solver_input in {"solver", "master"}
+        ):
+            rollout = _downsample_rollout(
+                rollout, dataset.paired_inputs.target_shape
+            )
 
         if dataset.requested_output is not None:
             serialization_started = time.monotonic()
@@ -2729,12 +3226,17 @@ class TsunamiDatasetBuilder:
             )
 
         buffered = self.dataset.buffered_domain
-        expected_solver_shape = input_shape
+        solver_input_shape = (
+            _paired_solver_input_shape(self.dataset.paired_inputs)
+            if self.dataset.paired_inputs.enabled
+            else input_shape
+        )
+        expected_solver_shape = solver_input_shape
         if buffered.enabled:
             expected_solver_shape = tuple(
-                axis + 2 * buffered.buffer_cells for axis in input_shape
+                axis + 2 * buffered.buffer_cells for axis in solver_input_shape
             )
-            if 2 * buffered.source_taper_cells >= min(input_shape):
+            if 2 * buffered.source_taper_cells >= min(solver_input_shape):
                 raise ValueError(
                     "computational_domain.source_taper_cells must leave an "
                     "untapered input-grid interior"
@@ -2743,7 +3245,8 @@ class TsunamiDatasetBuilder:
         if (solver_nx, solver_ny) != expected_solver_shape:
             raise ValueError(
                 f"Solver grid ({solver_nx}, {solver_ny}) must match the expected "
-                f"computational grid {expected_solver_shape} for input grid {input_shape}"
+                f"computational grid {expected_solver_shape} for solver input "
+                f"grid {solver_input_shape}"
             )
 
         if buffered.enabled:
@@ -2800,34 +3303,65 @@ class TsunamiDatasetBuilder:
             ROOT / "src/data_gen/generate_sources.py",
             ROOT / "src/data_gen/simulate_dataset.py",
         )
+        lineage_payload = {
+            "lineage_id": config.lineage_id,
+            "master_shape": list(config.master_shape),
+            "dataset_seed": self.dataset.seed,
+            "source_strength_range": list(self.dataset.source_strength_range),
+            "master_bathymetry_config_sha256": sha256_file(
+                config.master_bathymetry_config
+            ),
+            "master_source_config_sha256": sha256_file(
+                config.master_source_config
+            ),
+            "generator_source_sha256": {
+                path.relative_to(ROOT).as_posix(): sha256_file(path)
+                for path in generator_files
+            },
+        }
+        if config.solver_shape is not None:
+            lineage_payload["solver_shape"] = list(config.solver_shape)
+        if (
+            config.solver_input != "target"
+            or config.source_taper_stage != "target"
+            or config.rough_zero_mean_rms_after_taper
+            or config.source_spectral_acceptance.enabled
+        ):
+            lineage_payload.update(
+                {
+                    "solver_input": config.solver_input,
+                    "source_taper_stage": config.source_taper_stage,
+                    "rough_zero_mean_rms_after_taper": (
+                        config.rough_zero_mean_rms_after_taper
+                    ),
+                    "buffered_domain": self.dataset.buffered_domain.semantics(),
+                }
+            )
+            if config.source_taper_stage == "master":
+                lineage_payload["target_shape"] = list(config.target_shape)
+            acceptance = config.source_spectral_acceptance.semantics()
+            if acceptance is not None:
+                lineage_payload["source_spectral_acceptance"] = acceptance
+        if self.dataset.max_initial_eta_over_depth is not None:
+            lineage_payload["max_initial_eta_over_depth"] = (
+                self.dataset.max_initial_eta_over_depth
+            )
         lineage_hash = stable_hash_payload(
             artifact_kind="native-resolution-master-input-lineage",
             schema_id=NATIVE_INPUT_SCHEMA_ID,
-            payload={
-                "lineage_id": config.lineage_id,
-                "master_shape": list(config.master_shape),
-                "dataset_seed": self.dataset.seed,
-                "source_strength_range": list(self.dataset.source_strength_range),
-                "master_bathymetry_config_sha256": sha256_file(
-                    config.master_bathymetry_config
-                ),
-                "master_source_config_sha256": sha256_file(
-                    config.master_source_config
-                ),
-                "generator_source_sha256": {
-                    path.relative_to(ROOT).as_posix(): sha256_file(path)
-                    for path in generator_files
-                },
-            },
+            payload=lineage_payload,
         )
+        target_payload = {
+            "lineage_hash": lineage_hash,
+            "target_shape": list(config.target_shape),
+            "downsample_method": config.downsample_method,
+        }
+        if config.solver_shape is not None:
+            target_payload["solver_shape"] = list(config.solver_shape)
         target_contract_hash = stable_hash_payload(
             artifact_kind="native-resolution-target-input-contract",
             schema_id=NATIVE_INPUT_SCHEMA_ID,
-            payload={
-                "lineage_hash": lineage_hash,
-                "target_shape": list(config.target_shape),
-                "downsample_method": config.downsample_method,
-            },
+            payload=target_payload,
         )
         return replace(
             config,
@@ -2957,11 +3491,16 @@ class TsunamiDatasetBuilder:
             "enabled",
             "lineage_id",
             "master_shape",
+            "solver_shape",
             "target_shape",
             "downsample_method",
             "master_bathymetry_config",
             "master_source_config",
             "inventory_path",
+            "solver_input",
+            "source_taper_stage",
+            "rough_zero_mean_rms_after_taper",
+            "source_spectral_acceptance",
         }
         unknown = sorted(set(str(key) for key in raw) - allowed)
         if unknown:
@@ -2979,17 +3518,162 @@ class TsunamiDatasetBuilder:
         if not lineage_id:
             raise ValueError("paired_inputs.lineage_id is required")
         master_shape = _shape("master_shape")
+        solver_shape = (
+            _shape("solver_shape") if "solver_shape" in raw else None
+        )
         target_shape = _shape("target_shape")
         if any(master % target for master, target in zip(master_shape, target_shape)):
             raise ValueError(
                 "paired_inputs.master_shape must be integer-divisible by target_shape"
             )
+        if solver_shape is not None:
+            if any(
+                master % solver
+                for master, solver in zip(master_shape, solver_shape)
+            ):
+                raise ValueError(
+                    "paired_inputs.master_shape must be integer-divisible by solver_shape"
+                )
+            if any(
+                solver % target
+                for solver, target in zip(solver_shape, target_shape)
+            ):
+                raise ValueError(
+                    "paired_inputs.solver_shape must be integer-divisible by target_shape"
+                )
         method = str(
             raw.get("downsample_method", "block_mean_float64_v1")
         ).strip()
         if method != "block_mean_float64_v1":
             raise ValueError(
                 "paired_inputs.downsample_method must be block_mean_float64_v1"
+            )
+
+        solver_input = str(raw.get("solver_input", "target")).strip().lower()
+        if solver_input not in {"target", "solver", "master"}:
+            raise ValueError(
+                "paired_inputs.solver_input must be one of: target, solver, master"
+            )
+        if solver_input == "solver" and solver_shape is None:
+            raise ValueError(
+                "paired_inputs.solver_shape is required when solver_input=solver"
+            )
+        if solver_input != "solver" and solver_shape is not None:
+            raise ValueError(
+                "paired_inputs.solver_shape requires solver_input=solver"
+            )
+        source_taper_stage = str(
+            raw.get("source_taper_stage", "target")
+        ).strip().lower()
+        if source_taper_stage not in {"target", "master"}:
+            raise ValueError(
+                "paired_inputs.source_taper_stage must be one of: target, master"
+            )
+        rough_correction = bool(
+            raw.get("rough_zero_mean_rms_after_taper", False)
+        )
+        if solver_input in {"solver", "master"} and source_taper_stage != "master":
+            raise ValueError(
+                "paired non-target solver input requires source_taper_stage=master"
+            )
+        if source_taper_stage == "master" and solver_input == "target":
+            raise ValueError(
+                "master source taper requires a non-target paired solver input"
+            )
+        if rough_correction and source_taper_stage != "master":
+            raise ValueError(
+                "rough_zero_mean_rms_after_taper requires source_taper_stage=master"
+            )
+
+        acceptance_raw = raw.get("source_spectral_acceptance")
+        acceptance = SourceSpectralAcceptanceConfig()
+        if acceptance_raw is not None:
+            if not isinstance(acceptance_raw, Mapping):
+                raise ValueError(
+                    "paired_inputs.source_spectral_acceptance must be a mapping"
+                )
+            acceptance_allowed = {
+                "enabled",
+                "stage",
+                "reference_shape",
+                "min_points_per_p90_wavelength",
+                "comparison_tolerance",
+                "preserve_source_family",
+                "max_attempts",
+            }
+            acceptance_unknown = sorted(
+                set(str(key) for key in acceptance_raw) - acceptance_allowed
+            )
+            if acceptance_unknown:
+                raise ValueError(
+                    "Unknown paired_inputs.source_spectral_acceptance keys: "
+                    f"{acceptance_unknown}"
+                )
+            if not bool(acceptance_raw.get("enabled", False)):
+                raise ValueError(
+                    "source_spectral_acceptance must be omitted unless enabled=true"
+                )
+            reference_shape = tuple(
+                int(value)
+                for value in acceptance_raw.get("reference_shape", ())
+            )
+            if len(reference_shape) != 2 or min(reference_shape) <= 1:
+                raise ValueError(
+                    "source_spectral_acceptance.reference_shape must contain "
+                    "two values > 1"
+                )
+            stage = str(
+                acceptance_raw.get("stage", "")
+            ).strip().lower()
+            if stage != "post_master_taper_solver":
+                raise ValueError(
+                    "source_spectral_acceptance.stage must be "
+                    "post_master_taper_solver"
+                )
+            minimum = float(
+                acceptance_raw.get("min_points_per_p90_wavelength", 0.0)
+            )
+            tolerance = float(
+                acceptance_raw.get("comparison_tolerance", 1.0e-9)
+            )
+            max_attempts = int(acceptance_raw.get("max_attempts", 0))
+            preserve_family = bool(
+                acceptance_raw.get("preserve_source_family", True)
+            )
+            if not np.isfinite(minimum) or minimum <= 0.0:
+                raise ValueError(
+                    "source_spectral_acceptance minimum must be positive"
+                )
+            if not np.isfinite(tolerance) or tolerance < 0.0:
+                raise ValueError(
+                    "source_spectral_acceptance comparison_tolerance must be "
+                    "finite and nonnegative"
+                )
+            if max_attempts <= 0:
+                raise ValueError(
+                    "source_spectral_acceptance.max_attempts must be positive"
+                )
+            if not preserve_family:
+                raise ValueError(
+                    "source_spectral_acceptance must preserve source family"
+                )
+            if solver_shape is None or reference_shape != solver_shape:
+                raise ValueError(
+                    "source_spectral_acceptance.reference_shape must equal "
+                    "paired_inputs.solver_shape"
+                )
+            if source_taper_stage != "master":
+                raise ValueError(
+                    "source_spectral_acceptance requires master source tapering"
+                )
+            acceptance = SourceSpectralAcceptanceConfig(
+                enabled=True,
+                stage=stage,
+                reference_shape=reference_shape,
+                min_points_per_p90_wavelength=minimum,
+                comparison_tolerance=tolerance,
+                preserve_source_family=preserve_family,
+                max_attempts=max_attempts,
             )
 
         def _required_path(name: str) -> Path:
@@ -3003,11 +3687,16 @@ class TsunamiDatasetBuilder:
             enabled=True,
             lineage_id=lineage_id,
             master_shape=master_shape,
+            solver_shape=solver_shape,
             target_shape=target_shape,
             downsample_method=method,
             master_bathymetry_config=_required_path("master_bathymetry_config"),
             master_source_config=_required_path("master_source_config"),
             inventory_path=_required_path("inventory_path"),
+            solver_input=solver_input,
+            source_taper_stage=source_taper_stage,
+            rough_zero_mean_rms_after_taper=rough_correction,
+            source_spectral_acceptance=acceptance,
         )
 
     def _load_authoritative_records(self) -> dict[int, dict[str, Any]]:
@@ -3149,6 +3838,21 @@ class TsunamiDatasetBuilder:
         source_strength_range = TsunamiDatasetBuilder._parse_range(
             ds.get("source_strength_range", [0.5, 2.0]), "dataset.source_strength_range"
         )
+        max_initial_eta_over_depth_raw = ds.get(
+            "max_initial_eta_over_depth"
+        )
+        max_initial_eta_over_depth = (
+            None
+            if max_initial_eta_over_depth_raw is None
+            else float(max_initial_eta_over_depth_raw)
+        )
+        if max_initial_eta_over_depth is not None and (
+            not np.isfinite(max_initial_eta_over_depth)
+            or not 0.0 < max_initial_eta_over_depth <= 1.0
+        ):
+            raise ValueError(
+                "dataset.max_initial_eta_over_depth must lie in (0, 1]"
+            )
 
         output_dir = Path(ds.get("output_dir", "data/raw"))
         bathymetry_dir = Path(ds.get("bathymetry_dir", "data/bathymetry"))
@@ -3239,6 +3943,10 @@ class TsunamiDatasetBuilder:
                 raise ValueError("paired_inputs requires a fixed dataset.seed")
             if quality_policy.on_violation != "fail":
                 raise ValueError("paired_inputs requires quality.on_violation=fail")
+        elif max_initial_eta_over_depth is not None:
+            raise ValueError(
+                "dataset.max_initial_eta_over_depth currently requires paired_inputs"
+            )
         return DatasetConfig(
             num_samples=num_samples,
             seed=seed,
@@ -3259,6 +3967,7 @@ class TsunamiDatasetBuilder:
             primary_fde=primary_fde,
             quality_policy=quality_policy,
             requested_output=requested_output,
+            max_initial_eta_over_depth=max_initial_eta_over_depth,
             authoritative_inputs=(
                 TsunamiDatasetBuilder._parse_authoritative_inputs_section(
                     cfg, requested_output
@@ -3667,8 +4376,11 @@ class TsunamiDatasetBuilder:
                         self.run_seed,
                         str(self.dataset.paired_inputs.master_source_config),
                         str(self.source_dir),
+                        str(self.bathymetry_dir),
                         self.dataset.source_strength_range,
+                        self.dataset.max_initial_eta_over_depth,
                         self.dataset.paired_inputs,
+                        self.dataset.buffered_domain,
                     )
                 else:
                     rec = _generate_source_worker(
@@ -3697,8 +4409,11 @@ class TsunamiDatasetBuilder:
                         self.run_seed,
                         str(self.dataset.paired_inputs.master_source_config),
                         str(self.source_dir),
+                        str(self.bathymetry_dir),
                         self.dataset.source_strength_range,
+                        self.dataset.max_initial_eta_over_depth,
                         self.dataset.paired_inputs,
+                        self.dataset.buffered_domain,
                     ): idx
                     for idx in pending
                 }
@@ -3812,6 +4527,11 @@ class TsunamiDatasetBuilder:
                 paired.target_shape
             ):
                 raise RuntimeError("paired input target shape mismatch")
+            if paired.solver_shape is not None:
+                if tuple(
+                    np.asarray(payload["native_solver_shape"], dtype=int)
+                ) != paired.solver_shape:
+                    raise RuntimeError("paired input solver shape mismatch")
             seed = int(np.asarray(payload["sample_seed"]).reshape(-1)[0])
             if seed != expected_seed:
                 raise RuntimeError("paired input sample seed mismatch")
@@ -3835,6 +4555,24 @@ class TsunamiDatasetBuilder:
                 raise RuntimeError(
                     "paired target bathymetry is not the exact master-grid reduction"
                 )
+            solver_bathymetry = None
+            if paired.solver_shape is not None:
+                solver_bathymetry = np.asarray(
+                    payload["solver_bathymetry"], dtype=np.float32
+                )
+                expected_solver_bathymetry = _block_mean_downsample(
+                    master_bathymetry, paired.solver_shape
+                )
+                if not np.array_equal(
+                    solver_bathymetry, expected_solver_bathymetry
+                ):
+                    raise RuntimeError(
+                        "paired solver bathymetry is not the exact master-grid reduction"
+                    )
+                if hash_array(solver_bathymetry)["sha256"] != _text(
+                    payload, "native_solver_array_sha256"
+                ):
+                    raise RuntimeError("paired solver bathymetry hash mismatch")
 
         with np.load(source_path, allow_pickle=False) as payload:
             _validate_common(payload)
@@ -3842,14 +4580,65 @@ class TsunamiDatasetBuilder:
             master_source = np.asarray(
                 payload["master_source_field"], dtype=np.float32
             )
+            raw_master_source = (
+                np.asarray(
+                    payload["raw_master_source_field"], dtype=np.float32
+                )
+                if "raw_master_source_field" in payload
+                else None
+            )
             source_type = _text(payload, "source_type")
             source_strength_array = np.asarray(payload["source_strength"])
             source_strength = float(source_strength_array.reshape(-1)[0])
+            sampled_source_strength = float(
+                np.asarray(
+                    (
+                        payload["sampled_source_strength"]
+                        if "sampled_source_strength" in payload
+                        else source_strength_array
+                    )
+                ).reshape(-1)[0]
+            )
             source_master_hash = hash_array(master_source)["sha256"]
             if source_master_hash != _text(
                 payload, "native_master_array_sha256"
             ):
                 raise RuntimeError("paired master source hash mismatch")
+            if raw_master_source is not None:
+                if hash_array(raw_master_source)["sha256"] != _text(
+                    payload, "native_raw_master_array_sha256"
+                ):
+                    raise RuntimeError("paired raw master source hash mismatch")
+                if paired.source_taper_stage == "master":
+                    solver_input_shape = _paired_solver_input_shape(paired)
+                    taper_ratio = (
+                        paired.master_shape[0] // solver_input_shape[0]
+                    )
+                    expected_master_source = _prepare_tapered_source(
+                        raw_master_source,
+                        taper_cells=(
+                            self.dataset.buffered_domain.source_taper_cells
+                            * taper_ratio
+                        ),
+                        zero_edge_cells=max(
+                            master // target
+                            for master, target in zip(
+                                paired.master_shape,
+                                paired.target_shape,
+                            )
+                        ),
+                        source_type=source_type,
+                        rough_zero_mean_rms_after_taper=(
+                            paired.rough_zero_mean_rms_after_taper
+                        ),
+                    )
+                    if not np.array_equal(
+                        master_source, expected_master_source
+                    ):
+                        raise RuntimeError(
+                            "paired effective master source does not match "
+                            "the raw source and taper contract"
+                        )
             expected_source = _block_mean_downsample(
                 master_source, paired.target_shape
             )
@@ -3857,9 +4646,128 @@ class TsunamiDatasetBuilder:
                 raise RuntimeError(
                     "paired target source is not the exact master-grid reduction"
                 )
+            solver_source = None
+            if paired.solver_shape is not None:
+                solver_source = np.asarray(
+                    payload["solver_source_field"], dtype=np.float32
+                )
+                expected_solver_source = _block_mean_downsample(
+                    master_source, paired.solver_shape
+                )
+                if not np.array_equal(solver_source, expected_solver_source):
+                    raise RuntimeError(
+                        "paired solver source is not the exact master-grid reduction"
+                    )
+                if hash_array(solver_source)["sha256"] != _text(
+                    payload, "native_solver_array_sha256"
+                ):
+                    raise RuntimeError("paired solver source hash mismatch")
+            acceptance = paired.source_spectral_acceptance
+            source_attempt_index = 0
+            source_attempt_count = 1
+            source_spectral_points = None
+            if acceptance.enabled:
+                if solver_source is None:
+                    raise RuntimeError(
+                        "source spectral acceptance requires solver source"
+                    )
+                source_attempt_index = int(
+                    np.asarray(
+                        payload["source_generation_attempt_index"]
+                    ).reshape(-1)[0]
+                )
+                source_attempt_count = int(
+                    np.asarray(
+                        payload["source_generation_attempt_count"]
+                    ).reshape(-1)[0]
+                )
+                if (
+                    source_attempt_index < 0
+                    or source_attempt_count != source_attempt_index + 1
+                    or source_attempt_count > acceptance.max_attempts
+                ):
+                    raise RuntimeError(
+                        "paired source attempt metadata is invalid"
+                    )
+                source_spectral_points = float(
+                    np.asarray(
+                        payload[
+                            "source_spectral_points_per_p90_wavelength"
+                        ]
+                    ).reshape(-1)[0]
+                )
+                observed_points = _points_per_p90_wavelength(solver_source)
+                if not np.isclose(
+                    source_spectral_points,
+                    observed_points,
+                    rtol=0.0,
+                    atol=1.0e-12,
+                ):
+                    raise RuntimeError(
+                        "paired source spectral metric mismatch"
+                    )
+                if (
+                    observed_points + acceptance.comparison_tolerance
+                    < acceptance.min_points_per_p90_wavelength
+                ):
+                    raise RuntimeError(
+                        "paired source violates spectral acceptance floor"
+                    )
         lo, hi = self.dataset.source_strength_range
-        if not np.isfinite(source_strength) or not lo <= source_strength <= hi:
-            raise RuntimeError("paired input source strength is out of range")
+        if (
+            not np.isfinite(sampled_source_strength)
+            or not lo <= sampled_source_strength <= hi
+        ):
+            raise RuntimeError(
+                "paired input sampled source strength is out of range"
+            )
+        if (
+            not np.isfinite(source_strength)
+            or source_strength <= 0.0
+            or source_strength > sampled_source_strength
+        ):
+            raise RuntimeError("paired input resolved source strength is invalid")
+        cap = self.dataset.max_initial_eta_over_depth
+        if cap is None:
+            if np.float32(source_strength) != np.float32(
+                sampled_source_strength
+            ):
+                raise RuntimeError(
+                    "uncapped paired input changed the sampled source strength"
+                )
+        else:
+            cap_bathymetry = (
+                master_bathymetry
+                if paired.source_taper_stage == "master"
+                else bathymetry
+            )
+            cap_source = (
+                master_source
+                if paired.source_taper_stage == "master"
+                else source_field
+            )
+            cap_depth = np.maximum(
+                -np.asarray(cap_bathymetry, dtype=np.float64), 1.0e-4
+            )
+            unit_ratio = float(
+                np.max(
+                    np.abs(np.asarray(cap_source, dtype=np.float64))
+                    / cap_depth
+                )
+            )
+            expected_strength = min(
+                sampled_source_strength,
+                float(cap) / max(unit_ratio, 1.0e-30),
+            )
+            if np.float32(source_strength) != np.float32(expected_strength):
+                raise RuntimeError(
+                    "paired input amplitude cap does not match frozen inputs"
+                )
+            resolved_ratio = float(source_strength * unit_ratio)
+            if resolved_ratio > float(cap) * (1.0 + 1.0e-6):
+                raise RuntimeError(
+                    "paired input exceeds max_initial_eta_over_depth"
+                )
 
         rest_depth = np.maximum(
             -bathymetry + self.dataset.sea_level_offset, 0.0
@@ -3900,6 +4808,30 @@ class TsunamiDatasetBuilder:
             "initial_depth": master_initial_depth,
             "free_surface0": master_free_surface0,
         }
+        solver_arrays = None
+        if paired.solver_shape is not None:
+            if solver_bathymetry is None or solver_source is None:
+                raise RuntimeError("paired solver arrays are missing")
+            solver_rest_depth = np.maximum(
+                -solver_bathymetry + self.dataset.sea_level_offset, 0.0
+            ).astype(np.float32, copy=False)
+            solver_eta0 = np.asarray(
+                source_strength * solver_source, dtype=np.float32
+            )
+            solver_initial_depth = np.maximum(
+                solver_rest_depth + solver_eta0, 0.0
+            ).astype(np.float32, copy=False)
+            solver_arrays = {
+                "bathymetry": solver_bathymetry,
+                "source_field": solver_source,
+                "rest_depth": solver_rest_depth,
+                "eta0": solver_eta0,
+                "initial_depth": solver_initial_depth,
+                "free_surface0": np.asarray(
+                    solver_initial_depth + solver_bathymetry,
+                    dtype=np.float32,
+                ),
+            }
         target_fingerprint = authoritative_input_fingerprint(
             split=requested.split,
             sample_index=sample_idx,
@@ -3918,7 +4850,7 @@ class TsunamiDatasetBuilder:
             source_strength=source_strength_array,
             arrays=master_arrays,
         )
-        return {
+        record = {
             "schema_id": NATIVE_INPUT_SCHEMA_ID,
             "lineage_id": paired.lineage_id,
             "lineage_hash": paired.lineage_hash,
@@ -3934,6 +4866,12 @@ class TsunamiDatasetBuilder:
             "bathymetry_type": bathymetry_type,
             "source_type": source_type,
             "source_strength": source_strength,
+            "sampled_source_strength": sampled_source_strength,
+            "source_generation_attempt_index": source_attempt_index,
+            "source_generation_attempt_count": source_attempt_count,
+            "source_spectral_points_per_p90_wavelength": (
+                source_spectral_points
+            ),
             "target_input_fingerprint": target_fingerprint,
             "master_input_fingerprint": master_fingerprint,
             "target_array_hashes": {
@@ -3945,6 +4883,26 @@ class TsunamiDatasetBuilder:
             "bathymetry_cache_path": str(bathymetry_path),
             "source_cache_path": str(source_path),
         }
+        if solver_arrays is not None and paired.solver_shape is not None:
+            record.update(
+                {
+                    "solver_shape": list(paired.solver_shape),
+                    "solver_input_fingerprint": authoritative_input_fingerprint(
+                        split=requested.split,
+                        sample_index=sample_idx,
+                        scenario_id=scenario_id,
+                        bathymetry_type=bathymetry_type,
+                        source_type=source_type,
+                        source_strength=source_strength_array,
+                        arrays=solver_arrays,
+                    ),
+                    "solver_array_hashes": {
+                        name: hash_array(values)
+                        for name, values in solver_arrays.items()
+                    },
+                }
+            )
+        return record
 
     def _freeze_paired_input_inventory(self, indices: list[int]) -> str:
         paired = self.dataset.paired_inputs

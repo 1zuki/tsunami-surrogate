@@ -177,6 +177,141 @@ def test_processed_directory_publication_restores_existing_on_failure(
     assert (output / "old.txt").read_text(encoding="utf-8") == "old"
 
 
+def test_processed_split_publication_preserves_siblings_and_training_stats(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "processed"
+    output.mkdir()
+    stats = output / "normalization_stats.json"
+    stats.write_text(json.dumps(_stats_payload(), indent=2), encoding="utf-8")
+    stats_before = stats.read_bytes()
+    for split_name in ("train", "val", "test"):
+        split_dir = output / split_name
+        split_dir.mkdir()
+        (split_dir / "marker.txt").write_text(
+            f"old-{split_name}",
+            encoding="utf-8",
+        )
+
+    staging = tmp_path / ".processed.staging"
+    staging.mkdir()
+    (staging / "normalization_stats.json").write_bytes(stats_before)
+    staged_val = staging / "val"
+    staged_val.mkdir()
+    (staged_val / "marker.txt").write_text("new-val", encoding="utf-8")
+
+    TsunamiPreprocessor._publish_processed_split(staging, output, "val")
+
+    assert stats.read_bytes() == stats_before
+    assert (output / "train" / "marker.txt").read_text() == "old-train"
+    assert (output / "val" / "marker.txt").read_text() == "new-val"
+    assert (output / "test" / "marker.txt").read_text() == "old-test"
+    assert not staging.exists()
+
+
+def test_processed_split_publication_restores_existing_on_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output = tmp_path / "processed"
+    output.mkdir()
+    stats_payload = json.dumps(_stats_payload(), indent=2)
+    (output / "normalization_stats.json").write_text(
+        stats_payload,
+        encoding="utf-8",
+    )
+    old_val = output / "val"
+    old_val.mkdir()
+    (old_val / "marker.txt").write_text("old-val", encoding="utf-8")
+
+    staging = tmp_path / ".processed.staging"
+    staging.mkdir()
+    (staging / "normalization_stats.json").write_text(
+        stats_payload,
+        encoding="utf-8",
+    )
+    new_val = staging / "val"
+    new_val.mkdir()
+    (new_val / "marker.txt").write_text("new-val", encoding="utf-8")
+
+    real_replace = os.replace
+    calls = 0
+
+    def fail_second_replace(source, destination):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected split publication failure")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", fail_second_replace)
+    with pytest.raises(OSError, match="injected split"):
+        TsunamiPreprocessor._publish_processed_split(
+            staging,
+            output,
+            "val",
+        )
+
+    assert (output / "val" / "marker.txt").read_text() == "old-val"
+
+
+def test_merge_split_copies_training_stats_without_rewriting_them(
+    tmp_path: Path,
+) -> None:
+    config_path = _config(tmp_path)
+    payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    payload["split"] = {"train": 0.0, "val": 1.0, "test": 0.0, "seed": 7}
+    payload["saving"]["publication_mode"] = "merge_split"
+    config_path.write_text(
+        yaml.safe_dump(payload, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    preprocessor = TsunamiPreprocessor(str(config_path))
+    reference = tmp_path / "training-normalization-stats.json"
+    reference.write_text(
+        json.dumps(_stats_payload(), indent=2),
+        encoding="utf-8",
+    )
+    reference_before = reference.read_bytes()
+    staging = tmp_path / "staging"
+    staging.mkdir()
+
+    preprocessor.cfg.processed_dir = staging
+    preprocessor._active_norm_reference_path = reference
+    preprocessor._loaded_normalization_payload = _stats_payload()
+    preprocessor._save_normalization_stats([])
+
+    assert (staging / "normalization_stats.json").read_bytes() == reference_before
+    assert preprocessor._normalization_stats_sha256 == sha256_file(reference)
+
+
+def test_merge_split_requires_training_preprocessing_first(
+    tmp_path: Path,
+) -> None:
+    config_path = _config(tmp_path)
+    payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    payload["split"] = {"train": 0.0, "val": 1.0, "test": 0.0, "seed": 7}
+    payload["saving"]["publication_mode"] = "merge_split"
+    config_path.write_text(
+        yaml.safe_dump(payload, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    preprocessor = TsunamiPreprocessor(str(config_path))
+    with pytest.raises(
+        FileNotFoundError,
+        match="Run train preprocessing first",
+    ):
+        preprocessor._normalize_and_save(
+            [],
+            [{"scenario_id": "scenario_000001"}],
+            [],
+            tmp_path / "published",
+            norm_reference_stats_path=tmp_path / "missing-stats.json",
+        )
+
+
 @pytest.mark.parametrize(
     ("mutation", "message"),
     [

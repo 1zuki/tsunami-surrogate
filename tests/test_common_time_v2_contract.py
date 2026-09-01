@@ -72,6 +72,38 @@ def test_requested_config_yaml_and_unknown_key_rejection() -> None:
         parse_requested_output_config(invalid)
 
 
+def test_requested_config_supports_scaled_physical_time_contract() -> None:
+    requested = parse_requested_output_config(
+        {
+            "enabled": True,
+            "status": "provisional",
+            "execution_scope": "preparation-only",
+            "split": "train",
+            "start": 8.4,
+            "step": 8.4,
+            "count": 50,
+            "horizon": 420.0,
+            "max_natural_steps": 20000,
+            "collect_natural_step_health": True,
+            "eta_primary": True,
+            "physical_scaling": {
+                "horizontal_scale": 2400.0,
+                "time_scale": 2400.0,
+                "vertical_scale": 1.0,
+                "aspect_ratio": 2400.0,
+                "length_unit": "m",
+                "time_unit": "s",
+            },
+        }
+    )
+
+    assert requested is not None
+    assert requested.requested_times[0] == np.float64(8.4)
+    assert requested.requested_times[-1] == np.float64(420.0)
+    assert requested.contract["physical_scaling"]["aspect_ratio"] == 2400.0
+    assert requested.contract_hash != contract_hash()
+
+
 def test_hashes_bind_array_dtype_shape_and_semantic_config() -> None:
     values32 = np.arange(4, dtype=np.float32).reshape(2, 2)
     values64 = values32.astype(np.float64)

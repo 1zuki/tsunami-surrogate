@@ -62,6 +62,7 @@ _ALLOWED_REQUESTED_KEYS = {
     "eta_primary",
     "debug_full_states",
     "acknowledge_provisional",
+    "physical_scaling",
 }
 
 
@@ -145,16 +146,127 @@ def validate_candidate_times(values: Any) -> np.ndarray:
     return times.copy()
 
 
-def build_candidate_contract(*, status: str = PROVISIONAL_STATUS) -> dict[str, Any]:
+def validate_requested_times(
+    values: Any,
+    *,
+    expected_count: int | None = None,
+) -> np.ndarray:
+    times = np.asarray(values, dtype=np.float64)
+    if times.ndim != 1 or times.size == 0:
+        raise ValueError("requested times must be a non-empty 1-D vector")
+    if expected_count is not None and times.size != int(expected_count):
+        raise ValueError(
+            f"requested times must contain exactly {int(expected_count)} values"
+        )
+    if not np.isfinite(times).all() or np.any(times <= 0.0):
+        raise ValueError("requested times must be finite and strictly positive")
+    if np.any(np.diff(times) <= 0.0):
+        raise ValueError("requested times must be strictly increasing")
+    return times.copy()
+
+
+def _validate_physical_scaling(raw: Any) -> dict[str, Any] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise ValueError("requested_output.physical_scaling must be a mapping")
+    allowed = {
+        "horizontal_scale",
+        "time_scale",
+        "vertical_scale",
+        "aspect_ratio",
+        "length_unit",
+        "time_unit",
+    }
+    unknown = sorted(set(str(key) for key in raw) - allowed)
+    if unknown:
+        raise ValueError(
+            "Unknown requested_output.physical_scaling keys: "
+            f"{unknown}"
+        )
+    required = {
+        "horizontal_scale",
+        "time_scale",
+        "vertical_scale",
+        "aspect_ratio",
+        "length_unit",
+        "time_unit",
+    }
+    missing = sorted(required - set(str(key) for key in raw))
+    if missing:
+        raise ValueError(
+            "Missing requested_output.physical_scaling keys: "
+            f"{missing}"
+        )
+
+    numeric: dict[str, float] = {}
+    for key in (
+        "horizontal_scale",
+        "time_scale",
+        "vertical_scale",
+        "aspect_ratio",
+    ):
+        value = float(raw[key])
+        if not math.isfinite(value) or value <= 0.0:
+            raise ValueError(
+                f"requested_output.physical_scaling.{key} must be positive and finite"
+            )
+        numeric[key] = value
+
+    if not math.isclose(
+        numeric["horizontal_scale"],
+        numeric["time_scale"],
+        rel_tol=0.0,
+        abs_tol=1.0e-12,
+    ):
+        raise ValueError(
+            "requested_output physical horizontal_scale and time_scale must match"
+        )
+    expected_aspect = (
+        numeric["horizontal_scale"] / numeric["vertical_scale"]
+    )
+    if not math.isclose(
+        numeric["aspect_ratio"],
+        expected_aspect,
+        rel_tol=1.0e-12,
+        abs_tol=1.0e-12,
+    ):
+        raise ValueError(
+            "requested_output physical aspect_ratio must equal "
+            "horizontal_scale / vertical_scale"
+        )
+
+    length_unit = str(raw["length_unit"]).strip()
+    time_unit = str(raw["time_unit"]).strip()
+    if not length_unit or not time_unit:
+        raise ValueError("requested_output physical units must be non-empty")
+    return {
+        **numeric,
+        "length_unit": length_unit,
+        "time_unit": time_unit,
+    }
+
+
+def build_candidate_contract(
+    *,
+    status: str = PROVISIONAL_STATUS,
+    requested_times: Sequence[float] | None = None,
+    physical_scaling: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     normalized_status = str(status).strip().lower()
     if normalized_status not in {PROVISIONAL_STATUS, ACCEPTED_STATUS}:
         raise ValueError("common-time-v2 contract status must be provisional or accepted")
-    return {
+    times = (
+        candidate_requested_times()
+        if requested_times is None
+        else validate_requested_times(requested_times)
+    )
+    contract = {
         "schema_id": CONTRACT_SCHEMA_ID,
         "status": normalized_status,
         "field": "eta",
         "time_semantics": "elapsed-benchmark-time-units",
-        "requested_times": candidate_requested_times().tolist(),
+        "requested_times": times.tolist(),
         "initial_state_in_target": False,
         "extraction": "adjacent-natural-step-linear",
         "exact_knot": "copy-natural-state-with-zero-width-provenance",
@@ -177,6 +289,10 @@ def build_candidate_contract(*, status: str = PROVISIONAL_STATUS) -> dict[str, A
             "total_natural_steps",
         ],
     }
+    scaling = _validate_physical_scaling(physical_scaling)
+    if scaling is not None:
+        contract["physical_scaling"] = scaling
+    return contract
 
 
 def contract_hash(
@@ -226,17 +342,41 @@ def parse_requested_output_config(raw: Any) -> RequestedOutputConfig | None:
     step = float(raw.get("step", CANDIDATE_STEP))
     count = int(raw.get("count", CANDIDATE_COUNT))
     horizon = float(raw.get("horizon", CANDIDATE_HORIZON))
-    if (start, step, count, horizon) != (
+    if not all(math.isfinite(value) and value > 0.0 for value in (start, step, horizon)):
+        raise ValueError(
+            "requested_output start, step, and horizon must be positive and finite"
+        )
+    if count <= 0:
+        raise ValueError("requested_output.count must be positive")
+    legacy_grid = (start, step, count, horizon) == (
         CANDIDATE_START,
         CANDIDATE_STEP,
         CANDIDATE_COUNT,
         CANDIDATE_HORIZON,
-    ):
+    )
+    if legacy_grid:
+        derived = candidate_requested_times()
+    else:
+        expected_horizon = start + step * float(count - 1)
+        if not math.isclose(
+            horizon,
+            expected_horizon,
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-12,
+        ):
+            raise ValueError(
+                "requested_output.horizon must equal start + step * (count - 1)"
+            )
+        derived = start + step * np.arange(count, dtype=np.float64)
+        derived[-1] = np.float64(horizon)
+    times = validate_requested_times(
+        raw.get("times", derived),
+        expected_count=count,
+    )
+    if not np.array_equal(times, derived):
         raise ValueError(
-            "requested_output start/step/count/horizon must match the provisional contract"
+            "requested_output.times must exactly match start/step/count/horizon"
         )
-    derived = candidate_requested_times()
-    times = validate_candidate_times(raw.get("times", derived))
 
     max_steps = int(raw.get("max_natural_steps", 1000))
     if max_steps <= 0:
@@ -248,7 +388,11 @@ def parse_requested_output_config(raw: Any) -> RequestedOutputConfig | None:
     if not eta_primary:
         raise ValueError("common-time-v2 requires eta_primary=true")
 
-    contract = build_candidate_contract(status=status)
+    contract = build_candidate_contract(
+        status=status,
+        requested_times=None if legacy_grid else times,
+        physical_scaling=raw.get("physical_scaling"),
+    )
     return RequestedOutputConfig(
         schema_id=schema_id,
         status=status,

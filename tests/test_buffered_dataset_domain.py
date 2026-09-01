@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from src.data_gen.simulate_dataset import (
     BufferedDomainConfig,
@@ -13,6 +14,7 @@ from src.data_gen.simulate_dataset import (
     _make_hydrostatic_solver_from_cfg,
     _make_muscl_solver_from_cfg,
     _prepare_buffered_domain,
+    _prepare_tapered_source,
     _resolved_solver_cfg_for_fde,
 )
 from src.solver.operator_time import build_sponge_mask
@@ -55,6 +57,31 @@ def test_96_domain_preserves_64_core_and_zeroes_external_source() -> None:
     assert prepared["source_edge_max_abs"] == 0.0
 
 
+def test_rough_master_taper_preserves_zero_mean_and_rms() -> None:
+    rng = np.random.default_rng(123)
+    source = rng.standard_normal((128, 128)).astype(np.float32)
+    source -= np.mean(source, dtype=np.float64)
+    source *= np.float32(
+        0.1 / np.sqrt(np.mean(source.astype(np.float64) ** 2))
+    )
+
+    tapered = _prepare_tapered_source(
+        source,
+        taper_cells=16,
+        source_type="rough",
+        rough_zero_mean_rms_after_taper=True,
+    )
+
+    assert float(np.mean(tapered, dtype=np.float64)) == pytest.approx(
+        0.0, abs=1.0e-9
+    )
+    assert float(
+        np.sqrt(np.mean(tapered.astype(np.float64) ** 2))
+    ) == pytest.approx(0.1, rel=1.0e-6)
+    assert np.count_nonzero(tapered[[0, -1], :]) == 0
+    assert np.count_nonzero(tapered[:, [0, -1]]) == 0
+
+
 def test_16_cell_cosine_sponge_is_exactly_one_on_64_crop() -> None:
     mask = build_sponge_mask(
         nx=96,
@@ -87,18 +114,27 @@ def test_rollout_crop_preserves_time_and_diagnostics_without_dtype_change() -> N
     assert cropped.diagnostics is diagnostics
 
 
-def test_provisional_config_resolves_the_96_to_64_policy() -> None:
+def test_canonical_config_resolves_the_384_to_128_to_64_policy() -> None:
     root = Path(__file__).resolve().parents[1]
     builder = TsunamiDatasetBuilder(
         str(root / "configs/data/dataset.yaml")
     )
 
-    assert (builder.solver_cfg["nx"], builder.solver_cfg["ny"]) == (96, 96)
+    assert (builder.solver_cfg["nx"], builder.solver_cfg["ny"]) == (192, 192)
     assert (builder.solver_cfg["dx"], builder.solver_cfg["dy"]) == (
-        1.0 / 64.0,
-        1.0 / 64.0,
+        18.75,
+        18.75,
     )
-    assert builder.dataset.buffered_domain == _config()
+    assert builder.dataset.buffered_domain == BufferedDomainConfig(
+        enabled=True,
+        buffer_cells=32,
+        source_taper_cells=16,
+        bathymetry_extension="edge",
+        output_crop="central",
+    )
+    assert builder.dataset.paired_inputs.master_shape == (384, 384)
+    assert builder.dataset.paired_inputs.solver_shape == (128, 128)
+    assert builder.dataset.paired_inputs.target_shape == (64, 64)
 
     factories = {
         "swe_hydrostatic": _make_hydrostatic_solver_from_cfg,
@@ -110,10 +146,10 @@ def test_provisional_config_resolves_the_96_to_64_policy() -> None:
             builder.solver_cfg, builder.dataset.solver_profiles, solver_name
         )
         solver = factory(resolved)
-        assert solver.sponge_width == 16
+        assert solver.sponge_width == 32
         assert solver.sponge_profile == "cosine"
         np.testing.assert_array_equal(
-            solver.sponge_mask[16:80, 16:80], np.ones((64, 64))
+            solver.sponge_mask[32:160, 32:160], np.ones((128, 128))
         )
         if solver_name == "boussinesq":
             assert solver.boundary_x == solver.boundary_y == "open"
