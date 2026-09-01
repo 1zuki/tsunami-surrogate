@@ -65,6 +65,12 @@ def test_native_configs_resolve_common_time_boundaries_and_external_sponges(
     for resolution, expected in RESOLUTIONS.items():
         builder = _builder(tmp_path, resolution)
         paired = builder.dataset.paired_inputs
+        assert builder.dataset.requested_output.status == "provisional"
+        assert (
+            builder.dataset.requested_output.execution_scope
+            == "preparation-only"
+        )
+        assert not builder.dataset.requested_output.acknowledged_provisional
         lineage_hashes.add(paired.lineage_hash)
         target_contracts.add(paired.target_contract_hash)
         assert paired.master_shape == (128, 128)
@@ -167,7 +173,7 @@ def test_native_32_end_to_end_freezes_roster_before_publication(
     tmp_path: Path,
 ) -> None:
     builder = _builder(tmp_path, 32, count=2)
-    builder.run(stop_at=1)
+    builder.run(stop_at=1, acknowledge_provisional=True)
 
     inventory = builder.dataset.paired_inputs.inventory_path
     records = [

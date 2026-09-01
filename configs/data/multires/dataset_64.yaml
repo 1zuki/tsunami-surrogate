@@ -1,4 +1,4 @@
-# Common-time-v2 native 64x64 auxiliary dataset paired with 32x32 and 128x128.
+# DEFERRED native-resolution auxiliary config. Its scaling contract predates the accepted core rebuild and is not approved for production generation.
 configs:
   bathymetry: configs/data/bathymetry.yaml
   source: configs/data/source.yaml
@@ -23,8 +23,8 @@ dataset:
 requested_output:
   enabled: true
   schema_id: tsunami-surrogate.common-time-v2.contract.v1
-  status: accepted
-  execution_scope: production
+  status: provisional
+  execution_scope: preparation-only
   split: train
   start: 0.0035
   step: 0.0035

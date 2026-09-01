@@ -1,4 +1,4 @@
-# Common-time-v2 native 32x32 auxiliary dataset.
+# DEFERRED native-resolution auxiliary config. Its scaling contract predates the accepted core rebuild and is not approved for production generation.
 configs:
   # These target-grid configs declare the publication shape. Exact values are
   # derived from the shared 128x128 master construction below.
@@ -25,8 +25,8 @@ dataset:
 requested_output:
   enabled: true
   schema_id: tsunami-surrogate.common-time-v2.contract.v1
-  status: accepted
-  execution_scope: production
+  status: provisional
+  execution_scope: preparation-only
   split: train
   start: 0.0035
   step: 0.0035
