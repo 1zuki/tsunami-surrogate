@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, Optional
 import warnings
@@ -10,14 +12,27 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib.animation import FuncAnimation
+from matplotlib.colors import Normalize
+from matplotlib.widgets import Button
 
 from src.evaluation.calibration import interval_calibration
-from src.evaluation.target_scaling import load_target_denorm
+from src.evaluation.target_scaling import load_target_denorm, resolve_eval_dataset_path
 from src.evaluation.uncertainty import error_uncertainty_correlation
+from src.evaluation.window_rollout import rollout_trajectory
 from src.models import build_model
 from src.training.checkpointing import load_checkpoint
 from src.utils.config import load_config
 from src.utils.device import resolve_device
+
+
+_SAMPLE_METADATA_KEYS = (
+    "scenario_id",
+    "solver_name",
+    "source_id",
+    "source_type",
+    "bathymetry_type",
+    "source_strength",
+)
 
 
 def _to_2d(t: torch.Tensor):
@@ -135,12 +150,32 @@ def _read_input_order_manifest(manifest_path: Path) -> Optional[np.ndarray]:
     return None
 
 
+def _copy_selected_metadata(
+    data: Any,
+    out: Dict[str, np.ndarray],
+    index: int,
+) -> None:
+    for key in _SAMPLE_METADATA_KEYS:
+        if key not in data:
+            continue
+        values = np.asarray(data[key])
+        if values.ndim == 0:
+            out[key] = values.reshape(1)
+        else:
+            out[key] = values[index : index + 1]
+
+
 def _load_processed_eval_dataset(
     processed_path: str | Path,
     sample_id: Optional[str] = None,
     sample_index: int = 0,
 ) -> Dict[str, np.ndarray]:
     processed_path = Path(processed_path)
+    if (
+        processed_path.name == "eval_dataset.npz"
+        and (processed_path.parent / "shards_manifest.json").is_file()
+    ):
+        processed_path = processed_path.parent
     npz_path = processed_path
     if processed_path.is_dir():
         shard_manifest = processed_path / "shards_manifest.json"
@@ -203,6 +238,7 @@ def _load_processed_eval_dataset(
                     out["sample_id"] = np.asarray([f"sample_{local_idx:06d}"], dtype=object)
                 if "input_order" in data:
                     out["input_order"] = np.asarray(data["input_order"], dtype=object)
+                _copy_selected_metadata(data, out, local_idx)
 
             if "input_order" not in out:
                 input_order = _read_input_order_manifest(processed_path / "eval_manifest.json")
@@ -231,6 +267,7 @@ def _load_processed_eval_dataset(
         }
         if "input_order" in data:
             out["input_order"] = np.asarray(data["input_order"], dtype=object)
+        _copy_selected_metadata(data, out, idx)
     manifest_path = npz_path.with_name("eval_manifest.json")
     if "input_order" not in out:
         input_order = _read_input_order_manifest(manifest_path)
@@ -263,7 +300,23 @@ def _pick_sample_index(sample_ids: np.ndarray, sample_id: Optional[str], sample_
     return int(matches[0])
 
 
-def _load_raw_sample_bathymetry_and_timestamps(raw_dir: Path, sample_id: str) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+def _zero_based_sample_index(sample_index: int) -> int:
+    sample_number = int(sample_index)
+    if sample_number < 1:
+        raise ValueError(
+            "sample_index must be >= 1 for user-facing visualization "
+            "(1 selects sample_000001)"
+        )
+    return sample_number - 1
+
+
+def _load_raw_sample_bathymetry_and_timestamps(
+    raw_dir: Optional[Path],
+    sample_id: str,
+) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+    if raw_dir is None:
+        return None, None
+
     sample_npz = raw_dir / sample_id / "sample.npz"
     if not sample_npz.exists():
         return None, None
@@ -274,7 +327,110 @@ def _load_raw_sample_bathymetry_and_timestamps(raw_dir: Path, sample_id: str) ->
     return bathymetry, timestamps
 
 
-def _compute_metrics(pred: np.ndarray, target: np.ndarray) -> Dict[str, Any]:
+def _metadata_text(processed: Dict[str, np.ndarray], key: str) -> str:
+    values = processed.get(key)
+    if values is None:
+        return ""
+    flat = np.asarray(values).reshape(-1)
+    if flat.size == 0:
+        return ""
+    value = flat[0]
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return str(value)
+
+
+def _solver_directory_name(solver_name: str, processed_path: str | Path) -> str:
+    normalized = str(solver_name).strip().lower()
+    mapping = {
+        "swe_hydrostatic": "hydrostatic",
+        "hydrostatic": "hydrostatic",
+        "swe_muscl_hr": "muscl_hr",
+        "muscl_hr": "muscl_hr",
+        "boussinesq": "boussinesq",
+    }
+    if normalized in mapping:
+        return mapping[normalized]
+
+    parts = {part.lower() for part in Path(processed_path).parts}
+    for candidate in ("hydrostatic", "muscl_hr", "boussinesq"):
+        if candidate in parts:
+            return candidate
+    return ""
+
+
+def _infer_raw_dir(
+    processed_path: str | Path,
+    solver_name: str,
+) -> Optional[Path]:
+    path = Path(processed_path).expanduser().resolve()
+    split_dir = path.parent if path.suffix.lower() == ".npz" else path
+    split = split_dir.name
+    solver_dir = _solver_directory_name(solver_name, processed_path)
+    if split not in {"train", "val", "eval", "test"} or not solver_dir:
+        return None
+    raw_split = "eval" if split == "val" else split
+
+    data_root = next(
+        (candidate for candidate in (split_dir, *split_dir.parents) if candidate.name == "data"),
+        None,
+    )
+    if data_root is None:
+        return None
+
+    candidate = data_root / raw_split / "raw" / solver_dir / "samples"
+    return candidate if candidate.is_dir() else None
+
+
+def _resolve_raw_dir(
+    raw_dir: str | Path | None,
+    processed_path: str | Path,
+    solver_name: str,
+) -> Optional[Path]:
+    if raw_dir is None or str(raw_dir).strip().lower() == "auto":
+        return _infer_raw_dir(processed_path, solver_name)
+    return Path(raw_dir).expanduser()
+
+
+def _normalization_stats_path(processed_path: str | Path) -> Optional[Path]:
+    path = Path(processed_path).expanduser()
+    split_dir = path.parent if path.suffix.lower() == ".npz" else path
+    candidates = (
+        split_dir / "normalization_stats.json",
+        split_dir.parent / "normalization_stats.json",
+    )
+    return next((candidate for candidate in candidates if candidate.is_file()), None)
+
+
+def _denormalize_input_channel(
+    values: np.ndarray,
+    processed_path: str | Path,
+    channel_name: str,
+) -> tuple[np.ndarray, bool]:
+    stats_path = _normalization_stats_path(processed_path)
+    if stats_path is None:
+        return np.asarray(values, dtype=np.float32), False
+    try:
+        with stats_path.open("r", encoding="utf-8") as handle:
+            stats = json.load(handle)
+        channel = stats.get("inputs", {}).get(channel_name)
+        if not isinstance(channel, dict):
+            return np.asarray(values, dtype=np.float32), False
+        offset = float(channel["offset"])
+        scale = float(channel["scale"])
+    except (KeyError, TypeError, ValueError, OSError, json.JSONDecodeError):
+        return np.asarray(values, dtype=np.float32), False
+    if not np.isfinite(offset) or not np.isfinite(scale) or scale <= 0.0:
+        return np.asarray(values, dtype=np.float32), False
+    denormalized = np.asarray(values, dtype=np.float32) * scale + offset
+    return np.asarray(denormalized, dtype=np.float32), True
+
+
+def _compute_metrics(
+    pred: np.ndarray,
+    target: np.ndarray,
+    global_start: int = 0,
+) -> Dict[str, Any]:
     err = pred - target
     abs_err = np.abs(err)
     sq_err = err ** 2
@@ -285,11 +441,24 @@ def _compute_metrics(pred: np.ndarray, target: np.ndarray) -> Dict[str, Any]:
         np.linalg.norm(target.reshape(target.shape[0], -1), axis=1) + 1e-8
     )
 
+    start = int(global_start)
+    if start < 0 or start >= pred.shape[0]:
+        raise ValueError(
+            f"global_start must be in [0, {pred.shape[0] - 1}], got {start}"
+        )
+    global_err = err[start:]
+    global_target = target[start:]
+    global_abs_err = np.abs(global_err)
+    global_sq_err = global_err ** 2
+
     return {
-        "global_mae": float(abs_err.mean()),
-        "global_rmse": float(np.sqrt(sq_err.mean())),
-        "global_rel_l2": float(np.linalg.norm(err.ravel()) / (np.linalg.norm(target.ravel()) + 1e-8)),
-        "global_max_error": float(abs_err.max()),
+        "global_mae": float(global_abs_err.mean()),
+        "global_rmse": float(np.sqrt(global_sq_err.mean())),
+        "global_rel_l2": float(
+            np.linalg.norm(global_err.ravel())
+            / (np.linalg.norm(global_target.ravel()) + 1e-8)
+        ),
+        "global_max_error": float(global_abs_err.max()),
         "frame_mae": frame_mae,
         "frame_rmse": frame_rmse,
         "frame_rel_l2": frame_rel_l2,
@@ -299,6 +468,9 @@ def _compute_metrics(pred: np.ndarray, target: np.ndarray) -> Dict[str, Any]:
 @dataclass
 class VisualRollout:
     sample_id: str
+    reference_name: str
+    prediction_mode: str
+    seeded_frames: int
     bathymetry: np.ndarray
     target: np.ndarray
     prediction: np.ndarray
@@ -314,14 +486,22 @@ class VisualRollout:
 def prepare_visual_rollout(
     config_path: str | Path,
     checkpoint_path: str | Path,
-    processed_path: str | Path,
-    raw_dir: str | Path = "data/raw/samples",
+    processed_path: str | Path | None = "auto",
+    raw_dir: str | Path | None = "auto",
     sample_id: Optional[str] = None,
     sample_index: int = 0,
     mc_samples: int = 0,
     device: str = "auto",
 ) -> VisualRollout:
     cfg = load_config(config_path)
+    if processed_path is None or str(processed_path).strip().lower() == "auto":
+        resolved_processed_path = resolve_eval_dataset_path(cfg, split="test")
+        if resolved_processed_path is None:
+            raise ValueError(
+                "Could not infer the test dataset from the model config; pass "
+                "--processed-path explicitly."
+            )
+        processed_path = resolved_processed_path
     model = build_model(cfg)
     dev = resolve_device(device if device != "auto" else cfg.get("device", "auto"))
     load_checkpoint(checkpoint_path, model, map_location=dev)
@@ -339,17 +519,58 @@ def prepare_visual_rollout(
     x_np = np.asarray(processed["inputs"][idx], dtype=np.float32)
     y_np = _as_tchw(processed["targets"][idx])
     x = torch.from_numpy(x_np).unsqueeze(0).to(dev)
+    y = torch.from_numpy(y_np).unsqueeze(0).to(dev)
 
-    with torch.no_grad():
-        pred_t, var_t = _model_mean_and_variance(model, x, mc_samples=mc_samples)
+    data_cfg = dict(cfg.get("data", {}))
+    windowed = bool(data_cfg.get("windowed", False))
+    seeded_frames = 0
+    if windowed:
+        if mc_samples > 1:
+            raise ValueError(
+                "MC sampling is not supported for autoregressive windowed visualization"
+            )
+        K = int(data_cfg.get("window_K", 5))
+        include_source = bool(data_cfg.get("window_include_source", True))
+        use_prev = bool(data_cfg.get("window_prev", True))
+        with torch.no_grad():
+            pred_tail = rollout_trajectory(
+                model,
+                x,
+                y[:, 0],
+                int(y.shape[1]),
+                K,
+                include_source,
+                use_prev,
+                dev,
+            )
+        pred_t = torch.cat([y[:, :1], pred_tail], dim=1)
+        var_t = None
+        prediction_mode = f"seeded-window K={K}"
+        seeded_frames = 1
+    else:
+        with torch.no_grad():
+            pred_t, var_t = _model_mean_and_variance(
+                model,
+                x,
+                mc_samples=mc_samples,
+            )
+        prediction_mode = "direct"
+
     pred_np = _as_tchw(pred_t.squeeze(0).detach().cpu().numpy())
     var_np = _as_tchw(var_t.squeeze(0).detach().cpu().numpy()) if var_t is not None else None
 
-    t = min(pred_np.shape[0], y_np.shape[0])
-    pred_np = pred_np[:t]
-    y_np = y_np[:t]
+    if pred_np.shape != y_np.shape:
+        raise ValueError(
+            "Prediction shape does not match the selected target trajectory: "
+            f"prediction={pred_np.shape}, target={y_np.shape}"
+        )
+    t = int(y_np.shape[0])
     if var_np is not None:
-        var_np = var_np[:t]
+        if var_np.shape != y_np.shape:
+            raise ValueError(
+                "Predictive variance shape does not match the selected target "
+                f"trajectory: variance={var_np.shape}, target={y_np.shape}"
+            )
 
     target_denorm = load_target_denorm(processed_path)
     if target_denorm is not None:
@@ -359,40 +580,83 @@ def prepare_visual_rollout(
         if var_np is not None:
             var_np = var_np * float(scale) ** 2
 
-    bathy_raw, ts_raw = _load_raw_sample_bathymetry_and_timestamps(Path(raw_dir), sid)
+    solver_name = _metadata_text(processed, "solver_name")
+    solver_dir = _solver_directory_name(solver_name, processed_path)
+    reference_name = solver_name or solver_dir or "unknown"
+    resolved_raw_dir = _resolve_raw_dir(raw_dir, processed_path, solver_name)
+    bathy_raw, ts_raw = _load_raw_sample_bathymetry_and_timestamps(
+        resolved_raw_dir,
+        sid,
+    )
     notes: list[str] = []
-    if bathy_raw is None:
-        input_order_values = processed.get("input_order")
-        bathy_idx = 0
-        if input_order_values is not None:
-            order = [str(v) for v in np.asarray(input_order_values).reshape(-1).tolist()]
-            if "bathymetry" in order:
-                bathy_idx = int(order.index("bathymetry"))
-            else:
-                notes.append(
-                    "Processed input_order has no 'bathymetry' entry; falling back to channel 0 for bathymetry visualization."
-                )
-        bathymetry = np.asarray(x_np[bathy_idx], dtype=np.float32)
+    input_order_values = processed.get("input_order")
+    bathy_idx = 0
+    if input_order_values is not None:
+        order = [
+            str(value)
+            for value in np.asarray(input_order_values).reshape(-1).tolist()
+        ]
+        if "bathymetry" in order:
+            bathy_idx = int(order.index("bathymetry"))
+        else:
+            notes.append(
+                "Processed input_order has no 'bathymetry' entry; channel 0 is "
+                "used for bathymetry visualization."
+            )
+    processed_bathymetry, input_denormalized = _denormalize_input_channel(
+        x_np[bathy_idx],
+        processed_path,
+        "bathymetry",
+    )
+
+    if bathy_raw is not None and bathy_raw.shape == y_np.shape[1:]:
+        bathymetry = bathy_raw
+        used_raw_bathymetry = True
+    else:
+        bathymetry = processed_bathymetry
+        used_raw_bathymetry = False
+        if bathy_raw is not None:
+            notes.append(
+                "The raw bathymetry shape did not match the processed target grid; "
+                "the processed bathymetry channel was used instead."
+            )
+        if input_denormalized:
+            note = (
+                f"Raw bathymetry was not found for {sid}; the processed bathymetry "
+                "channel was de-normalized with the dataset statistics."
+            )
+        else:
+            note = (
+                f"Raw bathymetry was not found for {sid}; processed input channel "
+                f"{bathy_idx} is shown in normalized units."
+            )
         note = (
-            f"Raw bathymetry was not found for this sample, so processed input channel {bathy_idx} is used instead. "
-            "This can be normalized/scaled and may not be physical depth units."
+            note
+            if resolved_raw_dir is not None
+            else f"{note} Automatic raw-path resolution was unavailable."
         )
         warnings.warn(note, RuntimeWarning)
         notes.append(note)
-        used_raw_bathymetry = False
-    else:
-        bathymetry = bathy_raw
-        used_raw_bathymetry = True
+
+    if windowed:
+        notes.append(
+            "Frame 1 is given; global metrics score only frames 2..T."
+        )
 
     timestamps = None
     if ts_raw is not None:
-        # targets are typically forecast frames from t1..tT
-        if ts_raw.shape[0] >= t + 1:
+        if ts_raw.shape[0] == t:
+            timestamps = ts_raw
+        elif ts_raw.shape[0] >= t + 1:
             timestamps = ts_raw[1 : t + 1]
         else:
             timestamps = ts_raw[:t]
 
-    metrics = _compute_metrics(pred_np, y_np)
+    metrics = _compute_metrics(
+        pred_np,
+        y_np,
+        global_start=seeded_frames,
+    )
     uncertainty_metrics: Dict[str, float] = {}
     uncertainty_std = np.sqrt(np.clip(var_np, 1e-12, None)) if var_np is not None else None
 
@@ -408,6 +672,9 @@ def prepare_visual_rollout(
 
     return VisualRollout(
         sample_id=sid,
+        reference_name=reference_name,
+        prediction_mode=prediction_mode,
+        seeded_frames=seeded_frames,
         bathymetry=bathymetry,
         target=y_np,
         prediction=pred_np,
@@ -431,6 +698,7 @@ class RolloutFigure:
         azim: float = -60.0,
         wave_scale: Optional[float] = None,
         wave_3d_mode: str = "eta",
+        eta_limit: Optional[float] = None,
     ) -> None:
         self.rollout = rollout
         self.interval_ms = int(interval_ms)
@@ -445,10 +713,21 @@ class RolloutFigure:
         self.wave_3d_mode = mode
 
         self.t = int(self.rollout.target.shape[0])
-        self.vmin = float(min(self.rollout.target.min(), self.rollout.prediction.min()))
-        self.vmax = float(max(self.rollout.target.max(), self.rollout.prediction.max()))
-        if np.isclose(self.vmin, self.vmax):
-            self.vmax = self.vmin + 1e-6
+        observed_eta_limit = float(
+            max(
+                np.max(np.abs(self.rollout.target)),
+                np.max(np.abs(self.rollout.prediction)),
+            )
+        )
+        if eta_limit is None:
+            self.eta_limit = observed_eta_limit
+        else:
+            self.eta_limit = float(eta_limit)
+        if not np.isfinite(self.eta_limit) or self.eta_limit <= 0.0:
+            raise ValueError("eta_limit must be a positive finite value")
+        self.vmin = -self.eta_limit
+        self.vmax = self.eta_limit
+        self.wave_norm = Normalize(vmin=self.vmin, vmax=self.vmax, clip=True)
         self.err_max = float(np.abs(self.rollout.prediction - self.rollout.target).max())
         if self.err_max <= 0:
             self.err_max = 1e-6
@@ -458,12 +737,7 @@ class RolloutFigure:
             if self.unc_max <= 0:
                 self.unc_max = 1e-6
 
-        eta_peak = float(
-            max(
-                np.max(np.abs(self.rollout.target)),
-                np.max(np.abs(self.rollout.prediction)),
-            )
-        )
+        eta_peak = observed_eta_limit
         bathy_range = float(np.max(self.rollout.bathymetry) - np.min(self.rollout.bathymetry))
         if wave_scale is None:
             if eta_peak > 0 and bathy_range > 0:
@@ -473,6 +747,19 @@ class RolloutFigure:
                 self.wave_scale = 1.0
         else:
             self.wave_scale = float(wave_scale)
+        if not np.isfinite(self.wave_scale):
+            raise ValueError("wave_scale must be finite")
+
+        self.bathy_min = float(np.min(self.rollout.bathymetry))
+        self.bathy_max = float(np.max(self.rollout.bathymetry))
+        if np.isclose(self.bathy_min, self.bathy_max):
+            self.bathy_max = self.bathy_min + 1e-6
+        scaled_eta_limit = max(abs(self.wave_scale) * self.eta_limit, 1e-9)
+        self.eta_zlim = (-scaled_eta_limit, scaled_eta_limit)
+        self.overlay_zlim = (
+            self.bathy_min - scaled_eta_limit,
+            self.bathy_max + scaled_eta_limit,
+        )
 
         self.fig = plt.figure(figsize=(21, 10))
         gs = self.fig.add_gridspec(2, 4, width_ratios=[1.0, 1.0, 1.0, 1.05], wspace=0.24, hspace=0.24)
@@ -505,6 +792,7 @@ class RolloutFigure:
 
     def _plot_wave_surface(self, ax, wave: np.ndarray, title: str) -> None:
         ax.cla()
+        wave = np.asarray(wave, dtype=np.float32)
         if self.wave_3d_mode == "overlay":
             base = self.rollout.bathymetry
             surface = base + self.wave_scale * wave
@@ -513,20 +801,25 @@ class RolloutFigure:
                 self._mesh_y,
                 base,
                 cmap="terrain",
+                vmin=self.bathy_min,
+                vmax=self.bathy_max,
                 linewidth=0,
                 antialiased=False,
                 alpha=0.90,
             )
+            wave_colors = plt.get_cmap("RdBu_r")(self.wave_norm(wave))
             ax.plot_surface(
                 self._mesh_x,
                 self._mesh_y,
                 surface,
-                cmap="RdBu_r",
+                facecolors=wave_colors,
                 linewidth=0,
                 antialiased=False,
                 alpha=0.70,
+                shade=False,
             )
             zlabel = "elevation"
+            ax.set_zlim(*self.overlay_zlim)
         else:
             eta_surface = self.wave_scale * wave
             ax.plot_surface(
@@ -534,15 +827,20 @@ class RolloutFigure:
                 self._mesh_y,
                 eta_surface,
                 cmap="RdBu_r",
+                vmin=self.eta_zlim[0],
+                vmax=self.eta_zlim[1],
                 linewidth=0,
                 antialiased=False,
                 alpha=0.95,
             )
             zlabel = "eta"
+            ax.set_zlim(*self.eta_zlim)
         ax.set_title(title)
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.set_zlabel(zlabel)
+        ax.set_xlim(float(self._mesh_x.min()), float(self._mesh_x.max()))
+        ax.set_ylim(float(self._mesh_y.min()), float(self._mesh_y.max()))
         ax.view_init(elev=self.elev, azim=self.azim)
 
     def _init_static_panels(self) -> None:
@@ -553,12 +851,20 @@ class RolloutFigure:
         self.fig.colorbar(im_bathy, ax=self.ax_bathy_2d, fraction=0.046, pad=0.04)
 
         self.ax_bathy_3d.plot_surface(
-            self._mesh_x, self._mesh_y, self.rollout.bathymetry, cmap="terrain", linewidth=0, antialiased=False
+            self._mesh_x,
+            self._mesh_y,
+            self.rollout.bathymetry,
+            cmap="terrain",
+            vmin=self.bathy_min,
+            vmax=self.bathy_max,
+            linewidth=0,
+            antialiased=False,
         )
         self.ax_bathy_3d.set_title("Bathymetry (3D)")
         self.ax_bathy_3d.set_xlabel("x")
         self.ax_bathy_3d.set_ylabel("y")
-        self.ax_bathy_3d.set_zlabel("depth")
+        self.ax_bathy_3d.set_zlabel("bathymetry")
+        self.ax_bathy_3d.set_zlim(self.bathy_min, self.bathy_max)
         self.ax_bathy_3d.view_init(elev=self.elev, azim=self.azim)
 
     def _update_text_panel(self, frame_idx: int) -> None:
@@ -566,9 +872,13 @@ class RolloutFigure:
         units = "physical" if self.rollout.target_denorm is not None else "normalized"
         lines = [
             f"sample_id: {self.rollout.sample_id}",
+            f"reference: {self.rollout.reference_name}",
+            f"prediction: {self.rollout.prediction_mode}",
             f"frame: {frame_idx + 1}/{self.t}",
             f"target units: {units}",
+            "displayed field: absolute eta",
             f"3D mode: {self.wave_3d_mode} (wave_scale={self.wave_scale:.4g})",
+            f"fixed eta range: [{self.vmin:.5g}, {self.vmax:.5g}]",
         ]
         if self.rollout.timestamps is not None and frame_idx < len(self.rollout.timestamps):
             lines.append(f"time: {self.rollout.timestamps[frame_idx]:.5f}")
@@ -610,7 +920,7 @@ class RolloutFigure:
 
         if self.im_true is None:
             self.im_true = self.ax_true_2d.imshow(true_frame, origin="lower", cmap="RdBu_r", vmin=self.vmin, vmax=self.vmax)
-            self.ax_true_2d.set_title("True Wave (2D heatmap)")
+            self.ax_true_2d.set_title("True Surface Elevation Eta (2D)")
             self.ax_true_2d.set_xticks([])
             self.ax_true_2d.set_yticks([])
             self.fig.colorbar(self.im_true, ax=self.ax_true_2d, fraction=0.046, pad=0.04)
@@ -619,7 +929,7 @@ class RolloutFigure:
 
         if self.im_pred is None:
             self.im_pred = self.ax_pred_2d.imshow(pred_frame, origin="lower", cmap="RdBu_r", vmin=self.vmin, vmax=self.vmax)
-            self.ax_pred_2d.set_title("Model Prediction (2D heatmap)")
+            self.ax_pred_2d.set_title("Predicted Surface Elevation Eta (2D)")
             self.ax_pred_2d.set_xticks([])
             self.ax_pred_2d.set_yticks([])
             self.fig.colorbar(self.im_pred, ax=self.ax_pred_2d, fraction=0.046, pad=0.04)
@@ -648,11 +958,11 @@ class RolloutFigure:
             self.ax_unc_2d.set_title(title)
 
         if self.wave_3d_mode == "overlay":
-            true_title = "True Wave on Bathymetry (3D)"
-            pred_title = "Predicted Wave on Bathymetry (3D)"
+            true_title = "True Absolute Eta on Bathymetry (3D)"
+            pred_title = "Predicted Absolute Eta on Bathymetry (3D)"
         else:
-            true_title = "True Wave Eta Surface (3D)"
-            pred_title = "Predicted Wave Eta Surface (3D)"
+            true_title = "True Absolute Eta Surface (3D)"
+            pred_title = "Predicted Absolute Eta Surface (3D)"
         self._plot_wave_surface(self.ax_true_3d, true_frame, true_title)
         self._plot_wave_surface(self.ax_pred_3d, pred_frame, pred_title)
         self._update_text_panel(frame_idx)
@@ -660,7 +970,13 @@ class RolloutFigure:
         time_label = ""
         if self.rollout.timestamps is not None and frame_idx < len(self.rollout.timestamps):
             time_label = f" | t={self.rollout.timestamps[frame_idx]:.5f}"
-        self.fig.suptitle(f"Tsunami Sample Explorer: {self.rollout.sample_id} | frame {frame_idx + 1}/{self.t}{time_label}", fontsize=13)
+        seed_label = " | given seed" if frame_idx < self.rollout.seeded_frames else ""
+        self.fig.suptitle(
+            f"Tsunami Sample Explorer: {self.rollout.sample_id} | "
+            f"{self.rollout.reference_name} | frame {frame_idx + 1}/{self.t}"
+            f"{time_label}{seed_label}",
+            fontsize=13,
+        )
         return []
 
     def animate(self, max_frames: Optional[int] = None) -> FuncAnimation:
@@ -676,14 +992,216 @@ class RolloutFigure:
         )
         return ani
 
+    def cache_frames(
+        self,
+        max_frames: Optional[int] = None,
+        dpi: int = 80,
+    ) -> tuple[bytes, ...]:
+        n_frames = self.t if max_frames is None else min(self.t, int(max_frames))
+        if n_frames < 1:
+            raise ValueError("At least one frame must be cached")
+        dpi = int(dpi)
+        if dpi < 40:
+            raise ValueError("cache dpi must be at least 40")
+
+        cached: list[bytes] = []
+        progress_every = max(1, n_frames // 10)
+        for frame_idx in range(n_frames):
+            self.update(frame_idx)
+            self.fig.canvas.draw()
+            buffer = BytesIO()
+            self.fig.savefig(
+                buffer,
+                format="png",
+                dpi=dpi,
+                facecolor=self.fig.get_facecolor(),
+            )
+            cached.append(buffer.getvalue())
+            if (
+                frame_idx == 0
+                or frame_idx + 1 == n_frames
+                or (frame_idx + 1) % progress_every == 0
+            ):
+                print(
+                    f"[visualize] cached frame {frame_idx + 1}/{n_frames}",
+                    flush=True,
+                )
+        return tuple(cached)
+
+
+class CachedRolloutPlayer:
+    def __init__(
+        self,
+        frames: tuple[bytes, ...],
+        interval_ms: int,
+        repeat: bool,
+        controls: bool,
+    ) -> None:
+        if not frames:
+            raise ValueError("CachedRolloutPlayer requires at least one frame")
+
+        self.frames = frames
+        self.interval_ms = int(interval_ms)
+        self.repeat = bool(repeat)
+        self.controls = bool(controls)
+        self.index = 0
+        self.playing = False
+
+        first = self._decode_frame(0)
+        height, width = first.shape[:2]
+        if self.controls:
+            display_width = min(18.0, width / 100.0)
+            display_height = display_width * height / width
+            if display_height > 9.5:
+                display_height = 9.5
+                display_width = display_height * width / height
+            figure_height = display_height + 0.8
+        else:
+            display_width = width / 100.0
+            display_height = height / 100.0
+            figure_height = display_height
+
+        self.fig = plt.figure(
+            figsize=(display_width, figure_height),
+            dpi=100,
+        )
+        if self.controls:
+            image_bottom = 0.09
+            self.ax = self.fig.add_axes([0.0, image_bottom, 1.0, 1.0 - image_bottom])
+        else:
+            self.ax = self.fig.add_axes([0.0, 0.0, 1.0, 1.0])
+        self.ax.axis("off")
+        self.image = self.ax.imshow(first)
+
+        self.timer = self.fig.canvas.new_timer(interval=self.interval_ms)
+        self.timer.add_callback(self._timer_step)
+        self.button_back: Optional[Button] = None
+        self.button_play: Optional[Button] = None
+        self.button_step: Optional[Button] = None
+        self.status_text = None
+
+        if self.controls:
+            self.button_back = Button(
+                self.fig.add_axes([0.32, 0.015, 0.10, 0.045]),
+                "Back",
+            )
+            self.button_play = Button(
+                self.fig.add_axes([0.45, 0.015, 0.10, 0.045]),
+                "Pause",
+            )
+            self.button_step = Button(
+                self.fig.add_axes([0.58, 0.015, 0.10, 0.045]),
+                "Step",
+            )
+            self.button_back.on_clicked(self._back)
+            self.button_play.on_clicked(self._toggle_play)
+            self.button_step.on_clicked(self._step)
+            self.status_text = self.fig.text(
+                0.02,
+                0.037,
+                "",
+                ha="left",
+                va="center",
+                family="monospace",
+                fontsize=9,
+            )
+            self.fig.canvas.mpl_connect("key_press_event", self._on_key)
+            self.fig.canvas.mpl_connect("close_event", self._on_close)
+            self._update_status()
+
+    @lru_cache(maxsize=8)
+    def _decode_frame(self, index: int) -> np.ndarray:
+        return np.asarray(
+            plt.imread(BytesIO(self.frames[int(index)]), format="png")
+        )
+
+    def _update_status(self) -> None:
+        if self.status_text is not None:
+            state = "playing" if self.playing else "paused"
+            self.status_text.set_text(
+                f"frame {self.index + 1}/{len(self.frames)} | {state} | "
+                "keys: left, right, space"
+            )
+        if self.button_play is not None:
+            self.button_play.label.set_text("Pause" if self.playing else "Play")
+
+    def _show_index(self, index: int) -> None:
+        self.index = max(0, min(int(index), len(self.frames) - 1))
+        self.image.set_data(self._decode_frame(self.index))
+        self._update_status()
+        self.fig.canvas.draw_idle()
+
+    def _set_playing(self, playing: bool) -> None:
+        self.playing = bool(playing)
+        if self.playing:
+            if self.index >= len(self.frames) - 1 and not self.repeat:
+                self.index = 0
+            self.timer.start()
+        else:
+            self.timer.stop()
+        self._update_status()
+        self.fig.canvas.draw_idle()
+
+    def _timer_step(self) -> bool:
+        next_index = self.index + 1
+        if next_index >= len(self.frames):
+            if self.repeat:
+                next_index = 0
+            else:
+                self._set_playing(False)
+                return True
+        self._show_index(next_index)
+        return True
+
+    def _back(self, _event=None) -> None:
+        self._set_playing(False)
+        self._show_index(self.index - 1)
+
+    def _step(self, _event=None) -> None:
+        self._set_playing(False)
+        self._show_index(self.index + 1)
+
+    def _toggle_play(self, _event=None) -> None:
+        self._set_playing(not self.playing)
+
+    def _on_key(self, event) -> None:
+        if event.key == "left":
+            self._back()
+        elif event.key == "right":
+            self._step()
+        elif event.key in {" ", "space"}:
+            self._toggle_play()
+
+    def _on_close(self, _event=None) -> None:
+        self.timer.stop()
+
+    def animate(self) -> FuncAnimation:
+        def update(index: int):
+            self.image.set_data(self._decode_frame(index))
+            return [self.image]
+
+        return FuncAnimation(
+            self.fig,
+            update,
+            frames=range(len(self.frames)),
+            interval=self.interval_ms,
+            blit=True,
+            repeat=self.repeat,
+            cache_frame_data=True,
+        )
+
+    def show(self) -> None:
+        self._set_playing(True)
+        plt.show()
+
 
 def run_visualization(
     config_path: str | Path,
     checkpoint_path: str | Path,
-    processed_path: str | Path,
-    raw_dir: str | Path = "data/raw/samples",
+    processed_path: str | Path | None = "auto",
+    raw_dir: str | Path | None = "auto",
     sample_id: Optional[str] = None,
-    sample_index: int = 0,
+    sample_index: int = 1,
     mc_samples: int = 0,
     device: str = "auto",
     interval_ms: int = 120,
@@ -692,16 +1210,23 @@ def run_visualization(
     azim: float = -60.0,
     wave_scale: Optional[float] = None,
     wave_3d_mode: str = "eta",
+    eta_limit: Optional[float] = None,
     max_frames: Optional[int] = None,
+    cache_dpi: int = 80,
     save_path: Optional[str | Path] = None,
 ) -> None:
+    dataset_sample_index = (
+        int(sample_index)
+        if sample_id is not None
+        else _zero_based_sample_index(sample_index)
+    )
     rollout = prepare_visual_rollout(
         config_path=config_path,
         checkpoint_path=checkpoint_path,
         processed_path=processed_path,
         raw_dir=raw_dir,
         sample_id=sample_id,
-        sample_index=sample_index,
+        sample_index=dataset_sample_index,
         mc_samples=mc_samples,
         device=device,
     )
@@ -713,16 +1238,35 @@ def run_visualization(
         azim=azim,
         wave_scale=wave_scale,
         wave_3d_mode=wave_3d_mode,
+        eta_limit=eta_limit,
     )
-    ani = viz.animate(max_frames=max_frames)
+    cached_frames = viz.cache_frames(
+        max_frames=max_frames,
+        dpi=cache_dpi,
+    )
+    plt.close(viz.fig)
 
     if save_path:
+        player = CachedRolloutPlayer(
+            cached_frames,
+            interval_ms=interval_ms,
+            repeat=repeat,
+            controls=False,
+        )
+        ani = player.animate()
         save_path = Path(save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
         if save_path.suffix.lower() == ".gif":
             ani.save(save_path, writer="pillow")
         else:
             ani.save(save_path)
+        plt.close(player.fig)
         print(f"Saved visualization to {save_path}")
     else:
-        plt.show()
+        player = CachedRolloutPlayer(
+            cached_frames,
+            interval_ms=interval_ms,
+            repeat=repeat,
+            controls=True,
+        )
+        player.show()

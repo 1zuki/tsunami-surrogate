@@ -31,6 +31,7 @@ from src.evaluation.target_scaling import (
     load_target_denorm,
     resolve_eval_dataset_path,
 )
+from src.evaluation.window_rollout import rollout_trajectory
 from src.models import build_model
 from src.training.checkpointing import load_checkpoint
 from src.training.metrics import MetricAccumulator
@@ -38,49 +39,6 @@ from src.utils.config import load_config
 from src.utils.device import resolve_device
 from src.utils.io import save_json
 from src.utils.seed import seed_everything
-
-
-def _model_output(model: torch.nn.Module, x: torch.Tensor) -> torch.Tensor:
-    out = model(x)
-    if isinstance(out, tuple):
-        return out[0]
-    if isinstance(out, dict):
-        return out.get("mean", next(iter(out.values())))
-    return out
-
-
-@torch.no_grad()
-def rollout_trajectory(model, x_static, y0, T, K, include_source, use_prev, device):
-    """Reconstruct eta[1:T] (T-1 frames) autoregressively from seed frame y0.
-
-    x_static: [B, 3, H, W] = [bathymetry, source, initial_depth]
-    y0:       [B, H, W]    = eta frame 0 (given seed)
-    Returns:  [B, T-1, H, W] predicted eta for frames 1..T-1.
-    """
-    bathy = x_static[:, 0]
-    source = x_static[:, 1]
-    eta_t = y0
-    eta_prev = y0
-    preds = []
-    produced = 0
-    target_len = T - 1
-    while produced < target_len:
-        chans = [bathy, source] if include_source else [bathy]
-        chans.append(eta_t)
-        if use_prev:
-            chans.append(eta_prev)
-        win_x = torch.stack(chans, dim=1)  # [B, C, H, W]
-        win_pred = _model_output(model, win_x)  # [B, K, H, W]
-        k = win_pred.shape[1]
-        preds.append(win_pred)
-        # next state: last predicted frame is new eta_t, second-last is eta_prev
-        eta_prev = win_pred[:, -2] if k >= 2 else win_pred[:, -1]
-        eta_t = win_pred[:, -1]
-        produced += k
-
-    full = torch.cat(preds, dim=1)[:, :target_len]  # clamp overshoot
-    return full
-
 
 @torch.no_grad()
 def _run(
