@@ -213,32 +213,32 @@ window_models:
 sample_scaling:
   - id: n_000100
     train_samples: 100
-    roster_sha256: a41ae05f9a49bf5300bc2e1eec2e33f2bd5d816ce090808b7021234ab1f8e756
+    roster_sha256: 478c0ab96be55c15b553d08a9ef1b51def587f12eb9beb99e005f52031793e1d
     config: experiments/sample_scaling/configs/fno_n_000100.yaml
     checkpoint: experiments/sample_scaling/n_000100/best.pt
   - id: n_000250
     train_samples: 250
-    roster_sha256: e6b07c6badc615401ec75b6929dfa874701bf2e9cbb3d01ff0d5a6ccb82b4f6a
+    roster_sha256: 71f525d15934a4f653a2648b464c0b92afd55350bf91a4ce6c58792885a4056b
     config: experiments/sample_scaling/configs/fno_n_000250.yaml
     checkpoint: experiments/sample_scaling/n_000250/best.pt
   - id: n_000500
     train_samples: 500
-    roster_sha256: 2fe6399deb49afa3012fe6a61e21323c1eef3c9d15c1208271b33f1097d83767
+    roster_sha256: cca6040248f484f9feaec576fcb29f03eb049b3ae6a21c596ad513a5b06ff891
     config: experiments/sample_scaling/configs/fno_n_000500.yaml
     checkpoint: experiments/sample_scaling/n_000500/best.pt
   - id: n_001000
     train_samples: 1000
-    roster_sha256: ac81516e31266987724cfc9d462782450d8ea9b09dc6c04b633e7ebe9565d93e
+    roster_sha256: 7c0f3682dbd9314be1eef90dff6962ed1b4fd559e094c0d51e5b6a203a403728
     config: experiments/sample_scaling/configs/fno_n_001000.yaml
     checkpoint: experiments/sample_scaling/n_001000/best.pt
   - id: n_002500
     train_samples: 2500
-    roster_sha256: f467dbbff6c4e46e90baccfa02661f01c8f2040b786071d4eea298e47fda22a8
+    roster_sha256: 4c3442b4430f2875fde54d3255fe9f7311391fd580e71f2c892ad8484ee33d58
     config: experiments/sample_scaling/configs/fno_n_002500.yaml
     checkpoint: experiments/sample_scaling/n_002500/best.pt
   - id: n_005000
     train_samples: 5000
-    roster_sha256: 83021eac03f12b8d3d7865938e5ef788f53816689929a4b4b41c984831ef211b
+    roster_sha256: 996f7a257755ae8663e9fe7b688b0858bda91246ca52e016ee001db3bf4e8cf2
     config: experiments/sample_scaling/configs/fno_n_005000.yaml
     checkpoint: experiments/sample_scaling/n_005000/best.pt
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=tsunami-fno
+#SBATCH --job-name=tsunami
 #SBATCH --output=logs/slurm/%x_%j.out
 #SBATCH --error=logs/slurm/%x_%j.err
 #SBATCH --chdir=/datastore/vit/tsunami-surrogate
@@ -14,7 +14,7 @@ set -euo pipefail
 
 PROJECT_ROOT="/datastore/vit/tsunami-surrogate"
 ENV_PREFIX="$PROJECT_ROOT/.venv"
-CONFIG_PATH="${CONFIG_PATH:-configs/cluster/fno_smoke.yaml}"
+CONFIG_PATH="${CONFIG_PATH:-configs/cluster/training_preflight.yaml}"
 RESUME_PATH="${RESUME_PATH:-}"
 REQUIRED_VRAM="${REQUIRED_VRAM:-16384}"
 

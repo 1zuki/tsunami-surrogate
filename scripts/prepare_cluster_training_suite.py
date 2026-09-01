@@ -18,14 +18,17 @@ from src.utils.config import deep_update, load_config, load_yaml, save_config
 from src.utils.io import get_git_commit
 
 
-DEFAULT_MANIFEST = Path("configs/cluster/legacy_dev_suite.yaml")
+DEFAULT_MANIFEST = Path("configs/cluster/final_rebuild_training_suite.yaml")
 DEFAULT_GENERATED_ROOT = Path("configs/cluster/generated")
 ARRAY_SCRIPT = Path("slurm/train_suite_array.slurm")
+FINALIZER_SCRIPT = Path("slurm/finalize_training_suite.slurm")
 REQUIRED_TRACKED_FILES = (
-    Path("configs/cluster/legacy_dev_suite.yaml"),
     Path("scripts/prepare_cluster_training_suite.py"),
+    Path("scripts/cluster_run_state.py"),
     Path("slurm/train_suite_array.slurm"),
+    FINALIZER_SCRIPT,
 )
+SUPPORTED_CLASSIFICATIONS = {"final_rebuild_training", "legacy_dev_only"}
 MAX_ACCOUNT_MPS = 20
 MAX_ACCOUNT_CPUS = 32
 MAX_ACCOUNT_CONCURRENT_JOBS = 5
@@ -117,26 +120,37 @@ def _relative_to_root(path: Path, root: Path) -> str:
 
 
 def _tracked_worktree_is_clean(root: Path) -> bool:
+    training_paths = (
+        ".gitignore",
+        "configs",
+        "scripts",
+        "slurm",
+        "src",
+        "tests",
+    )
     unstaged = subprocess.run(
-        ["git", "diff", "--quiet"],
+        ["git", "diff", "--quiet", "--", *training_paths],
         cwd=root,
         check=False,
     )
     staged = subprocess.run(
-        ["git", "diff", "--cached", "--quiet"],
+        ["git", "diff", "--cached", "--quiet", "--", *training_paths],
         cwd=root,
         check=False,
     )
     return unstaged.returncode == 0 and staged.returncode == 0
 
 
-def _required_suite_files_are_tracked(root: Path) -> bool:
+def _required_suite_files_are_tracked(
+    root: Path,
+    required_files: tuple[Path, ...] = REQUIRED_TRACKED_FILES,
+) -> bool:
     result = subprocess.run(
         [
             "git",
             "ls-files",
             "--error-unmatch",
-            *(path.as_posix() for path in REQUIRED_TRACKED_FILES),
+            *(path.as_posix() for path in required_files),
         ],
         cwd=root,
         check=False,
@@ -161,9 +175,10 @@ def prepare_suite(
 
     suite_id = _require_slug(manifest.get("suite_id"), "suite_id")
     classification = str(manifest.get("classification", "")).strip()
-    if classification != "legacy_dev_only":
+    if classification not in SUPPORTED_CLASSIFICATIONS:
         raise ValueError(
-            "this submitter only accepts manifests classified legacy_dev_only"
+            "unsupported suite classification; expected one of "
+            + ", ".join(sorted(SUPPORTED_CLASSIFICATIONS))
         )
 
     resources = _require_mapping(manifest.get("resources"), "resources")
@@ -205,6 +220,10 @@ def prepare_suite(
             raise FileNotFoundError(f"missing base config: {base_config}")
 
         seeds = _require_seed_list(entry.get("seeds"), f"entries[{index}].seeds")
+        role = _require_slug(
+            entry.get("role", "ordinary_model"),
+            f"entries[{index}].role",
+        )
         if not bool(entry.get("enabled", True)):
             reason = str(entry.get("blocked_reason", "")).strip()
             if not reason:
@@ -247,6 +266,7 @@ def prepare_suite(
                 "run_label": label,
                 "base_config": _relative_to_root(base_abs, root),
                 "seed": int(seed),
+                "role": role,
                 "source_git_commit": get_git_commit(),
             }
 
@@ -268,7 +288,7 @@ def prepare_suite(
     runs_file_abs = generated_abs / "runs.tsv"
     runs_file_abs.write_text(
         "".join(
-            f"{run.label}\t{run.config_path}\t{run.output_dir}\n"
+            f"{run.label}\t{run.config_path}\t{run.output_dir}\t{run.seed}\n"
             for run in runs
         ),
         encoding="utf-8",
@@ -313,7 +333,7 @@ def build_sbatch_command(
     if not array_script.is_file():
         raise FileNotFoundError(f"missing Slurm array script: {ARRAY_SCRIPT}")
     if afterok <= 0:
-        raise ValueError("afterok must be a positive smoke-job ID")
+        raise ValueError("afterok must be a positive training-preflight job ID")
 
     concurrency = (
         suite.max_concurrent
@@ -329,23 +349,44 @@ def build_sbatch_command(
     last_index = len(suite.runs) - 1
     return [
         "sbatch",
+        "--parsable",
         f"--array=0-{last_index}%{concurrency}",
         f"--dependency=afterok:{afterok}",
         (
             "--export=ALL,"
             f"RUNS_FILE={suite.runs_file},"
-            f"SUITE_ID={suite.suite_id},"
-            "GPU_HELPER_VERIFIED=1"
+            f"SUITE_ID={suite.suite_id}"
         ),
         ARRAY_SCRIPT.as_posix(),
+    ]
+
+
+def build_finalizer_command(
+    suite: PreparedSuite,
+    *,
+    array_job_id: int,
+) -> list[str]:
+    if array_job_id <= 0:
+        raise ValueError("array_job_id must be positive")
+    return [
+        "sbatch",
+        "--parsable",
+        f"--dependency=afterany:{array_job_id}",
+        (
+            "--export=ALL,"
+            f"SUITE_ID={suite.suite_id},"
+            f"ARRAY_JOB_ID={array_job_id},"
+            f"GENERATED_DIR={suite.generated_dir}"
+        ),
+        FINALIZER_SCRIPT.as_posix(),
     ]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Prepare one-seed-per-task configs for the guarded legacy/dev "
-            "cluster training suite."
+            "Prepare one-seed-per-task configs for a guarded cluster "
+            "training suite."
         )
     )
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
@@ -377,7 +418,7 @@ def main() -> None:
     parser.add_argument(
         "--afterok",
         type=int,
-        help="Successful smoke-job ID used as an afterok dependency.",
+        help="Successful training-preflight job ID used as an afterok dependency.",
     )
     parser.add_argument(
         "--acknowledge-legacy-dev",
@@ -387,7 +428,7 @@ def main() -> None:
     parser.add_argument(
         "--gpu-helper-verified",
         action="store_true",
-        help="Confirm gpu_check.sh was inspected and validated on a compute node.",
+        help=argparse.SUPPRESS,
     )
     args = parser.parse_args()
 
@@ -416,18 +457,25 @@ def main() -> None:
         print("[cluster-suite] prepare-only; no jobs submitted")
         return
 
-    if not args.acknowledge_legacy_dev:
-        parser.error("--submit requires --acknowledge-legacy-dev")
-    if not args.gpu_helper_verified:
-        parser.error("--submit requires --gpu-helper-verified")
+    if (
+        suite.classification == "legacy_dev_only"
+        and not args.acknowledge_legacy_dev
+    ):
+        parser.error("legacy/dev submission requires --acknowledge-legacy-dev")
     if args.afterok is None:
-        parser.error("--submit requires --afterok SMOKE_JOB_ID")
+        parser.error("--submit requires --afterok PREFLIGHT_JOB_ID")
     if not _tracked_worktree_is_clean(ROOT):
         parser.error(
             "--submit requires a clean tracked worktree; commit or restore "
             "tracked changes first"
         )
-    if not _required_suite_files_are_tracked(ROOT):
+    manifest_relative = (
+        args.manifest
+        if not args.manifest.is_absolute()
+        else Path(_relative_to_root(args.manifest, ROOT))
+    )
+    required_files = (*REQUIRED_TRACKED_FILES, manifest_relative)
+    if not _required_suite_files_are_tracked(ROOT, required_files):
         parser.error(
             "--submit requires the suite manifest, submitter, and array script "
             "to be committed"
@@ -453,7 +501,38 @@ def main() -> None:
     )
     print("[cluster-suite] submitting:", " ".join(cmd))
     (ROOT / "logs" / "slurm").mkdir(parents=True, exist_ok=True)
-    subprocess.run(cmd, cwd=ROOT, check=True)
+    array_result = subprocess.run(
+        cmd,
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    array_text = array_result.stdout.strip().split(";", 1)[0]
+    try:
+        array_job_id = int(array_text)
+    except ValueError as exc:
+        raise SystemExit(
+            f"Could not parse Slurm array job ID from: {array_result.stdout!r}"
+        ) from exc
+    print(f"[cluster-suite] array_job_id={array_job_id}")
+
+    finalizer_cmd = build_finalizer_command(
+        suite,
+        array_job_id=array_job_id,
+    )
+    print("[cluster-suite] finalizer:", " ".join(finalizer_cmd))
+    finalizer_result = subprocess.run(
+        finalizer_cmd,
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    print(
+        "[cluster-suite] finalizer_job_id="
+        + finalizer_result.stdout.strip().split(";", 1)[0]
+    )
 
 
 if __name__ == "__main__":

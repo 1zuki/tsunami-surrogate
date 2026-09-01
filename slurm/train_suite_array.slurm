@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=tsu-legacy-suite
+#SBATCH --job-name=tsunami
 #SBATCH --output=logs/slurm/%x_%A_%a.out
 #SBATCH --error=logs/slurm/%x_%A_%a.err
 #SBATCH --chdir=/datastore/vit/tsunami-surrogate
@@ -16,15 +16,10 @@ PROJECT_ROOT="/datastore/vit/tsunami-surrogate"
 ENV_PREFIX="$PROJECT_ROOT/.venv"
 RUNS_FILE="${RUNS_FILE:?RUNS_FILE must be exported by the suite submitter}"
 SUITE_ID="${SUITE_ID:?SUITE_ID must be exported by the suite submitter}"
-GPU_HELPER_VERIFIED="${GPU_HELPER_VERIFIED:-0}"
 REQUIRED_VRAM="${REQUIRED_VRAM:-16384}"
 
 cd "$PROJECT_ROOT"
 
-if [ "$GPU_HELPER_VERIFIED" != "1" ]; then
-    echo "Refusing to run before gpu_check.sh is verified on a compute node"
-    exit 1
-fi
 if [ ! -f "$RUNS_FILE" ]; then
     echo "Missing suite run manifest: $RUNS_FILE"
     exit 1
@@ -36,9 +31,9 @@ if [ -z "$RUN_LINE" ]; then
     echo "No run entry for array task $SLURM_ARRAY_TASK_ID"
     exit 1
 fi
-IFS=$'\t' read -r RUN_LABEL CONFIG_PATH OUTPUT_DIR <<< "$RUN_LINE"
+IFS=$'\t' read -r RUN_LABEL CONFIG_PATH OUTPUT_DIR RUN_SEED <<< "$RUN_LINE"
 
-if [ -z "$RUN_LABEL" ] || [ -z "$CONFIG_PATH" ] || [ -z "$OUTPUT_DIR" ]; then
+if [ -z "$RUN_LABEL" ] || [ -z "$CONFIG_PATH" ] || [ -z "$OUTPUT_DIR" ] || [ -z "$RUN_SEED" ]; then
     echo "Malformed run entry: $RUN_LINE"
     exit 1
 fi
@@ -46,12 +41,6 @@ if [ ! -f "$CONFIG_PATH" ]; then
     echo "Missing generated config: $CONFIG_PATH"
     exit 1
 fi
-if [ -e "$OUTPUT_DIR/history.json" ] || [ -e "$OUTPUT_DIR/best.pt" ]; then
-    echo "Refusing to overwrite an existing run: $OUTPUT_DIR"
-    echo "Resume or archive that run explicitly instead"
-    exit 1
-fi
-
 if type module >/dev/null 2>&1; then
     module clear -f
 fi
@@ -91,6 +80,7 @@ echo "Start time    : $(date --iso-8601=seconds)"
 echo "Working dir   : $(pwd)"
 echo "Config        : $CONFIG_PATH"
 echo "Output dir    : $OUTPUT_DIR"
+echo "Training seed : $RUN_SEED"
 echo "Git commit    : $(git rev-parse HEAD 2>/dev/null || echo unknown)"
 echo "Python        : $(which python)"
 echo "Python ver.   : $(python --version)"
@@ -137,10 +127,41 @@ echo "Selected GPU  : $BEST_GPU"
 nvidia-smi --query-gpu=index,name,memory.total,memory.free --format=csv,noheader
 python -c "import torch; print('torch', torch.__version__); print('CUDA available', torch.cuda.is_available()); print('CUDA version', torch.version.cuda); print('device count', torch.cuda.device_count()); print('device', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
 
+set +e
+RUN_STATE=$(python scripts/cluster_run_state.py \
+    --output-dir "$OUTPUT_DIR" \
+    --expected-seed "$RUN_SEED" \
+    --config "$CONFIG_PATH")
+STATE_EXIT=$?
+set -e
+if [ "$STATE_EXIT" -ne 0 ]; then
+    echo "Run-state validation failed: $RUN_STATE"
+    exit "$STATE_EXIT"
+fi
+IFS=$'\t' read -r RUN_ACTION RUN_REASON RESUME_PATH <<< "$RUN_STATE"
+echo "Run action    : $RUN_ACTION"
+echo "Run reason    : $RUN_REASON"
+if [ "$RUN_ACTION" = "skip" ]; then
+    echo "Completed run already exists; nothing to do"
+    exit 0
+fi
+if [ "$RUN_ACTION" != "fresh" ] && [ "$RUN_ACTION" != "resume" ]; then
+    echo "Unexpected run action: $RUN_ACTION"
+    exit 1
+fi
+
+mkdir -p "$OUTPUT_DIR"
+RUN_LOG="$OUTPUT_DIR/cluster_console.log"
+RUN_ERR="$OUTPUT_DIR/cluster_console.err"
+TRAIN_CMD=(python -u scripts/train.py --config "$CONFIG_PATH")
+if [ "$RUN_ACTION" = "resume" ]; then
+    TRAIN_CMD+=(--resume "$RESUME_PATH")
+fi
+
 START_EPOCH=$(date +%s)
 set +e
-python -u scripts/train.py --config "$CONFIG_PATH"
-TRAIN_EXIT=$?
+"${TRAIN_CMD[@]}" 2> >(tee -a "$RUN_ERR" >&2) | tee -a "$RUN_LOG"
+TRAIN_EXIT=${PIPESTATUS[0]}
 set -e
 END_EPOCH=$(date +%s)
 

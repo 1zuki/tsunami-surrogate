@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=tsu-gpu-probe
+#SBATCH --job-name=tsunami
 #SBATCH --output=logs/slurm/%x_%j.out
 #SBATCH --error=logs/slurm/%x_%j.err
 #SBATCH --chdir=/datastore/vit/tsunami-surrogate

@@ -1120,7 +1120,7 @@ def _checkpoint_specs(contract: Mapping[str, Any]) -> list[tuple[str, str, int |
     for group in ("direct_models", "window_models", "sample_scaling", "native_muscl"):
         for row in contract.get(group, []):
             _validate_required_file(str(row["config"]))
-            expected_seed = 42 if group == "sample_scaling" else 18
+            expected_seed = 18
             specs.append(
                 (f"{group}:{row['id']}", str(row["checkpoint"]), expected_seed)
             )
@@ -1151,7 +1151,7 @@ def _validate_sample_scaling_rosters(
     summaries: list[dict[str, Any]] = []
     for spec in specs:
         count = int(spec["train_samples"])
-        rng = np.random.default_rng(42)
+        rng = np.random.default_rng(18)
         selected = [
             ordered_ids[int(i)] for i in rng.permutation(len(ordered_ids))[:count]
         ]

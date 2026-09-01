@@ -1,0 +1,21 @@
+defaults:
+  - ../model/fno.yaml
+
+output_dir: experiments/slurm_preflight/fno
+seed: 18
+device: cuda
+
+data:
+  n_samples: 128
+  val_samples: 64
+  test_samples: 64
+  batch_size: 8
+  num_workers: 2
+
+train:
+  epochs: 1
+  early_stopping:
+    patience: 2
+
+cluster_suite:
+  classification: environment_training_preflight

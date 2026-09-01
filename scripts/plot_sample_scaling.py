@@ -14,9 +14,9 @@ labelled comparator, then emits:
 
 Metric conventions follow the paper's same-solver accuracy table: MAE, RMSE,
 and relative L2 use physical-space values; max-err remains in normalized units.
-The six subset runs use seed 42. The full-data comparator uses the ordinary
-direct FNO checkpoint with seed 18 and is not connected as a seventh point in
-the seed-42 learning curve.
+The six subset runs and full-data comparator use the same training seed 18.
+This keeps model initialization and deterministic nested subset ordering
+matched while training-set size changes.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ def _collect_points(
             points[n] = _metric_row(
                 n,
                 load_json(metrics_path),
-                seed=42,
+                seed=18,
                 role="sample_scaling",
             )
         run_full_metrics = evaluation_run / "direct" / "fno" / "metrics.json"
@@ -114,7 +114,7 @@ def _collect_points(
             points[int(n)] = _metric_row(
                 int(n),
                 metrics,
-                seed=int(row.get("seed", 42)),
+                seed=int(row.get("seed", 18)),
                 role="sample_scaling",
             )
 
@@ -165,7 +165,7 @@ def _plot_main(points: list[dict[str, Any]], output_path: Path) -> None:
         color="#1f77b4",
         linewidth=1.8,
         markersize=6,
-        label="seed 42 scaling runs",
+        label="seed 18 scaling runs",
     )
     if comparator:
         ax.scatter(
@@ -206,7 +206,7 @@ def _plot_appendix(points: list[dict[str, Any]], output_path: Path) -> None:
             color=color,
             linewidth=1.8,
             markersize=5,
-            label="seed 42 scaling runs",
+            label="seed 18 scaling runs",
         )
         if comparator:
             ax.scatter(
@@ -234,9 +234,9 @@ def _format_table(points: list[dict[str, Any]]) -> str:
     lines = [
         r"\begin{table}[!htbp]",
         r"\centering",
-        r"\caption{Hydrostatic FNO sample scaling. The six subset runs use seed "
-        r"$42$; the $10{,}000$-sample row is the separately trained seed-$18$ "
-        r"direct-FNO comparator. MAE, RMSE, and relative $L_2$ are physical-space "
+        r"\caption{Hydrostatic FNO sample scaling. The six nested subset runs and "
+        r"the $10{,}000$-sample direct-FNO comparator use training seed $18$. "
+        r"MAE, RMSE, and relative $L_2$ are physical-space "
         r"values; max-err remains in normalized units.}",
         r"\label{tab:sample-scaling}",
         r"\begin{tabular}{rrcccc}",

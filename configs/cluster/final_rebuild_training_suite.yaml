@@ -1,0 +1,149 @@
+schema_version: 1
+suite_id: final_rebuild_multiseed_r1
+classification: final_rebuild_training
+description: >-
+  Fresh multi-seed training matrix for the accepted rebuild dataset. Every
+  retained model receives seeds 18, 36, and 67. The four main Hydrostatic
+  architecture baselines (FNO, F-FNO, U-Net, and ConvLSTM) additionally
+  receive seeds 72 and 154. Sample-scaling runs use seed 18 so they match the
+  full 10,000-sample Hydrostatic FNO comparator. The dedicated seven-member
+  uncertainty ensemble remains a separate protocol.
+
+resources:
+  max_concurrent: 5
+  mps_per_job: 2
+  cpus_per_job: 4
+  memory_gb_per_job: 32
+  time_limit: "72:00:00"
+
+required_paths:
+  - data/processed/hydrostatic/train
+  - data/processed/hydrostatic/val
+  - data/processed/muscl_hr/train
+  - data/processed/muscl_hr/val
+  - data/processed/boussinesq/train
+  - data/processed/boussinesq/val
+
+entries:
+  - name: fno_hydrostatic
+    config: configs/model/fno.yaml
+    seeds: [18, 36, 67, 72, 154]
+
+  - name: ffno_hydrostatic
+    config: configs/model/ffno.yaml
+    seeds: [18, 36, 67, 72, 154]
+
+  - name: unet_hydrostatic
+    config: configs/model/unet.yaml
+    seeds: [18, 36, 67, 72, 154]
+
+  - name: convlstm_hydrostatic
+    config: configs/model/convlstm.yaml
+    seeds: [18, 36, 67, 72, 154]
+
+  - name: cnn_hydrostatic
+    config: configs/model/cnn.yaml
+    seeds: [18, 36, 67]
+
+  - name: ufno_hydrostatic
+    config: configs/model/ufno.yaml
+    seeds: [18, 36, 67]
+
+  - name: wno_hydrostatic
+    config: configs/model/wno.yaml
+    seeds: [18, 36, 67]
+
+  - name: fno_modes8_hydrostatic
+    config: configs/model/fno_modes8.yaml
+    seeds: [18, 36, 67]
+
+  - name: fno_modes20_hydrostatic
+    config: configs/model/fno_modes20.yaml
+    seeds: [18, 36, 67]
+
+  - name: fno_muscl_hr
+    config: configs/model/fno_muscl_hr.yaml
+    seeds: [18, 36, 67]
+
+  - name: fno_boussinesq
+    config: configs/model/fno_boussinesq.yaml
+    seeds: [18, 36, 67]
+
+  - name: fno_window5_hydrostatic
+    config: configs/model/fno_window5_hydrostatic.yaml
+    seeds: [18, 36, 67]
+
+  - name: ffno_window5_hydrostatic
+    config: configs/model/ffno_window5_hydrostatic.yaml
+    seeds: [18, 36, 67]
+
+  - name: fno_sample_100
+    config: configs/model/fno.yaml
+    seeds: [18]
+    overrides:
+      data:
+        n_samples: 100
+      sample_scaling:
+        requested_train_samples: 100
+        comparator_train_samples: 10000
+        protocol: matched_seed_nested_training_subset
+
+  - name: fno_sample_250
+    config: configs/model/fno.yaml
+    seeds: [18]
+    overrides:
+      data:
+        n_samples: 250
+      sample_scaling:
+        requested_train_samples: 250
+        comparator_train_samples: 10000
+        protocol: matched_seed_nested_training_subset
+
+  - name: fno_sample_500
+    config: configs/model/fno.yaml
+    seeds: [18]
+    overrides:
+      data:
+        n_samples: 500
+      sample_scaling:
+        requested_train_samples: 500
+        comparator_train_samples: 10000
+        protocol: matched_seed_nested_training_subset
+
+  - name: fno_sample_1000
+    config: configs/model/fno.yaml
+    seeds: [18]
+    overrides:
+      data:
+        n_samples: 1000
+      sample_scaling:
+        requested_train_samples: 1000
+        comparator_train_samples: 10000
+        protocol: matched_seed_nested_training_subset
+
+  - name: fno_sample_2500
+    config: configs/model/fno.yaml
+    seeds: [18]
+    overrides:
+      data:
+        n_samples: 2500
+      sample_scaling:
+        requested_train_samples: 2500
+        comparator_train_samples: 10000
+        protocol: matched_seed_nested_training_subset
+
+  - name: fno_sample_5000
+    config: configs/model/fno.yaml
+    seeds: [18]
+    overrides:
+      data:
+        n_samples: 5000
+      sample_scaling:
+        requested_train_samples: 5000
+        comparator_train_samples: 10000
+        protocol: matched_seed_nested_training_subset
+
+  - name: ensemble_fno
+    config: configs/model/fno.yaml
+    seeds: [11, 22, 33, 44, 55, 66, 77]
+    role: uncertainty_ensemble

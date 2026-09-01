@@ -44,6 +44,7 @@ data/*
 /tsunami-surrogate-data.parts.sha256
 /tsunami-surrogate-data.tar.zst.part-*
 /configs/cluster/generated/
+/logs/
 
 results/*
 !results/.gitkeep
