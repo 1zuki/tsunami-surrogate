@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=mps:2
+#SBATCH --gres=mps:4
 #SBATCH --mem=32G
 #SBATCH --time=72:00:00
 
