@@ -13,6 +13,7 @@ from src.data_gen.preprocess import (
     PROCESSED_MANIFEST_SCHEMA_ID,
     TsunamiPreprocessor,
 )
+from src.data_gen.common_time_v2 import candidate_requested_times
 from src.utils.hashing import sha256_file
 
 
@@ -68,6 +69,201 @@ def _stats_payload() -> dict:
             "max": 1.0,
         },
     }
+
+
+def _generation_config(tmp_path: Path, *, split: str = "train") -> Path:
+    payload = {
+        "requested_output": {
+            "enabled": True,
+            "schema_id": "tsunami-surrogate.common-time-v2.contract.v1",
+            "status": "accepted",
+            "execution_scope": "production",
+            "split": split,
+            "start": 8.4,
+            "step": 8.4,
+            "count": 50,
+            "horizon": 420.0,
+            "max_natural_steps": 20000,
+            "collect_natural_step_health": True,
+            "eta_primary": True,
+            "debug_full_states": False,
+            "acknowledge_provisional": False,
+        }
+    }
+    path = tmp_path / f"dataset-{split}.yaml"
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    return path
+
+
+def _config_with_generation_contract(
+    tmp_path: Path,
+    *,
+    publication_split: str = "train",
+    generation_split: str = "train",
+) -> Path:
+    config_path = _config(tmp_path)
+    payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    payload["raw"] = {
+        "publication_split": publication_split,
+        "generation_config": str(
+            _generation_config(tmp_path, split=generation_split)
+        ),
+    }
+    config_path.write_text(
+        yaml.safe_dump(payload, sort_keys=False),
+        encoding="utf-8",
+    )
+    return config_path
+
+
+def _write_minimal_v2_sample(
+    sample_dir: Path,
+    *,
+    contract_hash: str,
+    timestamps: np.ndarray,
+) -> None:
+    sample_dir.mkdir()
+    np.savez(
+        sample_dir / "sample.npz",
+        trajectory_eta=np.zeros((50, 2, 2), dtype=np.float32),
+        timestamps=np.asarray(timestamps, dtype=np.float64),
+        schema_id=np.asarray(
+            ["tsunami-surrogate.common-time-v2.eta-sample.v1"]
+        ),
+        contract_hash=np.asarray([contract_hash]),
+    )
+    (sample_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "schema_id": "tsunami-surrogate.common-time-v2.eta-sample.v1",
+                "contract_hash": contract_hash,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (sample_dir / "publication.json").write_text("{}\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("preprocess_name", "generation_name", "split"),
+    [
+        ("preprocess_train.yaml", "dataset.yaml", "train"),
+        ("preprocess_eval.yaml", "dataset_eval.yaml", "eval"),
+        ("preprocess_test.yaml", "dataset_test.yaml", "test"),
+    ],
+)
+def test_main_preprocess_configs_bind_their_generation_contract(
+    preprocess_name: str,
+    generation_name: str,
+    split: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    preprocessor = TsunamiPreprocessor(
+        str(root / "configs/data" / preprocess_name)
+    )
+
+    assert preprocessor.generation_config_path == (
+        root / "configs/data" / generation_name
+    )
+    assert preprocessor.expected_requested_output is not None
+    assert preprocessor.expected_requested_output.split == split
+    assert preprocessor.expected_requested_output.requested_times[0] == 8.4
+    assert preprocessor.expected_requested_output.requested_times[-1] == 420.0
+
+
+def test_preprocess_rejects_generation_publication_split_mismatch(
+    tmp_path: Path,
+) -> None:
+    config_path = _config_with_generation_contract(
+        tmp_path,
+        publication_split="test",
+        generation_split="train",
+    )
+
+    with pytest.raises(ValueError, match="does not match raw.publication_split"):
+        TsunamiPreprocessor(str(config_path))
+
+
+def test_preprocess_accepts_exact_generation_contract_timestamps(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    preprocessor = TsunamiPreprocessor(
+        str(_config_with_generation_contract(tmp_path))
+    )
+    requested = preprocessor.expected_requested_output
+    assert requested is not None
+    sample_dir = tmp_path / "sample_000001"
+    _write_minimal_v2_sample(
+        sample_dir,
+        contract_hash=requested.contract_hash,
+        timestamps=requested.requested_times,
+    )
+    monkeypatch.setattr(
+        "src.data_gen.common_time_v2.validate_publication",
+        lambda *_args, **_kwargs: {"contract_hash": requested.contract_hash},
+    )
+
+    loaded = preprocessor.load_sample(sample_dir)
+
+    np.testing.assert_array_equal(
+        loaded["timestamps"],
+        requested.requested_times,
+    )
+
+
+def test_preprocess_rejects_timestamps_outside_generation_contract(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    preprocessor = TsunamiPreprocessor(
+        str(_config_with_generation_contract(tmp_path))
+    )
+    requested = preprocessor.expected_requested_output
+    assert requested is not None
+    sample_dir = tmp_path / "sample_000001"
+    wrong_times = requested.requested_times.copy()
+    wrong_times[-1] += 8.4
+    _write_minimal_v2_sample(
+        sample_dir,
+        contract_hash=requested.contract_hash,
+        timestamps=wrong_times,
+    )
+    monkeypatch.setattr(
+        "src.data_gen.common_time_v2.validate_publication",
+        lambda *_args, **_kwargs: {"contract_hash": requested.contract_hash},
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="timestamps do not match raw.generation_config",
+    ):
+        preprocessor.load_sample(sample_dir)
+
+
+def test_preprocess_without_generation_config_keeps_historical_grid_validation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    preprocessor = TsunamiPreprocessor(str(_config(tmp_path)))
+    sample_dir = tmp_path / "sample_000001"
+    contract_hash = "historical-contract"
+    _write_minimal_v2_sample(
+        sample_dir,
+        contract_hash=contract_hash,
+        timestamps=candidate_requested_times(),
+    )
+    monkeypatch.setattr(
+        "src.data_gen.common_time_v2.validate_publication",
+        lambda *_args, **_kwargs: {"contract_hash": contract_hash},
+    )
+
+    loaded = preprocessor.load_sample(sample_dir)
+
+    np.testing.assert_array_equal(
+        loaded["timestamps"],
+        candidate_requested_times(),
+    )
 
 
 def test_no_train_records_requires_an_explicit_normalization_reference(

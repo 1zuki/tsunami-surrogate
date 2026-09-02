@@ -19,6 +19,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.utils.hashing import sha256_file, stable_json_sha256
+from src.data_gen.common_time_v2 import (
+    RequestedOutputConfig,
+    parse_requested_output_config,
+)
 
 NORMALIZATION_STATS_SCHEMA_ID = "tsunami-surrogate.normalization-stats.v2"
 PROCESSED_MANIFEST_SCHEMA_ID = "tsunami-surrogate.processed-dataset.v2"
@@ -174,6 +178,8 @@ class TsunamiPreprocessor:
 
         raw_cfg = cfg.get("raw", {})
         self.expected_publication_split: str | None = None
+        self.generation_config_path: pathlib.Path | None = None
+        self.expected_requested_output: RequestedOutputConfig | None = None
         self.scenario_manifest_path: pathlib.Path | None = None
         self.fde_manifest_paths: Dict[str, pathlib.Path] = {}
         self.fde_raw_dirs: Dict[str, pathlib.Path] = {}
@@ -185,6 +191,29 @@ class TsunamiPreprocessor:
                 ).strip()
                 if not self.expected_publication_split:
                     raise ValueError("raw.publication_split must not be empty")
+            generation_config = raw_cfg.get("generation_config")
+            if generation_config:
+                generation_path = pathlib.Path(str(generation_config))
+                if not generation_path.is_absolute():
+                    generation_path = ROOT / generation_path
+                if not generation_path.is_file():
+                    raise FileNotFoundError(
+                        "Could not find raw.generation_config: "
+                        f"{generation_path}"
+                    )
+                with generation_path.open("r", encoding="utf-8") as handle:
+                    generation_cfg = yaml.safe_load(handle) or {}
+                if not isinstance(generation_cfg, dict):
+                    raise ValueError("raw.generation_config must contain a YAML mapping")
+                requested_output = parse_requested_output_config(
+                    generation_cfg.get("requested_output")
+                )
+                if requested_output is None:
+                    raise ValueError(
+                        "raw.generation_config must enable requested_output"
+                    )
+                self.generation_config_path = generation_path
+                self.expected_requested_output = requested_output
             scenario_manifest = raw_cfg.get("scenario_manifest")
             if scenario_manifest:
                 self.scenario_manifest_path = pathlib.Path(str(scenario_manifest))
@@ -193,6 +222,22 @@ class TsunamiPreprocessor:
                 self.fde_manifest_paths[self._canonical_fde_name(str(key))] = pathlib.Path(str(value))
             for key, value in dict(raw_cfg.get("raw_dirs", {})).items():
                 self.fde_raw_dirs[self._canonical_fde_name(str(key))] = pathlib.Path(str(value))
+
+        if self.expected_requested_output is not None:
+            if self.expected_publication_split is None:
+                raise ValueError(
+                    "raw.publication_split is required with raw.generation_config"
+                )
+            if (
+                self.expected_requested_output.split
+                != self.expected_publication_split
+            ):
+                raise ValueError(
+                    "raw.generation_config requested-output split "
+                    f"{self.expected_requested_output.split!r} does not match "
+                    "raw.publication_split "
+                    f"{self.expected_publication_split!r}"
+                )
 
         self.fde_mode = fde_mode
         self.fde_targets = [self._canonical_fde_name(str(v)) for v in list(fde_cfg.get("targets", []))]
@@ -380,6 +425,22 @@ class TsunamiPreprocessor:
                     validate_publication,
                 )
 
+            expected_generation_hash = (
+                None
+                if self.expected_requested_output is None
+                else self.expected_requested_output.contract_hash
+            )
+            if (
+                expected_record is not None
+                and expected_record.get("contract_hash") is not None
+                and expected_generation_hash is not None
+                and str(expected_record["contract_hash"])
+                != expected_generation_hash
+            ):
+                raise RuntimeError(
+                    "Manifest/generation common-time-v2 contract mismatch"
+                )
+
             expected_identity = None
             expected_solver_name = None
             expected_sample_index = None
@@ -398,9 +459,12 @@ class TsunamiPreprocessor:
                 sample_dir,
                 expected_identity=expected_identity,
                 expected_contract_hash=(
-                    expected_record.get("contract_hash")
-                    if expected_record is not None
-                    else meta.get("contract_hash")
+                    expected_generation_hash
+                    or (
+                        expected_record.get("contract_hash")
+                        if expected_record is not None
+                        else meta.get("contract_hash")
+                    )
                 ),
                 expected_config_hash=(
                     expected_record.get("resolved_config_hash")
@@ -424,6 +488,11 @@ class TsunamiPreprocessor:
                     if expected_record is not None
                     else meta.get("authoritative_input_fingerprint")
                 ),
+                expected_times=(
+                    None
+                    if self.expected_requested_output is None
+                    else self.expected_requested_output.requested_times
+                ),
             )
             if meta.get("schema_id") != ETA_SAMPLE_SCHEMA_ID:
                 raise RuntimeError("Unsupported common-time-v2 sample schema")
@@ -446,7 +515,15 @@ class TsunamiPreprocessor:
             with np.load(npz_path, allow_pickle=False) as payload:
                 if "timestamps" not in payload:
                     raise RuntimeError("common-time-v2 sample is missing timestamps")
-                validate_candidate_times(payload["timestamps"])
+                if self.expected_requested_output is None:
+                    validate_candidate_times(payload["timestamps"])
+                elif not np.array_equal(
+                    np.asarray(payload["timestamps"], dtype=np.float64),
+                    self.expected_requested_output.requested_times,
+                ):
+                    raise RuntimeError(
+                        "sample.npz timestamps do not match raw.generation_config"
+                    )
                 schema_values = np.asarray(payload.get("schema_id", [])).reshape(-1)
                 if not schema_values or str(schema_values[0]) != ETA_SAMPLE_SCHEMA_ID:
                     raise RuntimeError("sample.npz common-time-v2 schema mismatch")

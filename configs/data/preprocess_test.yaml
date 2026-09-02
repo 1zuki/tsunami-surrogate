@@ -1,5 +1,6 @@
 raw:
   publication_split: test
+  generation_config: configs/data/dataset_test.yaml
   scenario_manifest: data/test/synthetic/scenario_manifest.jsonl
   fde_manifests:
     hydrostatic: data/test/synthetic/hydrostatic_manifest.jsonl

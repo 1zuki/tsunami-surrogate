@@ -1,5 +1,6 @@
 raw:
   publication_split: eval
+  generation_config: configs/data/dataset_eval.yaml
   scenario_manifest: data/eval/synthetic/scenario_manifest.jsonl
   fde_manifests:
     hydrostatic: data/eval/synthetic/hydrostatic_manifest.jsonl
