@@ -25,8 +25,9 @@ if str(ROOT) not in sys.path:
 
 from src.data_gen.common_time_v2 import (  # noqa: E402
     PUBLICATION_SCHEMA_ID,
-    candidate_requested_times,
+    parse_requested_output_config,
     stable_hash_payload,
+    validate_requested_times,
 )
 from src.models.signature import model_config_signature  # noqa: E402
 from src.training.checkpointing import capture_data_provenance  # noqa: E402
@@ -281,19 +282,154 @@ def load_suite_contract(path: str | Path) -> dict[str, Any]:
 
 def _expected_times(contract: Mapping[str, Any]) -> np.ndarray:
     requested = contract.get("scientific_scope", {}).get("requested_times", {})
-    expected = candidate_requested_times()
-    observed = (
-        float(requested.get("start", -1.0)),
-        float(requested.get("step", -1.0)),
-        int(requested.get("count", -1)),
-        float(requested.get("horizon", -1.0)),
-    )
-    required = (0.0035, 0.0035, 50, 0.175)
-    if observed != required:
+    if not isinstance(requested, Mapping):
+        raise PreflightError("scientific_scope.requested_times must be a mapping")
+    start = float(requested.get("start", math.nan))
+    step = float(requested.get("step", math.nan))
+    count = int(requested.get("count", -1))
+    horizon = float(requested.get("horizon", math.nan))
+    if (
+        not math.isfinite(start)
+        or not math.isfinite(step)
+        or not math.isfinite(horizon)
+        or start <= 0.0
+        or step <= 0.0
+        or horizon <= 0.0
+        or count <= 0
+    ):
         raise PreflightError(
-            f"Evaluation contract requested-time tuple is {observed}, expected {required}"
+            "Evaluation requested-time start, step, count, and horizon must be "
+            "positive and finite"
         )
-    return expected
+    expected_horizon = start + step * float(count - 1)
+    if not math.isclose(
+        horizon,
+        expected_horizon,
+        rel_tol=1.0e-12,
+        abs_tol=1.0e-12,
+    ):
+        raise PreflightError(
+            "Evaluation requested-time horizon must equal "
+            "start + step * (count - 1)"
+        )
+    expected = start + step * np.arange(count, dtype=np.float64)
+    expected[-1] = np.float64(horizon)
+    explicit = requested.get("times")
+    if explicit is not None:
+        observed = validate_requested_times(explicit, expected_count=count)
+        if not np.array_equal(observed, expected):
+            raise PreflightError(
+                "Evaluation requested-time values do not match "
+                "start/step/count/horizon"
+            )
+    return validate_requested_times(expected, expected_count=count)
+
+
+def _validate_generation_config_bindings(
+    contract: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    scientific = contract["scientific_scope"]
+    expected_hash = str(scientific["contract_hash"])
+    expected_times = _expected_times(contract)
+    domain = scientific["computational_domain"]
+    expected_solver_shape = tuple(int(value) for value in domain["solver_shape"])
+    expected_publication_shape = tuple(
+        int(value) for value in domain["publication_shape"]
+    )
+    expected_buffer = int(domain["buffer_cells"])
+    summaries: list[dict[str, Any]] = []
+
+    for processed_split in ("train", "val", "test"):
+        split_spec = contract["main_datasets"]["splits"][processed_split]
+        config_value = split_spec.get("generation_config")
+        if not config_value:
+            raise PreflightError(
+                f"Missing generation_config binding for {processed_split}"
+            )
+        config_path = _repo_path(str(config_value))
+        try:
+            generation = (
+                yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+            )
+        except FileNotFoundError as exc:
+            raise PreflightError(
+                f"Missing generation config: {_relative(config_path)}"
+            ) from exc
+        if not isinstance(generation, Mapping):
+            raise PreflightError(
+                f"Generation config must be a mapping: {_relative(config_path)}"
+            )
+        requested = parse_requested_output_config(
+            generation.get("requested_output")
+        )
+        if requested is None:
+            raise PreflightError(
+                f"Generation config does not enable requested output: "
+                f"{_relative(config_path)}"
+            )
+        publication_split = str(split_spec["publication_split"])
+        if requested.split != publication_split:
+            raise PreflightError(
+                f"Generation split mismatch for {processed_split}: "
+                f"{requested.split!r} != {publication_split!r}"
+            )
+        if requested.contract_hash != expected_hash:
+            raise PreflightError(
+                f"Generation contract hash mismatch: {_relative(config_path)}"
+            )
+        if not np.array_equal(requested.requested_times, expected_times):
+            raise PreflightError(
+                f"Generation requested-time mismatch: {_relative(config_path)}"
+            )
+
+        solver = generation.get("solver", {})
+        paired = generation.get("paired_inputs", {})
+        buffered = generation.get("computational_domain", {})
+        solver_shape = (
+            int(solver.get("nx", -1)),
+            int(solver.get("ny", -1)),
+        )
+        publication_shape = tuple(
+            int(value) for value in paired.get("target_shape", [])
+        )
+        solver_input_shape = tuple(
+            int(value) for value in paired.get("solver_shape", [])
+        )
+        buffer_cells = int(buffered.get("buffer_cells", -1))
+        if solver_shape != expected_solver_shape:
+            raise PreflightError(
+                f"Generation computational-grid mismatch: {_relative(config_path)}"
+            )
+        if publication_shape != expected_publication_shape:
+            raise PreflightError(
+                f"Generation publication-grid mismatch: {_relative(config_path)}"
+            )
+        if buffer_cells != expected_buffer:
+            raise PreflightError(
+                f"Generation buffer mismatch: {_relative(config_path)}"
+            )
+        if (
+            len(solver_input_shape) != 2
+            or tuple(
+                value + 2 * buffer_cells for value in solver_input_shape
+            )
+            != solver_shape
+        ):
+            raise PreflightError(
+                "Generation solver-input core plus its buffer does not match "
+                f"the computational grid: {_relative(config_path)}"
+            )
+        summaries.append(
+            {
+                "split": processed_split,
+                "config": _relative(config_path),
+                "contract_hash": requested.contract_hash,
+                "solver_input_shape": list(solver_input_shape),
+                "solver_shape": list(solver_shape),
+                "publication_shape": list(publication_shape),
+            }
+        )
+    return summaries
 
 
 def _validate_shard_manifest(
@@ -386,6 +522,7 @@ def _validate_raw_timestamp_payload(
     expected_times: np.ndarray,
     expected_shape: tuple[int, int, int],
     expected_contract_hash: str,
+    expected_code_state_hash: str | None,
     expected_schema_id: str,
     expected_publication_split: str,
     expected_publication_hash: str | None,
@@ -401,6 +538,8 @@ def _validate_raw_timestamp_payload(
         "solver_name": str(row.get("solver_name")),
         "split": expected_publication_split,
     }
+    if expected_code_state_hash is not None:
+        checks["code_state_hash"] = expected_code_state_hash
     for key, expected in checks.items():
         if publication.get(key) != expected:
             raise PreflightError(
@@ -523,8 +662,10 @@ def _validate_processed_split(
     expected_contract_hash: str,
     expected_schema_id: str,
     expected_times: np.ndarray,
+    frame_count: int,
     publication_shape: tuple[int, int],
     solver_shape: tuple[int, int] | None,
+    expected_code_state_hash: str | None = None,
     lineage_schema_id: str | None = None,
     expected_publication_hashes: Mapping[str, str] | None = None,
     deep_payload_audit: bool = False,
@@ -536,14 +677,14 @@ def _validate_processed_split(
             split_dir,
             expected_count=expected_count,
             expected_inputs_shape=(3, *publication_shape),
-            expected_targets_shape=(50, *publication_shape),
+            expected_targets_shape=(frame_count, *publication_shape),
         )
     else:
         _validate_flat_manifest(
             split_dir,
             expected_count=expected_count,
             expected_inputs_shape=(3, *publication_shape),
-            expected_targets_shape=(50, *publication_shape),
+            expected_targets_shape=(frame_count, *publication_shape),
         )
     rows: dict[str, dict[str, Any]] = {}
     payload_audit_jobs: list[dict[str, Any]] = []
@@ -561,9 +702,11 @@ def _validate_processed_split(
             "solver_name": expected_solver,
             "split": expected_publication_split,
             "quality_status": "ok",
-            "requested_output_count": 50,
-            "covered_requested_output_count": 50,
+            "requested_output_count": frame_count,
+            "covered_requested_output_count": frame_count,
         }
+        if expected_code_state_hash is not None:
+            required["code_state_hash"] = expected_code_state_hash
         for key, expected in required.items():
             if row.get(key) != expected:
                 raise PreflightError(
@@ -571,7 +714,7 @@ def _validate_processed_split(
                     f"{row.get(key)!r} != {expected!r}"
                 )
         if tuple(row.get("trajectory_eta_shape", [])) != (
-            50,
+            frame_count,
             *publication_shape,
         ):
             raise PreflightError(
@@ -607,8 +750,9 @@ def _validate_processed_split(
                 "sample_dir": sample_dir,
                 "row": row,
                 "expected_times": expected_times,
-                "expected_shape": (50, *publication_shape),
+                "expected_shape": (frame_count, *publication_shape),
                 "expected_contract_hash": expected_contract_hash,
+                "expected_code_state_hash": expected_code_state_hash,
                 "expected_schema_id": expected_schema_id,
                 "expected_publication_split": expected_publication_split,
                 "expected_publication_hash": (
@@ -926,15 +1070,22 @@ def _validate_frozen_file(spec: Mapping[str, Any], *, label: str) -> Path:
 
 def _validate_generation_artifacts(
     contract: Mapping[str, Any],
-) -> tuple[list[dict[str, Any]], dict[str, dict[str, str]]]:
+) -> tuple[
+    list[dict[str, Any]],
+    dict[str, dict[str, str]],
+    dict[str, str],
+]:
     expected_contract_hash = str(contract["scientific_scope"]["contract_hash"])
-    expected_code_state = (
-        "1199fad6503750b6892cd451ca7130c885818d49e14165704cce5590a478ac93"
-    )
     expected_solvers = ["boussinesq", "swe_hydrostatic", "swe_muscl_hr"]
     summaries: list[dict[str, Any]] = []
     publication_indexes: dict[str, dict[str, str]] = {}
+    code_state_hashes: dict[str, str] = {}
     frozen = contract["main_datasets"].get("frozen_generation_artifacts", {})
+    if frozen.get("status") != "frozen":
+        raise PreflightError(
+            "Fresh corrected generation artifacts have not been frozen in "
+            "configs/eval/final_v2_suite.yaml yet"
+        )
     split_names = {"train": "train", "val": "eval", "test": "test"}
     for processed_split, publication_split in split_names.items():
         split_spec = frozen.get(processed_split)
@@ -960,6 +1111,11 @@ def _validate_generation_artifacts(
             label=f"{processed_split} operational shard",
         )
         shard = _read_json(shard_path)
+        expected_code_state = str(split_spec.get("code_state_hash", "")).strip()
+        if not expected_code_state:
+            raise PreflightError(
+                f"Missing frozen code_state_hash for {processed_split}"
+            )
         required = {
             "schema_id": "tsunami-surrogate.common-time-v2.operational-shard.v1",
             "split": publication_split,
@@ -992,15 +1148,17 @@ def _validate_generation_artifacts(
                 f"malformed: {_relative(shard_path)}"
             )
         publication_indexes[processed_split] = publication_index
+        code_state_hashes[processed_split] = expected_code_state
         summaries.append(
             {
                 "split": processed_split,
                 "publication_split": publication_split,
                 "operational_shard": _relative(shard_path),
                 "publications": publication_count,
+                "code_state_hash": expected_code_state,
             }
         )
-    return summaries, publication_indexes
+    return summaries, publication_indexes, code_state_hashes
 
 
 def _validate_required_file(path_value: str | Path) -> Path:
@@ -1644,12 +1802,25 @@ def run_preflight(
     include_ensemble: bool,
     require_real_bathymetry: bool,
     include_paper_evidence: bool = False,
+    require_current_numerical_evidence: bool = False,
     deep_payload_audit: bool = False,
     payload_audit_workers: int = 8,
     progress_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     if payload_audit_workers <= 0:
         raise PreflightError("Payload-audit worker count must be positive")
+    numerical_scope = contract.get("numerical_evidence_scope", {})
+    numerical_matches_current = bool(
+        isinstance(numerical_scope, Mapping)
+        and numerical_scope.get("current_production_contract_validated", False)
+    )
+    if (
+        include_paper_evidence or require_current_numerical_evidence
+    ) and not numerical_matches_current:
+        raise PreflightError(
+            "Current-production numerical verification is not complete; the "
+            "accepted numerical artifacts are historical development evidence"
+        )
     scientific = contract["scientific_scope"]
     contract_hash = str(scientific["contract_hash"])
     sample_schema_id = str(scientific["sample_schema_id"])
@@ -1657,6 +1828,7 @@ def run_preflight(
     domain = scientific["computational_domain"]
     solver_shape = tuple(int(v) for v in domain["solver_shape"])
     publication_shape = tuple(int(v) for v in domain["publication_shape"])
+    frame_count = int(times.size)
 
     if output_root is not None:
         run_root = _repo_path(output_root).resolve()
@@ -1670,7 +1842,10 @@ def run_preflight(
                 f"Evaluation output root already exists: {_relative(run_root)}"
             )
 
-    generation, publication_indexes = _validate_generation_artifacts(contract)
+    generation_configs = _validate_generation_config_bindings(contract)
+    generation, publication_indexes, generation_code_states = (
+        _validate_generation_artifacts(contract)
+    )
     main_cfg = contract["main_datasets"]
     split_cfg = main_cfg["splits"]
     main_indices: dict[str, dict[str, dict[str, dict[str, Any]]]] = {}
@@ -1690,8 +1865,10 @@ def run_preflight(
                 expected_contract_hash=contract_hash,
                 expected_schema_id=sample_schema_id,
                 expected_times=times,
+                frame_count=frame_count,
                 publication_shape=publication_shape,
                 solver_shape=solver_shape,
+                expected_code_state_hash=generation_code_states[split_name],
                 expected_publication_hashes=publication_indexes[split_name],
                 deep_payload_audit=deep_payload_audit,
                 payload_audit_workers=payload_audit_workers,
@@ -1742,6 +1919,7 @@ def run_preflight(
                 expected_contract_hash=contract_hash,
                 expected_schema_id=sample_schema_id,
                 expected_times=times,
+                frame_count=frame_count,
                 publication_shape=(grid, grid),
                 solver_shape=None,
                 lineage_schema_id="tsunami-surrogate.native-resolution-inputs.v1",
@@ -1804,6 +1982,7 @@ def run_preflight(
                 expected_contract_hash=contract_hash,
                 expected_schema_id=sample_schema_id,
                 expected_times=times,
+                frame_count=frame_count,
                 publication_shape=publication_shape,
                 solver_shape=solver_shape,
                 lineage_schema_id=str(real_cfg["lineage_schema_id"]),
@@ -1850,12 +2029,15 @@ def run_preflight(
         "checkpoints": checkpoint_summaries,
         "code_state": _evaluation_code_state(),
         "accepted_numerical_artifacts": numerical,
+        "numerical_evidence_scope": dict(numerical_scope),
+        "generation_configs": generation_configs,
         "frozen_generation_artifacts": generation,
         "deep_payload_audit": bool(deep_payload_audit),
         "payload_audit_workers": int(payload_audit_workers),
         "ensemble": ensemble,
         "paper_evidence": paper_evidence,
         "limitations": [
+            "Accepted numerical artifacts are historical development evidence and do not yet validate the corrected production dataset contract.",
             "Main and strict-holdout checkpoint provenance is manifest-bound rather than shard-content-bound because those processed containers predate processed-dataset.v2.",
             "Legacy Stage-C reconstruction, stale Hydrostatic native-resolution paths, shared-from-64 studies, destructive OOD rebuilding, and the unsupported multi-seed architecture matrix are excluded.",
         ],
@@ -1869,6 +2051,14 @@ def main() -> None:
     parser.add_argument("--report", default=None)
     parser.add_argument("--include-ensemble", action="store_true")
     parser.add_argument("--include-paper-evidence", action="store_true")
+    parser.add_argument(
+        "--require-current-numerical-evidence",
+        action="store_true",
+        help=(
+            "Refuse historical numerical evidence when a fresh "
+            "production-matched validation chain is required."
+        ),
+    )
     parser.add_argument(
         "--deep-payload-audit",
         action="store_true",
@@ -1897,6 +2087,9 @@ def main() -> None:
         output_root=args.output_root,
         include_ensemble=bool(args.include_ensemble),
         include_paper_evidence=bool(args.include_paper_evidence),
+        require_current_numerical_evidence=bool(
+            args.require_current_numerical_evidence
+        ),
         require_real_bathymetry=not bool(args.allow_missing_real_bathymetry),
         deep_payload_audit=bool(args.deep_payload_audit),
         payload_audit_workers=int(args.payload_audit_workers),

@@ -112,6 +112,19 @@ def _write_yaml(path: Path, payload: Mapping[str, Any]) -> None:
     )
 
 
+def _require_current_numerical_scope() -> dict[str, Any]:
+    suite_contract = _load_yaml(ROOT / "configs/eval/final_v2_suite.yaml")
+    numerical_scope = suite_contract.get("numerical_evidence_scope", {})
+    if not bool(
+        numerical_scope.get("current_production_contract_validated", False)
+    ):
+        raise RuntimeError(
+            "The existing H0/A/B/H1/H2 chain is historical and has not been "
+            "migrated to the corrected production dataset contract"
+        )
+    return suite_contract
+
+
 def _require_path(path: Path, *, kind: str) -> None:
     if kind == "file" and not path.is_file():
         raise FileNotFoundError(path)
@@ -127,6 +140,7 @@ def validate_prerequisites(
     petsc_arch: str,
     geoclaw_python: Path,
 ) -> dict[str, Any]:
+    _require_current_numerical_scope()
     state = code_state(ROOT)
     if state["dirty"]:
         raise RuntimeError(
@@ -241,6 +255,7 @@ def run_chain(
     petsc_arch: str,
     geoclaw_python: Path,
 ) -> Path:
+    suite_contract = _require_current_numerical_scope()
     preflight = validate_prerequisites(
         output_root=output_root,
         claw_root=claw_root,
@@ -257,7 +272,6 @@ def run_chain(
     configs_root = workspace / "configs"
     artifacts_root = workspace / "artifacts"
 
-    suite_contract = _load_yaml(ROOT / "configs/eval/final_v2_suite.yaml")
     publication_contract_hash = str(
         suite_contract["scientific_scope"]["contract_hash"]
     )

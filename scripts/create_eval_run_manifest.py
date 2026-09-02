@@ -203,6 +203,9 @@ def _paper_evidence_cells(
     preflight: Mapping[str, Any] | None,
 ) -> list[dict[str, Any]]:
     paper = contract["paper_evidence"]
+    requested_times = contract["scientific_scope"]["requested_times"]
+    requested_horizon = float(requested_times["horizon"])
+    requested_frame_count = int(requested_times["count"])
     paper_preflight = (
         preflight.get("paper_evidence", {}) if isinstance(preflight, Mapping) else {}
     )
@@ -217,8 +220,12 @@ def _paper_evidence_cells(
             "required_keys": [
                 "contract_path",
                 "contract_sha256",
+                "numerical_evidence_scope",
                 "rows",
             ],
+            "expected_values": {
+                "numerical_evidence_scope.current_production_contract_validated": True,
+            },
             "row_count": len(contract.get("accepted_numerical_artifacts", [])),
             "row_identity_key": "id",
             "row_identities": [
@@ -451,8 +458,8 @@ def _paper_evidence_cells(
             "bootstrap.seed": int(bootstrap["seed"]),
             "bootstrap.resamples": int(bootstrap["resamples"]),
             "bootstrap.confidence_level": float(bootstrap["confidence_level"]),
-            "common_time_v2.horizon": 0.175,
-            "common_time_v2.frame_count": 50,
+            "common_time_v2.horizon": requested_horizon,
+            "common_time_v2.frame_count": requested_frame_count,
         },
     }
     cells.append(
@@ -585,8 +592,8 @@ def _paper_evidence_cells(
                             wave["arrival_threshold_fraction"]
                         ),
                         "peak_plateau_fraction": float(wave["peak_plateau_fraction"]),
-                        "common_time_v2.horizon": 0.175,
-                        "common_time_v2.frame_count": 50,
+                        "common_time_v2.horizon": requested_horizon,
+                        "common_time_v2.frame_count": requested_frame_count,
                     },
                     "require_physical_target_units": True,
                 },

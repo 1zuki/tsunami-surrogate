@@ -40,6 +40,7 @@ def main() -> None:
     args = parser.parse_args()
 
     contract = load_suite_contract(args.contract)
+    numerical_scope = contract.get("numerical_evidence_scope", {})
     rows = []
     for entry in contract.get("accepted_numerical_artifacts", []):
         if not isinstance(entry, Mapping):
@@ -81,6 +82,7 @@ def main() -> None:
         "evaluation_type": "v2_numerical_evidence_index",
         "contract_path": str(args.contract),
         "contract_sha256": _sha256(ROOT / args.contract),
+        "numerical_evidence_scope": dict(numerical_scope),
         "rows": rows,
     }
     save_json(result, args.output)

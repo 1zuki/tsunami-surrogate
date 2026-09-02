@@ -75,17 +75,33 @@ def _load_scenarios(
 
         with np.load(bathy_path) as z:
             bathymetry = np.asarray(z["bathymetry"], dtype=dtype)
+            solver_bathymetry = (
+                np.asarray(z["solver_bathymetry"], dtype=dtype)
+                if "solver_bathymetry" in z
+                else None
+            )
             bathy_type = str(np.asarray(z["bathymetry_type"]).reshape(-1)[0]) if "bathymetry_type" in z else "unknown"
         with np.load(source_path) as z:
             source_field = np.asarray(z["source_field"], dtype=dtype)
+            solver_source_field = (
+                np.asarray(z["solver_source_field"], dtype=dtype)
+                if "solver_source_field" in z
+                else None
+            )
             source_type = str(np.asarray(z["source_type"]).reshape(-1)[0]) if "source_type" in z else "unknown"
             strength = float(np.asarray(z["source_strength"]).reshape(-1)[0]) if "source_strength" in z else 1.0
+        if (solver_bathymetry is None) != (solver_source_field is None):
+            raise RuntimeError(
+                f"Paired solver caches are incomplete for sample {idx}"
+            )
 
         rows.append(
             {
                 "sample_index": int(idx),
                 "bathymetry": bathymetry,
                 "source_field": source_field,
+                "solver_bathymetry": solver_bathymetry,
+                "solver_source_field": solver_source_field,
                 "source_strength": strength,
                 "bathymetry_type": bathy_type,
                 "source_type": source_type,
@@ -134,31 +150,52 @@ def _prepare_scenario(
     *,
     sea_level_offset: float,
     buffered_domain: BufferedDomainConfig,
+    source_already_tapered: bool = False,
 ) -> Dict[str, Any]:
     bathymetry = np.asarray(scenario["bathymetry"])
     source_field = np.asarray(scenario["source_field"])
     source_strength = float(scenario["source_strength"])
+    paired_solver_bathymetry = scenario.get("solver_bathymetry")
+    paired_solver_source = scenario.get("solver_source_field")
+    if (paired_solver_bathymetry is None) != (paired_solver_source is None):
+        raise ValueError("Paired solver bathymetry/source caches must be complete")
+    solver_input_bathymetry = (
+        bathymetry
+        if paired_solver_bathymetry is None
+        else np.asarray(paired_solver_bathymetry)
+    )
+    solver_input_source = (
+        source_field
+        if paired_solver_source is None
+        else np.asarray(paired_solver_source)
+    )
 
     if buffered_domain.enabled:
         prepared = _prepare_buffered_domain(
-            bathymetry=bathymetry,
-            source_field=source_field,
+            bathymetry=solver_input_bathymetry,
+            source_field=solver_input_source,
             source_strength=source_strength,
             sea_level_offset=sea_level_offset,
             config=buffered_domain,
+            source_already_tapered=source_already_tapered,
         )
         solver_bathymetry = prepared["solver_bathymetry"]
         solver_eta0 = prepared["solver_eta0"]
         solver_h0 = prepared["solver_h0"]
     else:
-        solver_bathymetry = bathymetry
-        solver_eta0 = source_strength * source_field
-        rest_depth = np.maximum(-bathymetry + float(sea_level_offset), 0.0)
+        solver_bathymetry = solver_input_bathymetry
+        solver_eta0 = source_strength * solver_input_source
+        rest_depth = np.maximum(
+            -solver_input_bathymetry + float(sea_level_offset), 0.0
+        )
         solver_h0 = np.maximum(rest_depth + solver_eta0, 0.0)
 
     return {
         **scenario,
         "input_shape": tuple(int(v) for v in bathymetry.shape),
+        "solver_input_shape": tuple(
+            int(v) for v in solver_input_bathymetry.shape
+        ),
         "solver_shape": tuple(int(v) for v in solver_bathymetry.shape),
         "solver_bathymetry": np.asarray(solver_bathymetry),
         "solver_eta0": np.asarray(solver_eta0),
@@ -310,6 +347,10 @@ def main() -> None:
             scenario,
             sea_level_offset=sea_level_offset,
             buffered_domain=dataset_cfg.buffered_domain,
+            source_already_tapered=(
+                dataset_cfg.paired_inputs.enabled
+                and dataset_cfg.paired_inputs.source_taper_stage == "master"
+            ),
         )
         for scenario in raw_scenarios
     ]
@@ -412,6 +453,7 @@ def main() -> None:
         ),
         "computational_domain": dataset_cfg.buffered_domain.semantics(),
         "input_shape": list(scenarios[0]["input_shape"]),
+        "solver_input_shape": list(scenarios[0]["solver_input_shape"]),
         "solver_shape": list(scenarios[0]["solver_shape"]),
         "natural_steps_min": int(min(natural_steps)),
         "natural_steps_max": int(max(natural_steps)),

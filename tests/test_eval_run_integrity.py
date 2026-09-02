@@ -16,7 +16,13 @@ from scripts._consolidate_results import (
 from scripts.cleanup_legacy_results import replacement_patterns
 from scripts.create_eval_run_manifest import build_manifest
 from scripts.eval_arrival_maps import _accumulator, _update_acc
-from scripts.eval_suite_preflight import load_suite_contract
+from scripts.eval_suite_preflight import (
+    PreflightError,
+    _expected_times,
+    _validate_generation_config_bindings,
+    load_suite_contract,
+    run_preflight,
+)
 from src.evaluation.uncertainty import (
     ErrorUncertaintyCorrelationAccumulator,
 )
@@ -222,6 +228,37 @@ def test_live_manifest_declares_paper_and_numerical_rerun_cells() -> None:
         "numerical_validation:summary",
         "numerical_validation:archive",
     }.issubset(ids)
+
+
+def test_live_suite_matches_corrected_generation_configs() -> None:
+    contract = load_suite_contract("configs/eval/final_v2_suite.yaml")
+
+    times = _expected_times(contract)
+    bindings = _validate_generation_config_bindings(contract)
+
+    assert times.shape == (50,)
+    assert times[0] == np.float64(8.4)
+    assert times[-1] == np.float64(420.0)
+    assert {row["split"] for row in bindings} == {"train", "val", "test"}
+    assert all(row["solver_input_shape"] == [128, 128] for row in bindings)
+    assert all(row["solver_shape"] == [192, 192] for row in bindings)
+    assert all(row["publication_shape"] == [64, 64] for row in bindings)
+
+
+def test_live_suite_rejects_paper_evidence_until_numerical_revalidation() -> None:
+    contract = load_suite_contract("configs/eval/final_v2_suite.yaml")
+
+    with pytest.raises(
+        PreflightError,
+        match="Current-production numerical verification is not complete",
+    ):
+        run_preflight(
+            contract,
+            output_root=None,
+            include_ensemble=False,
+            require_real_bathymetry=False,
+            include_paper_evidence=True,
+        )
 
 
 def test_consolidation_rejects_companion_checksum_mismatch(

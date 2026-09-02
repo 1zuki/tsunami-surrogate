@@ -1,19 +1,19 @@
 schema_id: tsunami-surrogate.final-v2-evaluation-suite.v1
 suite_id: common-time-v2-paper-evaluation
-completion_scope: current_v2_evidence
+completion_scope: corrected_production_rebuild_pending
 
 scientific_scope:
-  contract_hash: 3b04bc5f1d6a547d512c49d82be169aec876b15a36b901c3856bc117be1b6337
+  contract_hash: 288d19af5e8f5fe1658c098bf972ada97292a08fe35ed99c086406a291576d2f
   sample_schema_id: tsunami-surrogate.common-time-v2.eta-sample.v1
   requested_times:
-    start: 0.0035
-    step: 0.0035
+    start: 8.4
+    step: 8.4
     count: 50
-    horizon: 0.175
+    horizon: 420.0
   computational_domain:
-    solver_shape: [96, 96]
+    solver_shape: [192, 192]
     publication_shape: [64, 64]
-    buffer_cells: 16
+    buffer_cells: 32
 
 main_datasets:
   hydrostatic:
@@ -30,78 +30,25 @@ main_datasets:
       publication_split: train
       count: 10000
       raw_root: data/train/raw
+      generation_config: configs/data/dataset.yaml
     val:
       publication_split: eval
       count: 1000
       raw_root: data/eval/raw
+      generation_config: configs/data/dataset_eval.yaml
     test:
       publication_split: test
       count: 2500
       raw_root: data/test/raw
+      generation_config: configs/data/dataset_test.yaml
   frozen_generation_artifacts:
-    train:
-      config_snapshot:
-        path: data/train/raw/dataset_config.snapshot.yaml
-        sha256: f6735f592dfaadccf3779b7361a95d5030ab49f6f8043447489526aa096b40a5
-      operational_shard:
-        path: data/train/raw/operational_shards/train_000001_010000.json
-        sha256: 884e482e0a207cb2154fcaf43fbc71b5751d82f59ec9e0e7c4bfedfc454054bf
-        publications: 30000
-      scenario_manifest:
-        path: data/train/synthetic/scenario_manifest.jsonl
-        sha256: 4750137fd17c57181e9e78e0d12d8fa5fa3b720e5dbc68142f279ee68a5590f0
-      solver_manifests:
-        hydrostatic:
-          path: data/train/synthetic/hydrostatic_manifest.jsonl
-          sha256: 9aface06ab0ce41ddd55290e6a4de74726bec10531f981631fbd7cec32b03c4b
-        muscl_hr:
-          path: data/train/synthetic/muscl_hr_manifest.jsonl
-          sha256: 27ac706ba236699c2ef544081fa2fb0b1d3d4e548d12e4313fc07c7cdc1c695b
-        boussinesq:
-          path: data/train/synthetic/boussinesq_manifest.jsonl
-          sha256: bfad6ed21df90d5cd12682109db140170c474412e64fd1050db2762094fd1447
-    val:
-      config_snapshot:
-        path: data/eval/raw/dataset_config.snapshot.yaml
-        sha256: 1770e8bd010ba457c721ba2acc0b73eb1f651f674411a3147d3f45bf149c40c0
-      operational_shard:
-        path: data/eval/raw/operational_shards/eval_000001_001000.json
-        sha256: 30dad220e5e1101f7a4688c9f054aa50ce910f28832ce622d874c526f2ec8482
-        publications: 3000
-      scenario_manifest:
-        path: data/eval/synthetic/scenario_manifest.jsonl
-        sha256: fcaed2e9680bc4ebb1988eedf1d924785262abe9a372f059966a145255a9bd86
-      solver_manifests:
-        hydrostatic:
-          path: data/eval/synthetic/hydrostatic_manifest.jsonl
-          sha256: 711a2e4c11ddd924c6bd37ad791cfb4e0e2bbb8deefb5d5500784009bfcc0a0f
-        muscl_hr:
-          path: data/eval/synthetic/muscl_hr_manifest.jsonl
-          sha256: 1c18a1cd44e852699df988b1b6b612ea7d1adcfbb002ccc7c91a3863bfd40609
-        boussinesq:
-          path: data/eval/synthetic/boussinesq_manifest.jsonl
-          sha256: b2c8151379fd0e6cc81cc6f03d329eb8cdbc11e76422da18a0b7d3e69918079c
-    test:
-      config_snapshot:
-        path: data/test/raw/dataset_config.snapshot.yaml
-        sha256: eef09620171050d208d8d6f58b60676877335d351878d1cf62dda23316aeca36
-      operational_shard:
-        path: data/test/raw/operational_shards/test_000001_002500.json
-        sha256: a7b46cf866531ba65bee0e0636fcb682cc6a73f1b08a52fef94a570242119a0d
-        publications: 7500
-      scenario_manifest:
-        path: data/test/synthetic/scenario_manifest.jsonl
-        sha256: 2d52f08149d27ef0a47042bbeed4f05c0416e582c95362ee51595aebf47449e1
-      solver_manifests:
-        hydrostatic:
-          path: data/test/synthetic/hydrostatic_manifest.jsonl
-          sha256: 1e18097430eada9de007e5e4beefaa5a8f7deb482c51e440ef5079e34879ea1d
-        muscl_hr:
-          path: data/test/synthetic/muscl_hr_manifest.jsonl
-          sha256: 1d518d823c335c61ec211e86732583246608b3ba756fead66cc17a1fc85272cc
-        boussinesq:
-          path: data/test/synthetic/boussinesq_manifest.jsonl
-          sha256: 51d7a125553b2b32f28c77cfdfee545f411f5462caad0dd54d74429e3fe582d8
+    status: pending_fresh_generation
+    note: Populate hashes and per-split code-state hashes after the corrected train, validation, and test artifacts are complete.
+
+numerical_evidence_scope:
+  status: historical_development_only
+  current_production_contract_validated: false
+  note: The accepted artifacts below remain immutable evidence for the earlier numerical studies and do not validate the corrected production dataset contract.
 
 accepted_numerical_artifacts:
   - id: h0

@@ -44,6 +44,7 @@ def test_solver_speed_prepares_production_buffer_shape_and_taper():
     )
 
     assert prepared["input_shape"] == (64, 64)
+    assert prepared["solver_input_shape"] == (64, 64)
     assert prepared["solver_shape"] == (96, 96)
     assert prepared["solver_bathymetry"].shape == (96, 96)
     assert prepared["solver_eta0"].shape == (96, 96)
@@ -51,6 +52,45 @@ def test_solver_speed_prepares_production_buffer_shape_and_taper():
     assert np.max(np.abs(prepared["solver_eta0"][-16:])) == 0.0
     assert prepared["solver_eta0"][16, 16] == 0.0
     assert prepared["solver_eta0"][23, 23] == 0.5
+
+
+def test_solver_speed_uses_paired_solver_core_before_buffering():
+    published_bathymetry = np.full((64, 64), -1.0, dtype=np.float32)
+    published_source = np.zeros((64, 64), dtype=np.float32)
+    solver_bathymetry = np.full((128, 128), -1.0, dtype=np.float32)
+    solver_source = np.ones((128, 128), dtype=np.float32)
+    solver_source[[0, -1], :] = 0.0
+    solver_source[:, [0, -1]] = 0.0
+    scenario = {
+        "sample_index": 1,
+        "bathymetry": published_bathymetry,
+        "source_field": published_source,
+        "solver_bathymetry": solver_bathymetry,
+        "solver_source_field": solver_source,
+        "source_strength": 0.5,
+    }
+    buffered = BufferedDomainConfig(
+        enabled=True,
+        buffer_cells=32,
+        source_taper_cells=16,
+        bathymetry_extension="edge",
+        output_crop="central",
+    )
+
+    prepared = _prepare_scenario(
+        scenario,
+        sea_level_offset=0.0,
+        buffered_domain=buffered,
+        source_already_tapered=True,
+    )
+
+    assert prepared["input_shape"] == (64, 64)
+    assert prepared["solver_input_shape"] == (128, 128)
+    assert prepared["solver_shape"] == (192, 192)
+    assert prepared["solver_bathymetry"].shape == (192, 192)
+    assert prepared["solver_eta0"].shape == (192, 192)
+    assert prepared["solver_eta0"][32, 32] == 0.0
+    assert prepared["solver_eta0"][33, 33] == 0.5
 
 
 def test_solver_speed_requested_mode_uses_common_time_contract(monkeypatch):

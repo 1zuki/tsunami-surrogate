@@ -23,6 +23,7 @@ from src.utils.config import load_config
 from src.utils.device import resolve_device
 from src.utils.io import save_json
 from src.utils.seed import seed_everything
+from scripts.eval_suite_preflight import _expected_times, load_suite_contract
 
 
 def _model_output(model: torch.nn.Module, x: torch.Tensor) -> torch.Tensor:
@@ -84,6 +85,11 @@ def main() -> None:
     parser.add_argument("--peak-plateau-fraction", type=float, default=0.99)
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument(
+        "--contract",
+        default="configs/eval/final_v2_suite.yaml",
+        help="Evaluation-suite contract that defines the shared requested times.",
+    )
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
@@ -96,6 +102,8 @@ def main() -> None:
     if not gauges:
         raise ValueError("At least one gauge is required")
 
+    contract = load_suite_contract(args.contract)
+    times = _expected_times(contract)
     cfg = load_config(args.config)
     cfg["device"] = args.device
     cfg["data"] = {
@@ -115,7 +123,6 @@ def main() -> None:
     if denorm is None:
         raise ValueError("Wave metrics require normalized v2 targets with statistics")
     offset, scale = denorm
-    times = np.arange(1, 51, dtype=np.float64) * 0.0035
     per_gauge: dict[str, dict[str, Any]] = {
         f"{row},{col}": {
             "waveform_nrmse": [],

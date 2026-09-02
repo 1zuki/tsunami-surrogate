@@ -139,6 +139,9 @@ fi
 if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
   PREFLIGHT_ARGS+=(--include-paper-evidence)
 fi
+if [ "$RERUN_NUMERICAL_VALIDATION" = 1 ]; then
+  PREFLIGHT_ARGS+=(--require-current-numerical-evidence)
+fi
 if [ "$INCLUDE_REAL_BATHYMETRY" = 0 ]; then
   PREFLIGHT_ARGS+=(--allow-missing-real-bathymetry)
 fi
@@ -474,6 +477,7 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
     --output "$PAPER_ROOT/resolution/native_muscl_hr.json"
 
   run "$PY" scripts/eval_v2_reference_analysis.py \
+    --contract "$CONTRACT" \
     --model "hydrostatic|configs/model/fno.yaml|experiments/fno/best.pt|data/processed/hydrostatic/test" \
     --model "muscl_hr|configs/model/fno_muscl_hr.yaml|experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt|data/processed/muscl_hr/test" \
     --model "boussinesq|configs/model/fno_boussinesq.yaml|experiments/fno_boussinesq/best.pt|data/processed/boussinesq/test" \
@@ -495,6 +499,7 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
       --output "$PAPER_ROOT/arrival_maps/${model}.json" \
       --maps-output "$PAPER_ROOT/arrival_maps/${model}.npz"
     run "$PY" scripts/eval_v2_wave_metrics.py \
+      --contract "$CONTRACT" \
       --config "$config" \
       --checkpoint "$checkpoint" \
       --dataset "$dataset" \

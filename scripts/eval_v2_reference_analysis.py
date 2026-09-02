@@ -25,6 +25,7 @@ from src.utils.config import load_config
 from src.utils.device import resolve_device
 from src.utils.io import save_json
 from src.utils.seed import seed_everything
+from scripts.eval_suite_preflight import _expected_times, load_suite_contract
 
 
 SOLVERS = ("hydrostatic", "muscl_hr", "boussinesq")
@@ -150,7 +151,11 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--bootstrap-seed", type=int, default=20260813)
     parser.add_argument("--bootstrap-resamples", type=int, default=2000)
-    parser.add_argument("--horizon", type=float, default=0.175)
+    parser.add_argument(
+        "--contract",
+        default="configs/eval/final_v2_suite.yaml",
+        help="Evaluation-suite contract that defines the shared requested times.",
+    )
     parser.add_argument(
         "--training-seed",
         type=int,
@@ -159,6 +164,8 @@ def main() -> None:
     )
     parser.add_argument("--output-dir", required=True)
     args = parser.parse_args()
+    contract = load_suite_contract(args.contract)
+    requested_times = _expected_times(contract)
 
     specs = [_parse_model(raw) for raw in args.model]
     if len(specs) != len(SOLVERS):
@@ -286,15 +293,14 @@ def main() -> None:
                 }
             )
 
-    requested_times = [0.0035 * index for index in range(1, 51)]
     gap_result = {
         "evaluation_type": "v2_solver_gap",
         "training_seed": args.training_seed,
         "output_mode": "common_time_v2_processed",
         "common_time_v2": {
-            "requested_times": requested_times,
-            "horizon": float(args.horizon),
-            "frame_count": 50,
+            "requested_times": requested_times.tolist(),
+            "horizon": float(requested_times[-1]),
+            "frame_count": int(requested_times.size),
         },
         "num_samples": int(scenario_count),
         "dataset_paths": {solver: spec_by_solver[solver][2] for solver in SOLVERS},
