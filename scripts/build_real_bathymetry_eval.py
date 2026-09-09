@@ -617,7 +617,10 @@ def main() -> None:
     p.add_argument(
         "--processed-root", default="data/processed_real_bathymetry_v2"
     )
-    p.add_argument("--config-out", default="configs/data/real_bathymetry_v2")
+    p.add_argument(
+        "--config-out",
+        default="configs/cluster/generated/real_bathymetry_v2",
+    )
     p.add_argument(
         "--train-stats", default="data/processed/hydrostatic/normalization_stats.json"
     )
