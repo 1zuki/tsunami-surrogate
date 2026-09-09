@@ -456,22 +456,39 @@ def code_state(repo_root: str | Path) -> dict[str, Any]:
     included_names = {"pyproject.toml", "requirements.txt", "requirements.lock"}
     included_suffixes = {".py", ".yaml", ".yml", ".toml", ".lock"}
     files: list[dict[str, Any]] = []
-    candidate_paths: list[Path] = []
-    for included_root in included_roots:
-        path = root / included_root
-        if path.is_dir():
-            candidate_paths.extend(path.rglob("*"))
-    for included_name in sorted(included_names):
-        path = root / included_name
-        if path.exists():
-            candidate_paths.append(path)
-    for path in sorted(
-        candidate_paths,
-        key=lambda value: value.relative_to(root).as_posix(),
-    ):
+    inventory_result = _git(
+        "ls-files",
+        "-c",
+        "-o",
+        "--exclude-standard",
+        "-z",
+        "--",
+        *included_roots,
+        *sorted(included_names),
+    )
+    if inventory_result.returncode == 0:
+        relative_paths = [
+            Path(raw.decode("utf-8"))
+            for raw in inventory_result.stdout.encode("utf-8").split(b"\0")
+            if raw
+        ]
+    else:
+        relative_paths = []
+        for included_root in included_roots:
+            path = root / included_root
+            if path.is_dir():
+                relative_paths.extend(
+                    candidate.relative_to(root)
+                    for candidate in path.rglob("*")
+                )
+        for included_name in sorted(included_names):
+            path = root / included_name
+            if path.exists():
+                relative_paths.append(path.relative_to(root))
+    for rel in sorted(set(relative_paths), key=lambda value: value.as_posix()):
+        path = root / rel
         if not path.is_file():
             continue
-        rel = path.relative_to(root)
         if (
             path.suffix not in included_suffixes
             and rel.as_posix() not in included_names
