@@ -13,6 +13,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Iterable
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RUN = ROOT / "evaluation_runs/final-v2-paper-full-r1"
@@ -544,6 +546,25 @@ def _write_json(path: Path, value: Any) -> None:
         handle.write("\n")
 
 
+def _active_contract_summary() -> tuple[str, str]:
+    contract_path = ROOT / "configs/eval/final_v2_suite.yaml"
+    payload = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+    scientific = payload["scientific_scope"]
+    requested = scientific["requested_times"]
+    start = float(requested["start"])
+    step = float(requested["step"])
+    horizon = float(requested["horizon"])
+    domain = scientific["computational_domain"]
+    solver_shape = [int(value) for value in domain["solver_shape"]]
+    publication_shape = [int(value) for value in domain["publication_shape"]]
+    time_summary = f"{start:g}, {start + step:g}, ..., {horizon:g}"
+    computation_summary = (
+        f"{solver_shape[0]}x{solver_shape[1]} with a central "
+        f"{publication_shape[0]}x{publication_shape[1]} publication crop"
+    )
+    return time_summary, computation_summary
+
+
 def _write_release_files(
     destination: Path,
     *,
@@ -558,6 +579,7 @@ def _write_release_files(
     total_source_bytes = sum(int(row["source_bytes"]) for row in records)
     run_id = None if run_manifest is None else str(run_manifest["run_id"])
     code_state = None if run_manifest is None else run_manifest.get("code_state")
+    requested_time_summary, computation_summary = _active_contract_summary()
 
     manifest = {
         "schema_id": "tsunami-surrogate.zenodo-release-manifest.v1",
@@ -633,8 +655,8 @@ Repeat for the remaining archives needed by the analysis."""
         provenance = f"""- Repository: https://github.com/1zuki/tsunami-surrogate
 - Validated evaluation run: {run_id}
 - Evaluation code state: `{json.dumps(code_state, sort_keys=True)}`
-- Common requested times: `0.0035, 0.0070, ..., 0.1750`
-- Numerical computation: 96x96 with a central 64x64 publication crop
+- Common requested times: `{requested_time_summary}`
+- Numerical computation: {computation_summary}
 
 The main processed containers carry common-time-v2 payloads in an older
 manifest envelope. The final evaluation preflight found no legacy saved-step
@@ -683,8 +705,8 @@ tar --use-compress-program=unzstd -xf raw/test_common_time_v2.tar.zst -C /path/t
         provenance = f"""- Repository: https://github.com/1zuki/tsunami-surrogate
 - Frozen generation contract: `{contract_hash}`
 - Frozen generation code-state hash: `{code_state_hash}`
-- Common requested times: `0.0035, 0.0070, ..., 0.1750`
-- Numerical computation: 96x96 with a central 64x64 publication crop
+- Common requested times: `{requested_time_summary}`
+- Numerical computation: {computation_summary}
 
 The release builder confirmed that all three operational shard manifests are
 complete, contain unique split-qualified publication identities, and share the
