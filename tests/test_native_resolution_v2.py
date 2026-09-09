@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 import yaml
 
-from src.data_gen.common_time_v2 import candidate_requested_times, validate_publication
+from src.data_gen.common_time_v2 import validate_publication
+from src.data_gen.preprocess import TsunamiPreprocessor
 from src.data_gen.simulate_dataset import (
     NATIVE_INPUT_SCHEMA_ID,
     TsunamiDatasetBuilder,
@@ -21,10 +22,16 @@ from src.data_gen.simulate_dataset import (
 
 ROOT = Path(__file__).resolve().parents[1]
 RESOLUTIONS = {
-    32: {"solver": 48, "buffer": 8, "taper": 4},
-    64: {"solver": 96, "buffer": 16, "taper": 8},
-    128: {"solver": 192, "buffer": 32, "taper": 16},
+    32: {"solver": 48, "buffer": 8, "taper": 4, "dx": 75.0},
+    64: {"solver": 96, "buffer": 16, "taper": 8, "dx": 37.5},
+    128: {"solver": 192, "buffer": 32, "taper": 16, "dx": 18.75},
 }
+
+
+def _requested_times() -> np.ndarray:
+    times = 8.4 + 8.4 * np.arange(50, dtype=np.float64)
+    times[-1] = np.float64(420.0)
+    return times
 
 
 def _builder(tmp_path: Path, resolution: int, *, count: int = 1) -> TsunamiDatasetBuilder:
@@ -52,6 +59,17 @@ def _builder(tmp_path: Path, resolution: int, *, count: int = 1) -> TsunamiDatas
     return TsunamiDatasetBuilder(str(path), provenance_config_path=source)
 
 
+def test_native_preprocess_configs_bind_generation_contract() -> None:
+    for resolution in RESOLUTIONS:
+        preprocessor = TsunamiPreprocessor(
+            str(ROOT / f"configs/data/multires/preprocess_{resolution}.yaml")
+        )
+        requested = preprocessor.expected_requested_output
+        assert requested is not None
+        np.testing.assert_array_equal(requested.requested_times, _requested_times())
+        assert requested.contract_hash
+
+
 def test_native_configs_resolve_common_time_boundaries_and_external_sponges(
     tmp_path: Path,
 ) -> None:
@@ -65,16 +83,24 @@ def test_native_configs_resolve_common_time_boundaries_and_external_sponges(
     for resolution, expected in RESOLUTIONS.items():
         builder = _builder(tmp_path, resolution)
         paired = builder.dataset.paired_inputs
-        assert builder.dataset.requested_output.status == "provisional"
+        assert builder.dataset.requested_output.status == "accepted"
         assert (
             builder.dataset.requested_output.execution_scope
-            == "preparation-only"
+            == "production"
         )
         assert not builder.dataset.requested_output.acknowledged_provisional
         lineage_hashes.add(paired.lineage_hash)
         target_contracts.add(paired.target_contract_hash)
-        assert paired.master_shape == (128, 128)
+        assert paired.master_shape == (384, 384)
+        assert paired.solver_shape == (resolution, resolution)
         assert paired.target_shape == (resolution, resolution)
+        assert paired.master_zero_edge_cells == 12
+        for profile in builder.dataset.solver_profiles.values():
+            assert profile["sponge_reference_dt"] == 8.4
+        assert (
+            builder.dataset.solver_profiles["boussinesq"]["filter_reference_dt"]
+            == 8.4
+        )
         assert builder.dataset.buffered_domain.buffer_cells == expected["buffer"]
         assert builder.dataset.buffered_domain.source_taper_cells == expected["taper"]
         assert builder.dataset.enabled_fdes == (
@@ -86,9 +112,13 @@ def test_native_configs_resolve_common_time_boundaries_and_external_sponges(
             expected["solver"],
             expected["solver"],
         )
+        assert (builder.solver_cfg["dx"], builder.solver_cfg["dy"]) == (
+            expected["dx"],
+            expected["dx"],
+        )
         np.testing.assert_array_equal(
             builder.dataset.requested_output.requested_times,
-            candidate_requested_times(),
+            _requested_times(),
         )
         for name, factory in factories.items():
             resolved = _resolved_solver_cfg_for_fde(
@@ -102,7 +132,7 @@ def test_native_configs_resolve_common_time_boundaries_and_external_sponges(
             np.testing.assert_array_equal(crop, np.ones((resolution, resolution)))
             expected_boundary = "open" if name == "boussinesq" else "radiation"
             assert solver.boundary_x == solver.boundary_y == expected_boundary
-    assert len(lineage_hashes) == 1
+    assert len(lineage_hashes) == 3
     assert len(target_contracts) == 3
 
 
@@ -131,7 +161,7 @@ def test_native_inputs_are_exact_reductions_of_one_master_scenario(
     assert {record["schema_id"] for record in records.values()} == {
         NATIVE_INPUT_SCHEMA_ID
     }
-    assert len({record["lineage_hash"] for record in records.values()}) == 1
+    assert len({record["lineage_hash"] for record in records.values()}) == 3
     assert len(
         {record["master_input_fingerprint"] for record in records.values()}
     ) == 1
@@ -188,7 +218,7 @@ def test_native_32_end_to_end_freezes_roster_before_publication(
         sample_dir = builder.output_dir / solver / "samples/sample_000001"
         publication = validate_publication(
             sample_dir,
-            expected_times=candidate_requested_times(),
+            expected_times=_requested_times(),
         )
         assert publication["input_lineage"]["inventory_sha256"] == (
             builder.dataset.paired_input_inventory_sha256
@@ -196,7 +226,7 @@ def test_native_32_end_to_end_freezes_roster_before_publication(
         with np.load(sample_dir / "sample.npz", allow_pickle=False) as payload:
             assert payload["trajectory_eta"].shape == (50, 32, 32)
             np.testing.assert_array_equal(
-                payload["timestamps"], candidate_requested_times()
+                payload["timestamps"], _requested_times()
             )
 
 

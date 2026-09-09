@@ -246,6 +246,7 @@ class PairedInputsConfig:
     target_contract_hash: str = ""
     solver_input: str = "target"
     source_taper_stage: str = "target"
+    master_zero_edge_cells: int | None = None
     rough_zero_mean_rms_after_taper: bool = False
     source_spectral_acceptance: SourceSpectralAcceptanceConfig = field(
         default_factory=SourceSpectralAcceptanceConfig
@@ -275,6 +276,7 @@ class PairedInputsConfig:
                 {
                     "solver_input": self.solver_input,
                     "source_taper_stage": self.source_taper_stage,
+                    "master_zero_edge_cells": self.master_zero_edge_cells,
                     "rough_zero_mean_rms_after_taper": (
                         self.rough_zero_mean_rms_after_taper
                     ),
@@ -536,10 +538,14 @@ def _generate_paired_source_fields(
                 taper_cells=(
                     buffered_domain.source_taper_cells * taper_ratios[0]
                 ),
-                zero_edge_cells=max(
-                    master // target
-                    for master, target in zip(
-                        paired.master_shape, paired.target_shape
+                zero_edge_cells=(
+                    paired.master_zero_edge_cells
+                    if paired.master_zero_edge_cells is not None
+                    else max(
+                        master // target
+                        for master, target in zip(
+                            paired.master_shape, paired.target_shape
+                        )
                     )
                 ),
                 source_type=source_type,
@@ -2579,6 +2585,16 @@ def _generate_sample_worker(
             "master_bathymetry_sha256": bathymetry_master_hash,
             "master_source_sha256": source_master_hash,
         }
+        if external_input_lineage is not None:
+            input_lineage["paired_input_schema_id"] = input_lineage.get(
+                "schema_id"
+            )
+            input_lineage["schema_id"] = str(
+                external_input_lineage.get(
+                    "schema_id", "tsunami-surrogate.real-bathymetry-input.v2"
+                )
+            )
+            input_lineage["external_input_lineage"] = external_input_lineage
         if dataset.paired_inputs.solver_input == "solver":
             input_lineage.update(
                 {
@@ -3331,6 +3347,7 @@ class TsunamiDatasetBuilder:
                 {
                     "solver_input": config.solver_input,
                     "source_taper_stage": config.source_taper_stage,
+                    "master_zero_edge_cells": config.master_zero_edge_cells,
                     "rough_zero_mean_rms_after_taper": (
                         config.rough_zero_mean_rms_after_taper
                     ),
@@ -3499,6 +3516,7 @@ class TsunamiDatasetBuilder:
             "inventory_path",
             "solver_input",
             "source_taper_stage",
+            "master_zero_edge_cells",
             "rough_zero_mean_rms_after_taper",
             "source_spectral_acceptance",
         }
@@ -3580,6 +3598,32 @@ class TsunamiDatasetBuilder:
             raise ValueError(
                 "master source taper requires a non-target paired solver input"
             )
+        master_zero_edge_cells_raw = raw.get("master_zero_edge_cells")
+        master_zero_edge_cells = (
+            None
+            if master_zero_edge_cells_raw is None
+            else int(master_zero_edge_cells_raw)
+        )
+        if master_zero_edge_cells is not None:
+            if source_taper_stage != "master":
+                raise ValueError(
+                    "master_zero_edge_cells requires source_taper_stage=master"
+                )
+            if master_zero_edge_cells <= 0:
+                raise ValueError("master_zero_edge_cells must be positive")
+            if master_zero_edge_cells >= min(master_shape):
+                raise ValueError(
+                    "master_zero_edge_cells must leave a master-grid interior"
+                )
+            required_zero_edge_cells = max(
+                master // target
+                for master, target in zip(master_shape, target_shape)
+            )
+            if master_zero_edge_cells < required_zero_edge_cells:
+                raise ValueError(
+                    "master_zero_edge_cells must cover one complete target-grid "
+                    "edge block"
+                )
         if rough_correction and source_taper_stage != "master":
             raise ValueError(
                 "rough_zero_mean_rms_after_taper requires source_taper_stage=master"
@@ -3695,6 +3739,7 @@ class TsunamiDatasetBuilder:
             inventory_path=_required_path("inventory_path"),
             solver_input=solver_input,
             source_taper_stage=source_taper_stage,
+            master_zero_edge_cells=master_zero_edge_cells,
             rough_zero_mean_rms_after_taper=rough_correction,
             source_spectral_acceptance=acceptance,
         )
@@ -4620,11 +4665,15 @@ class TsunamiDatasetBuilder:
                             self.dataset.buffered_domain.source_taper_cells
                             * taper_ratio
                         ),
-                        zero_edge_cells=max(
-                            master // target
-                            for master, target in zip(
-                                paired.master_shape,
-                                paired.target_shape,
+                        zero_edge_cells=(
+                            paired.master_zero_edge_cells
+                            if paired.master_zero_edge_cells is not None
+                            else max(
+                                master // target
+                                for master, target in zip(
+                                    paired.master_shape,
+                                    paired.target_shape,
+                                )
                             )
                         ),
                         source_type=source_type,

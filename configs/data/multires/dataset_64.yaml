@@ -1,4 +1,4 @@
-# DEFERRED native-resolution auxiliary config. Its scaling contract predates the accepted core rebuild and is not approved for production generation.
+# Common-time native-resolution auxiliary dataset.
 configs:
   bathymetry: configs/data/bathymetry.yaml
   source: configs/data/source.yaml
@@ -13,7 +13,8 @@ dataset:
   target_cfl: 0.45
   include_initial_state: true
   sea_level_offset: 0.0
-  source_strength_range: [0.45, 0.85]
+  source_strength_range: [0.15, 0.30]
+  max_initial_eta_over_depth: 0.10
   bathymetry_dir: data/res64/bathymetry
   source_dir: data/res64/sources
   output_dir: data/res64/raw
@@ -23,28 +24,48 @@ dataset:
 requested_output:
   enabled: true
   schema_id: tsunami-surrogate.common-time-v2.contract.v1
-  status: provisional
-  execution_scope: preparation-only
+  status: accepted
+  execution_scope: production
   split: train
-  start: 0.0035
-  step: 0.0035
+  start: 8.4
+  step: 8.4
   count: 50
-  horizon: 0.175
+  horizon: 420.0
   max_natural_steps: 20000
   collect_natural_step_health: true
   eta_primary: true
   debug_full_states: false
   acknowledge_provisional: false
+  physical_scaling:
+    horizontal_scale: 2400.0
+    time_scale: 2400.0
+    vertical_scale: 1.0
+    aspect_ratio: 2400.0
+    length_unit: m
+    time_unit: s
 
 paired_inputs:
   enabled: true
-  lineage_id: native-resolution-v2-seed763-master128
-  master_shape: [128, 128]
+  lineage_id: aspect2400-roughgrf-r1-native-seed763-master384-solver64
+  master_shape: [384, 384]
+  solver_shape: [64, 64]
   target_shape: [64, 64]
   downsample_method: block_mean_float64_v1
-  master_bathymetry_config: configs/data/multires/bathymetry_128.yaml
-  master_source_config: configs/data/multires/source_128.yaml
+  master_bathymetry_config: configs/data/bathymetry_master.yaml
+  master_source_config: configs/data/source_master.yaml
   inventory_path: data/res64/synthetic/native_input_inventory.jsonl
+  solver_input: solver
+  source_taper_stage: master
+  master_zero_edge_cells: 12
+  rough_zero_mean_rms_after_taper: true
+  source_spectral_acceptance:
+    enabled: true
+    stage: post_master_taper_solver
+    reference_shape: [64, 64]
+    min_points_per_p90_wavelength: 16.0
+    comparison_tolerance: 1.0e-9
+    preserve_source_family: true
+    max_attempts: 64
 
 computational_domain:
   enabled: true
@@ -62,21 +83,21 @@ solver_profiles:
     cfl: 0.1125
     boundary: radiation
     sponge_time_mode: elapsed_time_consistent
-    sponge_reference_dt: 0.0035
+    sponge_reference_dt: 8.4
   swe_muscl_hr:
     cfl: 0.225
     boundary: radiation
     sponge_time_mode: elapsed_time_consistent
-    sponge_reference_dt: 0.0035
+    sponge_reference_dt: 8.4
   boussinesq:
     cfl: 0.35
     boundary: open
     depth_scale: 1.0
     linear_solver_preconditioner: sparse_lu
     sponge_time_mode: elapsed_time_consistent
-    sponge_reference_dt: 0.0035
+    sponge_reference_dt: 8.4
     filter_time_mode: disabled
-    filter_reference_dt: 0.0035
+    filter_reference_dt: 8.4
     cg_failure_mode: strict_v2
 
 operations:
@@ -101,9 +122,9 @@ quality:
 solver:
   nx: 96
   ny: 96
-  dx: 0.015625
-  dy: 0.015625
-  dt: 0.001
+  dx: 37.5
+  dy: 37.5
+  dt: 2.4
   g: 9.81
   rho: 1000
   cfl: 0.45

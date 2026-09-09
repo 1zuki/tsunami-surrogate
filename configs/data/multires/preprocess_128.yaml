@@ -1,5 +1,6 @@
 raw:
   publication_split: train
+  generation_config: configs/data/multires/dataset_128.yaml
   scenario_manifest: ./data/res128/synthetic/scenario_manifest.jsonl
   fde_manifests:
     hydrostatic: ./data/res128/synthetic/hydrostatic_manifest.jsonl

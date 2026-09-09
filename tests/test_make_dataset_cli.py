@@ -112,17 +112,20 @@ def test_common_time_configs_define_split_seed_count_and_paths() -> None:
         assert cfg["requested_output"]["horizon"] == 420.0
 
 
-def test_deferred_auxiliary_configs_are_not_accepted_for_production() -> None:
-    deferred = [
-        *(ROOT / "configs/data/multires").glob("dataset_*.yaml"),
-        *(ROOT / "configs/data/real_bathymetry_v2").glob("*_dataset.yaml"),
-    ]
-    assert len(deferred) == 7
-    for path in sorted(deferred):
-        requested = _load_config(path)["requested_output"]
-        assert requested["status"] == "provisional", path
-        assert requested["execution_scope"] == "preparation-only", path
+def test_native_auxiliary_configs_use_the_accepted_common_time_contract() -> None:
+    native = sorted((ROOT / "configs/data/multires").glob("dataset_*.yaml"))
+    assert len(native) == 3
+    for path in native:
+        cfg = _load_config(path)
+        requested = cfg["requested_output"]
+        assert requested["status"] == "accepted", path
+        assert requested["execution_scope"] == "production", path
         assert requested["acknowledge_provisional"] is False, path
+        assert requested["start"] == 8.4, path
+        assert requested["step"] == 8.4, path
+        assert requested["horizon"] == 420.0, path
+        assert cfg["dataset"]["source_strength_range"] == [0.15, 0.30], path
+        assert cfg["dataset"]["max_initial_eta_over_depth"] == 0.10, path
 
 
 def test_saved_step_configs_do_not_target_canonical_split_data() -> None:

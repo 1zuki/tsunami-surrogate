@@ -14,6 +14,7 @@ from src.data_gen.preprocess import (
     TsunamiPreprocessor,
 )
 from src.data_gen.common_time_v2 import candidate_requested_times
+from scripts.build_real_bathymetry_eval import _preprocess_config
 from src.utils.hashing import sha256_file
 
 
@@ -169,6 +170,21 @@ def test_main_preprocess_configs_bind_their_generation_contract(
     assert preprocessor.expected_requested_output.split == split
     assert preprocessor.expected_requested_output.requested_times[0] == 8.4
     assert preprocessor.expected_requested_output.requested_times[-1] == 420.0
+
+
+def test_real_bathymetry_preprocess_config_binds_generation_contract(
+    tmp_path: Path,
+) -> None:
+    generation_config = tmp_path / "real-dataset.yaml"
+    config = _preprocess_config(
+        suite_name="main_morphology_suite_10",
+        out_root=tmp_path / "real",
+        processed_root=tmp_path / "processed",
+        train_stats=tmp_path / "train-stats.json",
+        generation_config=generation_config,
+    )
+
+    assert config["raw"]["generation_config"] == str(generation_config)
 
 
 def test_preprocess_rejects_generation_publication_split_mismatch(

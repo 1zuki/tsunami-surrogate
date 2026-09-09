@@ -27,13 +27,16 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.data_gen.preprocess import TsunamiPreprocessor
-from src.data_gen.simulate_dataset import _seed_for_sample
+from src.data_gen.simulate_dataset import (
+    NATIVE_INPUT_SCHEMA_ID,
+    TsunamiDatasetBuilder,
+    _block_mean_downsample,
+    _seed_for_sample,
+)
 from src.utils.hashing import sha256_file
 
 
-REAL_BATHYMETRY_LINEAGE_SCHEMA_ID = (
-    "tsunami-surrogate.real-bathymetry-input.v1"
-)
+REAL_BATHYMETRY_LINEAGE_SCHEMA_ID = "tsunami-surrogate.real-bathymetry-input.v2"
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -104,24 +107,30 @@ def _write_prepared_input(
 
     if target.is_file():
         with np.load(target, allow_pickle=False) as existing:
-            same = (
-                np.array_equal(existing["bathymetry"], bathymetry)
-                and str(
-                    np.asarray(existing["bathymetry_type"]).reshape(-1)[0]
-                )
+            same_bathymetry = np.array_equal(
+                existing["bathymetry"], bathymetry
+            )
+            same = same_bathymetry and (
+                str(np.asarray(existing["bathymetry_type"]).reshape(-1)[0])
                 == bathymetry_type
                 and int(np.asarray(existing["sample_seed"]).reshape(-1)[0])
                 == int(sample_seed)
-                and str(
-                    np.asarray(existing["input_lineage_json"]).reshape(-1)[0]
+                and (
+                    "input_lineage_json" not in existing
+                    or str(
+                        np.asarray(existing["input_lineage_json"]).reshape(-1)[
+                            0
+                        ]
+                    )
+                    == lineage_json
                 )
-                == lineage_json
             )
-        if not same:
+        if not same_bathymetry:
             raise FileExistsError(
-                f"Prepared real-bathymetry input is incompatible: {target}"
+                f"Prepared real-bathymetry input has different bathymetry: {target}"
             )
-        return
+        if same:
+            return
 
     staging = target.with_name(f".{target.name}.tmp-{os.getpid()}")
     with staging.open("wb") as handle:
@@ -135,12 +144,113 @@ def _write_prepared_input(
     os.replace(staging, target)
 
 
+def _piecewise_constant_prolongate(
+    values: np.ndarray, target_shape: tuple[int, int]
+) -> np.ndarray:
+    """Prolongate an external raster without inventing sub-cell values."""
+
+    source = np.asarray(values, dtype=np.float32)
+    if source.ndim != 2:
+        raise ValueError("external bathymetry must be a 2-D array")
+    factors = []
+    for target, current in zip(target_shape, source.shape):
+        if int(target) % int(current) != 0:
+            raise ValueError(
+                f"external shape {source.shape} must divide target shape "
+                f"{target_shape}"
+            )
+        factors.append(int(target) // int(current))
+    return np.repeat(
+        np.repeat(source, factors[0], axis=0), factors[1], axis=1
+    ).astype(np.float32, copy=False)
+
+
+def _write_paired_external_input(
+    *,
+    target: Path,
+    bathymetry: np.ndarray,
+    bathymetry_type: str,
+    sample_seed: int,
+    lineage: dict[str, Any],
+    paired: Any,
+) -> None:
+    """Write a 64→384→128 paired cache while preserving source provenance."""
+
+    target_field = np.asarray(bathymetry, dtype=np.float32)
+    target_shape = tuple(int(value) for value in paired.target_shape)
+    if target_field.shape != target_shape:
+        raise ValueError(
+            f"external bathymetry shape {target_field.shape} does not match "
+            f"target shape {target_shape}"
+        )
+    master = _piecewise_constant_prolongate(target_field, paired.master_shape)
+    solver = _block_mean_downsample(master, paired.solver_shape)
+    lineage_payload = {
+        **lineage,
+        "schema_id": REAL_BATHYMETRY_LINEAGE_SCHEMA_ID,
+        "derivation": "piecewise_constant_prolongation_64_to_384_then_block_mean",
+        "external_shape": list(target_field.shape),
+        "master_shape": list(master.shape),
+        "solver_shape": list(solver.shape),
+        "target_shape": list(target_field.shape),
+        "target_array_sha256": _array_sha256(target_field),
+        "master_array_sha256": _array_sha256(master),
+        "solver_array_sha256": _array_sha256(solver),
+        "paired_lineage_id": paired.lineage_id,
+        "paired_lineage_hash": paired.lineage_hash,
+        "paired_target_contract_hash": paired.target_contract_hash,
+    }
+    lineage_json = json.dumps(
+        lineage_payload, sort_keys=True, separators=(",", ":")
+    )
+    arrays = {
+        "bathymetry": target_field,
+        "master_bathymetry": master,
+        "solver_bathymetry": solver,
+        "bathymetry_type": np.asarray([bathymetry_type], dtype="U96"),
+        "sample_seed": np.asarray([sample_seed], dtype=np.int64),
+        "input_lineage_json": np.asarray([lineage_json], dtype="U8192"),
+        "native_input_schema_id": np.asarray([NATIVE_INPUT_SCHEMA_ID], dtype="U96"),
+        "native_lineage_id": np.asarray([paired.lineage_id], dtype="U128"),
+        "native_lineage_hash": np.asarray([paired.lineage_hash], dtype="U64"),
+        "native_target_contract_hash": np.asarray(
+            [paired.target_contract_hash], dtype="U64"
+        ),
+        "native_master_shape": np.asarray(paired.master_shape, dtype=np.int64),
+        "native_solver_shape": np.asarray(paired.solver_shape, dtype=np.int64),
+        "native_target_shape": np.asarray(paired.target_shape, dtype=np.int64),
+        "native_downsample_method": np.asarray(
+            [paired.downsample_method], dtype="U64"
+        ),
+        "native_master_array_sha256": np.asarray(
+            [_array_sha256(master)], dtype="U64"
+        ),
+        "native_solver_array_sha256": np.asarray(
+            [_array_sha256(solver)], dtype="U64"
+        ),
+    }
+    if target.is_file():
+        with np.load(target, allow_pickle=False) as existing:
+            if all(
+                key in existing
+                and np.array_equal(np.asarray(existing[key]), np.asarray(value))
+                for key, value in arrays.items()
+            ):
+                return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging = target.with_name(f".{target.name}.tmp-{os.getpid()}")
+    with staging.open("wb") as handle:
+        np.savez_compressed(handle, **arrays)
+    os.replace(staging, target)
+
+
 def _prepare_direct_suite(
     *,
     source_dir: Path,
     target_dir: Path,
     suite_name: str,
     seed: int,
+    paired: Any | None = None,
 ) -> None:
     for index, path in enumerate(_validate_bathymetry_files(source_dir), start=1):
         with np.load(path, allow_pickle=False) as payload:
@@ -149,21 +259,32 @@ def _prepare_direct_suite(
                 np.asarray(payload["bathymetry_type"]).reshape(-1)[0]
             )
             metadata = _jsonable_npz_metadata(payload)
-        _write_prepared_input(
-            target=target_dir / path.name,
-            bathymetry=bathymetry,
-            bathymetry_type=bathymetry_type,
-            sample_seed=_seed_for_sample(seed, index),
-            lineage={
-                "suite": suite_name,
-                "sample_index": index,
-                "source_kind": "preserved_static_input",
-                "source_artifact": str(path),
-                "source_artifact_sha256": sha256_file(path),
-                "source_metadata": metadata,
-                "h0_authoritative": False,
-            },
-        )
+        lineage = {
+            "suite": suite_name,
+            "sample_index": index,
+            "source_kind": "preserved_static_input",
+            "source_artifact": str(path),
+            "source_artifact_sha256": sha256_file(path),
+            "source_metadata": metadata,
+            "h0_authoritative": False,
+        }
+        if paired is None:
+            _write_prepared_input(
+                target=target_dir / path.name,
+                bathymetry=bathymetry,
+                bathymetry_type=bathymetry_type,
+                sample_seed=_seed_for_sample(seed, index),
+                lineage=lineage,
+            )
+        else:
+            _write_paired_external_input(
+                target=target_dir / path.name,
+                bathymetry=bathymetry,
+                bathymetry_type=bathymetry_type,
+                sample_seed=_seed_for_sample(seed, index),
+                lineage=lineage,
+                paired=paired,
+            )
 
 
 def _prepare_recovered_suite(
@@ -172,6 +293,7 @@ def _prepare_recovered_suite(
     target_dir: Path,
     suite_name: str,
     seed: int,
+    paired: Any | None = None,
 ) -> None:
     sample_dir = (
         legacy_raw_root
@@ -189,25 +311,34 @@ def _prepare_recovered_suite(
     metadata = json.loads(meta_path.read_text(encoding="utf-8"))
     with np.load(sample_path, allow_pickle=False) as payload:
         bathymetry = np.asarray(payload["bathymetry"], dtype=np.float32)
-    _write_prepared_input(
-        target=target_dir / "sample_000001.npz",
-        bathymetry=bathymetry,
-        bathymetry_type=str(metadata.get("bathymetry_type", suite_name)),
-        sample_seed=_seed_for_sample(seed, 1),
-        lineage={
-            "suite": suite_name,
-            "sample_index": 1,
-            "source_kind": "recovered_from_legacy_rollout_static_array",
-            "source_artifact": str(sample_path),
-            "source_artifact_sha256": sha256_file(sample_path),
-            "source_meta_artifact": str(meta_path),
-            "source_meta_sha256": sha256_file(meta_path),
-            "legacy_bathymetry_cache_path": metadata.get(
-                "bathymetry_cache_path"
-            ),
-            "h0_authoritative": False,
-        },
-    )
+    lineage = {
+        "suite": suite_name,
+        "sample_index": 1,
+        "source_kind": "recovered_from_legacy_rollout_static_array",
+        "source_artifact": str(sample_path),
+        "source_artifact_sha256": sha256_file(sample_path),
+        "source_meta_artifact": str(meta_path),
+        "source_meta_sha256": sha256_file(meta_path),
+        "legacy_bathymetry_cache_path": metadata.get("bathymetry_cache_path"),
+        "h0_authoritative": False,
+    }
+    if paired is None:
+        _write_prepared_input(
+            target=target_dir / "sample_000001.npz",
+            bathymetry=bathymetry,
+            bathymetry_type=str(metadata.get("bathymetry_type", suite_name)),
+            sample_seed=_seed_for_sample(seed, 1),
+            lineage=lineage,
+        )
+    else:
+        _write_paired_external_input(
+            target=target_dir / "sample_000001.npz",
+            bathymetry=bathymetry,
+            bathymetry_type=str(metadata.get("bathymetry_type", suite_name)),
+            sample_seed=_seed_for_sample(seed, 1),
+            lineage=lineage,
+            paired=paired,
+        )
 
 
 def _prepare_input_suites(
@@ -224,6 +355,7 @@ def _prepare_input_suites(
         else {
             "main_morphology_suite_10",
             "main_morphology",
+            "appendix_coastline_stress",
             "appendix_coastline_fully_wet",
         }
     )
@@ -338,7 +470,34 @@ def _dataset_config(
         "configs/data/real_bathymetry/real_bathymetry_source.yaml"
     )
     cfg.pop("authoritative_inputs", None)
-    cfg.pop("paired_inputs", None)
+    paired = deepcopy(cfg.get("paired_inputs", {}))
+    paired.update(
+        {
+            "enabled": True,
+            "lineage_id": (
+                f"real-bathymetry-v2-{suite_name}-seed{int(seed)}-"
+                "master384-solver128-target64"
+            ),
+            "master_shape": [384, 384],
+            "solver_shape": [128, 128],
+            "target_shape": [64, 64],
+            "downsample_method": "block_mean_float64_v1",
+            "master_bathymetry_config": "configs/data/bathymetry_master.yaml",
+            "master_source_config": (
+                "configs/data/real_bathymetry/"
+                "real_bathymetry_source_master.yaml"
+            ),
+            "inventory_path": str(
+                out_root / "manifests" / suite_name / "paired_input_inventory.jsonl"
+            ),
+            "solver_input": "solver",
+            "source_taper_stage": "master",
+            "master_zero_edge_cells": 12,
+            "rough_zero_mean_rms_after_taper": False,
+        }
+    )
+    paired.pop("source_spectral_acceptance", None)
+    cfg["paired_inputs"] = paired
     cfg.setdefault("dataset", {})
     cfg["dataset"] = dict(cfg["dataset"])
     cfg["dataset"].update(
@@ -353,6 +512,8 @@ def _dataset_config(
                 out_root / "manifests" / suite_name / "scenario_manifest.jsonl"
             ),
             "copy_configs": True,
+            "source_strength_range": [0.15, 0.30],
+            "max_initial_eta_over_depth": 0.10,
         }
     )
     cfg["fdes"] = {"enabled": ["swe_hydrostatic"], "primary": "swe_hydrostatic"}
@@ -368,13 +529,18 @@ def _dataset_config(
 
 
 def _preprocess_config(
-    suite_name: str, out_root: Path, processed_root: Path, train_stats: Path
+    suite_name: str,
+    out_root: Path,
+    processed_root: Path,
+    train_stats: Path,
+    generation_config: Path,
 ) -> dict[str, Any]:
     manifest_root = out_root / "manifests" / suite_name
     raw_root = out_root / "raw" / suite_name
     return {
         "raw": {
             "publication_split": "test",
+            "generation_config": str(generation_config),
             "scenario_manifest": str(manifest_root / "scenario_manifest.jsonl"),
             "fde_manifests": {
                 "hydrostatic": str(manifest_root / "hydrostatic_manifest.jsonl")
@@ -504,12 +670,30 @@ def main() -> None:
         )
         ds_cfg_path = config_out / f"{suite_name}_dataset.yaml"
         _write_yaml(ds_cfg_path, ds_cfg)
+        builder = TsunamiDatasetBuilder(str(ds_cfg_path))
+        if suite_name == "main_morphology_suite_10":
+            _prepare_direct_suite(
+                source_dir=raw_root / suite_name,
+                target_dir=suite_dir,
+                suite_name=suite_name,
+                seed=args.seed,
+                paired=builder.dataset.paired_inputs,
+            )
+        else:
+            _prepare_recovered_suite(
+                legacy_raw_root=legacy_raw_root,
+                target_dir=suite_dir,
+                suite_name=suite_name,
+                seed=args.seed,
+                paired=builder.dataset.paired_inputs,
+            )
 
         pp_cfg = _preprocess_config(
             suite_name=suite_name,
             out_root=out_root,
             processed_root=processed_root,
             train_stats=train_stats,
+            generation_config=ds_cfg_path,
         )
         pp_cfg_path = config_out / f"{suite_name}_preprocess.yaml"
         _write_yaml(pp_cfg_path, pp_cfg)
