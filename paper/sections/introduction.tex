@@ -9,7 +9,7 @@ We cast forward emulation as an operator-learning task: given bathymetry and an 
 
 Multi-reference evaluation additionally requires a shared temporal meaning. Equal tensor shapes do not imply equal physical states if frames are selected by solver-step index while adaptive step sizes differ. We therefore let every reference retain its natural internal steps but publish adjacent-step interpolants on one requested-time vector. This common-time protocol permits paired comparisons without forcing the solvers onto an identical internal step sequence.
 
-Common-time alignment by itself is necessary good practice rather than a novel numerical method. The contribution evaluated here is the broader reference-aware protocol around that control: solver-specific natural stepping, shared requested output times, separate same-reference and cross-reference discrepancies, uncertainty estimates for the cross-reference ratios, numerical verification with prespecified criteria, and explicit interpretation limits.
+Common-time alignment by itself is necessary good practice rather than a novel numerical method. The contribution evaluated here is the broader reference-aware protocol around that control: each solver's natural time stepping, shared requested output times, separate same-reference and cross-reference discrepancies, uncertainty estimates for the cross-reference ratios, numerical verification with prespecified criteria, and explicit interpretation limits.
 
 Time alignment does not make one reference ground truth. Hydrostatic and MUSCL-HR approximate the depth-averaged shallow-water equations with different discretizations, while the study-defined Boussinesq-type comparison introduces a linear weakly dispersive correction \citep{audusse2004hydrostatic,clain2016secondorder,shi2012boussinesq}. Their pairwise gaps combine equation-set and numerical effects. We therefore separate same-reference surrogate error, raw reference-to-reference discrepancy, and cross-reference surrogate discrepancy. A surrogate that lies closer to a second solver in one norm has not thereby become more physically accurate \citep{koehler2026emulator}.
 
@@ -19,8 +19,8 @@ The central question is consequently computational rather than operational: afte
 The main contributions of this study are:
 
 \begin{enumerate}[leftmargin=3.6em]
-    \item a reference-aware evaluation protocol that combines identical scenarios, solver-specific natural stepping, 50 shared requested times, and separate same-reference, solver-gap, and cross-reference discrepancy measures,
-    \item a numerical verification study combining shared-input identity, analytical and numerical tests, GeoClaw/Clawpack analytical, refinement, and representative inter-code comparisons, assessment of buffered-domain integration and requested-time extraction, and an independent 363-case sensitivity set,
-    \item a quantitative comparison showing that the Hydrostatic--MUSCL-HR discrepancy is $1.6$ and $2.1$ times the same-reference errors of the Hydrostatic FNO and F-FNO, respectively, while the shallow-water--Boussinesq gaps exceed the Boussinesq FNO error by more than five times,
+    \item a reference-aware evaluation protocol that combines identical scenarios, each solver's natural time stepping, 50 shared requested times, and separate same-reference, solver-gap, and cross-reference discrepancy measures,
+    \item a numerical verification study combining shared-input identity, analytical and numerical tests, GeoClaw/Clawpack analytical, refinement, and representative inter-code comparisons, assessment of buffered-domain integration and requested-time extraction, and an independent sensitivity set with prespecified criteria,
+    \item a quantitative comparison of same-reference surrogate error, raw solver gaps, and cross-reference discrepancy ratios with uncertainty estimates,
     \item controlled demonstrations across eleven direct model--reference configurations, conditional windowed forecasts, distribution and resolution shifts, virtual-gauge diagnostics, a seven-member ensemble, and synthetic-forcing transfer to real bathymetric morphology.
 \end{enumerate}

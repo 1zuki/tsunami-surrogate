@@ -27,7 +27,9 @@ references-notes
 # paper related
 test-format/
 els-cas-templates/
-UIT_HCM_NCKH_SV_TMĐT/
+uit-nckh-proposal/
+cover-letter/
+docs/
 
 # test script
 test.py
