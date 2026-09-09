@@ -386,7 +386,7 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
   PAPER_SUITES=(
     --suite "source_holdout_multi_gauss=source_type_in:multi-gauss"
     --suite "bathymetry_holdout_trench=bathymetry_type_in:trench"
-    --suite "source_strength_extreme_high=source_strength_min:0.82"
+    --suite "source_strength_extreme_high=source_strength_min:0.285"
   )
   GAUGES=(
     --gauge "16,16" --gauge "16,32" --gauge "16,48"

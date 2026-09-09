@@ -242,7 +242,7 @@ strict_holdouts:
     manifest: data/processed_strict_holdout/hydrostatic/source_holdout_okada_like/holdout_manifest.json
 real_bathymetry:
   processed_root: data/processed_real_bathymetry_v2
-  lineage_schema_id: tsunami-surrogate.real-bathymetry-input.v1
+  lineage_schema_id: tsunami-surrogate.real-bathymetry-input.v2
   available_suites:
     main_morphology_suite_10: 10
     main_morphology: 1
@@ -289,7 +289,7 @@ paper_evidence:
       value: trench
     - id: source_strength_extreme_high
       filter: source_strength_min
-      value: 0.82
+      value: 0.285
   direct_slice_models:
     - id: fno_hydrostatic
       reference: hydrostatic

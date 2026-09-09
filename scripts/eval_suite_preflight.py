@@ -432,6 +432,74 @@ def _validate_generation_config_bindings(
     return summaries
 
 
+def _validate_auxiliary_generation_configs() -> list[dict[str, Any]]:
+    """Check auxiliary generators against the current production contract."""
+
+    expected_times = np.asarray(
+        [8.4 + 8.4 * index for index in range(50)], dtype=np.float64
+    )
+    expected_times[-1] = 420.0
+    summaries: list[dict[str, Any]] = []
+    for grid in (32, 64, 128):
+        path = _validate_required_file(
+            f"configs/data/multires/dataset_{grid}.yaml"
+        )
+        cfg = load_config(path)
+        requested = cfg.get("requested_output", {})
+        if not isinstance(requested, Mapping):
+            raise PreflightError(
+                f"Native generation config has no requested_output: {_relative(path)}"
+            )
+        observed = [
+            float(requested.get("start", float("nan")))
+            + float(requested.get("step", float("nan"))) * index
+            for index in range(int(requested.get("count", 0)))
+        ]
+        if observed:
+            observed[-1] = float(requested.get("horizon", observed[-1]))
+        if requested.get("status") != "accepted" or requested.get(
+            "execution_scope"
+        ) != "production" or not np.array_equal(
+            np.asarray(observed, dtype=np.float64), expected_times
+        ):
+            raise PreflightError(
+                f"Native generation timing contract mismatch: {_relative(path)}"
+            )
+        profiles = cfg.get("solver_profiles", {})
+        if not isinstance(profiles, Mapping):
+            raise PreflightError(f"Native solver profiles are missing: {_relative(path)}")
+        for name, profile in profiles.items():
+            if not isinstance(profile, Mapping) or float(
+                profile.get("sponge_reference_dt", float("nan"))
+            ) != 8.4:
+                raise PreflightError(
+                    f"Native sponge reference mismatch for {name}: {_relative(path)}"
+                )
+        boussinesq = profiles.get("boussinesq", {})
+        if float(boussinesq.get("filter_reference_dt", float("nan"))) != 8.4:
+            raise PreflightError(
+                f"Native Boussinesq filter reference mismatch: {_relative(path)}"
+            )
+        paired = cfg.get("paired_inputs", {})
+        if (
+            paired.get("master_shape") != [384, 384]
+            or paired.get("solver_shape") != [grid, grid]
+            or paired.get("target_shape") != [grid, grid]
+        ):
+            raise PreflightError(
+                f"Native paired-grid contract mismatch: {_relative(path)}"
+            )
+        summaries.append(
+            {
+                "grid": grid,
+                "config": _relative(path),
+                "requested_times": len(observed),
+                "sponge_reference_dt": 8.4,
+            }
+        )
+    return summaries
+
+
 def _validate_shard_manifest(
     split_dir: Path,
     *,
@@ -1842,6 +1910,7 @@ def run_preflight(
                 f"Evaluation output root already exists: {_relative(run_root)}"
             )
 
+    auxiliary_generation_configs = _validate_auxiliary_generation_configs()
     generation_configs = _validate_generation_config_bindings(contract)
     generation, publication_indexes, generation_code_states = (
         _validate_generation_artifacts(contract)
@@ -2031,6 +2100,7 @@ def run_preflight(
         "accepted_numerical_artifacts": numerical,
         "numerical_evidence_scope": dict(numerical_scope),
         "generation_configs": generation_configs,
+        "auxiliary_generation_configs": auxiliary_generation_configs,
         "frozen_generation_artifacts": generation,
         "deep_payload_audit": bool(deep_payload_audit),
         "payload_audit_workers": int(payload_audit_workers),
