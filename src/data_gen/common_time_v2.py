@@ -456,12 +456,22 @@ def code_state(repo_root: str | Path) -> dict[str, Any]:
     included_names = {"pyproject.toml", "requirements.txt", "requirements.lock"}
     included_suffixes = {".py", ".yaml", ".yml", ".toml", ".lock"}
     files: list[dict[str, Any]] = []
-    for path in sorted(root.rglob("*")):
+    candidate_paths: list[Path] = []
+    for included_root in included_roots:
+        path = root / included_root
+        if path.is_dir():
+            candidate_paths.extend(path.rglob("*"))
+    for included_name in sorted(included_names):
+        path = root / included_name
+        if path.exists():
+            candidate_paths.append(path)
+    for path in sorted(
+        candidate_paths,
+        key=lambda value: value.relative_to(root).as_posix(),
+    ):
         if not path.is_file():
             continue
         rel = path.relative_to(root)
-        if not (rel.parts[0] in included_roots or rel.as_posix() in included_names):
-            continue
         if (
             path.suffix not in included_suffixes
             and rel.as_posix() not in included_names
