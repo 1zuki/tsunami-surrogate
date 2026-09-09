@@ -15,6 +15,7 @@ PROJECT_ROOT="/datastore/vit/tsunami-surrogate"
 ENV_PREFIX="$PROJECT_ROOT/.venv"
 SPLIT="${SPLIT:?SPLIT must be train, eval, or test}"
 RESUME="${RESUME:-0}"
+CONFIG_PATH="${CONFIG_PATH:-}"
 ALLOCATED_CPUS="${SLURM_CPUS_PER_TASK:-}"
 
 if [ -z "${SLURM_JOB_ID:-}" ] || [ -z "$ALLOCATED_CPUS" ]; then
@@ -49,21 +50,23 @@ if [ "$RESUME" != "0" ] && [ "$RESUME" != "1" ]; then
     exit 1
 fi
 
-case "$SPLIT" in
-    train)
-        CONFIG_PATH="configs/data/dataset.yaml"
-        ;;
-    eval)
-        CONFIG_PATH="configs/data/dataset_eval.yaml"
-        ;;
-    test)
-        CONFIG_PATH="configs/data/dataset_test.yaml"
-        ;;
-    *)
-        echo "Unknown SPLIT=$SPLIT; expected train, eval, or test"
-        exit 1
-        ;;
-esac
+if [ -z "$CONFIG_PATH" ]; then
+    case "$SPLIT" in
+        train)
+            CONFIG_PATH="configs/data/dataset.yaml"
+            ;;
+        eval)
+            CONFIG_PATH="configs/data/dataset_eval.yaml"
+            ;;
+        test)
+            CONFIG_PATH="configs/data/dataset_test.yaml"
+            ;;
+        *)
+            echo "Unknown SPLIT=$SPLIT; expected train, eval, or test"
+            exit 1
+            ;;
+    esac
+fi
 
 cd "$PROJECT_ROOT"
 if type module >/dev/null 2>&1; then
