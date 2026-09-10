@@ -112,12 +112,14 @@ def _write_yaml(path: Path, payload: Mapping[str, Any]) -> None:
     )
 
 
-def _require_current_numerical_scope() -> dict[str, Any]:
+def _require_current_numerical_scope(
+    *, allow_unvalidated_contract: bool = False
+) -> dict[str, Any]:
     suite_contract = _load_yaml(ROOT / "configs/eval/final_v2_suite.yaml")
     numerical_scope = suite_contract.get("numerical_evidence_scope", {})
     if not bool(
         numerical_scope.get("current_production_contract_validated", False)
-    ):
+    ) and not allow_unvalidated_contract:
         raise RuntimeError(
             "The existing H0/A/B/H1/H2 chain is historical and has not been "
             "migrated to the corrected production dataset contract"
@@ -139,8 +141,11 @@ def validate_prerequisites(
     petsc_dir: Path,
     petsc_arch: str,
     geoclaw_python: Path,
+    allow_unvalidated_contract: bool = False,
 ) -> dict[str, Any]:
-    _require_current_numerical_scope()
+    _require_current_numerical_scope(
+        allow_unvalidated_contract=allow_unvalidated_contract
+    )
     state = code_state(ROOT)
     if state["dirty"]:
         raise RuntimeError(
@@ -254,14 +259,18 @@ def run_chain(
     petsc_dir: Path,
     petsc_arch: str,
     geoclaw_python: Path,
+    allow_unvalidated_contract: bool = False,
 ) -> Path:
-    suite_contract = _require_current_numerical_scope()
+    suite_contract = _require_current_numerical_scope(
+        allow_unvalidated_contract=allow_unvalidated_contract
+    )
     preflight = validate_prerequisites(
         output_root=output_root,
         claw_root=claw_root,
         petsc_dir=petsc_dir,
         petsc_arch=petsc_arch,
         geoclaw_python=geoclaw_python,
+        allow_unvalidated_contract=allow_unvalidated_contract,
     )
     for key in THREAD_ENV_KEYS:
         os.environ[key] = "1"
@@ -507,6 +516,14 @@ def main() -> None:
         type=Path,
         default=Path(sys.executable),
     )
+    parser.add_argument(
+        "--allow-unvalidated-contract",
+        action="store_true",
+        help=(
+            "Permit the fresh chain to run before the suite contract is marked "
+            "validated. This does not relax the final evaluation preflight."
+        ),
+    )
     args = parser.parse_args()
     if args.workers <= 0 or args.geoclaw_workers <= 0:
         parser.error("worker counts must be positive")
@@ -522,6 +539,7 @@ def main() -> None:
             petsc_dir=args.petsc_dir,
             petsc_arch=args.petsc_arch,
             geoclaw_python=args.geoclaw_python,
+            allow_unvalidated_contract=args.allow_unvalidated_contract,
         )
         print(json.dumps(result, indent=2, sort_keys=True))
         return
@@ -535,6 +553,7 @@ def main() -> None:
         petsc_dir=args.petsc_dir,
         petsc_arch=args.petsc_arch,
         geoclaw_python=args.geoclaw_python,
+        allow_unvalidated_contract=args.allow_unvalidated_contract,
     )
     print(summary)
 
