@@ -379,12 +379,12 @@ def main() -> None:
         ),
     )
     parser.add_argument("--direct-config", default="configs/model/fno.yaml")
-    parser.add_argument("--direct-checkpoint", default="experiments/fno/best.pt")
+    parser.add_argument("--direct-checkpoint", default="experiments/fno/seed_18/best.pt")
     parser.add_argument(
         "--window-config", default="configs/model/fno_window5_hydrostatic.yaml"
     )
     parser.add_argument(
-        "--window-checkpoint", default="experiments/fno_window5_hydrostatic/best.pt"
+        "--window-checkpoint", default="experiments/fno_window5_hydrostatic/seed_18/best.pt"
     )
     parser.add_argument("--main-output", default=DEFAULT_MAIN_OUTPUT)
     parser.add_argument("--appendix-output", default=DEFAULT_APPENDIX_OUTPUT)

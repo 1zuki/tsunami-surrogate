@@ -241,7 +241,7 @@ directly and write its output outside the repository:
 mkdir -p "$HOME/tsunami-source-check"
 python scripts/eval_accuracy.py \
   --config configs/model/fno.yaml \
-  --checkpoint experiments/fno/best.pt \
+  --checkpoint experiments/fno/seed_18/best.pt \
   --device cpu \
   --output "$HOME/tsunami-source-check/fno_hydrostatic.json"
 ```
@@ -611,17 +611,17 @@ python scripts/train.py --config configs/model/fno_window5_hydrostatic.yaml
 python scripts/train.py --config configs/model/ffno_window5_hydrostatic.yaml
 
 # 4. Same-target accuracy.
-python scripts/eval_accuracy.py --config configs/model/fno.yaml          --checkpoint experiments/fno/best.pt
-python scripts/eval_accuracy.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
-python scripts/eval_accuracy.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt
+python scripts/eval_accuracy.py --config configs/model/fno.yaml          --checkpoint experiments/fno/seed_18/best.pt
+python scripts/eval_accuracy.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/seed_18/best.pt
+python scripts/eval_accuracy.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/seed_18/best.pt
 
 # 5. Model inference speed. Keep CPU and CUDA rows if CUDA is available.
-python scripts/eval_speed.py --config configs/model/fno.yaml          --checkpoint experiments/fno/best.pt          --device cpu  --precision fp32 --allow-tf32 false --output results/speed/model_speed_fno_cpu.json
-python scripts/eval_speed.py --config configs/model/fno.yaml          --checkpoint experiments/fno/best.pt          --device cuda --precision fp32 --allow-tf32 true  --output results/speed/model_speed_fno_cuda.json
-python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt --device cpu  --precision fp32 --allow-tf32 false --output results/speed/model_speed_muscl_hr_cpu.json
-python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt --device cuda --precision fp32 --allow-tf32 true  --output results/speed/model_speed_muscl_hr_cuda.json
-python scripts/eval_speed.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt --device cpu  --precision fp32 --allow-tf32 false --output results/speed/model_speed_boussinesq_cpu.json
-python scripts/eval_speed.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt --device cuda --precision fp32 --allow-tf32 true  --output results/speed/model_speed_boussinesq_cuda.json
+python scripts/eval_speed.py --config configs/model/fno.yaml          --checkpoint experiments/fno/seed_18/best.pt          --device cpu  --precision fp32 --allow-tf32 false --output results/speed/model_speed_fno_cpu.json
+python scripts/eval_speed.py --config configs/model/fno.yaml          --checkpoint experiments/fno/seed_18/best.pt          --device cuda --precision fp32 --allow-tf32 true  --output results/speed/model_speed_fno_cuda.json
+python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/seed_18/best.pt --device cpu  --precision fp32 --allow-tf32 false --output results/speed/model_speed_muscl_hr_cpu.json
+python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/seed_18/best.pt --device cuda --precision fp32 --allow-tf32 true  --output results/speed/model_speed_muscl_hr_cuda.json
+python scripts/eval_speed.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/seed_18/best.pt --device cpu  --precision fp32 --allow-tf32 false --output results/speed/model_speed_boussinesq_cpu.json
+python scripts/eval_speed.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/seed_18/best.pt --device cuda --precision fp32 --allow-tf32 true  --output results/speed/model_speed_boussinesq_cuda.json
 
 # 6. Reference-solver speed. This is the speedup denominator.
 python scripts/eval_solver_speed.py --config configs/data/dataset.yaml --solver swe_hydrostatic --device cpu --precision float64 --repeats 3 --max-samples 8 --output results/speed/solver_speed_swe_hydrostatic.json
@@ -646,14 +646,14 @@ python scripts/make_speed_table.py \
 python scripts/make_ood_splits.py --config configs/data/ood_splits_hydrostatic.yaml --overwrite
 python scripts/make_ood_splits.py --config configs/data/ood_splits_muscl_hr.yaml --overwrite
 python scripts/make_ood_splits.py --config configs/data/ood_splits_boussinesq.yaml --overwrite
-python scripts/eval_generalization.py --config configs/eval/ood_suites_hydrostatic.yaml --checkpoint experiments/fno/best.pt
-python scripts/eval_generalization.py --config configs/eval/ood_suites_muscl_hr.yaml   --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
-python scripts/eval_generalization.py --config configs/eval/ood_suites_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt
+python scripts/eval_generalization.py --config configs/eval/ood_suites_hydrostatic.yaml --checkpoint experiments/fno/seed_18/best.pt
+python scripts/eval_generalization.py --config configs/eval/ood_suites_muscl_hr.yaml   --checkpoint experiments/fno_muscl_hr/seed_18/best.pt
+python scripts/eval_generalization.py --config configs/eval/ood_suites_boussinesq.yaml --checkpoint experiments/fno_boussinesq/seed_18/best.pt
 
 # 9. Proxy cross-resolution transfer, no extra simulation.
-python scripts/eval_resolution_transfer.py --config configs/eval/resolution_transfer_proxy_hydrostatic.yaml --checkpoint experiments/fno/best.pt
-python scripts/eval_resolution_transfer.py --config configs/eval/resolution_transfer_proxy_muscl_hr.yaml   --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
-python scripts/eval_resolution_transfer.py --config configs/eval/resolution_transfer_proxy_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt
+python scripts/eval_resolution_transfer.py --config configs/eval/resolution_transfer_proxy_hydrostatic.yaml --checkpoint experiments/fno/seed_18/best.pt
+python scripts/eval_resolution_transfer.py --config configs/eval/resolution_transfer_proxy_muscl_hr.yaml   --checkpoint experiments/fno_muscl_hr/seed_18/best.pt
+python scripts/eval_resolution_transfer.py --config configs/eval/resolution_transfer_proxy_boussinesq.yaml --checkpoint experiments/fno_boussinesq/seed_18/best.pt
 
 # 10. Native cross-resolution. The final paper lane is MUSCL-HR at 32/64/128.
 python scripts/make_dataset.py --config configs/data/multires/dataset_32.yaml
@@ -844,7 +844,7 @@ seeds: [36, 67]
 ```
 
 For `output_dir: experiments/fno`, these runs are written to
-`experiments/fno/fno_seed_18`, `experiments/fno/fno_seed_36`, and so on. Each
+`experiments/fno/seed_18`, `experiments/fno/seed_36`, and so on. Each
 directory contains the complete run artifacts, including resolved config,
 metadata, history, and checkpoints.
 
@@ -876,9 +876,9 @@ Native-resolution training tracks:
 After `6.3`, evaluate each model on its matching processed test set:
 
 ```bash
-python scripts/eval_accuracy.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt
-python scripts/eval_accuracy.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
-python scripts/eval_accuracy.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt
+python scripts/eval_accuracy.py --config configs/model/fno.yaml --checkpoint experiments/fno/seed_18/best.pt
+python scripts/eval_accuracy.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/seed_18/best.pt
+python scripts/eval_accuracy.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/seed_18/best.pt
 ```
 
 Eval notes:
@@ -894,12 +894,12 @@ Eval notes:
 Runtime speedup uses CPU NumPy solver timing as the denominator and FNO inference timing as the numerator. Run CPU model timing for fairness and CUDA timing for the practical accelerator result.
 
 ```bash
-python scripts/eval_speed.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt --device cpu --precision fp32 --allow-tf32 false --output results/speed/model_speed_fno_cpu.json
-python scripts/eval_speed.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt --device cuda --precision fp32 --allow-tf32 true --output results/speed/model_speed_fno_cuda.json
-python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt --device cpu --precision fp32 --allow-tf32 false --output results/speed/model_speed_muscl_hr_cpu.json
-python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt --device cuda --precision fp32 --allow-tf32 true --output results/speed/model_speed_muscl_hr_cuda.json
-python scripts/eval_speed.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt --device cpu --precision fp32 --allow-tf32 false --output results/speed/model_speed_boussinesq_cpu.json
-python scripts/eval_speed.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt --device cuda --precision fp32 --allow-tf32 true --output results/speed/model_speed_boussinesq_cuda.json
+python scripts/eval_speed.py --config configs/model/fno.yaml --checkpoint experiments/fno/seed_18/best.pt --device cpu --precision fp32 --allow-tf32 false --output results/speed/model_speed_fno_cpu.json
+python scripts/eval_speed.py --config configs/model/fno.yaml --checkpoint experiments/fno/seed_18/best.pt --device cuda --precision fp32 --allow-tf32 true --output results/speed/model_speed_fno_cuda.json
+python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/seed_18/best.pt --device cpu --precision fp32 --allow-tf32 false --output results/speed/model_speed_muscl_hr_cpu.json
+python scripts/eval_speed.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/seed_18/best.pt --device cuda --precision fp32 --allow-tf32 true --output results/speed/model_speed_muscl_hr_cuda.json
+python scripts/eval_speed.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/seed_18/best.pt --device cpu --precision fp32 --allow-tf32 false --output results/speed/model_speed_boussinesq_cpu.json
+python scripts/eval_speed.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/seed_18/best.pt --device cuda --precision fp32 --allow-tf32 true --output results/speed/model_speed_boussinesq_cuda.json
 
 python scripts/eval_solver_speed.py --config configs/data/dataset.yaml --solver swe_hydrostatic --device cpu --precision float64 --repeats 3 --max-samples 8 --output results/speed/solver_speed_swe_hydrostatic.json
 python scripts/eval_solver_speed.py --config configs/data/dataset.yaml --solver swe_muscl_hr --device cpu --precision float64 --repeats 3 --max-samples 8 --output results/speed/solver_speed_swe_muscl_hr.json
@@ -941,9 +941,9 @@ Tip:
 Run suite-based generalization evaluation:
 
 ```bash
-python scripts/eval_generalization.py --config configs/eval/ood_suites_hydrostatic.yaml --checkpoint experiments/fno/best.pt
-python scripts/eval_generalization.py --config configs/eval/ood_suites_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
-python scripts/eval_generalization.py --config configs/eval/ood_suites_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt
+python scripts/eval_generalization.py --config configs/eval/ood_suites_hydrostatic.yaml --checkpoint experiments/fno/seed_18/best.pt
+python scripts/eval_generalization.py --config configs/eval/ood_suites_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/seed_18/best.pt
+python scripts/eval_generalization.py --config configs/eval/ood_suites_boussinesq.yaml --checkpoint experiments/fno_boussinesq/seed_18/best.pt
 ```
 
 Output file:
@@ -957,13 +957,13 @@ It is a proxy study, not native re-simulation at each resolution.
 ```bash
 python scripts/eval_resolution_transfer.py \
   --config configs/eval/resolution_transfer_proxy_hydrostatic.yaml \
-  --checkpoint experiments/fno/best.pt
+  --checkpoint experiments/fno/seed_18/best.pt
 python scripts/eval_resolution_transfer.py \
   --config configs/eval/resolution_transfer_proxy_muscl_hr.yaml \
-  --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
+  --checkpoint experiments/fno_muscl_hr/seed_18/best.pt
 python scripts/eval_resolution_transfer.py \
   --config configs/eval/resolution_transfer_proxy_boussinesq.yaml \
-  --checkpoint experiments/fno_boussinesq/best.pt
+  --checkpoint experiments/fno_boussinesq/seed_18/best.pt
 ```
 
 Output file:
@@ -1003,7 +1003,7 @@ JSON table:
 ```bash
 python scripts/eval_full_resolution.py \
   --config configs/eval/resolution_muscl_hr.yaml \
-  --checkpoint experiments/fno_res64_muscl_hr/best.pt
+  --checkpoint experiments/fno_res64_muscl_hr/seed_18/best.pt
 ```
 
 Output file:
@@ -1162,7 +1162,7 @@ bash scripts/quickstart.sh
 ```bash
 python scripts/visualize_rollout.py \
   --config configs/model/fno.yaml \
-  --checkpoint experiments/fno/best.pt \
+  --checkpoint experiments/fno/seed_18/best.pt \
   --processed-path data/processed/hydrostatic/test \
   --raw-dir data/test/raw/hydrostatic/samples \
   --sample-index 1
@@ -1210,13 +1210,13 @@ Note:
 ```bash
 python scripts/eval_arrival_maps.py \
   --config configs/model/fno.yaml \
-  --checkpoint experiments/fno/best.pt
+  --checkpoint experiments/fno/seed_18/best.pt
 python scripts/eval_arrival_maps.py \
   --config configs/model/fno_muscl_hr.yaml \
-  --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
+  --checkpoint experiments/fno_muscl_hr/seed_18/best.pt
 python scripts/eval_arrival_maps.py \
   --config configs/model/fno_boussinesq.yaml \
-  --checkpoint experiments/fno_boussinesq/best.pt
+  --checkpoint experiments/fno_boussinesq/seed_18/best.pt
 ```
 
 Outputs:
@@ -1236,9 +1236,9 @@ python scripts/run_sample_scaling.py --config configs/model/fno_boussinesq.yaml 
 Qualitative prediction figures for the paper:
 
 ```bash
-python scripts/export_figures.py --config configs/model/fno.yaml --checkpoint experiments/fno/best.pt --out paper/figures/fno_hydrostatic_prediction.png
-python scripts/export_figures.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt --out paper/figures/fno_muscl_hr_prediction.png
-python scripts/export_figures.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/best.pt --out paper/figures/fno_boussinesq_prediction.png
+python scripts/export_figures.py --config configs/model/fno.yaml --checkpoint experiments/fno/seed_18/best.pt --out paper/figures/fno_hydrostatic_prediction.png
+python scripts/export_figures.py --config configs/model/fno_muscl_hr.yaml --checkpoint experiments/fno_muscl_hr/seed_18/best.pt --out paper/figures/fno_muscl_hr_prediction.png
+python scripts/export_figures.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/seed_18/best.pt --out paper/figures/fno_boussinesq_prediction.png
 ```
 
 ## 7) Current Repository Structure

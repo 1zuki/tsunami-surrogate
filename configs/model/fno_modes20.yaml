@@ -1,7 +1,7 @@
 defaults:
   - fno.yaml
 
-output_dir: experiments/fno_modes20
+output_dir: experiments/fno_modes20/seed_18
 seed: 18
 
 model:
@@ -9,4 +9,4 @@ model:
   modes2: 20
 
 eval:
-  output_dir: experiments/fno_modes20/eval
+  output_dir: experiments/fno_modes20/seed_18/eval

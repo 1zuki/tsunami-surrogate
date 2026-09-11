@@ -105,7 +105,7 @@ CHECKPOINTS=(
   experiments/fno_holdout/source_rough/best.pt
   experiments/fno_holdout/source_okada_like/best.pt
 )
-FULL_CHECKPOINT=experiments/fno/best.pt
+FULL_CHECKPOINT=experiments/fno/seed_18/best.pt
 
 run() {
   echo

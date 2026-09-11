@@ -34,6 +34,31 @@ MAX_ACCOUNT_CPUS = 32
 MAX_ACCOUNT_CONCURRENT_JOBS = 5
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
+PROJECT_MODEL_ROOTS = {
+    "fno": Path("experiments/fno"),
+    "fno_hydrostatic": Path("experiments/fno"),
+    "ffno": Path("experiments/ffno"),
+    "ffno_hydrostatic": Path("experiments/ffno"),
+    "unet": Path("experiments/unet"),
+    "unet_hydrostatic": Path("experiments/unet"),
+    "convlstm": Path("experiments/convlstm"),
+    "convlstm_hydrostatic": Path("experiments/convlstm"),
+    "cnn": Path("experiments/cnn"),
+    "cnn_hydrostatic": Path("experiments/cnn"),
+    "ufno": Path("experiments/ufno"),
+    "ufno_hydrostatic": Path("experiments/ufno"),
+    "wno": Path("experiments/wno"),
+    "wno_hydrostatic": Path("experiments/wno"),
+    "fno_modes8": Path("experiments/fno_modes8"),
+    "fno_modes8_hydrostatic": Path("experiments/fno_modes8"),
+    "fno_modes20": Path("experiments/fno_modes20"),
+    "fno_modes20_hydrostatic": Path("experiments/fno_modes20"),
+    "fno_muscl_hr": Path("experiments/fno_muscl_hr"),
+    "fno_boussinesq": Path("experiments/fno_boussinesq"),
+    "fno_window5_hydrostatic": Path("experiments/fno_window5_hydrostatic"),
+    "ffno_window5_hydrostatic": Path("experiments/ffno_window5_hydrostatic"),
+}
+
 
 @dataclass(frozen=True)
 class PreparedRun:
@@ -117,6 +142,26 @@ def _relative_to_root(path: Path, root: Path) -> str:
         return resolved.relative_to(root.resolve()).as_posix()
     except ValueError:
         return resolved.as_posix()
+
+
+def _project_run_output_dir(name: str, seed: int) -> Path:
+    """Return the stable project-facing directory for one prepared run."""
+    if name == "ensemble_fno":
+        return Path("experiments/ensemble") / f"member_{seed}"
+    if name.startswith("fno_sample_"):
+        sample_text = name.removeprefix("fno_sample_")
+        if not sample_text.isdigit():
+            raise ValueError(f"invalid sample-scaling entry name: {name}")
+        return (
+            Path("experiments/sample_scaling")
+            / f"n_{int(sample_text):06d}"
+            / f"seed_{seed}"
+        )
+    try:
+        root = PROJECT_MODEL_ROOTS[name]
+    except KeyError as exc:
+        raise ValueError(f"no project output root configured for {name!r}") from exc
+    return root / f"seed_{seed}"
 
 
 def _tracked_worktree_is_clean(root: Path) -> bool:
@@ -244,13 +289,7 @@ def prepare_suite(
             cfg["seed"] = int(seed)
             cfg["device"] = "cuda"
 
-            output_dir = (
-                Path("experiments")
-                / "slurm"
-                / suite_id
-                / name
-                / f"seed_{seed}"
-            )
+            output_dir = _project_run_output_dir(name, seed)
             output_text = output_dir.as_posix()
             if output_text in output_dirs:
                 raise ValueError(f"duplicate output directory: {output_text}")

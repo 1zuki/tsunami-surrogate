@@ -23,7 +23,7 @@ HOLDOUTS = [
         "config_id": "configs/model/fno_holdout_bathymetry_trench_eval_id.yaml",
         "config_full": "configs/model/fno_full_on_holdout_bathymetry_trench.yaml",
         "checkpoint": "experiments/fno_holdout/bathymetry_trench/best.pt",
-        "full_checkpoint": "experiments/fno/best.pt",
+        "full_checkpoint": "experiments/fno/seed_18/best.pt",
         "manifest": "data/processed_strict_holdout/hydrostatic/bathymetry_holdout_trench/holdout_manifest.json",
     },
     {
@@ -33,7 +33,7 @@ HOLDOUTS = [
         "config_id": "configs/model/fno_holdout_bathymetry_continental_eval_id.yaml",
         "config_full": "configs/model/fno_full_on_holdout_bathymetry_continental.yaml",
         "checkpoint": "experiments/fno_holdout/bathymetry_continental/best.pt",
-        "full_checkpoint": "experiments/fno/best.pt",
+        "full_checkpoint": "experiments/fno/seed_18/best.pt",
         "manifest": "data/processed_strict_holdout/hydrostatic/bathymetry_holdout_continental/holdout_manifest.json",
     },
     {
@@ -43,7 +43,7 @@ HOLDOUTS = [
         "config_id": "configs/model/fno_holdout_source_rough_eval_id.yaml",
         "config_full": "configs/model/fno_full_on_holdout_source_rough.yaml",
         "checkpoint": "experiments/fno_holdout/source_rough/best.pt",
-        "full_checkpoint": "experiments/fno/best.pt",
+        "full_checkpoint": "experiments/fno/seed_18/best.pt",
         "manifest": "data/processed_strict_holdout/hydrostatic/source_holdout_rough/holdout_manifest.json",
     },
     {
@@ -53,7 +53,7 @@ HOLDOUTS = [
         "config_id": "configs/model/fno_holdout_source_okada_like_eval_id.yaml",
         "config_full": "configs/model/fno_full_on_holdout_source_okada_like.yaml",
         "checkpoint": "experiments/fno_holdout/source_okada_like/best.pt",
-        "full_checkpoint": "experiments/fno/best.pt",
+        "full_checkpoint": "experiments/fno/seed_18/best.pt",
         "manifest": "data/processed_strict_holdout/hydrostatic/source_holdout_okada_like/holdout_manifest.json",
     },
 ]

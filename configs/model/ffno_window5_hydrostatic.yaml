@@ -1,7 +1,7 @@
 defaults:
   - fno_window5_hydrostatic.yaml
 
-output_dir: experiments/ffno_window5_hydrostatic
+output_dir: experiments/ffno_window5_hydrostatic/seed_18
 seed: 18
 
 data:
@@ -11,4 +11,4 @@ model:
   name: ffno2d
 
 eval:
-  output_dir: experiments/ffno_window5_hydrostatic/eval
+  output_dir: experiments/ffno_window5_hydrostatic/seed_18/eval

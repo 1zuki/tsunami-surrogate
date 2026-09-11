@@ -222,7 +222,7 @@ def _plot(
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--config", default="configs/model/fno.yaml")
-    p.add_argument("--checkpoint", default="experiments/fno/best.pt")
+    p.add_argument("--checkpoint", default="experiments/fno/seed_18/best.pt")
     p.add_argument("--processed-path", default=DEFAULT_PROCESSED)
     p.add_argument("--stats", default=DEFAULT_STATS)
     p.add_argument("--sample-index", type=int, default=DEFAULT_SAMPLE_INDEX)

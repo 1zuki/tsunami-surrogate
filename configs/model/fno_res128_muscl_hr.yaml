@@ -1,7 +1,7 @@
 defaults:
   - fno_muscl_hr.yaml
 
-output_dir: experiments/fno_res128_muscl_hr
+output_dir: experiments/fno_res128_muscl_hr/seed_18
 seed: 18
 
 data:
@@ -14,4 +14,4 @@ data:
 eval:
   dataset_path: data/processed_res128/muscl_hr/test
   batch_size: 32
-  output_dir: experiments/fno_res128_muscl_hr/eval
+  output_dir: experiments/fno_res128_muscl_hr/seed_18/eval

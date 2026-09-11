@@ -13,7 +13,7 @@ from src.evaluation.visualize import run_visualization
 def main():
     p = argparse.ArgumentParser(description="Visualize one tsunami sample: bathymetry, rollout, prediction, and uncertainty.")
     p.add_argument("--config", required=True, help="Model config YAML (e.g. configs/model/fno.yaml)")
-    p.add_argument("--checkpoint", required=True, help="Checkpoint path (e.g. experiments/fno/best.pt)")
+    p.add_argument("--checkpoint", required=True, help="Checkpoint path (e.g. experiments/fno/seed_18/best.pt)")
     p.add_argument(
         "--processed-path",
         default="auto",

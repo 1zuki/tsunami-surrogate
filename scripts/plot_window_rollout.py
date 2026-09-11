@@ -40,7 +40,7 @@ from src.utils.seed import seed_everything
 
 
 DEFAULT_CONFIG = "configs/model/ffno_window5_hydrostatic.yaml"
-DEFAULT_CHECKPOINT = "experiments/ffno_window5_hydrostatic/best.pt"
+DEFAULT_CHECKPOINT = "experiments/ffno_window5_hydrostatic/seed_18/best.pt"
 DEFAULT_PROCESSED = "data/processed/hydrostatic/test"
 DEFAULT_STATS = "data/processed/hydrostatic/normalization_stats.json"
 DEFAULT_OUTPUT = "paper/figures/window_rollout.pdf"

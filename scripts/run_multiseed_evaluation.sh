@@ -30,15 +30,16 @@ fi
 checkpoint() {
   local model="$1"
   local seed="$2"
-  case "$model:$seed" in
-    fno_hydrostatic:18) echo experiments/fno/best.pt ;;
-    fno_muscl_hr:18) echo experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt ;;
-    fno_boussinesq:18) echo experiments/fno_boussinesq/best.pt ;;
-    ffno_hydrostatic:18) echo experiments/ffno/best.pt ;;
-    unet_hydrostatic:18) echo experiments/unet/best.pt ;;
-    convlstm_hydrostatic:18) echo experiments/convlstm/best.pt ;;
+  case "$model" in
+    fno_hydrostatic) echo "experiments/fno/seed_${seed}/best.pt" ;;
+    fno_muscl_hr) echo "experiments/fno_muscl_hr/seed_${seed}/best.pt" ;;
+    fno_boussinesq) echo "experiments/fno_boussinesq/seed_${seed}/best.pt" ;;
+    ffno_hydrostatic) echo "experiments/ffno/seed_${seed}/best.pt" ;;
+    unet_hydrostatic) echo "experiments/unet/seed_${seed}/best.pt" ;;
+    convlstm_hydrostatic) echo "experiments/convlstm/seed_${seed}/best.pt" ;;
     *)
-      echo "experiments/multiseed_v2/$model/${model}_seed_${seed}/best.pt"
+      echo "Unknown multi-seed model: $model" >&2
+      return 2
       ;;
   esac
 }

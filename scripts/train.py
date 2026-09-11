@@ -34,9 +34,15 @@ def resolve_training_seeds(cfg):
 
 def seed_output_dir(base_output_dir, seed, list_mode):
     base = Path(base_output_dir)
-    if not list_mode:
+    qualified_names = {f'seed_{seed}', f'member_{seed}'}
+    if base.name in qualified_names:
         return base
-    return base / f'{base.name}_seed_{seed}'
+    if base.name.startswith(('seed_', 'member_')):
+        raise ValueError(
+            f'Output directory {base} is qualified for a different seed; '
+            f'expected seed {seed}'
+        )
+    return base / f'seed_{seed}'
 
 
 def train_one(cfg, device, resume_path=None):
@@ -106,10 +112,9 @@ def main():
         run_cfg['seed'] = int(seed)
         run_output_dir = seed_output_dir(base_output_dir, seed, list_mode)
         run_cfg['output_dir'] = str(run_output_dir)
-        if list_mode:
-            eval_cfg = deepcopy(run_cfg.get('eval', {}))
-            eval_cfg['output_dir'] = str(run_output_dir / 'eval')
-            run_cfg['eval'] = eval_cfg
+        eval_cfg = deepcopy(run_cfg.get('eval', {}))
+        eval_cfg['output_dir'] = str(run_output_dir / 'eval')
+        run_cfg['eval'] = eval_cfg
         print(
             f'[train] run {index}/{len(seeds)} seed={seed} '
             f'output_dir={run_cfg["output_dir"]}'

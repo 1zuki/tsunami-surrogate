@@ -19,63 +19,63 @@ from src.utils.config import load_config
 
 
 DEFAULT_MODELS = [
-    ("fno", "single_pass", "configs/model/fno.yaml", "experiments/fno/best.pt"),
-    ("ffno", "single_pass", "configs/model/ffno.yaml", "experiments/ffno/best.pt"),
-    ("cnn", "single_pass", "configs/model/cnn.yaml", "experiments/cnn/best.pt"),
-    ("unet", "single_pass", "configs/model/unet.yaml", "experiments/unet/best.pt"),
+    ("fno", "single_pass", "configs/model/fno.yaml", "experiments/fno/seed_18/best.pt"),
+    ("ffno", "single_pass", "configs/model/ffno.yaml", "experiments/ffno/seed_18/best.pt"),
+    ("cnn", "single_pass", "configs/model/cnn.yaml", "experiments/cnn/seed_18/best.pt"),
+    ("unet", "single_pass", "configs/model/unet.yaml", "experiments/unet/seed_18/best.pt"),
     (
         "convlstm",
         "single_pass_baseline",
         "configs/model/convlstm.yaml",
-        "experiments/convlstm/best.pt",
+        "experiments/convlstm/seed_18/best.pt",
     ),
     (
         "fno_modes8",
         "single_pass_ablation",
         "configs/model/fno_modes8.yaml",
-        "experiments/fno_modes8/best.pt",
+        "experiments/fno_modes8/seed_18/best.pt",
     ),
     (
         "fno_modes20",
         "single_pass_ablation",
         "configs/model/fno_modes20.yaml",
-        "experiments/fno_modes20/best.pt",
+        "experiments/fno_modes20/seed_18/best.pt",
     ),
     (
         "ufno",
         "single_pass_baseline",
         "configs/model/ufno.yaml",
-        "experiments/ufno/best.pt",
+        "experiments/ufno/seed_18/best.pt",
     ),
     (
         "wno",
         "single_pass_baseline",
         "configs/model/wno.yaml",
-        "experiments/wno/best.pt",
+        "experiments/wno/seed_18/best.pt",
     ),
     (
         "fno_muscl_hr",
         "target_solver",
         "configs/model/fno_muscl_hr.yaml",
-        "experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt",
+        "experiments/fno_muscl_hr/seed_18/best.pt",
     ),
     (
         "fno_boussinesq",
         "target_solver",
         "configs/model/fno_boussinesq.yaml",
-        "experiments/fno_boussinesq/best.pt",
+        "experiments/fno_boussinesq/seed_18/best.pt",
     ),
     (
         "fno_window5_hydrostatic",
         "seeded_window",
         "configs/model/fno_window5_hydrostatic.yaml",
-        "experiments/fno_window5_hydrostatic/best.pt",
+        "experiments/fno_window5_hydrostatic/seed_18/best.pt",
     ),
     (
         "ffno_window5_hydrostatic",
         "seeded_window",
         "configs/model/ffno_window5_hydrostatic.yaml",
-        "experiments/ffno_window5_hydrostatic/best.pt",
+        "experiments/ffno_window5_hydrostatic/seed_18/best.pt",
     ),
 ]
 

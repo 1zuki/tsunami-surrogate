@@ -39,7 +39,7 @@ def _suite_contract() -> dict:
             {
                 "id": "fno",
                 "config": "configs/model/fno.yaml",
-                "checkpoint": "experiments/fno/best.pt",
+                "checkpoint": "experiments/fno/seed_18/best.pt",
                 "analyses": ["accuracy", "perframe", "physics"],
             }
         ],
@@ -47,21 +47,21 @@ def _suite_contract() -> dict:
             {
                 "id": "fno_window5",
                 "config": "configs/model/fno_window5_hydrostatic.yaml",
-                "checkpoint": "experiments/fno_window5_hydrostatic/best.pt",
+                "checkpoint": "experiments/fno_window5_hydrostatic/seed_18/best.pt",
             }
         ],
         "sample_scaling": [
             {
                 "id": "n_000100",
                 "config": "experiments/sample_scaling/configs/fno_n_000100.yaml",
-                "checkpoint": "experiments/sample_scaling/n_000100/best.pt",
+                "checkpoint": "experiments/sample_scaling/n_000100/seed_18/best.pt",
             }
         ],
         "native_muscl": [
             {
                 "id": "res32",
                 "config": "configs/model/fno_res32_muscl_hr.yaml",
-                "checkpoint": "experiments/fno_res32_muscl_hr/best.pt",
+                "checkpoint": "experiments/fno_res32_muscl_hr/seed_18/best.pt",
                 "counts": {"test": 2},
             }
         ],
@@ -72,7 +72,7 @@ def _suite_contract() -> dict:
                 {
                     "id": "fno",
                     "config": "configs/eval/real_bathymetry_hydrostatic.yaml",
-                    "checkpoint": "experiments/fno/best.pt",
+                    "checkpoint": "experiments/fno/seed_18/best.pt",
                 }
             ],
             "window": [
@@ -82,7 +82,7 @@ def _suite_contract() -> dict:
                         "configs/eval/window5_real_bathymetry_hydrostatic.yaml"
                     ),
                     "checkpoint": (
-                        "experiments/fno_window5_hydrostatic/best.pt"
+                        "experiments/fno_window5_hydrostatic/seed_18/best.pt"
                     ),
                 }
             ],
@@ -138,6 +138,35 @@ def test_run_manifest_has_exact_unique_cell_membership() -> None:
     }
     assert len(ids) == len(set(ids))
     assert len(paths) == len(set(paths))
+
+
+def test_run_manifest_declares_current_production_validation_bundle() -> None:
+    contract = _suite_contract()
+    contract["scientific_scope"] = {"contract_hash": "a" * 64}
+
+    manifest = build_manifest(
+        contract,
+        run_id="production-validation-test",
+        include_ensemble=False,
+        include_real_bathymetry=False,
+        include_speed=False,
+        rerun_production_validation=True,
+    )
+
+    cells = {str(cell["id"]): cell for cell in manifest["cells"]}
+    assert {
+        "production_validation:summary",
+        "production_validation:canaries",
+        "production_validation:checksums",
+    }.issubset(cells)
+    assert cells["production_validation:summary"]["expected_values"] == {
+        "status": "passed",
+        "contract_hash": "a" * 64,
+        "production_lineage.master_shape": [384, 384],
+        "production_lineage.solver_input_shape": [128, 128],
+        "production_lineage.buffered_computation_shape": [192, 192],
+        "production_lineage.publication_shape": [64, 64],
+    }
 
 
 def test_consolidation_rejects_a_missing_required_cell(tmp_path: Path) -> None:

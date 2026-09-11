@@ -126,7 +126,7 @@ def _parse_model(raw: str) -> tuple[str, str, str, str]:
     if len(parts) != 4 or any(not part.strip() for part in parts):
         raise ValueError(
             "Model must use SOLVER|CONFIG|CHECKPOINT|DATASET, for example "
-            "hydrostatic|configs/model/fno.yaml|experiments/fno/best.pt|"
+            "hydrostatic|configs/model/fno.yaml|experiments/fno/seed_18/best.pt|"
             "data/processed/hydrostatic/test"
         )
     return tuple(part.strip() for part in parts)  # type: ignore[return-value]

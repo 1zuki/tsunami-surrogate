@@ -174,9 +174,17 @@ def test_final_rebuild_manifest_has_frozen_seed_policy(tmp_path: Path) -> None:
         assert seeds_by_model[model] == {18, 36, 67}
 
     assert seeds_by_model["ensemble_fno"] == {11, 22, 33, 44, 55, 66, 77}
-    ensemble_cfg = load_yaml(
-        next(run.config_path for run in suite.runs if run.label == "ensemble_fno_seed_11")
+    by_label = {run.label: run for run in suite.runs}
+    assert by_label["fno_hydrostatic_seed_18"].output_dir == (
+        "experiments/fno/seed_18"
     )
+    assert by_label["fno_sample_100_seed_18"].output_dir == (
+        "experiments/sample_scaling/n_000100/seed_18"
+    )
+    assert by_label["ensemble_fno_seed_11"].output_dir == (
+        "experiments/ensemble/member_11"
+    )
+    ensemble_cfg = load_yaml(by_label["ensemble_fno_seed_11"].config_path)
     assert ensemble_cfg["cluster_suite"]["role"] == "uncertainty_ensemble"
 
 

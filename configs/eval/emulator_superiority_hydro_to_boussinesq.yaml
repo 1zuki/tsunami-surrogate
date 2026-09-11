@@ -12,7 +12,7 @@ direction:
   model_solver: hydrostatic
   benchmark_solver: boussinesq
   model_config: configs/model/fno.yaml
-  checkpoint: experiments/fno/best.pt
+  checkpoint: experiments/fno/seed_18/best.pt
   model_raw_root: data/raw/hydrostatic/samples
   benchmark_raw_root: data/raw/boussinesq/samples
   model_processed_test_path: data/processed/hydrostatic/test/eval_dataset.npz

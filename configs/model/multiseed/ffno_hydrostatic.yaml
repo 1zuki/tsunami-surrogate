@@ -1,9 +1,9 @@
 defaults:
   - ../ffno.yaml
 
-# Seed 18 is already complete at experiments/ffno/best.pt.
+# Seed 18 is already complete at experiments/ffno/seed_18/best.pt.
 seeds: [36, 67]
-output_dir: experiments/multiseed_v2/ffno_hydrostatic
+output_dir: experiments/ffno
 
 eval:
-  output_dir: experiments/multiseed_v2/ffno_hydrostatic/eval
+  output_dir: experiments/ffno/eval

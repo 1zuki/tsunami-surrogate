@@ -1,7 +1,7 @@
 defaults:
   - fno.yaml
 
-output_dir: experiments/ffno
+output_dir: experiments/ffno/seed_18
 seed: 18
 
 data:
@@ -11,4 +11,4 @@ model:
   name: ffno2d
 
 eval:
-  output_dir: experiments/ffno/eval
+  output_dir: experiments/ffno/seed_18/eval

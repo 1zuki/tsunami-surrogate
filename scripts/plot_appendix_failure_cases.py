@@ -61,7 +61,7 @@ DEFAULT_CASES = [
         data_path=Path("data/processed/hydrostatic/test"),
         stats_path=Path("data/processed/hydrostatic/normalization_stats.json"),
         config_path=Path("configs/model/fno.yaml"),
-        checkpoint_path=Path("experiments/fno/best.pt"),
+        checkpoint_path=Path("experiments/fno/seed_18/best.pt"),
         sample_id="sample_001849",
         loader="sharded",
         expected_rel_l2=0.751,
@@ -99,7 +99,7 @@ DEFAULT_CASES = [
             "data/processed_real_bathymetry_v2/appendix_coastline_stress/hydrostatic/normalization_stats.json"
         ),
         config_path=Path("configs/model/fno.yaml"),
-        checkpoint_path=Path("experiments/fno/best.pt"),
+        checkpoint_path=Path("experiments/fno/seed_18/best.pt"),
         sample_id="sample_000001",
         loader="flat_npy",
         expected_rel_l2=0.985,

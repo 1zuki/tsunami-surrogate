@@ -1,7 +1,7 @@
 defaults:
   - fno.yaml
 
-output_dir: experiments/ufno
+output_dir: experiments/ufno/seed_18
 seed: 18
 
 data:
@@ -13,4 +13,4 @@ model:
 
 eval:
   batch_size: 8
-  output_dir: experiments/ufno/eval
+  output_dir: experiments/ufno/seed_18/eval

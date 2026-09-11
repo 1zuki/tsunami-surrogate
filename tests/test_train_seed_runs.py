@@ -36,7 +36,7 @@ FINAL_V2_MULTISEED_CONFIGS = (
 )
 
 
-def test_single_seed_preserves_existing_output_directory() -> None:
+def test_single_seed_uses_seed_directory() -> None:
     seeds, list_mode = train_script.resolve_training_seeds(
         {"seed": 42, "output_dir": "experiments/fno"}
     )
@@ -46,8 +46,24 @@ def test_single_seed_preserves_existing_output_directory() -> None:
     assert (
         train_script.seed_output_dir("experiments/fno", seeds[0], list_mode)
         .as_posix()
-        == "experiments/fno"
+        == "experiments/fno/seed_42"
     )
+
+
+def test_qualified_output_directory_is_not_nested_again() -> None:
+    assert (
+        train_script.seed_output_dir("experiments/fno/seed_18", 18, False)
+        == Path("experiments/fno/seed_18")
+    )
+    assert (
+        train_script.seed_output_dir("experiments/ensemble/member_11", 11, False)
+        == Path("experiments/ensemble/member_11")
+    )
+
+
+def test_qualified_output_directory_rejects_a_different_seed() -> None:
+    with pytest.raises(ValueError, match="qualified for a different seed"):
+        train_script.seed_output_dir("experiments/fno/seed_18", 36, False)
 
 
 def test_seed_list_uses_isolated_run_directories() -> None:
@@ -61,8 +77,8 @@ def test_seed_list_uses_isolated_run_directories() -> None:
         train_script.seed_output_dir("experiments/fno", seed, list_mode).as_posix()
         for seed in seeds
     ] == [
-        "experiments/fno/fno_seed_18",
-        "experiments/fno/fno_seed_36",
+        "experiments/fno/seed_18",
+        "experiments/fno/seed_36",
     ]
 
 
@@ -97,8 +113,8 @@ def test_main_runs_seed_list_sequentially(tmp_path, monkeypatch) -> None:
     train_script.main()
 
     assert observed == [
-        (18, "experiments/fno/fno_seed_18", "cpu", None),
-        (36, "experiments/fno/fno_seed_36", "cpu", None),
+        (18, "experiments/fno/seed_18", "cpu", None),
+        (36, "experiments/fno/seed_36", "cpu", None),
     ]
 
 
@@ -127,7 +143,7 @@ def test_main_can_select_one_seed_from_seed_list(tmp_path, monkeypatch) -> None:
     train_script.main()
 
     assert observed == [
-        (36, "experiments/fno/fno_seed_36", "cpu", None),
+        (36, "experiments/fno/seed_36", "cpu", None),
     ]
 
 
@@ -182,13 +198,13 @@ def test_multi_seed_runs_isolate_evaluation_outputs(tmp_path, monkeypatch) -> No
     assert observed == [
         (
             18,
-            "experiments/fno/fno_seed_18",
-            "experiments/fno/fno_seed_18/eval",
+            "experiments/fno/seed_18",
+            "experiments/fno/seed_18/eval",
         ),
         (
             36,
-            "experiments/fno/fno_seed_36",
-            "experiments/fno/fno_seed_36/eval",
+            "experiments/fno/seed_36",
+            "experiments/fno/seed_36/eval",
         ),
     ]
 
@@ -199,6 +215,8 @@ def test_local_model_configs_use_seed_18(config_path) -> None:
 
     assert cfg["seed"] == 18
     assert "seeds" not in cfg
+    assert cfg["output_dir"].endswith("/seed_18")
+    assert cfg["eval"]["output_dir"] == f'{cfg["output_dir"]}/eval'
 
 
 @pytest.mark.parametrize("config_path", FINAL_V2_MULTISEED_CONFIGS)
@@ -207,8 +225,9 @@ def test_final_v2_multiseed_configs_add_only_missing_seeds(config_path) -> None:
 
     assert cfg["seed"] == 18
     assert cfg["seeds"] == [36, 67]
-    assert cfg["output_dir"].startswith("experiments/multiseed_v2/")
-    assert cfg["eval"]["output_dir"].startswith("experiments/multiseed_v2/")
+    assert cfg["output_dir"].startswith("experiments/")
+    assert "/multiseed_v2/" not in cfg["output_dir"]
+    assert cfg["eval"]["output_dir"] == f'{cfg["output_dir"]}/eval'
 
 
 def test_uncertainty_ensemble_keeps_its_member_seed_protocol() -> None:
