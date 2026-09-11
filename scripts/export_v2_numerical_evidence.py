@@ -37,10 +37,32 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--contract", default="configs/eval/final_v2_suite.yaml")
     parser.add_argument("--output", required=True)
+    parser.add_argument(
+        "--production-validation-artifact",
+        default=None,
+        help="Fresh current-production validation summary.json bound to this export.",
+    )
     args = parser.parse_args()
 
     contract = load_suite_contract(args.contract)
     numerical_scope = contract.get("numerical_evidence_scope", {})
+    current_validation = None
+    if args.production_validation_artifact:
+        validation_path = Path(args.production_validation_artifact)
+        current_validation = _read_object(validation_path)
+        if (
+            current_validation.get("evaluation_type")
+            != "current_production_contract_validation"
+            or current_validation.get("status") != "passed"
+            or current_validation.get("contract_hash")
+            != contract["scientific_scope"]["contract_hash"]
+        ):
+            raise ValueError("Production validation artifact is not bound to this contract")
+        numerical_scope = {
+            **dict(numerical_scope),
+            "status": "current_production_validated",
+            "current_production_contract_validated": True,
+        }
     rows = []
     for entry in contract.get("accepted_numerical_artifacts", []):
         if not isinstance(entry, Mapping):
@@ -83,6 +105,17 @@ def main() -> None:
         "contract_path": str(args.contract),
         "contract_sha256": _sha256(ROOT / args.contract),
         "numerical_evidence_scope": dict(numerical_scope),
+        "current_production_validation": (
+            None
+            if current_validation is None
+            else {
+                "status": current_validation["status"],
+                "contract_hash": current_validation["contract_hash"],
+                "canary_count": current_validation["canary_count"],
+                "summary_path": "production_validation/summary.json",
+                "summary_sha256": _sha256(validation_path),
+            }
+        ),
         "rows": rows,
     }
     save_json(result, args.output)

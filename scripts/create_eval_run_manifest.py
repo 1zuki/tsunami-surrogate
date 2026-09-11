@@ -712,6 +712,7 @@ def build_manifest(
     include_speed: bool,
     include_paper_evidence: bool = False,
     rerun_numerical_validation: bool = False,
+    rerun_production_validation: bool = False,
     preflight: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     cells: list[dict[str, Any]] = []
@@ -1197,8 +1198,60 @@ def build_manifest(
             ]
         )
 
+    if rerun_production_validation:
+        cells.extend(
+            [
+                {
+                    "id": "production_validation:summary",
+                    "group": "production_validation",
+                    "path": "production_validation/summary.json",
+                    "evaluation_type": "current_production_contract_validation",
+                    "required_keys": [
+                        "schema_id",
+                        "status",
+                        "contract_hash",
+                        "production_lineage",
+                        "canary_count",
+                    ],
+                    "expected_values": {
+                        "status": "passed",
+                        "contract_hash": str(
+                            contract["scientific_scope"]["contract_hash"]
+                        ),
+                        "production_lineage.master_shape": [384, 384],
+                        "production_lineage.solver_input_shape": [128, 128],
+                        "production_lineage.buffered_computation_shape": [192, 192],
+                        "production_lineage.publication_shape": [64, 64],
+                    },
+                },
+                {
+                    "id": "production_validation:canaries",
+                    "group": "companion_artifacts",
+                    "path": "production_validation/canary_results.json",
+                    "file_only": True,
+                },
+                {
+                    "id": "production_validation:checksums",
+                    "group": "companion_artifacts",
+                    "path": "production_validation/SHA256SUMS.txt",
+                    "file_only": True,
+                },
+            ]
+        )
+
     if preflight is not None:
         _bind_preflight(cells, preflight)
+        production = preflight.get("current_production_validation")
+        if rerun_production_validation and isinstance(production, Mapping):
+            production_hashes = {
+                "production_validation:summary": production.get("artifact_sha256"),
+                "production_validation:canaries": production.get("canaries_sha256"),
+                "production_validation:checksums": production.get("checksums_sha256"),
+            }
+            for cell in cells:
+                expected_hash = production_hashes.get(str(cell.get("id")))
+                if expected_hash:
+                    cell["artifact_sha256"] = str(expected_hash)
 
     manifest = {
         "schema_id": "tsunami-surrogate.evaluation-run-manifest.v1",
@@ -1209,6 +1262,7 @@ def build_manifest(
         "include_speed": bool(include_speed),
         "include_paper_evidence": bool(include_paper_evidence),
         "rerun_numerical_validation": bool(rerun_numerical_validation),
+        "rerun_production_validation": bool(rerun_production_validation),
         "cells": cells,
     }
     if preflight is not None:
@@ -1228,6 +1282,7 @@ def main() -> None:
     parser.add_argument("--include-speed", action="store_true")
     parser.add_argument("--include-paper-evidence", action="store_true")
     parser.add_argument("--rerun-numerical-validation", action="store_true")
+    parser.add_argument("--rerun-production-validation", action="store_true")
     args = parser.parse_args()
 
     contract = load_suite_contract(args.contract)
@@ -1241,6 +1296,7 @@ def main() -> None:
         include_speed=bool(args.include_speed),
         include_paper_evidence=bool(args.include_paper_evidence),
         rerun_numerical_validation=bool(args.rerun_numerical_validation),
+        rerun_production_validation=bool(args.rerun_production_validation),
         preflight=preflight,
     )
     manifest["preflight_report_sha256"] = _sha256(preflight_path)

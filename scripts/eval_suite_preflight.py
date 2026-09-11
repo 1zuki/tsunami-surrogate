@@ -1125,6 +1125,105 @@ def _validate_numerical_artifacts(
     return summaries
 
 
+def _validate_current_production_validation(
+    artifact_path: str | Path,
+    *,
+    contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the fresh 384->128->192->64 production evidence bundle."""
+
+    summary_path = Path(artifact_path).resolve()
+    if summary_path.name != "summary.json" or not summary_path.is_file():
+        raise PreflightError(
+            "Current production validation must point to an existing summary.json"
+        )
+    root = summary_path.parent
+    checksum_path = root / "SHA256SUMS.txt"
+    canary_path = root / "canary_results.json"
+    if not checksum_path.is_file() or not canary_path.is_file():
+        raise PreflightError(
+            "Current production validation bundle is missing canary/checksum artifacts"
+        )
+    listed: set[str] = set()
+    for line_number, line in enumerate(
+        checksum_path.read_text(encoding="utf-8").splitlines(), 1
+    ):
+        digest, separator, relative = line.partition("  ")
+        if not separator or len(digest) != 64:
+            raise PreflightError(
+                f"Malformed production-validation checksum row: {checksum_path}:{line_number}"
+            )
+        target = root / relative
+        if not target.is_file() or sha256_file(target) != digest:
+            raise PreflightError(
+                f"Production-validation checksum mismatch: {target}"
+            )
+        listed.add(relative)
+    actual = {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file() and path.name != "SHA256SUMS.txt"
+    }
+    if listed != actual:
+        raise PreflightError(
+            "Production-validation checksum inventory does not match the bundle"
+        )
+    summary = _read_json(summary_path)
+    expected_hash = str(contract["scientific_scope"]["contract_hash"])
+    if (
+        summary.get("schema_id")
+        != "tsunami-surrogate.current-production-contract-validation.v1"
+        or summary.get("evaluation_type")
+        != "current_production_contract_validation"
+        or summary.get("status") != "passed"
+        or summary.get("contract_hash") != expected_hash
+    ):
+        raise PreflightError(
+            "Current production validation summary is missing a passing contract-bound result"
+        )
+    lineage = summary.get("production_lineage")
+    expected_lineage = {
+        "master_shape": [384, 384],
+        "solver_input_shape": [128, 128],
+        "buffered_computation_shape": [192, 192],
+        "publication_shape": [64, 64],
+        "buffer_cells": 32,
+        "solver_roster": ["swe_hydrostatic", "swe_muscl_hr", "boussinesq"],
+    }
+    if lineage != expected_lineage:
+        raise PreflightError("Current production validation lineage does not match the suite")
+    canaries = _read_json(canary_path)
+    expected_canary_count = 3
+    results = canaries.get("results")
+    if (
+        int(canaries.get("canary_count", 0)) != expected_canary_count
+        or not isinstance(results, list)
+        or len(results) != expected_canary_count
+    ):
+        raise PreflightError(
+            "Current production validation must contain exactly three canaries"
+        )
+    for result in results:
+        solvers = result.get("solvers") if isinstance(result, Mapping) else None
+        if not isinstance(solvers, list) or {
+            str(row.get("solver")) for row in solvers if isinstance(row, Mapping)
+        } != {"swe_hydrostatic", "swe_muscl_hr", "boussinesq"}:
+            raise PreflightError(
+                "Current production validation canaries do not cover all three solvers"
+            )
+    return {
+        "status": "passed",
+        "summary": "production_validation/summary.json",
+        "canaries": "production_validation/canary_results.json",
+        "checksums": "production_validation/SHA256SUMS.txt",
+        "contract_hash": expected_hash,
+        "canary_count": int(canaries["canary_count"]),
+        "artifact_sha256": sha256_file(summary_path),
+        "canaries_sha256": sha256_file(canary_path),
+        "checksums_sha256": sha256_file(checksum_path),
+    }
+
+
 def _validate_frozen_file(spec: Mapping[str, Any], *, label: str) -> Path:
     path = _repo_path(str(spec["path"]))
     if not path.is_file():
@@ -1871,6 +1970,8 @@ def run_preflight(
     require_real_bathymetry: bool,
     include_paper_evidence: bool = False,
     require_current_numerical_evidence: bool = False,
+    production_validation_artifact: str | Path | None = None,
+    production_validation_label: str = "production_validation/summary.json",
     deep_payload_audit: bool = False,
     payload_audit_workers: int = 8,
     progress_callback: Callable[[str], None] | None = None,
@@ -1882,9 +1983,16 @@ def run_preflight(
         isinstance(numerical_scope, Mapping)
         and numerical_scope.get("current_production_contract_validated", False)
     )
+    current_validation = None
+    if production_validation_artifact is not None:
+        current_validation = _validate_current_production_validation(
+            production_validation_artifact,
+            contract=contract,
+        )
+        current_validation["summary"] = str(production_validation_label)
     if (
         include_paper_evidence or require_current_numerical_evidence
-    ) and not numerical_matches_current:
+    ) and not (numerical_matches_current or current_validation is not None):
         raise PreflightError(
             "Current-production numerical verification is not complete; the "
             "accepted numerical artifacts are historical development evidence"
@@ -2098,7 +2206,18 @@ def run_preflight(
         "checkpoints": checkpoint_summaries,
         "code_state": _evaluation_code_state(),
         "accepted_numerical_artifacts": numerical,
-        "numerical_evidence_scope": dict(numerical_scope),
+        "numerical_evidence_scope": {
+            **dict(numerical_scope),
+            "current_production_contract_validated": bool(
+                numerical_matches_current or current_validation is not None
+            ),
+            "status": (
+                "current_production_validated"
+                if current_validation is not None or numerical_matches_current
+                else numerical_scope.get("status", "historical_development_only")
+            ),
+        },
+        "current_production_validation": current_validation,
         "generation_configs": generation_configs,
         "auxiliary_generation_configs": auxiliary_generation_configs,
         "frozen_generation_artifacts": generation,
@@ -2128,6 +2247,15 @@ def main() -> None:
             "Refuse historical numerical evidence when a fresh "
             "production-matched validation chain is required."
         ),
+    )
+    parser.add_argument(
+        "--production-validation-artifact",
+        default=None,
+        help="Fresh current-production validation summary.json to bind into preflight.",
+    )
+    parser.add_argument(
+        "--production-validation-label",
+        default="production_validation/summary.json",
     )
     parser.add_argument(
         "--deep-payload-audit",
@@ -2160,6 +2288,8 @@ def main() -> None:
         require_current_numerical_evidence=bool(
             args.require_current_numerical_evidence
         ),
+        production_validation_artifact=args.production_validation_artifact,
+        production_validation_label=str(args.production_validation_label),
         require_real_bathymetry=not bool(args.allow_missing_real_bathymetry),
         deep_payload_audit=bool(args.deep_payload_audit),
         payload_audit_workers=int(args.payload_audit_workers),

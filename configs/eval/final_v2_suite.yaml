@@ -42,8 +42,76 @@ main_datasets:
       raw_root: data/test/raw
       generation_config: configs/data/dataset_test.yaml
   frozen_generation_artifacts:
-    status: pending_fresh_generation
-    note: Populate hashes and per-split code-state hashes after the corrected train, validation, and test artifacts are complete.
+    status: frozen
+    frozen_at: 2026-09-10
+    code_state_policy: generated_artifacts_are_bound_to_the_recorded_generation_code_state
+    note: These hashes describe the completed 384-to-128-to-192-to-64 production rebuild. The older common-time-v2 H0/A/B/H1/H2 artifacts remain historical because they use the earlier 0.175-time, 96-grid candidate.
+    train:
+      config_snapshot:
+        path: data/train/raw/dataset_config.snapshot.yaml
+        sha256: f0f6e08798ae9e55f78b3a211a11232eeea84a9e9b3e0c11bccbc52d6a464242
+      scenario_manifest:
+        path: data/train/synthetic/scenario_manifest.jsonl
+        sha256: 44f229476c62e98f1f64eda3cb7ad94e7eadbcb29d2e1c159bdada99e1798e35
+      solver_manifests:
+        hydrostatic:
+          path: data/train/synthetic/hydrostatic_manifest.jsonl
+          sha256: 841dcd7551de681efecfe1194ae2f7c1116d57a6fb0d40dd96878dd679834744
+        muscl_hr:
+          path: data/train/synthetic/muscl_hr_manifest.jsonl
+          sha256: 9ee82a9b1693c376ebfa9f6d3ecd9d566bf222bd281c397177b0919ba37c0e8d
+        boussinesq:
+          path: data/train/synthetic/boussinesq_manifest.jsonl
+          sha256: 75401fa99917942523bc0569deded68165745a9ed35232ce8f43fab5ae50a14f
+      operational_shard:
+        path: data/train/raw/operational_shards/train_000001_010000.json
+        sha256: 9ce049ea1aa9e395b3fad05aa0a2c739308190e71c1554696d1282cc01a1b6e7
+        publications: 30000
+      code_state_hash: 1f3bcac9fcae0e40776b78d300c063327ed187caf2110bf54f92bfa8dfb746c8
+    val:
+      config_snapshot:
+        path: data/eval/raw/dataset_config.snapshot.yaml
+        sha256: 3bc0dbf20e11853dadacdb7a0bcc29849b82d711bdeaf28f7c9891f43cdae825
+      scenario_manifest:
+        path: data/eval/synthetic/scenario_manifest.jsonl
+        sha256: 7211abb9ce9374bcfdde1d238223fba96ada90e43622d15847ce150dd086d5e3
+      solver_manifests:
+        hydrostatic:
+          path: data/eval/synthetic/hydrostatic_manifest.jsonl
+          sha256: c7e006b8e9368239f89d28841f7d75ffc9eb20bc86544fe1d53cb5b4b4f1257a
+        muscl_hr:
+          path: data/eval/synthetic/muscl_hr_manifest.jsonl
+          sha256: 3be5bff185c58dc68af6454d961a45d2b63305e0beed90f676c3513fbbb5f8b2
+        boussinesq:
+          path: data/eval/synthetic/boussinesq_manifest.jsonl
+          sha256: 262bea858bca5d10e62fee39c0a44b53ef64f9e3c5f5458b35be863e68154c6a
+      operational_shard:
+        path: data/eval/raw/operational_shards/eval_000001_001000.json
+        sha256: 2ad37518c2866654a32029b15fb263e3bed18ba9d98bc06eba25b3ecd7a5b0fc
+        publications: 3000
+      code_state_hash: 1f3bcac9fcae0e40776b78d300c063327ed187caf2110bf54f92bfa8dfb746c8
+    test:
+      config_snapshot:
+        path: data/test/raw/dataset_config.snapshot.yaml
+        sha256: 4c2a389a034285ac1c57fbd038de92e27b1246b34f8b18ce7c931bc0342ff800
+      scenario_manifest:
+        path: data/test/synthetic/scenario_manifest.jsonl
+        sha256: 8c5736aa42039e211fb6d3769569a6da602987d204767ea046f89380ee0176d1
+      solver_manifests:
+        hydrostatic:
+          path: data/test/synthetic/hydrostatic_manifest.jsonl
+          sha256: 4fac021dc51e5dc012dbea93b2a24741de41e5c2dd4c8b6e61034242659a704b
+        muscl_hr:
+          path: data/test/synthetic/muscl_hr_manifest.jsonl
+          sha256: f993ed38e80dec364a905e7a92bf3c0ec333594ceb71cd041d2511ae8414f84c
+        boussinesq:
+          path: data/test/synthetic/boussinesq_manifest.jsonl
+          sha256: 29c39411f07300956620c576f51382eb4912f74854a5d42bdde22e93e66e5f6a
+      operational_shard:
+        path: data/test/raw/operational_shards/test_000001_002500.json
+        sha256: d159951333b4dc9921d7c495d12be63ab3b4bb22215b1159f80e7e1bc0e365bc
+        publications: 7500
+      code_state_hash: 1f3bcac9fcae0e40776b78d300c063327ed187caf2110bf54f92bfa8dfb746c8
 
 numerical_evidence_scope:
   status: historical_development_only
@@ -94,100 +162,100 @@ direct_models:
   - id: fno
     reference: hydrostatic
     config: configs/model/fno.yaml
-    checkpoint: experiments/fno/best.pt
+    checkpoint: experiments/fno/seed_18/best.pt
     analyses: [accuracy, perframe, physics]
   - id: ffno
     reference: hydrostatic
     config: configs/model/ffno.yaml
-    checkpoint: experiments/ffno/best.pt
+    checkpoint: experiments/ffno/seed_18/best.pt
     analyses: [accuracy, perframe, physics]
   - id: cnn
     reference: hydrostatic
     config: configs/model/cnn.yaml
-    checkpoint: experiments/cnn/best.pt
+    checkpoint: experiments/cnn/seed_18/best.pt
     analyses: [accuracy, perframe, physics]
   - id: unet
     reference: hydrostatic
     config: configs/model/unet.yaml
-    checkpoint: experiments/unet/best.pt
+    checkpoint: experiments/unet/seed_18/best.pt
     analyses: [accuracy, perframe, physics]
   - id: convlstm
     reference: hydrostatic
     config: configs/model/convlstm.yaml
-    checkpoint: experiments/convlstm/best.pt
+    checkpoint: experiments/convlstm/seed_18/best.pt
     analyses: [accuracy, perframe, physics]
   - id: ufno
     reference: hydrostatic
     config: configs/model/ufno.yaml
-    checkpoint: experiments/ufno/best.pt
+    checkpoint: experiments/ufno/seed_18/best.pt
     analyses: [accuracy, perframe, physics]
   - id: wno
     reference: hydrostatic
     config: configs/model/wno.yaml
-    checkpoint: experiments/wno/best.pt
+    checkpoint: experiments/wno/seed_18/best.pt
     analyses: [accuracy, perframe, physics]
   - id: fno_modes8
     reference: hydrostatic
     config: configs/model/fno_modes8.yaml
-    checkpoint: experiments/fno_modes8/best.pt
+    checkpoint: experiments/fno_modes8/seed_18/best.pt
     analyses: [accuracy, perframe, physics]
   - id: fno_modes20
     reference: hydrostatic
     config: configs/model/fno_modes20.yaml
-    checkpoint: experiments/fno_modes20/best.pt
+    checkpoint: experiments/fno_modes20/seed_18/best.pt
     analyses: [accuracy, perframe, physics]
   - id: fno_muscl_hr
     reference: muscl_hr
     config: configs/model/fno_muscl_hr.yaml
-    checkpoint: experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
+    checkpoint: experiments/fno_muscl_hr/seed_18/best.pt
     analyses: [accuracy, perframe, physics]
   - id: fno_boussinesq
     reference: boussinesq
     config: configs/model/fno_boussinesq.yaml
-    checkpoint: experiments/fno_boussinesq/best.pt
+    checkpoint: experiments/fno_boussinesq/seed_18/best.pt
     analyses: [accuracy, perframe, physics]
 
 window_models:
   - id: fno_window5_hydrostatic
     reference: hydrostatic
     config: configs/model/fno_window5_hydrostatic.yaml
-    checkpoint: experiments/fno_window5_hydrostatic/best.pt
+    checkpoint: experiments/fno_window5_hydrostatic/seed_18/best.pt
   - id: ffno_window5_hydrostatic
     reference: hydrostatic
     config: configs/model/ffno_window5_hydrostatic.yaml
-    checkpoint: experiments/ffno_window5_hydrostatic/best.pt
+    checkpoint: experiments/ffno_window5_hydrostatic/seed_18/best.pt
 
 sample_scaling:
   - id: n_000100
     train_samples: 100
     roster_sha256: 478c0ab96be55c15b553d08a9ef1b51def587f12eb9beb99e005f52031793e1d
     config: experiments/sample_scaling/configs/fno_n_000100.yaml
-    checkpoint: experiments/sample_scaling/n_000100/best.pt
+    checkpoint: experiments/sample_scaling/n_000100/seed_18/best.pt
   - id: n_000250
     train_samples: 250
     roster_sha256: 71f525d15934a4f653a2648b464c0b92afd55350bf91a4ce6c58792885a4056b
     config: experiments/sample_scaling/configs/fno_n_000250.yaml
-    checkpoint: experiments/sample_scaling/n_000250/best.pt
+    checkpoint: experiments/sample_scaling/n_000250/seed_18/best.pt
   - id: n_000500
     train_samples: 500
     roster_sha256: cca6040248f484f9feaec576fcb29f03eb049b3ae6a21c596ad513a5b06ff891
     config: experiments/sample_scaling/configs/fno_n_000500.yaml
-    checkpoint: experiments/sample_scaling/n_000500/best.pt
+    checkpoint: experiments/sample_scaling/n_000500/seed_18/best.pt
   - id: n_001000
     train_samples: 1000
     roster_sha256: 7c0f3682dbd9314be1eef90dff6962ed1b4fd559e094c0d51e5b6a203a403728
     config: experiments/sample_scaling/configs/fno_n_001000.yaml
-    checkpoint: experiments/sample_scaling/n_001000/best.pt
+    checkpoint: experiments/sample_scaling/n_001000/seed_18/best.pt
   - id: n_002500
     train_samples: 2500
     roster_sha256: 4c3442b4430f2875fde54d3255fe9f7311391fd580e71f2c892ad8484ee33d58
     config: experiments/sample_scaling/configs/fno_n_002500.yaml
-    checkpoint: experiments/sample_scaling/n_002500/best.pt
+    checkpoint: experiments/sample_scaling/n_002500/seed_18/best.pt
   - id: n_005000
     train_samples: 5000
     roster_sha256: 996f7a257755ae8663e9fe7b688b0858bda91246ca52e016ee001db3bf4e8cf2
     config: experiments/sample_scaling/configs/fno_n_005000.yaml
-    checkpoint: experiments/sample_scaling/n_005000/best.pt
+    checkpoint: experiments/sample_scaling/n_005000/seed_18/best.pt
 
 native_muscl_rosters:
   train: dd8b4d564243c235abee6914e2a9007d0d64b8843d64513658448db6807ab6b3
@@ -198,23 +266,23 @@ native_muscl:
   - id: res32
     grid: 32
     config: configs/model/fno_res32_muscl_hr.yaml
-    checkpoint: experiments/fno_res32_muscl_hr/best.pt
+    checkpoint: experiments/fno_res32_muscl_hr/seed_18/best.pt
     processed_root: data/processed_res32/muscl_hr
     counts: {train: 700, val: 150, test: 150}
   - id: res64
     grid: 64
     config: configs/model/fno_res64_muscl_hr.yaml
-    checkpoint: experiments/fno_res64_muscl_hr/best.pt
+    checkpoint: experiments/fno_res64_muscl_hr/seed_18/best.pt
     processed_root: data/processed_res64/muscl_hr
     counts: {train: 700, val: 150, test: 150}
   - id: res128
     grid: 128
     config: configs/model/fno_res128_muscl_hr.yaml
-    checkpoint: experiments/fno_res128_muscl_hr/best.pt
+    checkpoint: experiments/fno_res128_muscl_hr/seed_18/best.pt
     processed_root: data/processed_res128/muscl_hr
     counts: {train: 700, val: 150, test: 150}
 
-strict_holdout_full_checkpoint: experiments/fno/best.pt
+strict_holdout_full_checkpoint: experiments/fno/seed_18/best.pt
 strict_holdouts:
   - id: bathymetry_trench
     checkpoint: experiments/fno_holdout/bathymetry_trench/best.pt
@@ -256,17 +324,17 @@ real_bathymetry:
   direct:
     - id: fno
       config: configs/eval/real_bathymetry_hydrostatic.yaml
-      checkpoint: experiments/fno/best.pt
+      checkpoint: experiments/fno/seed_18/best.pt
     - id: ffno
       config: configs/eval/real_bathymetry_ffno_hydrostatic.yaml
-      checkpoint: experiments/ffno/best.pt
+      checkpoint: experiments/ffno/seed_18/best.pt
   window:
     - id: fno_window5_hydrostatic
       config: configs/eval/window5_real_bathymetry_hydrostatic.yaml
-      checkpoint: experiments/fno_window5_hydrostatic/best.pt
+      checkpoint: experiments/fno_window5_hydrostatic/seed_18/best.pt
     - id: ffno_window5_hydrostatic
       config: configs/eval/ffno_window5_real_bathymetry_hydrostatic.yaml
-      checkpoint: experiments/ffno_window5_hydrostatic/best.pt
+      checkpoint: experiments/ffno_window5_hydrostatic/seed_18/best.pt
 
 ensemble:
   required_members: [11, 22, 33, 44, 55, 66, 77]
@@ -294,31 +362,31 @@ paper_evidence:
     - id: fno_hydrostatic
       reference: hydrostatic
       config: configs/model/fno.yaml
-      checkpoint: experiments/fno/best.pt
+      checkpoint: experiments/fno/seed_18/best.pt
       dataset: data/processed/hydrostatic/test
     - id: fno_muscl_hr
       reference: muscl_hr
       config: configs/model/fno_muscl_hr.yaml
-      checkpoint: experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
+      checkpoint: experiments/fno_muscl_hr/seed_18/best.pt
       dataset: data/processed/muscl_hr/test
     - id: fno_boussinesq
       reference: boussinesq
       config: configs/model/fno_boussinesq.yaml
-      checkpoint: experiments/fno_boussinesq/best.pt
+      checkpoint: experiments/fno_boussinesq/seed_18/best.pt
       dataset: data/processed/boussinesq/test
   window_slice_models:
     - id: fno_window5_hydrostatic
       config: configs/model/fno_window5_hydrostatic.yaml
-      checkpoint: experiments/fno_window5_hydrostatic/best.pt
+      checkpoint: experiments/fno_window5_hydrostatic/seed_18/best.pt
       dataset: data/processed/hydrostatic/test
     - id: ffno_window5_hydrostatic
       config: configs/model/ffno_window5_hydrostatic.yaml
-      checkpoint: experiments/ffno_window5_hydrostatic/best.pt
+      checkpoint: experiments/ffno_window5_hydrostatic/seed_18/best.pt
       dataset: data/processed/hydrostatic/test
   proxy_resolution:
     id: fno_hydrostatic
     config: configs/eval/resolution_transfer_proxy_hydrostatic.yaml
-    checkpoint: experiments/fno/best.pt
+    checkpoint: experiments/fno/seed_18/best.pt
     dataset: data/processed/hydrostatic/test
     grids: [32, 64, 128]
   native_transfer:
@@ -329,9 +397,9 @@ paper_evidence:
       - configs/model/fno_res64_muscl_hr.yaml
       - configs/model/fno_res128_muscl_hr.yaml
     checkpoints:
-      - experiments/fno_res32_muscl_hr/best.pt
-      - experiments/fno_res64_muscl_hr/best.pt
-      - experiments/fno_res128_muscl_hr/best.pt
+      - experiments/fno_res32_muscl_hr/seed_18/best.pt
+      - experiments/fno_res64_muscl_hr/seed_18/best.pt
+      - experiments/fno_res128_muscl_hr/seed_18/best.pt
     datasets:
       - data/processed_res32/muscl_hr/test
       - data/processed_res64/muscl_hr/test
@@ -340,15 +408,15 @@ paper_evidence:
     models:
       - reference: hydrostatic
         config: configs/model/fno.yaml
-        checkpoint: experiments/fno/best.pt
+        checkpoint: experiments/fno/seed_18/best.pt
         dataset: data/processed/hydrostatic/test
       - reference: muscl_hr
         config: configs/model/fno_muscl_hr.yaml
-        checkpoint: experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
+        checkpoint: experiments/fno_muscl_hr/seed_18/best.pt
         dataset: data/processed/muscl_hr/test
       - reference: boussinesq
         config: configs/model/fno_boussinesq.yaml
-        checkpoint: experiments/fno_boussinesq/best.pt
+        checkpoint: experiments/fno_boussinesq/seed_18/best.pt
         dataset: data/processed/boussinesq/test
   wave_metrics:
     gauges:
@@ -367,17 +435,17 @@ paper_evidence:
       - id: fno_hydrostatic
         reference: hydrostatic
         config: configs/model/fno.yaml
-        checkpoint: experiments/fno/best.pt
+        checkpoint: experiments/fno/seed_18/best.pt
         dataset: data/processed/hydrostatic/test
       - id: fno_muscl_hr
         reference: muscl_hr
         config: configs/model/fno_muscl_hr.yaml
-        checkpoint: experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
+        checkpoint: experiments/fno_muscl_hr/seed_18/best.pt
         dataset: data/processed/muscl_hr/test
       - id: fno_boussinesq
         reference: boussinesq
         config: configs/model/fno_boussinesq.yaml
-        checkpoint: experiments/fno_boussinesq/best.pt
+        checkpoint: experiments/fno_boussinesq/seed_18/best.pt
         dataset: data/processed/boussinesq/test
   ensemble:
     config: configs/model/fno.yaml

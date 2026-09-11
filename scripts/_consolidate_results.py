@@ -434,6 +434,13 @@ def _validate_cell(
             f"Result path escapes run root for cell {cell.get('id')}: "
             f"{relative_path}"
         )
+    expected_artifact_sha256 = cell.get("artifact_sha256")
+    if expected_artifact_sha256 is not None and (
+        not path.is_file() or _sha256(path) != str(expected_artifact_sha256)
+    ):
+        raise ConsolidationError(
+            f"Artifact checksum changed after preflight for cell {cell.get('id')}"
+        )
     if bool(cell.get("file_only", False)):
         if not path.is_file():
             raise ConsolidationError(

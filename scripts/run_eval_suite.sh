@@ -19,6 +19,7 @@ INCLUDE_REAL_BATHYMETRY=1
 INCLUDE_SPEED=0
 INCLUDE_PAPER_EVIDENCE=0
 RERUN_NUMERICAL_VALIDATION=0
+RERUN_PRODUCTION_VALIDATION=0
 DEEP_PAYLOAD_AUDIT=0
 NUMERICAL_WORKERS="${NUMERICAL_WORKERS:-8}"
 GEOCLAW_WORKERS="${GEOCLAW_WORKERS:-4}"
@@ -42,7 +43,8 @@ Options:
   --include-paper-evidence   Regenerate all currently supported v2 paper metrics.
                              Implies --include-ensemble.
   --rerun-numerical-validation
-                             Run a fresh isolated H0/A/B/H1/H2 regression chain.
+                             Run the fresh current-production validation and
+                             archive the historical H0/A/B/H1/H2 regression.
   --deep-payload-audit       Re-hash/reopen all raw v2 payloads during preflight.
   --device cpu|cuda|auto     Override DEVICE for neural-model evaluation.
 
@@ -73,9 +75,11 @@ while [ "$#" -gt 0 ]; do
     --include-paper-evidence)
       INCLUDE_PAPER_EVIDENCE=1
       INCLUDE_ENSEMBLE=1
+      RERUN_PRODUCTION_VALIDATION=1
       ;;
     --rerun-numerical-validation)
       RERUN_NUMERICAL_VALIDATION=1
+      RERUN_PRODUCTION_VALIDATION=1
       ;;
     --deep-payload-audit)
       DEEP_PAYLOAD_AUDIT=1
@@ -139,9 +143,6 @@ fi
 if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
   PREFLIGHT_ARGS+=(--include-paper-evidence)
 fi
-if [ "$RERUN_NUMERICAL_VALIDATION" = 1 ]; then
-  PREFLIGHT_ARGS+=(--require-current-numerical-evidence)
-fi
 if [ "$INCLUDE_REAL_BATHYMETRY" = 0 ]; then
   PREFLIGHT_ARGS+=(--allow-missing-real-bathymetry)
 fi
@@ -150,16 +151,11 @@ if [ "$DEEP_PAYLOAD_AUDIT" = 1 ]; then
 fi
 
 if [ "$EXECUTE" = 0 ]; then
-  "${PREFLIGHT_ARGS[@]}"
-  if [ "$RERUN_NUMERICAL_VALIDATION" = 1 ]; then
-    "$PY" scripts/run_numerical_validation_chain.py \
-      --preflight \
-      --output-root "$STAGING_ROOT/numerical_validation" \
-      --claw-root "$CLAW_ROOT" \
-      --petsc-dir "$PETSC_DIR" \
-      --petsc-arch "$PETSC_ARCH" \
-      --geoclaw-python "$GEOCLAW_PYTHON"
+  if [ "$RERUN_PRODUCTION_VALIDATION" = 1 ]; then
+    echo "Production validation is an execution step and requires --execute with a fresh --run-id." >&2
+    exit 2
   fi
+  "${PREFLIGHT_ARGS[@]}"
   echo
   echo "Preflight passed. No files were created and no evaluation was run."
   echo "To execute, choose a permanent run ID:"
@@ -184,9 +180,36 @@ cleanup_preflight_tmp() {
 }
 trap cleanup_preflight_tmp EXIT
 mkdir -p evaluation_runs
+PRODUCTION_VALIDATION_TMP="evaluation_runs/.${RUN_ID}.production-validation-${$}"
+cleanup_production_validation_tmp() {
+  if [ -e "$PRODUCTION_VALIDATION_TMP" ]; then
+    rm -rf "$PRODUCTION_VALIDATION_TMP"
+  fi
+}
+trap 'cleanup_preflight_tmp; cleanup_production_validation_tmp' EXIT
+if [ "$RERUN_PRODUCTION_VALIDATION" = 1 ]; then
+  echo "########## CURRENT PRODUCTION-CONTRACT VALIDATION ##########"
+  PRODUCTION_VALIDATION_ARGS=(
+    "$PY" scripts/run_production_contract_validation.py
+    --contract "$CONTRACT"
+    --output-root "$PRODUCTION_VALIDATION_TMP"
+  )
+  if [ "$DEEP_PAYLOAD_AUDIT" = 1 ]; then
+    PRODUCTION_VALIDATION_ARGS+=(--deep-payload-audit)
+  fi
+  "${PRODUCTION_VALIDATION_ARGS[@]}"
+  PREFLIGHT_ARGS+=(
+    --require-current-numerical-evidence
+    --production-validation-artifact "$PRODUCTION_VALIDATION_TMP/summary.json"
+    --production-validation-label "production_validation/summary.json"
+  )
+fi
 "${PREFLIGHT_ARGS[@]}" --report "$PREFLIGHT_TMP"
 
 mkdir "$STAGING_ROOT"
+if [ "$RERUN_PRODUCTION_VALIDATION" = 1 ]; then
+  mv "$PRODUCTION_VALIDATION_TMP" "$STAGING_ROOT/production_validation"
+fi
 mv "$PREFLIGHT_TMP" "$STAGING_ROOT/preflight_report.json"
 trap - EXIT
 
@@ -212,6 +235,9 @@ fi
 if [ "$RERUN_NUMERICAL_VALIDATION" = 1 ]; then
   MANIFEST_ARGS+=(--rerun-numerical-validation)
 fi
+if [ "$RERUN_PRODUCTION_VALIDATION" = 1 ]; then
+  MANIFEST_ARGS+=(--rerun-production-validation)
+fi
 "${MANIFEST_ARGS[@]}"
 
 run() {
@@ -229,7 +255,8 @@ if [ "$RERUN_NUMERICAL_VALIDATION" = 1 ]; then
     --claw-root "$CLAW_ROOT" \
     --petsc-dir "$PETSC_DIR" \
     --petsc-arch "$PETSC_ARCH" \
-    --geoclaw-python "$GEOCLAW_PYTHON"
+    --geoclaw-python "$GEOCLAW_PYTHON" \
+    --allow-unvalidated-contract
 fi
 
 DIRECT_IDS=(
@@ -250,17 +277,17 @@ DIRECT_CONFIGS=(
   configs/model/fno_boussinesq.yaml
 )
 DIRECT_CHECKPOINTS=(
-  experiments/fno/best.pt
-  experiments/ffno/best.pt
-  experiments/cnn/best.pt
-  experiments/unet/best.pt
-  experiments/convlstm/best.pt
-  experiments/ufno/best.pt
-  experiments/wno/best.pt
-  experiments/fno_modes8/best.pt
-  experiments/fno_modes20/best.pt
-  experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
-  experiments/fno_boussinesq/best.pt
+  experiments/fno/seed_18/best.pt
+  experiments/ffno/seed_18/best.pt
+  experiments/cnn/seed_18/best.pt
+  experiments/unet/seed_18/best.pt
+  experiments/convlstm/seed_18/best.pt
+  experiments/ufno/seed_18/best.pt
+  experiments/wno/seed_18/best.pt
+  experiments/fno_modes8/seed_18/best.pt
+  experiments/fno_modes20/seed_18/best.pt
+  experiments/fno_muscl_hr/seed_18/best.pt
+  experiments/fno_boussinesq/seed_18/best.pt
 )
 
 echo "########## DIRECT COMMON-TIME-V2 EVALUATIONS ##########"
@@ -289,8 +316,8 @@ WINDOW_CONFIGS=(
   configs/model/ffno_window5_hydrostatic.yaml
 )
 WINDOW_CHECKPOINTS=(
-  experiments/fno_window5_hydrostatic/best.pt
-  experiments/ffno_window5_hydrostatic/best.pt
+  experiments/fno_window5_hydrostatic/seed_18/best.pt
+  experiments/ffno_window5_hydrostatic/seed_18/best.pt
 )
 for i in "${!WINDOW_IDS[@]}"; do
   model="${WINDOW_IDS[$i]}"
@@ -336,24 +363,24 @@ if [ "$INCLUDE_REAL_BATHYMETRY" = 1 ]; then
   mkdir -p "$STAGING_ROOT/real_bathymetry/direct"
   run "$PY" scripts/eval_full_resolution.py \
     --config configs/eval/real_bathymetry_hydrostatic.yaml \
-    --checkpoint experiments/fno/best.pt \
+    --checkpoint experiments/fno/seed_18/best.pt \
     --device "$DEVICE" \
     --output "$STAGING_ROOT/real_bathymetry/direct/fno.json"
   run "$PY" scripts/eval_full_resolution.py \
     --config configs/eval/real_bathymetry_ffno_hydrostatic.yaml \
-    --checkpoint experiments/ffno/best.pt \
+    --checkpoint experiments/ffno/seed_18/best.pt \
     --device "$DEVICE" \
     --output "$STAGING_ROOT/real_bathymetry/direct/ffno.json"
 
   mkdir -p "$STAGING_ROOT/real_bathymetry/window"
   run "$PY" scripts/eval_window_suites.py \
     --config configs/eval/window5_real_bathymetry_hydrostatic.yaml \
-    --checkpoint experiments/fno_window5_hydrostatic/best.pt \
+    --checkpoint experiments/fno_window5_hydrostatic/seed_18/best.pt \
     --device "$DEVICE" \
     --output "$STAGING_ROOT/real_bathymetry/window/fno_window5_hydrostatic.json"
   run "$PY" scripts/eval_window_suites.py \
     --config configs/eval/ffno_window5_real_bathymetry_hydrostatic.yaml \
-    --checkpoint experiments/ffno_window5_hydrostatic/best.pt \
+    --checkpoint experiments/ffno_window5_hydrostatic/seed_18/best.pt \
     --device "$DEVICE" \
     --output "$STAGING_ROOT/real_bathymetry/window/ffno_window5_hydrostatic.json"
 fi
@@ -403,6 +430,7 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
 
   run "$PY" scripts/export_v2_numerical_evidence.py \
     --contract "$CONTRACT" \
+    --production-validation-artifact "$STAGING_ROOT/production_validation/summary.json" \
     --output "$PAPER_ROOT/numerical_evidence.json"
 
   PAPER_DIRECT_IDS=(fno_hydrostatic fno_muscl_hr fno_boussinesq)
@@ -412,9 +440,9 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
     configs/model/fno_boussinesq.yaml
   )
   PAPER_DIRECT_CHECKPOINTS=(
-    experiments/fno/best.pt
-    experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt
-    experiments/fno_boussinesq/best.pt
+    experiments/fno/seed_18/best.pt
+    experiments/fno_muscl_hr/seed_18/best.pt
+    experiments/fno_boussinesq/seed_18/best.pt
   )
   PAPER_DIRECT_DATASETS=(
     data/processed/hydrostatic/test
@@ -438,7 +466,7 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
   for group in source_type bathymetry_type; do
     run "$PY" scripts/eval_v2_slices.py \
       --config configs/model/fno.yaml \
-      --checkpoint experiments/fno/best.pt \
+      --checkpoint experiments/fno/seed_18/best.pt \
       --dataset data/processed/hydrostatic/test \
       --group-by "$group" \
       --device "$DEVICE" \
@@ -451,8 +479,8 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
     configs/model/ffno_window5_hydrostatic.yaml
   )
   PAPER_WINDOW_CHECKPOINTS=(
-    experiments/fno_window5_hydrostatic/best.pt
-    experiments/ffno_window5_hydrostatic/best.pt
+    experiments/fno_window5_hydrostatic/seed_18/best.pt
+    experiments/ffno_window5_hydrostatic/seed_18/best.pt
   )
   for i in "${!PAPER_WINDOW_IDS[@]}"; do
     model="${PAPER_WINDOW_IDS[$i]}"
@@ -468,7 +496,7 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
 
   run "$PY" scripts/eval_resolution_transfer.py \
     --config configs/eval/resolution_transfer_proxy_hydrostatic.yaml \
-    --checkpoint experiments/fno/best.pt \
+    --checkpoint experiments/fno/seed_18/best.pt \
     --device "$DEVICE" \
     --output "$PAPER_ROOT/resolution/proxy_hydrostatic.json"
   run "$PY" scripts/eval_v2_native_transfer.py \
@@ -478,9 +506,9 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
 
   run "$PY" scripts/eval_v2_reference_analysis.py \
     --contract "$CONTRACT" \
-    --model "hydrostatic|configs/model/fno.yaml|experiments/fno/best.pt|data/processed/hydrostatic/test" \
-    --model "muscl_hr|configs/model/fno_muscl_hr.yaml|experiments/fno_muscl_hr/fno_muscl_hr_seed_18/best.pt|data/processed/muscl_hr/test" \
-    --model "boussinesq|configs/model/fno_boussinesq.yaml|experiments/fno_boussinesq/best.pt|data/processed/boussinesq/test" \
+    --model "hydrostatic|configs/model/fno.yaml|experiments/fno/seed_18/best.pt|data/processed/hydrostatic/test" \
+    --model "muscl_hr|configs/model/fno_muscl_hr.yaml|experiments/fno_muscl_hr/seed_18/best.pt|data/processed/muscl_hr/test" \
+    --model "boussinesq|configs/model/fno_boussinesq.yaml|experiments/fno_boussinesq/seed_18/best.pt|data/processed/boussinesq/test" \
     --bootstrap-seed 20260813 \
     --bootstrap-resamples 2000 \
     --device "$DEVICE" \

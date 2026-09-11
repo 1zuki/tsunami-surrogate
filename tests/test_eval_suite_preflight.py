@@ -172,3 +172,80 @@ def test_manual_training_completion_rejects_changed_checkpoint(
             best_path=paths["best"],
             last_path=paths["last"],
         )
+
+
+def _write_production_validation_bundle(
+    root: Path,
+    *,
+    canary_count: int = 3,
+) -> tuple[dict[str, Any], Path]:
+    contract_hash = "a" * 64
+    solvers = ("swe_hydrostatic", "swe_muscl_hr", "boussinesq")
+    results = [
+        {
+            "scenario_id": f"scenario_{index:06d}",
+            "solvers": [{"solver": solver} for solver in solvers],
+        }
+        for index in range(1, canary_count + 1)
+    ]
+    canaries = {"canary_count": canary_count, "results": results}
+    summary = {
+        "schema_id": "tsunami-surrogate.current-production-contract-validation.v1",
+        "evaluation_type": "current_production_contract_validation",
+        "status": "passed",
+        "contract_hash": contract_hash,
+        "production_lineage": {
+            "master_shape": [384, 384],
+            "solver_input_shape": [128, 128],
+            "buffered_computation_shape": [192, 192],
+            "publication_shape": [64, 64],
+            "buffer_cells": 32,
+            "solver_roster": list(solvers),
+        },
+    }
+    root.mkdir()
+    summary_path = root / "summary.json"
+    canary_path = root / "canary_results.json"
+    summary_path.write_text(json.dumps(summary), encoding="utf-8")
+    canary_path.write_text(json.dumps(canaries), encoding="utf-8")
+    (root / "SHA256SUMS.txt").write_text(
+        "".join(
+            f"{sha256_file(path)}  {path.name}\n"
+            for path in (canary_path, summary_path)
+        ),
+        encoding="utf-8",
+    )
+    return {"scientific_scope": {"contract_hash": contract_hash}}, summary_path
+
+
+def test_current_production_validation_accepts_complete_bundle(
+    tmp_path: Path,
+) -> None:
+    contract, summary_path = _write_production_validation_bundle(tmp_path / "bundle")
+
+    result = eval_suite_preflight._validate_current_production_validation(
+        summary_path,
+        contract=contract,
+    )
+
+    assert result["status"] == "passed"
+    assert result["canary_count"] == 3
+    assert result["contract_hash"] == "a" * 64
+
+
+def test_current_production_validation_rejects_partial_canary_bundle(
+    tmp_path: Path,
+) -> None:
+    contract, summary_path = _write_production_validation_bundle(
+        tmp_path / "bundle",
+        canary_count=2,
+    )
+
+    with pytest.raises(
+        eval_suite_preflight.PreflightError,
+        match="exactly three canaries",
+    ):
+        eval_suite_preflight._validate_current_production_validation(
+            summary_path,
+            contract=contract,
+        )
