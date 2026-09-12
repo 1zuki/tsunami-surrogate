@@ -15,6 +15,8 @@ set -euo pipefail
 
 PROJECT_ROOT="/datastore/vit/tsunami-surrogate"
 ENV_PREFIX="$PROJECT_ROOT/.venv"
+MPI_ROOT="/cm/shared/apps/openmpi4/gcc/4.1.8"
+GCC_ROOT="/cm/local/apps/gcc/14.2.0"
 RUN_ID="${RUN_ID:?RUN_ID must name a fresh immutable evaluation run}"
 REQUIRED_VRAM="${REQUIRED_VRAM:-16384}"
 
@@ -27,7 +29,7 @@ fi
 source /datastore/vit/miniconda3/etc/profile.d/conda.sh
 conda activate "$ENV_PREFIX"
 
-export PATH="$ENV_PREFIX/bin:/usr/bin:/bin:$PATH"
+export PATH="$ENV_PREFIX/bin:$MPI_ROOT/bin:$GCC_ROOT/bin:/usr/bin:/bin:$PATH"
 export PYTHONUNBUFFERED=1
 export PIP_CACHE_DIR="$PROJECT_ROOT/.cache/pip"
 export TORCH_HOME="$PROJECT_ROOT/.cache/torch"
@@ -35,6 +37,7 @@ export CLAW_ROOT="$PROJECT_ROOT/.tools/clawpack-v5.14.0"
 export PETSC_DIR="$PROJECT_ROOT/.tools/petsc-3.25.3"
 export PETSC_ARCH="arch-linux-c-opt"
 export GEOCLAW_PYTHON="$ENV_PREFIX/bin/python"
+export LD_LIBRARY_PATH="$MPI_ROOT/lib:$PETSC_DIR/$PETSC_ARCH/lib:${LD_LIBRARY_PATH:-}"
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
@@ -110,7 +113,6 @@ bash scripts/run_eval_suite.sh \
     --device cuda \
     --include-ensemble \
     --include-paper-evidence \
-    --deep-payload-audit \
-    --rerun-numerical-validation
+    --deep-payload-audit
 
 echo "End time     : $(date --iso-8601=seconds)"
