@@ -338,7 +338,7 @@ for model in "${SCALING_IDS[@]}"; do
   mkdir -p "$out"
   run "$PY" scripts/eval_accuracy.py \
     --config "experiments/sample_scaling/configs/fno_${model}.yaml" \
-    --checkpoint "experiments/sample_scaling/${model}/best.pt" \
+    --checkpoint "experiments/sample_scaling/${model}/seed_18/best.pt" \
     --device "$DEVICE" \
     --output "$out/metrics.json"
 done
@@ -349,7 +349,7 @@ for grid in 32 64 128; do
   mkdir -p "$out"
   run "$PY" scripts/eval_accuracy.py \
     --config "configs/model/fno_res${grid}_muscl_hr.yaml" \
-    --checkpoint "experiments/fno_res${grid}_muscl_hr/best.pt" \
+    --checkpoint "experiments/fno_res${grid}_muscl_hr/seed_18/best.pt" \
     --device "$DEVICE" \
     --output "$out/metrics.json"
 done
