@@ -342,14 +342,24 @@ def validate_geoclaw_environment(environment: GeoClawEnvironment) -> dict[str, s
     missing = [str(path) for path in required if not path.is_file()]
     if missing:
         raise RuntimeError(f"Incomplete GeoClaw/PETSc environment: {missing}")
-    for executable in (
-        environment.python_executable,
-        Path(shutil.which(environment.fortran_compiler) or ""),
-        Path(shutil.which(environment.mpi_fortran_compiler) or ""),
-        Path(shutil.which(environment.mpi_executable) or ""),
-    ):
-        if not str(executable) or not executable.is_file():
-            raise RuntimeError(f"Missing required executable: {executable}")
+    executable_names = (
+        ("Python", str(environment.python_executable), environment.python_executable),
+        ("Fortran compiler", environment.fortran_compiler, None),
+        ("MPI Fortran compiler", environment.mpi_fortran_compiler, None),
+        ("MPI launcher", environment.mpi_executable, None),
+    )
+    for label, name, configured_path in executable_names:
+        executable = configured_path
+        if executable is None:
+            resolved = shutil.which(name)
+            if resolved is None:
+                raise RuntimeError(
+                    f"Missing required executable ({label}): {name!r} "
+                    f"(PATH={os.environ.get('PATH', '')!r})"
+                )
+            executable = Path(resolved)
+        if not executable.is_file():
+            raise RuntimeError(f"Missing required executable ({label}): {executable}")
     petsc_options = claw_root / "geoclaw/examples/bouss/petscMPIoptions"
     options_text = petsc_options.read_text(encoding="utf-8")
     for required_option in ("-ksp_type gmres", "-ksp_max_it 200", "-ksp_rtol 1.e-9"):
