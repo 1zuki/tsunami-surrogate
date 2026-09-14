@@ -1098,7 +1098,7 @@ def execute_r6_broad_validation(
                     repo_root=output_root,
                 ),
             ],
-            "archive_path": archive.name,
+            "archive_path": (Path(output_root.name) / archive.name).as_posix(),
             "archive_sha256": _sha256(archive),
             "archive_size_bytes": int(archive.stat().st_size),
             "duration_seconds": time.monotonic() - started,

@@ -257,6 +257,14 @@ def test_live_manifest_declares_paper_and_numerical_rerun_cells() -> None:
         "numerical_validation:summary",
         "numerical_validation:archive",
     }.issubset(ids)
+    cells = {str(cell["id"]): cell for cell in manifest["cells"]}
+    numerical = cells["numerical_validation:summary"]
+    assert numerical["companion_path_fields"] == {
+        "archive_path": "numerical_validation/r6_broad_validation.tar.zst"
+    }
+    assert numerical["companion_sha256_fields"] == {
+        "archive_sha256": "numerical_validation/r6_broad_validation.tar.zst"
+    }
 
 
 def test_live_suite_matches_corrected_generation_configs() -> None:
