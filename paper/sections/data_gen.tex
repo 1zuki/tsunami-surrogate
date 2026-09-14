@@ -8,21 +8,21 @@ The dataset is built around shared synthetic scenarios rather than separate samp
 
 The main benchmark contains three independently generated pools of $10{,}000$, $1{,}000$, and $2{,}500$ scenarios ($13{,}500$ in total). Separate split-qualified seeds and identities are used instead of randomly partitioning one pool, and the same scenario fields are reused across the three numerical references. Each scenario begins with a $384 \times 384$ master grid, which is block-mean reduced to a $128 \times 128$ solver grid and extended by 32 cells on every side to form a $192 \times 192$ computational grid. Only the central $64 \times 64$ region is retained for learning and reporting.
 
-Under the common-time protocol, target evaluation times are defined as: $t_k = 8.4k, k = 1, \dots, 50$, terminating at $t = 420$ in elapsed benchmark-time units. Each solver keeps its own natural steps: the shallow-water steps adapt to the evolving state, while the Boussinesq step is fixed within each scenario after a depth-based CFL calculation. Whenever a requested time is bracketed by two adjacent natural states, the generator interpolates only between those two states and emits the requested $\eta$ frame. This is output-only interpolation: it does not alter the solver update or force a shared internal time step. The initial state at $t = 0$ is stored alongside the scenario metadata but is not a supervised target.
+Under the common-time sampling scheme, target evaluation times are defined as: $t_k = 8.4k, k = 1, \dots, 50$, terminating at $t = 420$ in elapsed benchmark-time units. Each solver keeps its own natural steps: the shallow-water steps adapt to the evolving state, while the Boussinesq step is fixed within each scenario after a depth-based CFL calculation. Whenever a requested time is bracketed by two adjacent natural states, the requested $\eta$ frame is formed by interpolating only between those two states. This is output-only interpolation: it does not alter the solver update or force a shared internal time step. The initial state at $t = 0$ is stored alongside the scenario metadata but is not a supervised target.
 
 \begin{figure}[pos=htbp]
 \centering
 \includegraphics[width=0.8\linewidth]{figures/scenario_gallery.pdf}
-\caption{Representative accepted synthetic scenarios from the benchmark generator. Each column shows one paired bathymetry/source scenario before rollout: trench/dipole, continental/Okada-like, and seamounts/multi-Gaussian. Bathymetry uses the shared fully wet range $[-10,-0.75]$; source fields retain family-dependent amplitudes and are shown on a shared symmetric uplift/subsidence scale.}
+\caption{Representative accepted synthetic scenarios from the synthetic benchmark construction. Each column shows one paired bathymetry/source scenario before rollout: trench/dipole, continental/Okada-like, and seamounts/multi-Gaussian. Bathymetry uses the shared fully wet range $[-10,-0.75]$; source fields retain family-dependent amplitudes and are shown on a shared symmetric uplift/subsidence scale.}
 \label{fig:scenario-gallery}
 \end{figure}
 
-The benchmark is intentionally synthetic and fully wet in its core configuration. Its purpose is to create a controlled supervised-learning problem for testing fast forward emulation of solver-generated tsunami-like wavefields, not to reproduce a specific coastline or provide operational hazard assessment. This design makes solver gaps, inference speed, distribution shift, resolution transfer, and uncertainty reproducible without presenting the synthetic fields as real events.
+The benchmark is intentionally synthetic and fully wet in its core setting. Its purpose is to create a controlled supervised-learning problem for testing fast forward emulation of solver-generated tsunami-like wavefields, not to reproduce a specific coastline or provide operational hazard assessment. This design makes solver gaps, inference speed, distribution shift, resolution transfer, and uncertainty reproducible without presenting the synthetic fields as real events.
 
 \subsection{Procedural bathymetry}
 \label{subsec:procedural-bathymetry}
 
-Bathymetry is represented by a signed bed-elevation field $b(x,y)$, where $b(x,y)\leq 0$ denotes submerged cells below mean sea level. In the default configuration, all generated fields are rescaled to the interval:
+Bathymetry is represented by a signed bed-elevation field $b(x, y)$, where $b(x, y)\leq 0$ denotes submerged cells below mean sea level. In the default setting, all generated fields are rescaled to the interval:
 $$
 [d_{\min}, d_{\max}] = [-10, -0.75].
 $$
@@ -32,12 +32,12 @@ h_{\mathrm{rest}}(x,y)=\max\{-b(x,y)+\eta_{\mathrm{sea}},0\},
 \end{equation}
 where $\eta_{\mathrm{sea}}$ represents an adjustable sea-level offset parameter ($\eta_{\mathrm{sea}} = 0$ by default).
 
-For each scenario, the bathymetry generator randomly selects a profile from five predefined terrain classes:
+For each scenario, the bathymetry construction procedure randomly selects a profile from five predefined terrain classes:
 $$
 \{\text{trench}, \text{continental}, \text{seamounts}, \text{canyon}, \text{island}\}.
 $$
 
-The generator first creates a low-frequency base field. In the current default configuration, this base is a weak rotated slope with slope components sampled from $[0.02,0.12]$, although flat and basin-like base modes are also supported. To mitigate spurious grid-aligned artifacts, a smooth spatial warping transformation is applied to the normalized coordinates prior to evaluating the bathymetric morphology:
+Construction first creates a low-frequency base field. In the default setting, this base is a weak rotated slope with slope components sampled from $[0.02, 0.12]$, although flat and basin-like base modes are also supported. To mitigate spurious grid-aligned artifacts, a smooth spatial warping transformation is applied to the normalized coordinates prior to evaluating the bathymetric morphology:
 \begin{equation}
 \begin{split}
 x_w=\operatorname{clip}(x+\alpha g_x(x,y),0,1), \\
@@ -62,13 +62,13 @@ This normalization deliberately prioritizes morphological diversity over site-sp
 \subsection{Initial-displacement sources}
 \label{subsec:initial-displacement-sources}
 
-The source generator produces a raw stored source template $q(x, y)$, saved as \texttt{source\_field}, on the same grid as the bathymetry. The default source family set is
+Source construction produces a raw stored source template $q(x, y)$, saved as \texttt{source\_field}, on the same grid as the bathymetry. The default source family set is
 $$
 \{\texttt{gaussian},\ \texttt{multi-gauss},\ \texttt{dipole},\ \texttt{fault},\ \texttt{rough},\ \texttt{okada-like}\}.
 $$
 Gaussian and multi-Gaussian sources provide localized smooth uplift patterns. Dipole sources create paired uplift and subsidence lobes. Fault sources create elongated rotated uplift structures. Rough sources are generated from smoothed random fields and broaden the distribution of source geometries. The \texttt{okada-like} family samples simplified fault parameters such as length, width, slip, angle, dip, and source depth, and constructs an anisotropic deformation pattern inspired by elastic half-space source models \citep{okada1985surface}. It is used only as a synthetic source family, not as a full geophysical rupture model.
 
-By default, the forward benchmark bypasses per-sample source normalization, thereby retaining the unscaled amplitude variation within each source class. The initial free-surface displacement field is then established by scaling the raw source template $q(x,y)$ with an independent strength factor $s \sim \mathcal{U}(0.15, 0.30)$:
+By default, the forward benchmark bypasses per-sample source normalization, thereby retaining the unscaled amplitude variation within each source class. The initial free-surface displacement field is established by scaling the raw source template $q(x,y)$ with a sampled strength factor $s \sim \mathcal{U}(0.15, 0.30)$. When the frozen initial-elevation-to-depth cap is active, the stored resolved strength may be reduced below the sampled value; the evaluated data retain resolved strengths from approximately $0.075$ to $0.300$:
 \begin{equation}
 \eta_0(x, y) = s\,q(x, y).
 \end{equation}
@@ -107,7 +107,7 @@ Normalization statistics are computed from the training split only and reused un
 \subsection{Distribution-shift and resolution-transfer datasets}
 \label{subsec:shift-resolution-data}
 
-The recorded scenario information supports controlled generalization tests. For source-family shift, bathymetry-family shift, and source-strength shift, the evaluation protocol builds filtered suites from the processed test data using the recorded source family, bathymetry family, and source strength. The final evaluation includes the \texttt{multi-gauss} subset, the \texttt{trench} subset, and, when represented by the sampled range, a predeclared source-strength subgroup. These are difficult-subgroup diagnostics because the filtered families are still present in the training distribution.
+The recorded scenario information supports controlled generalization tests. For source-family shift, bathymetry-family shift, and source-strength shift, the evaluation procedure builds filtered suites from the processed test data using the recorded source family, bathymetry family, and source strength. The final evaluation includes the \texttt{multi-gauss} subset, the \texttt{trench} subset, and, when represented by the sampled range, a predeclared source-strength subgroup. These are difficult-subgroup diagnostics because the filtered families are still present in the training distribution.
 
 We also build strict held-out-family datasets for four stress tests: \texttt{trench} and \texttt{continental} bathymetry holdouts, and \texttt{rough} and \texttt{okada-like} source holdouts. For these datasets the held-out family is removed before preprocessing and normalization statistics are refit from the filtered training split only. The held-out test subset is then evaluated separately from the in-distribution remainder of the same test pool, which keeps the scenario accounting explicit and avoids confusing metadata filtering with truly unseen-family generalization.
 

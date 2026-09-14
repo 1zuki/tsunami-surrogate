@@ -4,104 +4,104 @@
       "benchmark_solver": "muscl_hr",
       "model_solver": "hydrostatic",
       "rho": {
-        "ci_lower": 1.2480270553156538,
-        "ci_upper": 1.2848105217846413,
-        "point_estimate": 1.2650275148898407
+        "ci_lower": 1.7007122689271046,
+        "ci_upper": 1.746803714937706,
+        "point_estimate": 1.7226761420208003
       }
     },
     {
       "benchmark_solver": "hydrostatic",
       "model_solver": "muscl_hr",
       "rho": {
-        "ci_lower": 1.0964946361125922,
-        "ci_upper": 1.1451914940671313,
-        "point_estimate": 1.1205537216427945
+        "ci_lower": 1.5105908864772775,
+        "ci_upper": 1.5795983322722658,
+        "point_estimate": 1.5439828902050963
       }
     },
     {
       "benchmark_solver": "boussinesq",
       "model_solver": "hydrostatic",
       "rho": {
-        "ci_lower": 0.9984019942274918,
-        "ci_upper": 1.0004982341821287,
-        "point_estimate": 0.9994414039208994
+        "ci_lower": 1.192091053894287,
+        "ci_upper": 1.209445564180937,
+        "point_estimate": 1.2005604954007354
       }
     },
     {
       "benchmark_solver": "boussinesq",
       "model_solver": "muscl_hr",
       "rho": {
-        "ci_lower": 0.9958905372419867,
-        "ci_upper": 0.9987001397073718,
-        "point_estimate": 0.9972929962548157
+        "ci_lower": 1.3317612021430019,
+        "ci_upper": 1.3614188979351938,
+        "point_estimate": 1.3465656065119453
       }
     },
     {
       "benchmark_solver": "hydrostatic",
       "model_solver": "boussinesq",
       "rho": {
-        "ci_lower": 0.9729923748514835,
-        "ci_upper": 0.9964184839868326,
-        "point_estimate": 0.9847241590887429
+        "ci_lower": 1.0794121802265149,
+        "ci_upper": 1.1148117561101971,
+        "point_estimate": 1.0971801073102123
       }
     },
     {
       "benchmark_solver": "muscl_hr",
       "model_solver": "boussinesq",
       "rho": {
-        "ci_lower": 0.9734089162621816,
-        "ci_upper": 0.9970633254375354,
-        "point_estimate": 0.9852744580764371
+        "ci_lower": 1.2746949204467306,
+        "ci_upper": 1.3191849933322917,
+        "point_estimate": 1.2968908043880174
       }
     }
   ],
-  "evaluation_run": "evaluation_runs/final-v2-paper-full-r1",
+  "evaluation_run": "evaluation_runs/final-v2-full-nonspeed-20260912-r6",
   "figures": [
     {
-      "bytes": 17671,
+      "bytes": 17708,
       "path": "paper/figures/solver_gap_vs_surrogate_error.pdf",
-      "sha256": "e42936804f994d906ef80d0af2889d848acb1bbb181e1cfc7df335cdecf6bfc3"
+      "sha256": "00a9eb6df4e9137e9e5f0548847f24ccc4f0322b0a02a854e8d892ec0c79c224"
     },
     {
-      "bytes": 153178,
+      "bytes": 138992,
       "path": "paper/figures/solver_gap_vs_surrogate_error.png",
-      "sha256": "1562baaa93ddac5d08cfdd42d9d7e8fd091c6edd985bb4c71d5d42cf3103a37e"
+      "sha256": "fee9fc1a4809cc9f9d94ebb3ef2c28e340a4f48a69326f0398c3f68a6047bbad"
     },
     {
-      "bytes": 22306,
+      "bytes": 22255,
       "path": "paper/figures/cross_reference_ratio_forest.pdf",
-      "sha256": "3b7b81be3f0e9267658331b30b700587c8c163dfbdecb319addb68f11d3b4fe2"
+      "sha256": "ed50b601728825cdf19d0766928f60d53f5b767ab4a7b87d671fb3f254892cad"
     },
     {
-      "bytes": 161405,
+      "bytes": 144325,
       "path": "paper/figures/cross_reference_ratio_forest.png",
-      "sha256": "aa6d047e5e3afc78aa37075fc8bb43fd97fcd39ad5bf5215a5e60c77ec76ad8e"
+      "sha256": "a25f336981ad2326098db66741ca090ec29d4d5e990308af3cdcea455830255a"
     }
   ],
   "gap_scale_comparisons": [
     {
-      "gap_to_surrogate_ratio": 1.5989880779462495,
+      "gap_to_surrogate_ratio": 0.8065104927703461,
       "label": "Hydrostatic--MUSCL-HR\nvs Hydrostatic FNO",
-      "solver_gap_rmse": 0.005083700585255717,
-      "surrogate_rmse": 0.0031793236330975366
+      "solver_gap_rmse": 0.0017063106016266306,
+      "surrogate_rmse": 0.0021156706787105652
     },
     {
-      "gap_to_surrogate_ratio": 2.055929965647924,
+      "gap_to_surrogate_ratio": 0.8421949255750321,
       "label": "Hydrostatic--MUSCL-HR\nvs Hydrostatic F-FNO",
-      "solver_gap_rmse": 0.005083700585255717,
-      "surrogate_rmse": 0.002472701244788557
+      "solver_gap_rmse": 0.0017063106016266306,
+      "surrogate_rmse": 0.002026028119869755
     },
     {
-      "gap_to_surrogate_ratio": 5.412992898011389,
+      "gap_to_surrogate_ratio": 1.2356111027450276,
       "label": "Hydrostatic--Boussinesq\nvs Boussinesq FNO",
-      "solver_gap_rmse": 0.04424751242738197,
-      "surrogate_rmse": 0.00817431562558257
+      "solver_gap_rmse": 0.003736107033377974,
+      "surrogate_rmse": 0.003023691698041444
     },
     {
-      "gap_to_surrogate_ratio": 5.554275010110209,
+      "gap_to_surrogate_ratio": 1.0077355108271155,
       "label": "MUSCL-HR--Boussinesq\nvs Boussinesq FNO",
-      "solver_gap_rmse": 0.04540239700392667,
-      "surrogate_rmse": 0.00817431562558257
+      "solver_gap_rmse": 0.003047081497909503,
+      "surrogate_rmse": 0.003023691698041444
     }
   ],
   "interpretation": "The gap-scale figure compares selected same-reference surrogate controls with raw pairwise solver gaps in the same denormalized RMSE units. The forest plot is benchmark-relative and does not establish physical superiority.",
@@ -113,27 +113,27 @@
   "source_artifacts": [
     {
       "path": "paper_evidence/reference_analysis/solver_gap.json",
-      "sha256": "2e2bc09fdc9633fae2d2f80d3e7318f19d9ebe8ed30e51a411d7b8344bb4e9a3"
+      "sha256": "f96efb92fe49cbac20c4b98a11ae1a878c46f549b1d9803ad30e6b72879518b0"
     },
     {
       "path": "paper_evidence/reference_analysis/cross_reference.json",
-      "sha256": "53699791ad401a10f48f6a8c3ccfdaacfc2cafffebd2b4bef7357b70cf93e5ee"
+      "sha256": "16eeb4d4ad2bd32645b1e6188b90200a12534509451177ec7dde2444296fbb6b"
     },
     {
       "path": "direct/fno/metrics.json",
-      "sha256": "2c5491830b2a16450434cc8a9d52e96ab1f14e2000cca58adb4a9492b92d11d8"
+      "sha256": "f6b2495ace8578ed9c1a27de0ccbe380fc5d47f1710416b1a657d38ea334cd6a"
     },
     {
       "path": "direct/ffno/metrics.json",
-      "sha256": "28399b5c03d331cc0c00515f7134244fc90e0f14bbb45824e27f76bf9adfa8da"
+      "sha256": "1f89f3b8d138481e1fa197a7d94825d23256c619d373e49e04d1a8f3f386e3b3"
     },
     {
       "path": "direct/fno_muscl_hr/metrics.json",
-      "sha256": "7f2a5919947f308cae83efeffe39e4861a8a7748d18174d050470212da3e701b"
+      "sha256": "6ca6e5840cc3d81e11e3c128ec475a0306f3d9a27bdbed103e6723de607f7597"
     },
     {
       "path": "direct/fno_boussinesq/metrics.json",
-      "sha256": "c680e5315d44aa85cfd9a4a1ee574180c3ccb7cf03aad1d3d2c1b5cceb226134"
+      "sha256": "672ebe917fcae66ab57415f22c692a8a67b5d88cfe51463c874a72da79bbd298"
     }
   ]
 }

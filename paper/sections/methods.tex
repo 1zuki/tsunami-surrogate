@@ -1,4 +1,4 @@
-\section{Problem formulation and evaluation protocol}
+\section{Problem formulation and evaluation framework}
 \label{sec:methods}
 
 This section defines the supervised task, numerical references, validation boundaries, and evaluation metrics. Data construction is described in Section~\ref{sec:data-generation}; model and optimization details are given in Sections~\ref{sec:models} and~\ref{sec:training}.
@@ -13,6 +13,7 @@ Given a sampled source-strength multiplier $s$, the initial free-surface perturb
 \begin{equation}
 \eta_0(x, y) = s\,q(x, y), \qquad h_0(x, y) = \max\{h_{\mathrm{rest}}(x, y) + \eta_0(x, y), 0\}.
 \end{equation}
+For dataset construction, the source-strength multiplier $s$ is sampled from $[0.15, 0.30]$ and may be reduced before storage when the initial-elevation-to-depth cap is active; consequently, some evaluated scenarios have resolved strengths below the sampling interval.
 For the supervised surrogate modeling task, the default input representation concatenates these spatial fields into a three-channel tensor:
 \begin{equation}
 X = [\,b, q, h_0\,] \in \mathbb{R}^{3 \times H \times W}.
@@ -41,7 +42,7 @@ The corresponding output state is then linearly reconstructed as:
 
 For the shallow-water references, $Z = [h, hu, hv] ^ \top$ and the free surface is then recovered using the time-independent bathymetry; for Boussinesq, $\eta$ is already part of the evolved state. If $t_k$ exactly equals a natural time, the corresponding state is copied without interpolation. Several requested times may fall inside one natural-step interval, but every output is formed only from that adjacent pair.
 
-The interpolation is performed in float64 before the reported frame is cast to float32. It is output-only: interpolated states are never fed back into the time integrator, so the natural solver trajectory is unchanged. For each reported frame, the generator records the bracketing times, interpolation weight, bracket width, exact-knot status, and natural-step index. This design prevents the cross-reference time mismatch that would arise from solver-step-indexed sampling while allowing each solver to retain its natural time stepping. It does not remove the interpolation approximation or make the three governing models equivalent.
+The interpolation is performed in float64 before the reported frame is cast to float32. It is output-only: interpolated states are never fed back into the time integrator, so the natural solver trajectory is unchanged. For each reported frame, the dataset metadata record the bracketing times, interpolation weight, bracket width, exact-knot status, and natural-step index. This design prevents the cross-reference time mismatch that would arise from solver-step-indexed sampling while allowing each solver to retain its natural time stepping. It does not remove the interpolation approximation or make the three governing models equivalent.
 
 The central reported domain contains $64 \times 64$ cells. Each $384 \times 384$ master grid is block-mean reduced to a $128 \times 128$ solver grid and extended by 32 cells around every side to form a $192 \times 192$ computational grid. Bathymetry is extended by its edge values into the buffer, and the source is tapered at the master-grid stage according to the same construction procedure. Only the central crop enters the learning target. The buffer and elapsed-time sponge reduce direct boundary exposure over the finite horizon, but they do not establish a generally non-reflecting boundary condition.
 
@@ -146,7 +147,7 @@ U ^ {n + 1} = \frac{1}{2} U ^ n +
 Positivity and dry-momentum projections are checked after the stage updates and after the final average. Consequently, MUSCL-HR differs from the primary reference through both its piecewise-linear spatial reconstruction and two-stage temporal integration, rather than a simple CFL adjustment.
 
 \paragraph{Weakly dispersive Boussinesq comparison.}
-The Boussinesq comparison evolves surface elevation and its time derivative, $[\eta, \eta_t] ^ \top$, rather than depth and discharge. We define it as a study-specific linear, elevation-only dispersive benchmark rather than an implementation of a complete coastal Boussinesq model. Its variable-depth elliptic acceleration system is:
+The Boussinesq comparison evolves surface elevation and its time derivative, $[\eta, \eta_t] ^ \top$, rather than depth and discharge. We define it as a study-specific linear, elevation-only dispersive benchmark rather than a complete coastal Boussinesq model. Its variable-depth elliptic acceleration system is:
 \begin{equation}
 \left(I - \alpha_B \nabla \cdot(H ^ 2 \nabla)\right) a_\eta = g \nabla \cdot(H \nabla \eta),
 \end{equation}
@@ -176,19 +177,19 @@ All references apply a 32-cell cosine sponge layer within the outer domain bound
 \subsection{Numerical verification and validation scope}
 \label{subsec:reference-validation}
 
-The final numerical-reference and temporal-output protocol will be assessed before the surrogate analysis through five complementary forms of evidence:
+The numerical evidence is reported in two complementary parts. Numerical-method, refinement, and independent-comparator studies establish the context for the reference solvers, while separate consistency checks verify the source, grid, and requested-time construction of the dataset used for the surrogate experiments. These checks address different questions: the dataset checks do not replace the broader numerical studies, and the broader studies do not by themselves establish the consistency of the evaluated dataset.
 
 \begin{enumerate}[leftmargin=2.2em]
     \item \textbf{Input identity:} all scenario definitions are checked for split-qualified identity, array equality, horizon coverage, and exact reuse across the three references.
-    \item \textbf{Internal verification:} analytical-wave, lake-at-rest, conservation, spatial/temporal sensitivity, requested-output, boundary/sponge, dispersive, numerical-stability, and deterministic-repeatability checks are run with thresholds fixed before evaluation.
+    \item \textbf{Internal verification:} analytical-wave, lake-at-rest, conservation, spatial/temporal sensitivity, requested-output, boundary/sponge, dispersive, numerical-stability, and deterministic-repeatability checks are performed with thresholds fixed before evaluation.
     \item \textbf{Independent comparison:} matched analytical and representative finite-horizon cases are compared with GeoClaw/Clawpack 5.14.0 under the fixed comparison settings \citep{leveque2011tsunami,berger2011geoclaw}. The external solver is treated as an independent comparator, not automatic truth or evidence of pointwise equivalence.
-    \item \textbf{Integrated numerical procedure:} the buffered-domain integration, adaptive stepping, requested-time interpolation, and quality screening are assessed on cases separate from the lower-level implementation checks.
+    \item \textbf{Integrated evaluation procedure:} the buffered-domain integration, adaptive stepping, requested-time interpolation, and quality screening are assessed on cases separate from the component-level numerical checks.
     \item \textbf{Independent sensitivity set:} additional training-pool cases, excluded from the earlier diagnostic selections, test the reported and comparison CFL settings, time extraction, numerical-admissibility criteria, and repeatability.
 \end{enumerate}
 
 For three prespecified representative finite-horizon shallow-water cases, a controlled follow-up ablation removes the sponge, changes the outer boundary from radiation to open, moves that boundary farther from the reported crop at unchanged cell spacing, and then halves the solver cell size on the original physical domain. The comparison is descriptive: it identifies sensitivity among the tested configurations but is not a formal convergence study and does not isolate one numerical component.
 
-Decision thresholds and case selections are fixed before the corresponding outcomes are inspected. Validation and test scenarios used to evaluate the surrogates are not used to tune these numerical acceptance criteria. The complete verification program will be repeated without altering the numerical implementation before the reported model evaluation. Satisfying these criteria will support the implemented finite-horizon protocol; it will not establish observed-event validity, shoreline accuracy, generally non-reflecting boundaries, or equivalence with an operational tsunami code.
+Decision thresholds and case selections are fixed before the corresponding outcomes are inspected. Validation and test scenarios used to evaluate the surrogates are not used to tune these numerical acceptance criteria. Three representative consistency checks cover the corrected source, buffered-grid construction, and requested-time outputs, while the independent numerical studies retain their original scope. Together these checks support the finite-horizon evaluation setting used here; they do not establish observed-event validity, shoreline accuracy, generally non-reflecting boundaries, or equivalence with an operational tsunami code.
 
 Each dataset trajectory is additionally screened for finiteness, positivity/depth, amplitude, velocity, sanitization, projection, clipping, post-step CFL, and, where relevant, conjugate-gradient convergence. Trajectories that do not satisfy these criteria are excluded.
 
@@ -209,9 +210,9 @@ where $k$ indexes all space-time grid points. MAE, RMSE, and relative $L_2$ are 
 
 For a full split, the underlying sums are accumulated before reduction, giving one global relative $L_2$ and one global maximum. Metadata subgroup tables instead compute per-scenario metrics first and then average within the group. These two aggregations answer different questions and are labelled separately.
 
-For the selected single-seed Hydrostatic architecture comparison, we also use a paired nonparametric bootstrap: one shared index draw resamples the same $2{,}500$ scenario identities $2{,}000$ times with seed $20260814$. We report mean per-scenario denormalized relative $L_2$ and paired differences from FNO. These are test-scenario intervals for fixed checkpoints, not training-seed uncertainty or population-level architecture rankings.
+For the selected single-seed Hydrostatic architecture comparison, we also use a paired nonparametric bootstrap: one shared index draw resamples the same $2{,}500$ scenario identities $2{,}000$ times with seed $20260813$. We report mean per-scenario denormalized relative $L_2$ and paired differences from FNO. These are test-scenario intervals for fixed checkpoints, not training-seed uncertainty or population-level architecture rankings.
 
-Training-seed variation is assessed separately with seeds $\{18, 36, 67\}$ for Hydrostatic FNO, F-FNO, ConvLSTM, and U-Net, together with FNO trained on MUSCL-HR and Boussinesq. Every checkpoint is evaluated on the same held-out scenarios. We report the mean, sample standard deviation, and range of the three checkpoint-level mean per-scenario metrics. With only three seeds, these summaries are descriptive and are not treated as confidence intervals. Architectures outside this replicated subset retain their selected single-seed results.
+Seed variation in the uncertainty analysis is assessed with a seven-member Hydrostatic FNO ensemble using seeds $\{11, 22, 33, 44, 55, 66, 77\}$. The member-level means, sample standard deviation, and range describe seed stability for that FNO uncertainty construction; they are not a replicated architecture comparison.
 
 Per-frame relative $L_2$ errors evaluate spatial slices at specific time instances. Physical conservation properties are monitored via domain-averaged quantities:
 \begin{equation}
@@ -235,13 +236,13 @@ The proxy resolution diagnostic resizes the processed Hydrostatic test fields to
 \subsection{Runtime benchmarking}
 \label{subsec:runtime}
 
-The numerical references are timed on CPU using the common-time $192 \times 192$ computational-grid rollout and central $64 \times 64$ crop protocol, excluding bathymetry and source generation. These are vectorized NumPy/SciPy implementations. Each reference timing uses eight fixed scenarios, one warm-up pass, and three measured repeats. Surrogates are timed on the RTX 4050 Laptop GPU in fp32 at batch size one, with TF32 disabled, five warm-up passes, twenty measured passes, and device synchronization around timing. Implementation speedup is defined as:
+To compare computational cost, we measure the repeated forward task under fixed hardware and precision. The numerical references are timed in float64 on the local CPU using the common-time $192 \times 192$ computational-grid rollout and central $64 \times 64$ crop, excluding bathymetry and source generation. The reference solvers use vectorized NumPy/SciPy implementations; each timing uses eight fixed scenarios, one warm-up pass, and three measured repeats. Direct surrogates are timed on an NVIDIA GeForce RTX 4050 Laptop GPU with an Intel Core i5-13420H CPU, in fp32 at batch size one, with TF32 disabled, five warm-up passes, twenty measured passes, and CUDA synchronization. The ratio is defined as:
 \begin{equation}
 \mathrm{speedup} = \frac{T_{\mathrm{reference}}}{T_{\mathrm{surrogate}}},
 \end{equation}
 where $T$ denotes average rollout time per sample.
 
-Loading the stored scenario, preparing the buffered inputs, and constructing the solver are recorded separately from the rollout denominator. The comparison therefore measures the repeated forward task under stated hardware, not end-to-end hazard-system latency. The denominator is not a compiled, GPU, adaptive-mesh, or operational tsunami solver.
+Input loading, preparation, and solver construction are recorded separately and excluded from the ratio. The comparison therefore measures the repeated forward calculation under the stated hardware, not end-to-end hazard-system latency. The result is hardware-specific and should not be interpreted as an operational speedup over a compiled, GPU, or adaptive-mesh tsunami solver.
 
 \subsection{Cross-reference discrepancy}
 \label{subsec:cross-solver}
@@ -252,7 +253,7 @@ The raw solver gap compares two numerical references on the same scenarios and r
 \frac{\mathrm{RMSE}(f_\theta ^ A, \mathrm{ref}\, B)}
      {\mathrm{RMSE}(\mathrm{ref}\, A, \mathrm{ref}\, B)}.
 \end{equation}
-All terms use the global denormalized benchmark-scale RMSE, and confidence intervals use 2,000 scenario bootstrap resamples. The ratio is also evaluated independently for the three FNO training seeds $\{18, 36, 67\}$; their mean, sample standard deviation, and range are reported separately from the within-checkpoint scenario-bootstrap interval. A value $\rho < 1$ means that the surrogate is closer to reference $B$ in this benchmark metric than reference $A$ is. Without observational truth or a stronger physical reference, this is not evidence of physical superiority.
+All terms use the global denormalized benchmark-scale RMSE, and confidence intervals use 2,000 scenario bootstrap resamples. A value $\rho < 1$ means that the surrogate is closer to reference $B$ in this benchmark metric than reference $A$ is. Without observational truth or a stronger physical reference, this is not evidence of physical superiority.
 
 \subsection{Gauge, arrival, and peak diagnostics}
 \label{subsec:wave-metrics}
