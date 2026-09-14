@@ -836,7 +836,12 @@ def _collect_output(
         )
     actual_times = np.asarray([row[0] for row in frames[1:]], dtype=np.float64)
     time_error = float(np.max(np.abs(actual_times - requested_times)))
-    if time_error > 5.0e-14:
+    time_tolerance = float(
+        requirement.get("requested_time_abs_tolerance", 5.0e-14)
+    )
+    if not np.isfinite(time_tolerance) or time_tolerance <= 0.0:
+        raise RuntimeError("GeoClaw requested-time tolerance must be positive and finite")
+    if time_error > time_tolerance:
         raise RuntimeError(f"GeoClaw requested-time error too large: {time_error:.3e}")
     eta_full = np.stack(
         [
@@ -848,6 +853,22 @@ def _collect_output(
     crop = [int(value) for value in np.asarray(arrays["output_crop"]).tolist()]
     i0, i1, j0, j1 = crop
     eta = eta_full[:, i0:i1, j0:j1]
+    reduction = requirement.get("publication_reduction", [1, 1])
+    if not isinstance(reduction, Sequence) or len(reduction) != 2:
+        raise RuntimeError("GeoClaw publication reduction must contain two factors")
+    reduce_x, reduce_y = (int(value) for value in reduction)
+    if reduce_x <= 0 or reduce_y <= 0:
+        raise RuntimeError("GeoClaw publication reduction factors must be positive")
+    if eta.shape[1] % reduce_x or eta.shape[2] % reduce_y:
+        raise RuntimeError("GeoClaw crop is not divisible by the publication reduction")
+    if (reduce_x, reduce_y) != (1, 1):
+        eta = eta.reshape(
+            eta.shape[0],
+            eta.shape[1] // reduce_x,
+            reduce_x,
+            eta.shape[2] // reduce_y,
+            reduce_y,
+        ).mean(axis=(2, 4), dtype=np.float64)
     if list(eta.shape) != [int(value) for value in requirement["eta_shape"]]:
         raise RuntimeError(f"GeoClaw cropped eta shape mismatch: {eta.shape}")
     return eta, actual_times, {

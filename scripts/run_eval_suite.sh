@@ -40,11 +40,11 @@ Options:
   --no-real-bathymetry       Skip the rebuilt v2 auxiliary suites.
   --include-ensemble         Require and evaluate all seven frozen members.
   --include-speed            Include model and production-matched solver timing.
-  --include-paper-evidence   Regenerate all currently supported v2 paper metrics.
-                             Implies --include-ensemble.
+  --include-paper-evidence   Include the complete reproducible paper-metric set.
+                             Execution-only; implies --include-ensemble.
   --rerun-numerical-validation
-                             Run the fresh current-production validation and
-                             archive the historical H0/A/B/H1/H2 regression.
+                             Run the fresh R6 broad numerical-validation
+                             campaign under the corrected production contract.
   --deep-payload-audit       Re-hash/reopen all raw v2 payloads during preflight.
   --device cpu|cuda|auto     Override DEVICE for neural-model evaluation.
 
@@ -152,7 +152,8 @@ fi
 
 if [ "$EXECUTE" = 0 ]; then
   if [ "$RERUN_PRODUCTION_VALIDATION" = 1 ]; then
-    echo "Production validation is an execution step and requires --execute with a fresh --run-id." >&2
+    echo "Paper-evidence and numerical-validation studies require --execute with a fresh --run-id." >&2
+    echo "Example: bash scripts/run_eval_suite.sh --execute --run-id <immutable-id> --include-paper-evidence" >&2
     exit 2
   fi
   "${PREFLIGHT_ARGS[@]}"
@@ -247,16 +248,11 @@ run() {
 }
 
 if [ "$RERUN_NUMERICAL_VALIDATION" = 1 ]; then
-  echo "########## FRESH NUMERICAL-VALIDATION REGRESSION CHAIN ##########"
-  run "$PY" scripts/run_numerical_validation_chain.py \
+  echo "########## FRESH R6 BROAD NUMERICAL VALIDATION ##########"
+  run "$PY" scripts/run_r6_broad_validation.py \
+    --config configs/eval/r6_broad_validation.yaml \
     --output-root "$STAGING_ROOT/numerical_validation" \
-    --workers "$NUMERICAL_WORKERS" \
-    --geoclaw-workers "$GEOCLAW_WORKERS" \
-    --claw-root "$CLAW_ROOT" \
-    --petsc-dir "$PETSC_DIR" \
-    --petsc-arch "$PETSC_ARCH" \
-    --geoclaw-python "$GEOCLAW_PYTHON" \
-    --allow-unvalidated-contract
+    --production-validation-summary "$STAGING_ROOT/production_validation/summary.json"
 fi
 
 DIRECT_IDS=(

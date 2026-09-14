@@ -64,7 +64,7 @@ To document computational cost, Table~\ref{tab:app-training-time} summarizes wal
 \subsection{Supplementary numerical evidence}
 \label{app:validation-details}
 
-The numerical evidence combines broader numerical-method and independent-comparator studies with current checks on the dataset used for the surrogate experiments. Table~\ref{tab:app-validation-chain} expands the summary in Table~\ref{tab:solver-validation}; the current checks re-audited all train, validation, and test splits of the three datasets and reran nine representative solver cases, while the broader numerical studies remain separately scoped. The 50 learning targets are adjacent-natural-step common-time outputs; no solver-step-indexed output is mixed into the reported evaluation.
+The numerical evidence combines current R6 checks with earlier numerical-method and independent-comparator studies. Table~\ref{tab:app-validation-chain} expands the summary in Table~\ref{tab:solver-validation}; the current checks re-audited all train, validation, and test splits of the three datasets, reran nine representative solver cases, and added a fresh three-case R6 GeoClaw SWE comparison. The broader numerical studies remain historical and separately scoped. The 50 learning targets are adjacent-natural-step common-time outputs; no solver-step-indexed output is mixed into the reported evaluation.
 
 \begin{table}[pos=htbp]
 \centering
@@ -77,17 +77,18 @@ The numerical evidence combines broader numerical-method and independent-compara
     \midrule
     Current dataset and solver checks & $3$ datasets; all train/validation/test splits; $9$ representative solver cases & passed \\
     Shared inputs & $13{,}500$ scenarios reused exactly across three references & identity established \\
-    Internal numerical checks & $86$ cases; $48$ analytical, numerical, and stability criteria fixed before evaluation & met criteria \\
-    Independent comparisons & $3$ primary comparisons, $2$ verification checks, and $7$ refinement checks & met criteria \\
-    Descriptive comparison & $12$ exploratory GeoClaw/Clawpack comparisons & $11$ outside limits \\
-    Integrated procedure checks & $90$ cases plus $3$ deterministic repeatability checks & repeatable \\
-    Held-out sensitivity checks & $363$ paired cases and $726$ solver executions under $42$ criteria & met criteria \\
+    Current R6 GeoClaw SWE comparison & $3$ fixed test cases; $6$ Hydrostatic/MUSCL-HR comparisons & completed diagnostic \\
+    Historical internal numerical checks & $86$ cases; $48$ analytical, numerical, and stability criteria fixed before evaluation & met criteria \\
+    Historical independent comparisons & $3$ primary comparisons, $2$ verification checks, and $7$ refinement checks & retained separately \\
+    Historical descriptive comparison & $12$ exploratory GeoClaw/Clawpack comparisons & $11$ outside limits \\
+    Historical integrated procedure checks & $90$ cases plus $3$ deterministic repeatability checks & repeatable \\
+    Historical held-out sensitivity checks & $363$ paired cases and $726$ solver executions under $42$ criteria & met criteria \\
     Dataset consistency checks & $3$ representative cases; corrected $384 \rightarrow 128 \rightarrow 192 \rightarrow 64$ grid construction & passed \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-The exploratory finite-horizon shallow-water comparisons are the main qualification on the independent-comparator evidence. Across three prespecified representative cases, trajectory relative $L_2$ against GeoClaw is $0.414$--$0.537$ for Hydrostatic and $0.231$--$0.259$ for MUSCL-HR. The controlled ablation in Table~\ref{tab:geoclaw-ablation} shows that refinement is the dominant tested sensitivity, while a material residual remains. The numerical program therefore supports the specific numerical procedure and refinement checks needed for the benchmark, but does not establish pointwise equivalence, general boundary independence, formal convergence, or event-scale validity.
+The current R6 GeoClaw comparison is the relevant independent-comparator evidence for the published benchmark: Hydrostatic trajectory relative $L_2$ ranges from $0.2071$ to $0.3326$, while MUSCL-HR ranges from $0.0659$ to $0.1562$, across the three fixed cases in Table~\ref{tab:geoclaw-r6}. GeoClaw receives the exact frozen $192 \times 192$ initial state, and its central $128 \times 128$ output is block-mean reduced to the published $64 \times 64$ field. The historical exploratory comparisons and ablation remain provenance for the earlier program, not a rerun of the current benchmark. The numerical program therefore supports the specific finite-horizon procedure used here, but does not establish pointwise equivalence, general boundary independence, formal convergence, or event-scale validity.
 
 \paragraph{Boussinesq dispersion diagnostic.}
 Small-amplitude periodic sinusoidal waves are propagated on a $256 \times 32$ constant-depth grid for modes $1, 2, 4, 8, 12, 16, 24, 32$ at $\Delta t = 1.25 \times 10 ^ {-4}$ and final time $1.5$. Fourier phase tracking is compared with the discrete relation
