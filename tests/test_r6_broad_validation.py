@@ -9,6 +9,7 @@ import yaml
 
 from src.evaluation.r6_broad_validation import (
     R6ValidationError,
+    _verify_completed_geoclaw,
     _requested_times,
     _validate_config,
 )
@@ -45,3 +46,16 @@ def test_r6_broad_validation_rejects_the_historical_geometry() -> None:
 
     with pytest.raises(R6ValidationError, match="computational_shape"):
         _validate_config(config)
+
+
+def test_r6_broad_validation_binds_the_completed_geoclaw_revisions() -> None:
+    root = Path(__file__).resolve().parents[1]
+    geoclaw = _verify_completed_geoclaw(root, _config())
+
+    assert geoclaw["case_count"] == 3
+    assert geoclaw["comparison_count"] == 6
+    assert set(geoclaw["external_revisions"]) >= {
+        "clawpack_commit",
+        "geoclaw_commit",
+        "petsc_commit",
+    }

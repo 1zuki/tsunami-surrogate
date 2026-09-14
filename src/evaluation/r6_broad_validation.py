@@ -281,6 +281,7 @@ def _verify_completed_geoclaw(repo_root: Path, config: Mapping[str, Any]) -> dic
         "bundle_hash": summary["bundle_hash"],
         "case_count": summary["case_count"],
         "comparison_count": summary["comparison_count"],
+        "external_revisions": dict(summary["external_revisions"]),
     }
 
 
@@ -1058,6 +1059,7 @@ def execute_r6_broad_validation(
                 "requested_times": times.tolist(),
             },
             "code_state": code_state(repo_root),
+            "external_revisions": geoclaw["external_revisions"],
             "stages": [
                 _stage_record(
                     stage_id="h0_full_dataset_audit",
