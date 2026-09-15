@@ -43,8 +43,8 @@ DEFAULT_PROCESSED = "data/processed/hydrostatic/test"
 DEFAULT_STATS = "data/processed/hydrostatic/normalization_stats.json"
 DEFAULT_OUTPUT = "paper/figures/hydrostatic_rollout.pdf"
 # Default sample: continental + Okada-like, near-median single-pass FNO error
-# with clearly visible wave amplitude (scenario_000857).
-DEFAULT_SAMPLE_INDEX = 856
+# with clearly visible wave amplitude (scenario_001302 in the r6 test split).
+DEFAULT_SAMPLE_INDEX = 1301
 
 
 def _model_output(model: torch.nn.Module, x: torch.Tensor) -> torch.Tensor:

@@ -20,10 +20,19 @@ PUBLICATION_SCHEMA_ID = "tsunami-surrogate.common-time-v2.publication.v1"
 OPERATIONAL_SHARD_SCHEMA_ID = "tsunami-surrogate.common-time-v2.operational-shard.v1"
 PROVISIONAL_STATUS = "provisional"
 ACCEPTED_STATUS = "accepted"
-CANDIDATE_START = 0.0035
-CANDIDATE_STEP = 0.0035
-CANDIDATE_COUNT = 50
-CANDIDATE_HORIZON = 0.175
+# Historical candidate grid retained for the archived H0/H1/H2 diagnostics.
+# Current accepted dataset configurations must declare their requested-time
+# construction explicitly; they must not rely on this legacy fallback.
+LEGACY_CANDIDATE_START = 0.0035
+LEGACY_CANDIDATE_STEP = 0.0035
+LEGACY_CANDIDATE_COUNT = 50
+LEGACY_CANDIDATE_HORIZON = 0.175
+
+# Backward-compatible names used by historical callers and serialized tests.
+CANDIDATE_START = LEGACY_CANDIDATE_START
+CANDIDATE_STEP = LEGACY_CANDIDATE_STEP
+CANDIDATE_COUNT = LEGACY_CANDIDATE_COUNT
+CANDIDATE_HORIZON = LEGACY_CANDIDATE_HORIZON
 
 
 @dataclass(frozen=True)
@@ -123,6 +132,12 @@ def split_qualified_identity(split: str, scenario_id: str) -> dict[str, str]:
 
 
 def candidate_requested_times() -> np.ndarray:
+    """Return the historical 0.175-time-unit benchmark grid.
+
+    This helper exists for archived H0/H1/H2 diagnostics and compatibility
+    tests. It is not the default for the current accepted dataset contract,
+    whose requested times must be declared explicitly in configuration.
+    """
     values = CANDIDATE_STEP * np.arange(1, CANDIDATE_COUNT + 1, dtype=np.float64)
     values[-1] = np.float64(CANDIDATE_HORIZON)
     return values
@@ -334,6 +349,15 @@ def parse_requested_output_config(raw: Any) -> RequestedOutputConfig | None:
         )
     if status == ACCEPTED_STATUS and execution_scope != "production":
         raise ValueError("accepted requested_output.execution_scope must be production")
+    if status == ACCEPTED_STATUS:
+        missing_explicit_times = [
+            key for key in ("start", "step", "count", "horizon") if key not in raw
+        ]
+        if missing_explicit_times:
+            raise ValueError(
+                "accepted requested_output requires explicit start, step, count, "
+                f"and horizon (missing: {missing_explicit_times})"
+            )
     split = split_qualified_identity(str(raw.get("split", "train")), "placeholder")[
         "split"
     ]

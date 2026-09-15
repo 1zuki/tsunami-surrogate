@@ -14,11 +14,96 @@ Instead of running a numerical PDE solver online for every scenario, we train ne
 
 The scope is research and benchmarking, not an operational early-warning deployment system.
 
-### Representative rollout
+### From one scenario to a surrogate benchmark
 
-![Representative Hydrostatic rollout: bathymetry, reference elevation, prediction, and absolute error](representative_hydrostatic_surrogate_rollout.gif)
+Each synthetic scenario is shared by all three numerical references. The diagram shows the main forward-surrogate path used by the benchmark: the references see the same bathymetry and source, but keep their own numerical time stepping. Sharing inputs and requested output times makes the comparisons consistent; it does not make the three references physically equivalent.
 
-This archived 50-frame Hydrostatic example shows bathymetry, the numerical-reference surface elevation, the surrogate prediction, and absolute error on a shared physical scale. It illustrates the model and visualization interface; it is not evidence from the accepted fresh-generation contract and must be regenerated after fresh training. Use the evaluation commands below for reported metrics.
+```mermaid
+flowchart TD
+    POOLS["Disjoint scenario pools<br/>training: 10,000 · validation: 1,000 · final test: 2,500"]
+
+    subgraph SCENARIO["1. Shared scenario construction"]
+        BATHY["384 × 384 master bathymetry"]
+        SOURCE["384 × 384 master source"]
+        TAPER["Apply a 16-cell taper at the source edge"]
+        PAIR["Shared paired scenario<br/>one bathymetry and source ID"]
+        IDENTITY["Record the input-array and configuration identity"]
+        DOWNSAMPLE["Block-average both fields to 128 × 128"]
+        SPECTRAL["Check that the source remains resolved<br/>on the 128 × 128 solver grid"]
+        BUFFER["Extend the bathymetry at the edge and add<br/>a 32-cell buffer on every side"]
+        DOMAIN["192 × 192 computational domain"]
+
+        POOLS --> BATHY
+        POOLS --> SOURCE
+        SOURCE --> TAPER
+        BATHY --> PAIR
+        TAPER --> PAIR
+        PAIR --> IDENTITY --> DOWNSAMPLE --> SPECTRAL --> BUFFER --> DOMAIN
+    end
+
+    subgraph REFERENCES["2. Three reference trajectories from the same scenario"]
+        HYDRO["Hydrostatic shallow-water reference"]
+        MUSCL["MUSCL-HR shallow-water reference"]
+        BOUSS["Boussinesq-type reference<br/>(linear weakly dispersive comparison)"]
+        NATURAL["Each reference retains its own stable<br/>natural time steps"]
+        TIMES["Interpolate η at 50 shared requested times<br/>from 8.4 to 420 seconds"]
+        QUALITY["Require finite, physically bounded, and<br/>solver-health-checked trajectories"]
+        CROP["Keep the central 64 × 64 field"]
+        RAW["Accepted raw reference publications<br/>separate by split and numerical reference"]
+        RECORD["Scenario and reference records<br/>link identities, quality outcomes, and SHA-256 hashes"]
+
+        DOMAIN --> HYDRO
+        DOMAIN --> MUSCL
+        DOMAIN --> BOUSS
+        HYDRO --> NATURAL
+        MUSCL --> NATURAL
+        BOUSS --> NATURAL
+        NATURAL --> TIMES --> QUALITY --> CROP --> RAW --> RECORD
+    end
+
+    subgraph DATASETS["3. Reference-specific learning datasets"]
+        PREPROCESS["Verify the records, then prepare one dataset per reference<br/>inputs: bathymetry, source, initial depth · label: 50-frame η trajectory"]
+        TRAIN_DATA["Training data<br/>fit normalization statistics"]
+        VAL_DATA["Validation data<br/>reuse the training statistics"]
+        TEST_DATA["Final test data<br/>reuse the training statistics"]
+
+        RECORD --> PREPROCESS
+        PREPROCESS --> TRAIN_DATA
+        PREPROCESS --> VAL_DATA
+        PREPROCESS --> TEST_DATA
+    end
+
+    subgraph MODELS["4. Train and evaluate surrogates"]
+        TRAIN["Train reference-specific surrogate models<br/>FNO is primary; other models provide comparisons"]
+        CHECKPOINT["Selected checkpoint with its resolved configuration<br/>and training history"]
+        EVALUATE["Held-out evaluation on the final test set"]
+        FIDELITY["Same-reference fidelity"]
+        CROSS["Reference gaps and cross-reference comparisons"]
+        ROBUSTNESS["Robustness, resolution, and real-bathymetry diagnostics"]
+        UNCERTAINTY["Uncertainty and controlled runtime comparisons"]
+        EVIDENCE["Figures, tables, and a checksum-bound evaluation record"]
+
+        TRAIN_DATA --> TRAIN
+        VAL_DATA --> TRAIN
+        TRAIN --> CHECKPOINT
+        CHECKPOINT --> EVALUATE
+        TEST_DATA --> EVALUATE
+        EVALUATE --> FIDELITY --> EVIDENCE
+        EVALUATE --> CROSS --> EVIDENCE
+        EVALUATE --> ROBUSTNESS --> EVIDENCE
+        EVALUATE --> UNCERTAINTY --> EVIDENCE
+    end
+```
+
+The outer grids serve different purposes. The 384 × 384 master fields define one shared scenario; the 128 × 128 field is the solver-ready representation; the 192 × 192 domain provides an edge buffer; and the central 64 × 64 crop is the published learning target. The records and hashes make a generated example traceable, while the acceptance checks reject unsuitable trajectories rather than silently repairing them.
+
+### Representative rollouts
+
+| Hydrostatic | MUSCL-HR | Boussinesq |
+| --- | --- | --- |
+| ![Representative Hydrostatic rollout: bathymetry, reference elevation, prediction, and absolute error](representative_hydrostatic_surrogate_rollout.gif) | ![Representative MUSCL-HR rollout: bathymetry, reference elevation, prediction, and absolute error](representative_muscl_hr_surrogate_rollout.gif) | ![Representative Boussinesq rollout: bathymetry, reference elevation, prediction, and absolute error](representative_boussinesq_surrogate_rollout.gif) |
+
+These 50-frame examples use `sample_000001` from the test split and the matching seed-18 FNO for each numerical reference. Each panel shows bathymetry, numerical-reference surface elevation, surrogate prediction, and absolute error. The animations share the same requested times (8.4 through 420.0) and a common physical elevation scale, so the wave amplitudes can be compared directly; per-reference error colours remain independently scaled. They are qualitative illustrations, not substitutes for the checksum-bound R6 evaluation metrics.
 
 ## 2) Research Questions
 
@@ -60,9 +145,9 @@ bash scripts/run_eval_suite.sh
 # Read-only preflight including all seven ensemble members.
 bash scripts/run_eval_suite.sh --include-ensemble
 
-# Read-only preflight for every metric declared in the core paper suite.
-# This implies the seven-member ensemble.
-bash scripts/run_eval_suite.sh --include-paper-evidence
+# Read-only preflight for the paper prerequisites, including the ensemble.
+# Full paper-evidence evaluation is execution-only; see the command below.
+bash scripts/run_eval_suite.sh --include-ensemble
 
 # Full final execution for a new reproducible evaluation run.
 bash scripts/run_eval_suite.sh \
@@ -258,11 +343,12 @@ project directory that contains those additional supporting run records.
 
 ### 5b.3 Full evaluation
 
-On a fully restored project directory, first run the read-only preflight:
+On a fully restored project directory, first run the read-only prerequisite
+preflight:
 
 ```bash
 # CPU is portable; use --device cuda on a configured CUDA VM.
-bash scripts/run_eval_suite.sh --include-paper-evidence --device cpu
+bash scripts/run_eval_suite.sh --include-ensemble --device cpu
 ```
 
 If it passes, execute the suite once with a new immutable run ID. Results are
@@ -437,10 +523,10 @@ For a fresh Google Cloud or Linux setup, choose one of these routes:
    1. Complete the source check in Section 5b.1.
    2. Restore the released processed-data/checkpoint package if result replay is
       required (Section 5c).
-   3. Run the read-only paper-evidence preflight:
+    3. Run the read-only paper-prerequisite preflight:
 
       ```bash
-      bash scripts/run_eval_suite.sh --include-paper-evidence --device cpu
+       bash scripts/run_eval_suite.sh --include-ensemble --device cpu
       ```
 
 2. **From-scratch route**
@@ -662,8 +748,12 @@ python scripts/make_dataset.py --config configs/data/multires/dataset_128.yaml
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_32.yaml
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_64.yaml
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_128.yaml
-# The native-resolution matrix is included in the paper-evidence evaluation.
-bash scripts/run_eval_suite.sh --include-paper-evidence --device cpu
+# The native-resolution matrix is included in a full paper-evidence evaluation.
+bash scripts/run_eval_suite.sh \
+  --execute \
+  --run-id <immutable-run-id> \
+  --include-paper-evidence \
+  --device cpu
 
 # 11. Solver-vs-solver physical gaps.
 # This shows the main Hydro/MUSCL denominator; see 6.9 for all pair directions.
@@ -683,7 +773,7 @@ python scripts/compare_solvers_physical.py \
 | Runtime + speedup | `eval_speed.py` + `eval_solver_speed.py` -> `make_speed_table.py` | `results/speed/speed_table.{csv,json}` |
 | OOD generalization | `make_ood_splits.py` + `eval_generalization.py` | `experiments/<model>/eval_ood_suites/ood_generalization.json` |
 | Proxy cross-resolution | `eval_resolution_transfer.py` | `.../eval_resolution_proxy/resolution_transfer_proxy.json` |
-| Native 32/64/128 MUSCL-HR resolution | `run_eval_suite.sh --include-paper-evidence` | `evaluation_runs/<run-id>/...` |
+| Native 32/64/128 MUSCL-HR resolution | `run_eval_suite.sh --execute --run-id <immutable-id> --include-paper-evidence` | `evaluation_runs/<run-id>/...` |
 | Solver physical gap | `compare_solvers_physical.py` | `results/solver_compare_*.json` |
 | Emulator-superiority ratio | `eval_emulator_superiority.py` | `results/emulator_superiority_*.json` |
 | Arrival maps | `eval_arrival_maps.py`, `compare_solvers_physical.py --save-arrival-maps` | `...arrival_map*.{json,npz}` |

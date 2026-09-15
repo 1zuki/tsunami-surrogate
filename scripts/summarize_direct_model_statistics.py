@@ -83,7 +83,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--evaluation-run",
-        default="evaluation_runs/final-v2-paper-full-r1",
+        default="evaluation_runs/final-v2-full-nonspeed-20260912-r6",
         help="Validated evaluation-run root containing direct/* per-scenario CSVs.",
     )
     parser.add_argument(
@@ -91,7 +91,7 @@ def main() -> None:
         choices=[key for key, _ in MODEL_SPECS],
         default="fno",
     )
-    parser.add_argument("--bootstrap-seed", type=int, default=20260814)
+    parser.add_argument("--bootstrap-seed", type=int, default=20260813)
     parser.add_argument("--bootstrap-resamples", type=int, default=2000)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
