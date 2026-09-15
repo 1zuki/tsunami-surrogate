@@ -9,10 +9,12 @@ import yaml
 
 from src.evaluation.r6_broad_validation import (
     R6ValidationError,
+    _finalize_output,
     _verify_completed_geoclaw,
     _requested_times,
     _validate_config,
 )
+from src.evaluation.common_time_v2_level_a import validate_checksums
 
 
 def _config() -> dict[str, object]:
@@ -59,3 +61,18 @@ def test_r6_broad_validation_binds_the_completed_geoclaw_revisions() -> None:
         "geoclaw_commit",
         "petsc_commit",
     }
+
+
+def test_r6_broad_validation_checksum_manifest_is_written_after_workspace_cleanup(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / ".workspace"
+    workspace.mkdir()
+    (workspace / "transient.json").write_text("{}\n", encoding="utf-8")
+    (tmp_path / "summary.json").write_text("{}\n", encoding="utf-8")
+
+    _finalize_output(output_root=tmp_path, workspace=workspace)
+
+    assert not workspace.exists()
+    validate_checksums(tmp_path)
+    assert ".workspace/" not in (tmp_path / "SHA256SUMS.txt").read_text(encoding="utf-8")

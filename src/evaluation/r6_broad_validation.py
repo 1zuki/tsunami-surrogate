@@ -121,6 +121,11 @@ def _write_checksums(root: Path) -> None:
     (root / "SHA256SUMS.txt").write_text("\n".join(rows) + "\n", encoding="utf-8")
 
 
+def _finalize_output(*, output_root: Path, workspace: Path) -> None:
+    shutil.rmtree(workspace)
+    _write_checksums(output_root)
+
+
 def _archive_workspace(workspace: Path, archive: Path) -> None:
     subprocess.run(
         ["tar", "--zstd", "-cf", str(archive), "-C", str(workspace.parent), workspace.name],
@@ -1104,8 +1109,7 @@ def execute_r6_broad_validation(
             "duration_seconds": time.monotonic() - started,
         }
         _write_json(output_root / "summary.json", summary)
-        _write_checksums(output_root)
-        shutil.rmtree(workspace)
+        _finalize_output(output_root=output_root, workspace=workspace)
         return output_root / "summary.json"
     except Exception:
         # Preserve the frozen configuration and any partial observations for
