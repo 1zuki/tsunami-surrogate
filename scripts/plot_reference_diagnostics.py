@@ -24,7 +24,7 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_RUN = ROOT / "evaluation_runs/final-v2-paper-full-r1"
+DEFAULT_RUN = ROOT / "evaluation_runs/final-v2-full-nonspeed-20260912-r6"
 DEFAULT_OUTPUT_DIR = ROOT / "paper/figures"
 
 SOLVER_LABELS = {
@@ -40,6 +40,14 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _display_path(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(resolved)
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -374,15 +382,15 @@ def main() -> None:
 
     manifest = {
         "schema_id": "tsunami-surrogate.reference-diagnostic-figures.v1",
-        "evaluation_run": run_root.relative_to(ROOT).as_posix(),
+        "evaluation_run": _display_path(run_root),
         "script": {
-            "path": Path(__file__).resolve().relative_to(ROOT).as_posix(),
+            "path": _display_path(Path(__file__)),
             "sha256": _sha256(Path(__file__).resolve()),
         },
         "source_artifacts": source_rows,
         "figures": [
             {
-                "path": path.relative_to(ROOT).as_posix(),
+                "path": _display_path(path),
                 "sha256": _sha256(path),
                 "bytes": path.stat().st_size,
             }

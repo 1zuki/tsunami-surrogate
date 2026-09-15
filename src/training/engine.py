@@ -37,12 +37,25 @@ def _model_output(model, x):
     return out
 
 
-def train_one_epoch(model, loader, optimizer, loss_fn, device, grad_clip: float | None = None) -> Dict[str, float]:
+def train_one_epoch(
+    model,
+    loader,
+    optimizer,
+    loss_fn,
+    device,
+    grad_clip: float | None = None,
+    max_batches: int | None = None,
+) -> Dict[str, float]:
+    if max_batches is not None and max_batches <= 0:
+        raise ValueError("max_batches must be positive or null")
     model.train()
     total_loss = 0.0
     n = 0
+    optimizer_steps = 0
     
-    for batch in tqdm(loader, desc='train', leave=False):
+    for batch_index, batch in enumerate(tqdm(loader, desc='train', leave=False)):
+        if max_batches is not None and batch_index >= max_batches:
+            break
         x, y = batch['x'].to(device), batch['y'].to(device)
         optimizer.zero_grad(set_to_none=True)
     
@@ -67,8 +80,13 @@ def train_one_epoch(model, loader, optimizer, loss_fn, device, grad_clip: float 
         _require_finite_parameters(model)
         total_loss += float(loss.detach().cpu()) * x.size(0)
         n += x.size(0)
+        optimizer_steps += 1
     
-    return {'loss': total_loss / max(1, n)}
+    return {
+        'loss': total_loss / max(1, n),
+        'examples': float(n),
+        'optimizer_steps': float(optimizer_steps),
+    }
 
 
 @torch.no_grad()

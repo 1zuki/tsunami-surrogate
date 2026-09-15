@@ -104,6 +104,21 @@ def test_requested_config_supports_scaled_physical_time_contract() -> None:
     assert requested.contract_hash != contract_hash()
 
 
+def test_accepted_requested_config_requires_explicit_time_grid() -> None:
+    with pytest.raises(ValueError, match="requires explicit"):
+        parse_requested_output_config(
+            {
+                "enabled": True,
+                "status": "accepted",
+                "execution_scope": "production",
+                "split": "test",
+                "max_natural_steps": 20000,
+                "collect_natural_step_health": True,
+                "eta_primary": True,
+            }
+        )
+
+
 def test_hashes_bind_array_dtype_shape_and_semantic_config() -> None:
     values32 = np.arange(4, dtype=np.float32).reshape(2, 2)
     values64 = values32.astype(np.float64)

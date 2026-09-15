@@ -1,0 +1,29 @@
+defaults:
+  - ../model/pooled_reference_ablation/fno_anonymous.yaml
+
+output_dir: ablation_runs/pooled-reference-ablation-r6/smoke/anonymous
+seed: 18
+device: cuda
+
+data:
+  batch_size: 6
+  num_workers: 0
+  val_samples: 6
+  test_samples: 6
+  balanced_solver_sampling:
+    batches_per_epoch: 1
+
+model:
+  modes1: 4
+  modes2: 4
+  width: 8
+  depth: 2
+
+train:
+  epochs: 1
+  max_train_batches: 1
+  early_stopping:
+    patience: 2
+
+cluster_suite:
+  classification: pooled_reference_ablation_smoke_only

@@ -1,0 +1,110 @@
+schema_id: tsunami-surrogate.r6-broad-validation.v1
+artifact_kind: r6-broad-numerical-validation-candidate
+
+# This campaign is deliberately independent of the archived 96x96 / 0.175
+# H0, Level A, H1, and H2 artifacts.  It validates the completed R6 dataset
+# and records only evidence generated against this 384 -> 128 -> 192 -> 64,
+# 8.4 -> 420 contract.
+corrected_production:
+  contract_path: configs/eval/final_v2_suite.yaml
+  contract_hash: 288d19af5e8f5fe1658c098bf972ada97292a08fe35ed99c086406a291576d2f
+  master_shape: [384, 384]
+  solver_input_shape: [128, 128]
+  computational_shape: [192, 192]
+  publication_shape: [64, 64]
+  buffer_cells: 32
+  cell_size: 18.75
+  requested_times:
+    start: 8.4
+    step: 8.4
+    count: 50
+    horizon: 420.0
+  solver_profiles:
+    swe_hydrostatic: {cfl: 0.1125, boundary: radiation}
+    swe_muscl_hr: {cfl: 0.225, boundary: radiation}
+    boussinesq: {cfl: 0.35, boundary: open}
+
+h0_full_dataset_audit:
+  deep_payload_audit: true
+  representative_solver_canaries: 3
+
+level_a:
+  role: current_grid_analytical_and_invariant_checks
+  analytical:
+    physical_length: 3600.0
+    transverse_cells: 4
+    grids: [96, 192]
+    mode: 1
+    amplitude: 1.0e-5
+    depth: 5.0
+    spatial_refinement_allowance: 1.05
+    phase_speed_relative_error:
+      swe_hydrostatic: 0.05
+      swe_muscl_hr: 0.03
+      boussinesq: 0.03
+    amplitude_drift:
+      swe_hydrostatic: 0.20
+      swe_muscl_hr: 0.10
+      boussinesq: 0.10
+  invariants:
+    test_sample_index: 1
+    steps: 32
+    lake_at_rest_eta_drift: 1.0e-6
+    lake_at_rest_velocity_or_eta_t: 1.0e-5
+    swe_mass_relative_change: 1.0e-5
+
+h1_integrated_health:
+  role: current_buffered_domain_health_and_repeatability
+  split: train
+  count_per_family_cell: 1
+  replay_case_count: 3
+  max_natural_steps: 20000
+  replay_max_abs: 5.0e-12
+  replay_relative_l2: 5.0e-12
+
+h2_sensitivity:
+  role: current_cfl_time_extraction_and_buffered_domain_sensitivity
+  split: train
+  selection_rank_per_family_cell: 2
+  count_per_family_cell: 1
+  max_natural_steps: 20000
+  reference_cfl_factor: 0.5
+  # These are stability envelopes for a production-to-half-CFL comparison,
+  # not estimates of physical error or formal convergence rates.
+  trajectory_relative_l2_max:
+    swe_hydrostatic: 0.50
+    swe_muscl_hr: 0.30
+    boussinesq: 0.05
+
+boussinesq_dispersion:
+  role: current_mesh_discrete_dispersion_and_cg_health
+  physical_length: 3600.0
+  nx: 192
+  ny: 4
+  depth: 5.0
+  amplitude: 1.0e-5
+  modes: [1, 2, 4, 8]
+  phase_speed_relative_error_max: 0.03
+  linear_solver_tol: 1.0e-10
+  linear_solver_max_iter: 750
+
+external_comparator:
+  role: completed_r6_geoclaw_diagnostic
+  summary: artifacts/corrected_production_geoclaw/evaluations/c49bae5d7577935fe266cd4659f1c26dc953cf97a389abc97fcdac2183427498/summary.json
+  checksum_manifest: artifacts/corrected_production_geoclaw/evaluations/c49bae5d7577935fe266cd4659f1c26dc953cf97a389abc97fcdac2183427498/SHA256SUMS.txt
+  expected_bundle_hash: c49bae5d7577935fe266cd4659f1c26dc953cf97a389abc97fcdac2183427498
+  expected_status: completed_descriptive_compatibility_diagnostic
+  expected_case_count: 3
+  expected_comparison_count: 6
+
+execution:
+  workers: 8
+  thread_environment:
+    OMP_NUM_THREADS: "1"
+    OPENBLAS_NUM_THREADS: "1"
+    MKL_NUM_THREADS: "1"
+    NUMEXPR_NUM_THREADS: "1"
+    BLIS_NUM_THREADS: "1"
+    VECLIB_MAXIMUM_THREADS: "1"
+  resume_policy: validate_then_resume
+  output_policy: immutable_checksum_bound_directory

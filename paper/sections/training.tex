@@ -19,15 +19,15 @@ with $w_{\min} = 0.8$, $w_{\max} = 2.0$, and $p = 1.7$. Model selection and earl
 
 \subsection{Experiment configurations}
 \label{subsec:train-configs}
-The primary direct-prediction models are evaluated across Hydrostatic, MUSCL-HR, and Boussinesq targets using a unified training protocol (loss function, selection metric, and maximum epoch budget). Hydrostatic comparisons comprise FNO, F-FNO, FNO-modes8, FNO-modes20, U-FNO, WNO, CNN, U-Net, and ConvLSTM. The weakly dispersive Boussinesq model serves as a qualitative contrast under identical scenario domain settings.
+The primary direct-prediction models are evaluated across Hydrostatic, MUSCL-HR, and Boussinesq targets using a unified training procedure (loss function, selection metric, and maximum epoch budget). Hydrostatic comparisons comprise FNO, F-FNO, FNO-modes8, FNO-modes20, U-FNO, WNO, CNN, U-Net, and ConvLSTM. The weakly dispersive Boussinesq model serves as a qualitative contrast under identical scenario domain settings.
 
 For autoregressive drift analysis, Window-FNO-5 and Window-F-FNO-5 are trained on hydrostatic data to predict 5-frame blocks ($K = 5$) given two prior elevation states. In inference, rollouts are seeded with the first target frame and evaluated over the remaining 49 frames. These windowed models quantify conditional error propagation rather than direct single-pass performance.
 
-Uncertainty quantification relies on a seven-member deep ensemble of the baseline FNO, differing strictly in initialization seed. To evaluate seed sensitivity across architectures and target labels, a replicated subset uses seeds $\{18, 36, 67\}$ for Hydrostatic FNO, F-FNO, ConvLSTM, and U-Net, as well as FNO trained on MUSCL-HR and Boussinesq labels. Sample-scaling runs use seed 18 so that their full-data comparator has the same training seed.
+Uncertainty quantification relies on a seven-member deep ensemble of the baseline FNO, differing strictly in initialization seed. The selected direct and windowed checkpoints use seed 18, while the ensemble uses seeds $\{11, 22, 33, 44, 55, 66, 77\}$. Sample-scaling runs also use seed 18, so their full-data comparator has the same training seed.
 
 \subsection{Hardware and runtime setting}
 \label{subsec:train-hardware}
 
-Dataset generation and the final non-timing evaluation use university cluster resources, with CUDA model evaluation assigned to a DGX-A100 node. Runtime benchmarks are conducted separately on a local system equipped with an Intel Core i5-13420H CPU and an NVIDIA GeForce RTX 4050 Laptop GPU. Training-time comparisons are omitted because they depend on the available hardware and system load.
+Dataset generation and the final non-timing evaluation use university cluster resources, with CUDA model evaluation assigned to a DGX-A100 node. The study does not include a controlled training-efficiency comparison; archival wall-clock costs for the conditional windowed models are reported separately in Appendix~\ref{app:training-time} and are interpreted only as hardware- and load-dependent computational cost.
 
-Reported inference runtimes reflect hardware-specific benchmarks against our vectorized NumPy/SciPy reference solvers, rather than fully optimized GPU-accelerated operational codes. Random seed allocations are structured as follows: primary direct and windowed models use seed 18; the replicated subset uses seeds $\{18, 36, 67\}$; dataset scaling experiments use seed 18; and the 7-member uncertainty ensemble employs seeds $\{11, 22, 33, 44, 55, 66, 77\}$. Complete configuration files and checkpoint logs are provided for reproducibility.
+Random seed allocations are structured as follows: primary direct and windowed models use seed 18; dataset-scaling experiments use seed 18; and the seven-member uncertainty ensemble employs seeds $\{11, 22, 33, 44, 55, 66, 77\}$. Complete configuration files, training logs, and selected model states are provided for reproducibility.

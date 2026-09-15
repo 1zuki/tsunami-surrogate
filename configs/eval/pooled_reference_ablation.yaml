@@ -1,0 +1,63 @@
+schema_id: tsunami-surrogate.pooled-reference-ablation-protocol.v1
+protocol_id: pooled-reference-ablation-r6-five-seed
+contract: configs/eval/final_v2_suite.yaml
+contract_hash: 288d19af5e8f5fe1658c098bf972ada97292a08fe35ed99c086406a291576d2f
+seeds: [18, 36, 67, 72, 154]
+
+reference_datasets:
+  hydrostatic: data/processed/hydrostatic/test
+  muscl_hr: data/processed/muscl_hr/test
+  boussinesq: data/processed/boussinesq/test
+
+specialists:
+  hydrostatic:
+    config: configs/model/fno.yaml
+    checkpoint_template: experiments/fno/seed_{seed}/best.pt
+    normalization_stats: data/processed/hydrostatic/normalization_stats.json
+  muscl_hr:
+    config: configs/model/fno_muscl_hr.yaml
+    checkpoint_template: experiments/fno_muscl_hr/seed_{seed}/best.pt
+    normalization_stats: data/processed/muscl_hr/normalization_stats.json
+  boussinesq:
+    config: configs/model/fno_boussinesq.yaml
+    checkpoint_template: experiments/fno_boussinesq/seed_{seed}/best.pt
+    normalization_stats: data/processed/boussinesq/normalization_stats.json
+
+pooled_models:
+  anonymous_equal_updates:
+    config: configs/model/pooled_reference_ablation/fno_anonymous.yaml
+    checkpoint_template: ablation_runs/pooled-reference-ablation-r6/training/anonymous_equal_updates/seed_{seed}/best.pt
+    normalization_stats: data/processed/pooled_reference_ablation/anonymous/normalization_stats.json
+    conditioned: false
+    budget_interpretation: primary_equal_optimizer_updates
+  conditioned_equal_updates:
+    config: configs/model/pooled_reference_ablation/fno_conditioned.yaml
+    checkpoint_template: ablation_runs/pooled-reference-ablation-r6/training/conditioned_equal_updates/seed_{seed}/best.pt
+    normalization_stats: data/processed/pooled_reference_ablation/conditioned/normalization_stats.json
+    conditioned: true
+    budget_interpretation: primary_equal_optimizer_updates
+  anonymous_same_epoch:
+    config: configs/model/pooled_reference_ablation/fno_anonymous_same_epoch.yaml
+    checkpoint_template: ablation_runs/pooled-reference-ablation-r6/training/anonymous_same_epoch/seed_{seed}/best.pt
+    normalization_stats: data/processed/pooled_reference_ablation/anonymous/normalization_stats.json
+    conditioned: false
+    budget_interpretation: secondary_full_pooled_epoch
+  conditioned_same_epoch:
+    config: configs/model/pooled_reference_ablation/fno_conditioned_same_epoch.yaml
+    checkpoint_template: ablation_runs/pooled-reference-ablation-r6/training/conditioned_same_epoch/seed_{seed}/best.pt
+    normalization_stats: data/processed/pooled_reference_ablation/conditioned/normalization_stats.json
+    conditioned: true
+    budget_interpretation: secondary_full_pooled_epoch
+
+evaluation:
+  batch_size: 32
+  bootstrap_seed: 20260915
+  bootstrap_resamples: 2000
+  output_root: evaluation_runs/pooled-reference-ablation-r6
+  checkpoint_selection_rule: validation_metric_only
+  final_test_access_rule: >-
+    Evaluate only checkpoints selected from validation metrics after all
+    preprocessing, model, seed, and budget settings are frozen.
+  interpretation_boundary: >-
+    Benchmark-relative cross-reference discrepancy only; no result may be
+    reported as physical truth, a fidelity hierarchy, or physical superiority.

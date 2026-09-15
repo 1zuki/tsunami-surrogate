@@ -1,0 +1,16 @@
+defaults:
+  - fno_anonymous.yaml
+
+output_dir: ablation_runs/pooled-reference-ablation-r6/training/conditioned_equal_updates
+
+data:
+  train_path: data/processed/pooled_reference_ablation/conditioned/train
+  val_path: data/processed/pooled_reference_ablation/conditioned/val
+  test_path: data/processed/pooled_reference_ablation/conditioned/test
+
+model:
+  in_channels: 4
+
+eval:
+  dataset_path: data/processed/pooled_reference_ablation/conditioned/test
+  output_dir: ablation_runs/pooled-reference-ablation-r6/training/conditioned_equal_updates/eval

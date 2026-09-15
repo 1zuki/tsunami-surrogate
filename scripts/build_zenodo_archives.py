@@ -17,11 +17,11 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_RUN = ROOT / "evaluation_runs/final-v2-paper-full-r1"
+DEFAULT_RUN = ROOT / "evaluation_runs/final-v2-full-nonspeed-20260912-r6"
 DEFAULT_RELEASE_ROOT = ROOT / "release/common-time-v2-zenodo"
 DEFAULT_PROJECT_PYTHON = ROOT / ".venv/bin/python"
 RELEASE_VERSION = "2.1.0"
-DEFAULT_PREPARED_DATE = "2026-08-19"
+DEFAULT_PREPARED_DATE = "2026-09-14"
 PREVIOUS_REPRODUCTION_DOI_URL = "https://doi.org/10.5281/zenodo.21956834"
 RAW_MIRROR_URL = (
     "https://drive.google.com/drive/folders/"
@@ -31,6 +31,11 @@ DATA_LICENSE_ID = "cc-by-4.0"
 DATA_LICENSE_NAME = (
     "Creative Commons Attribution 4.0 International (CC BY 4.0)"
 )
+PROFILE_RELEASE_VERSIONS = {
+    "reproduction": "2.1.0",
+    "processed": "2.2.0",
+    "raw": "1.0.0",
+}
 MULTISEED_RESULTS_ROOT = ROOT / "results/multiseed_v2"
 GEOCLAW_BUNDLE_HASH = (
     "3eb1afd1653a3d5dbbd12a381c0ab1eccdc40920d98f6b503249698d5cd62460"
@@ -392,6 +397,40 @@ def _reproduction_specs(
     )
 
 
+def _processed_specs() -> tuple[ArchiveSpec, ...]:
+    """Return the corrected core model-ready dataset, without paper artifacts."""
+    return (
+        ArchiveSpec(
+            "main_processed/hydrostatic_processed.tar.zst",
+            (ROOT / "data/processed/hydrostatic",),
+            "Complete corrected-R6 Hydrostatic train/validation/test dataset.",
+        ),
+        ArchiveSpec(
+            "main_processed/muscl_hr_processed.tar.zst",
+            (ROOT / "data/processed/muscl_hr",),
+            "Complete corrected-R6 MUSCL-HR train/validation/test dataset.",
+        ),
+        ArchiveSpec(
+            "main_processed/boussinesq_processed.tar.zst",
+            (ROOT / "data/processed/boussinesq",),
+            "Complete corrected-R6 Boussinesq train/validation/test dataset.",
+        ),
+        ArchiveSpec(
+            "provenance/processed_contract_and_preprocessing.tar.zst",
+            (
+                ROOT / "configs/eval/final_v2_suite.yaml",
+                ROOT / "configs/data/preprocess_train.yaml",
+                ROOT / "configs/data/preprocess_eval.yaml",
+                ROOT / "configs/data/preprocess_test.yaml",
+            ),
+            (
+                "Corrected evaluation contract and preprocessing configurations "
+                "referenced by the processed-data manifests."
+            ),
+        ),
+    )
+
+
 def _raw_specs() -> tuple[ArchiveSpec, ...]:
     return (
         ArchiveSpec(
@@ -555,12 +594,21 @@ def _active_contract_summary() -> tuple[str, str]:
     step = float(requested["step"])
     horizon = float(requested["horizon"])
     domain = scientific["computational_domain"]
-    solver_shape = [int(value) for value in domain["solver_shape"]]
+    buffered_shape = [int(value) for value in domain["solver_shape"]]
     publication_shape = [int(value) for value in domain["publication_shape"]]
+    generation_config = yaml.safe_load(
+        (ROOT / "configs/data/dataset.yaml").read_text(encoding="utf-8")
+    ) or {}
+    paired_inputs = generation_config["paired_inputs"]
+    master_shape = [int(value) for value in paired_inputs["master_shape"]]
+    solver_core_shape = [int(value) for value in paired_inputs["solver_shape"]]
     time_summary = f"{start:g}, {start + step:g}, ..., {horizon:g}"
     computation_summary = (
-        f"{solver_shape[0]}x{solver_shape[1]} with a central "
-        f"{publication_shape[0]}x{publication_shape[1]} publication crop"
+        f"{master_shape[0]}x{master_shape[1]} master inputs, "
+        f"{solver_core_shape[0]}x{solver_core_shape[1]} solver cores, "
+        f"{buffered_shape[0]}x{buffered_shape[1]} buffered computation, "
+        f"and a central {publication_shape[0]}x{publication_shape[1]} "
+        "publication crop"
     )
     return time_summary, computation_summary
 
@@ -584,7 +632,7 @@ def _write_release_files(
     manifest = {
         "schema_id": "tsunami-surrogate.zenodo-release-manifest.v1",
         "profile": profile,
-        "release_version": RELEASE_VERSION,
+        "release_version": PROFILE_RELEASE_VERSIONS[profile],
         "prepared_date": prepared,
         "evaluation_run": run_id,
         "evaluation_code_state": code_state,
@@ -674,13 +722,57 @@ GEBCO must be acknowledged and cited. The derived crops are rescaled research
 inputs and must not be used for navigation."""
         integrity_description = """`RELEASE_MANIFEST.json` records archive hashes, byte sizes, source file counts,
 source paths, the validated evaluation run, and the evaluation code state."""
+    elif profile == "processed":
+        title = (
+            "Tsunami-Surrogate Benchmark: Processed Multi-Reference Dataset "
+            "for Neural-Operator Emulation of Tsunami-Like Wave Propagation"
+        )
+        description = (
+            "Processed multi-reference train, validation, and test datasets "
+            "for the corrected common-time tsunami-surrogate benchmark."
+        )
+        scope = """This deposit contains the complete model-ready train, validation,
+and test datasets for the Hydrostatic, MUSCL-HR, and Boussinesq numerical
+references. Each reference contains 13,500 shared synthetic scenarios: 10,000
+training, 1,000 validation, and 2,500 test cases. Arrays are sharded, include
+the published metadata and normalization statistics, and contain 50
+surface-elevation outputs at the common requested times.
+
+The separate raw numerical-publications deposit contains the solver outputs and
+generation provenance from which these arrays were prepared. This deposit does
+not contain checkpoints, paper files, evaluation outputs, historical saved-step
+artifacts, or auxiliary holdout and resolution-transfer suites."""
+        extraction = """Extract archives into a fresh clone's repository root:
+
+```bash
+sha256sum -c SHA256SUMS.txt
+tar --use-compress-program=unzstd -xf main_processed/hydrostatic_processed.tar.zst -C /path/to/tsunami-surrogate
+tar --use-compress-program=unzstd -xf main_processed/muscl_hr_processed.tar.zst -C /path/to/tsunami-surrogate
+tar --use-compress-program=unzstd -xf main_processed/boussinesq_processed.tar.zst -C /path/to/tsunami-surrogate
+tar --use-compress-program=unzstd -xf provenance/processed_contract_and_preprocessing.tar.zst -C /path/to/tsunami-surrogate
+```"""
+        provenance = f"""- Repository: https://github.com/1zuki/tsunami-surrogate
+- Corrected production contract: `288d19af5e8f5fe1658c098bf972ada97292a08fe35ed99c086406a291576d2f`
+- Frozen generation code-state hash: `1f3bcac9fcae0e40776b78d300c063327ed187caf2110bf54f92bfa8dfb746c8`
+- Validated R6 evaluation run: `{run_id}`
+- Common requested times: `{requested_time_summary}`
+- Numerical computation: {computation_summary}
+
+The processed manifests bind each split to its source solver manifest,
+generation contract, preprocessing configuration, normalization statistics, and
+shard manifest. The R6 production validation passed deep raw-payload auditing
+and three solver canaries for the corrected contract."""
+        gebco = ""
+        integrity_description = """`RELEASE_MANIFEST.json` records archive hashes,
+byte sizes, source file counts, source paths, the validated R6 evaluation run,
+and the corrected production contract."""
     else:
         title = "Tsunami-Surrogate Common-Time V2 Raw Numerical Publications"
         description = (
             "Eta-primary common-time raw train, validation, and test numerical "
             "publications for Hydrostatic, MUSCL-HR, and Boussinesq references."
         )
-        scope = """This is the complete raw-publication mirror. It contains all
+        scope = """This is an independent raw numerical-publications deposit. It contains all
 13,500 shared scenarios and 40,500 solver publications. Each solver publication
 stores 50 requested-time surface-elevation frames plus requested-time,
 adjacent-step interpolation, health, contract, and checksum provenance. Full
@@ -727,24 +819,20 @@ contract and code state."""
 - Previous published version DOI: {PREVIOUS_REPRODUCTION_DOI_URL}
 - New-version DOI: assigned automatically by Zenodo when this draft is
   published
-- Complete raw-publication mirror:
-  {RAW_MIRROR_URL}
+- Separate raw numerical-publications Zenodo deposit: DOI assigned separately
+  by Zenodo when its draft is published
 
 Use the existing Zenodo record's **New version** action. Do not enter the
 previous DOI as an external or replacement DOI; Zenodo retains the version
 relationship and assigns a new DOI to the new version.
 
 The newly published Zenodo version is the persistent citation for this
-reproduction package.
-The Google Drive folder provides the approximately 31 GB eta-primary raw
-publications as a supplementary distribution mirror. Because that folder is
-mutable, verify downloaded raw archives with their supplied checksums and do
-not treat the Drive URL as an immutable identifier."""
+reproduction package. The raw numerical publications are deliberately staged
+as a separate immutable Zenodo deposit with its own DOI."""
         metadata_notes = (
             f"Previous version DOI: {PREVIOUS_REPRODUCTION_DOI_URL}. Zenodo "
-            f"will assign a new DOI to this version. Complete raw numerical "
-            f"publications are distributed through the supplementary mutable "
-            f"mirror at {RAW_MIRROR_URL}."
+            "will assign a new DOI to this version. Raw numerical publications "
+            "are prepared as a separate Zenodo deposit with a distinct DOI."
         )
         license_and_citation = f"""## License
 
@@ -758,7 +846,7 @@ attribution.
 
 Cite the DOI assigned by Zenodo to this version after publication. The
 previous version remains available at {PREVIOUS_REPRODUCTION_DOI_URL}.
-The Google Drive raw mirror is not a persistent citation."""
+The separately published raw numerical-publications deposit has its own DOI."""
         checklist = f"""# Manual Zenodo upload checklist
 
 1. Verify `sha256sum -c SHA256SUMS.txt`.
@@ -772,65 +860,95 @@ The Google Drive raw mirror is not a persistent citation."""
 6. Confirm the dataset license is Creative Commons Attribution 4.0
    International (CC BY 4.0).
 7. Set `publication_date` to the actual publication date.
-8. Test the raw mirror in a private browser window with no Google account:
-   {RAW_MIRROR_URL}
-9. Remove or replace the previous version's files in the draft, then upload
+8. Remove or replace the previous version's files in the draft, then upload
    `README.md`, `RELEASE_MANIFEST.json`, `ARCHIVE_CONTENTS.tsv`,
    `SHA256SUMS.txt`, `direct_model_statistics.json`, and every archive.
-10. Confirm the displayed total size, every filename, and the raw-mirror link
-   before publishing.
-11. Publish the Zenodo version and verify that its new DOI resolves.
-12. Download one archive from Zenodo and re-run its SHA-256 check as an
+9. Confirm the displayed total size and every filename before publishing.
+10. Publish the Zenodo version and verify that its new DOI resolves.
+11. Download one archive from Zenodo and re-run its SHA-256 check as an
     independent post-upload smoke test.
 """
-    else:
-        availability = f"""## Distribution
+    elif profile == "processed":
+        availability = """## Deposit relationship
 
-- Raw-publication mirror: {RAW_MIRROR_URL}
-- Previous published reproduction package:
-  {PREVIOUS_REPRODUCTION_DOI_URL}
-
-This Google Drive folder is a supplementary, mutable distribution mirror
-rather than an immutable archive. Verify every downloaded archive against
-`SHA256SUMS.txt`. Cite the latest published Zenodo reproduction package, not
-the Drive URL."""
+This processed dataset is prepared as a new version of the existing Zenodo
+processed-data record. Zenodo assigns its DOI when the draft is published.
+The raw numerical publications are prepared as a second independent deposit,
+which will receive a distinct DOI when published."""
         metadata_notes = (
-            f"Raw numerical publications are distributed through the mutable "
-            f"mirror at {RAW_MIRROR_URL}; the previous reproduction version "
-            f"is {PREVIOUS_REPRODUCTION_DOI_URL}."
+            "New version of the corrected processed dataset. Its raw numerical "
+            "inputs are prepared as a separate Zenodo deposit with a distinct DOI."
         )
-        license_and_citation = f"""## License
+        license_and_citation = """## License
 
-The associated Zenodo dataset record declares Creative Commons Attribution 4.0
+The Zenodo dataset record declares Creative Commons Attribution 4.0
 International (CC BY 4.0) for the deposited research data and documentation.
 This dataset license does not replace the repository's code license or
 third-party terms.
 
 ## Citation
 
-Cite the latest published Zenodo reproduction package. The previous version
-is available at {PREVIOUS_REPRODUCTION_DOI_URL}. Do not cite the mutable Drive
-folder as an archival record."""
-        checklist = f"""# Raw mirror upload checklist
+Cite the DOI assigned by Zenodo to this processed-data version after
+publication. Cite the raw numerical-publications DOI separately when using the
+raw solver outputs."""
+        checklist = f"""# Manual Zenodo upload checklist
 
 1. Verify `sha256sum -c SHA256SUMS.txt`.
-2. Upload `README.md`, `RELEASE_MANIFEST.json`, `ARCHIVE_CONTENTS.tsv`,
-   `SHA256SUMS.txt`, and all three raw archives to:
-   {RAW_MIRROR_URL}
-3. Confirm every displayed filename and byte size.
-4. Set the folder and files to **Anyone with the link: Viewer**.
-5. Test access and downloads in a private browser window with no Google
-   account.
-6. Keep the folder read-only and verify downloaded archives against
-   `SHA256SUMS.txt`.
-7. Cite the latest published reproduction package; the previous version is
-   {PREVIOUS_REPRODUCTION_DOI_URL}. Do not cite the mutable Drive folder as an
-   archival record.
+2. Open Zenodo record {PREVIOUS_REPRODUCTION_DOI_URL} and choose **New version**.
+3. Do not copy the previous DOI into a DOI field; Zenodo retains the version
+   relationship and assigns the new version DOI automatically.
+4. Copy and review `ZENODO_METADATA_TEMPLATE.json`.
+5. Confirm the dataset license is Creative Commons Attribution 4.0
+   International (CC BY 4.0) and set `publication_date` to the actual date.
+6. Upload `README.md`, `RELEASE_MANIFEST.json`, `ARCHIVE_CONTENTS.tsv`,
+   `SHA256SUMS.txt`, and every archive in this directory.
+7. Confirm the displayed total size and every filename, then publish.
+8. Record the processed-data DOI and verify it resolves.
+9. Download one archive from Zenodo and re-run its SHA-256 check as an
+   independent post-upload smoke test.
+"""
+    else:
+        availability = """## Deposit relationship
+
+This raw numerical-publications dataset is an independent Zenodo deposit.
+Zenodo assigns its DOI when this draft is published. The processed
+model-ready dataset is prepared as a separate Zenodo version with a distinct
+DOI."""
+        metadata_notes = (
+            "Independent raw numerical-publications Zenodo deposit. The "
+            "processed model-ready dataset is prepared separately with its own DOI."
+        )
+        license_and_citation = """## License
+
+The Zenodo dataset record declares Creative Commons Attribution 4.0
+International (CC BY 4.0) for the deposited research data and documentation.
+This dataset license does not replace the repository's code license or
+third-party terms.
+
+## Citation
+
+Cite the DOI assigned by Zenodo to this raw numerical-publications deposit
+after publication. Cite the processed-data DOI separately when using the
+model-ready arrays."""
+        checklist = """# Manual Zenodo upload checklist
+
+1. Verify `sha256sum -c SHA256SUMS.txt`.
+2. Create a new Zenodo dataset draft; do not select **New version** for the
+   processed-data record.
+3. Copy and review `ZENODO_METADATA_TEMPLATE.json`.
+4. Confirm the dataset license is Creative Commons Attribution 4.0
+   International (CC BY 4.0) and set `publication_date` to the actual date.
+5. Upload `README.md`, `RELEASE_MANIFEST.json`, `ARCHIVE_CONTENTS.tsv`,
+   `SHA256SUMS.txt`, and all three raw archives.
+6. Confirm every displayed filename and byte size, then publish.
+7. Record the raw-data DOI and verify it resolves.
+8. Download one archive from Zenodo and re-run its SHA-256 check as an
+   independent post-upload smoke test.
 """
 
     readme = f"""# {title}
 
-Version: {RELEASE_VERSION}
+Version: {PROFILE_RELEASE_VERSIONS[profile]}
 
 Prepared: {prepared}
 
@@ -868,29 +986,43 @@ sha256sum -c SHA256SUMS.txt
 """
     (destination / "README.md").write_text(readme, encoding="utf-8")
 
+    metadata_description = description
+    if profile == "processed":
+        metadata_description = f"""<p>&nbsp; This record contains the corrected processed-data release for the<br>&nbsp; Tsunami-Surrogate common-time benchmark, accompanying the manuscript<br>&nbsp; <em>Reference-Aware Evaluation of Neural PDE Surrogates: A Controlled Multi-<br>&nbsp; Reference Benchmark for Tsunami-Like Waves</em>.</p>
+<p>&nbsp; The benchmark contains 13,500 shared synthetic bathymetry&ndash;source scenarios<br>&nbsp; evaluated using three numerical references: Hydrostatic, MUSCL-HR, and a linear<br>&nbsp; weakly dispersive Boussinesq model. Each reference retains its natural internal<br>&nbsp; time stepping while publishing 50 outputs at the same requested times from 8.4<br>&nbsp; to 420.0 model-time units. Numerical generation begins on 384 &times; 384 master<br>&nbsp; inputs, uses 128 &times; 128 solver cores and a buffered 192 &times; 192 computation,<br>&nbsp; then publishes the central 64 &times; 64 crop.</p>
+<p>&nbsp; The package includes:</p>
+<p>&nbsp; - Complete processed train, validation, and test datasets for all three references.<br>&nbsp; - Shard manifests, sample metadata, and normalization statistics for each split.<br>&nbsp; - The corrected evaluation contract and the preprocessing configurations referenced<br>&nbsp; &nbsp; by the processed-data manifests.<br>&nbsp; - SHA-256 checksums and a release manifest describing every archive.</p>
+<p>&nbsp; The separate raw numerical-publications deposit contains the solver outputs and<br>&nbsp; generation provenance used to prepare these model-ready arrays. This deposit does<br>&nbsp; not include model checkpoints, paper files, evaluation outputs, historical saved-<br>&nbsp; step artifacts, or auxiliary evaluation suites.</p>
+<p>&nbsp; This is a controlled, synthetic, finite-horizon research benchmark. It is not an<br>&nbsp; operational tsunami-warning, navigation, inundation, run-up, or site-specific<br>&nbsp; hazard product. The numerical references are explicit label generators rather than<br>&nbsp; physical ground truth.</p>
+<p>&nbsp; Source code and documentation are available from the project repository. File<br>&nbsp; integrity can be verified using the included SHA256SUMS.txt.</p>"""
+    elif profile == "raw":
+        metadata_description = f"""<p>&nbsp; This record contains the raw numerical-publications release for the<br>&nbsp; Tsunami-Surrogate common-time benchmark, accompanying the processed multi-<br>&nbsp; reference dataset published as a separate Zenodo deposit.</p>
+<p>&nbsp; The release contains 13,500 shared synthetic bathymetry&ndash;source scenarios<br>&nbsp; evaluated using three numerical references: Hydrostatic, MUSCL-HR, and a linear<br>&nbsp; weakly dispersive Boussinesq model. Each reference retains its natural internal<br>&nbsp; time stepping while publishing 50 outputs at the same requested times from 8.4<br>&nbsp; to 420.0 model-time units. Numerical generation begins on 384 &times; 384 master<br>&nbsp; inputs, uses 128 &times; 128 solver cores and a buffered 192 &times; 192 computation,<br>&nbsp; then publishes the central 64 &times; 64 crop.</p>
+<p>&nbsp; The package includes:</p>
+<p>&nbsp; - Raw train, validation, and test publications for all three numerical references.<br>&nbsp; - Input bathymetry and source fields, scenario and solver manifests, and frozen<br>&nbsp; &nbsp; configuration snapshots.<br>&nbsp; - 40,500 total solver publications with requested-time, health, contract, and<br>&nbsp; &nbsp; per-publication checksum provenance.<br>&nbsp; - SHA-256 checksums and a release manifest describing every archive.</p>
+<p>&nbsp; Full natural-step state trajectories are intentionally not published. The separate<br>&nbsp; processed-data Zenodo deposit contains the model-ready normalized arrays derived<br>&nbsp; from this raw numerical publication set.</p>
+<p>&nbsp; This is a controlled, synthetic, finite-horizon research benchmark. It is not an<br>&nbsp; operational tsunami-warning, navigation, inundation, run-up, or site-specific<br>&nbsp; hazard product. The numerical references are explicit label generators rather than<br>&nbsp; physical ground truth.</p>
+<p>&nbsp; Source code and documentation are available from the project repository. File<br>&nbsp; integrity can be verified using the included SHA256SUMS.txt.</p>"""
+
     metadata = {
         "title": title,
         "upload_type": "dataset",
-        "description": description,
+        "description": metadata_description,
         "creators": [
             {
                 "name": "Nguyen, Tho Binh An",
-                "affiliation": (
-                    "VNUHCM - University of Information Technology"
-                ),
+                "affiliation": "University of Information Technology",
                 "orcid": "0009-0001-1635-225X",
             },
             {
                 "name": "Le, Minh Nhut Tan",
-                "affiliation": (
-                    "VNUHCM - University of Information Technology"
-                ),
+                "affiliation": "University of Information Technology",
+                "orcid": "0009-0005-5471-605X",
             },
             {
-                "name": "Mai, Tien Dung",
-                "affiliation": (
-                    "VNUHCM - University of Information Technology"
-                ),
+                "name": "Mai, Tien-Dung",
+                "affiliation": "University of Information Technology",
+                "orcid": "0000-0002-9556-484X",
             },
         ],
         "keywords": [
@@ -901,7 +1033,7 @@ sha256sum -c SHA256SUMS.txt
             "benchmark dataset",
             "common-time evaluation",
         ],
-        "version": RELEASE_VERSION,
+        "version": f"v{PROFILE_RELEASE_VERSIONS[profile]}",
         "publication_date": prepared,
         "access_right": "open",
         "license": DATA_LICENSE_ID,
@@ -911,11 +1043,6 @@ sha256sum -c SHA256SUMS.txt
                 "relation": "isSupplementedBy",
                 "scheme": "url",
             },
-            {
-                "identifier": RAW_MIRROR_URL,
-                "relation": "isSupplementedBy",
-                "scheme": "url",
-            }
         ],
         "notes": metadata_notes,
     }
@@ -937,9 +1064,13 @@ def _build_profile(
 ) -> None:
     run_manifest: dict[str, Any] | None = None
     profile_state: dict[str, Any] | None = None
-    if profile == "reproduction":
+    if profile in {"reproduction", "processed"}:
         run_manifest, _ = _validate_run(run_root)
-        specs = _reproduction_specs(run_root, run_manifest)
+        specs = (
+            _reproduction_specs(run_root, run_manifest)
+            if profile == "reproduction"
+            else _processed_specs()
+        )
     elif profile == "raw":
         profile_state = _validate_raw_inputs()
         specs = _raw_specs()
@@ -1033,8 +1164,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--profile",
-        choices=("reproduction", "raw", "all"),
-        default="reproduction",
+        choices=("reproduction", "processed", "raw", "all"),
+        default="processed",
     )
     parser.add_argument("--run-root", type=Path, default=DEFAULT_RUN)
     parser.add_argument(
@@ -1074,12 +1205,20 @@ def main() -> None:
         )
 
     release_root = args.release_root.resolve()
-    profiles = (
-        ("reproduction", "reproduction"),
-        ("raw", "raw"),
+    profile_destinations = {
+        "reproduction": "reproduction",
+        "processed": "processed",
+        "raw": "raw",
+    }
+    # ``all`` is intentionally limited to the two independent dataset
+    # deposits. The older ``reproduction`` profile remains available for the
+    # broader checkpoint/evaluation bundle, but it is not part of this pair.
+    profile_names = (
+        ("processed", "raw") if args.profile == "all" else (args.profile,)
     )
-    if args.profile != "all":
-        profiles = tuple(row for row in profiles if row[0] == args.profile)
+    profiles = tuple(
+        (profile, profile_destinations[profile]) for profile in profile_names
+    )
 
     for profile, folder in profiles:
         _build_profile(

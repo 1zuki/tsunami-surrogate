@@ -31,6 +31,7 @@ def _data_view_signature(cfg: Mapping[str, Any]) -> Dict[str, Any]:
         "window_K",
         "window_prev",
         "window_include_source",
+        "balanced_solver_sampling",
         "split",
     )
     return {key: data_cfg.get(key) for key in keys if key in data_cfg}
@@ -80,6 +81,7 @@ def training_contract_signature(cfg: Mapping[str, Any]) -> Dict[str, Any]:
             )
         },
         "grad_clip": train_cfg.get("grad_clip"),
+        "max_train_batches": train_cfg.get("max_train_batches"),
         "scheduler": scheduler,
         "checkpoint": {
             "metric": str(

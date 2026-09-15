@@ -18,6 +18,20 @@ from src.utils.hashing import sha256_file
 PROCESSED_MANIFEST_SCHEMA_ID = "tsunami-surrogate.processed-dataset.v2"
 
 
+def _canonical_solver_name(name: str) -> str:
+    aliases = {
+        "swe_hydrostatic": "hydrostatic",
+        "hydrostatic": "hydrostatic",
+        "swe_muscl": "muscl_hr",
+        "swe_muscl_hr": "muscl_hr",
+        "muscl": "muscl_hr",
+        "muscl_hr": "muscl_hr",
+        "boussinesq": "boussinesq",
+    }
+    value = str(name).strip().lower()
+    return aliases.get(value, value)
+
+
 def _load_json_object(path: Path) -> Dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
@@ -485,6 +499,198 @@ class ShardedBatchSampler(Sampler[List[int]]):
         self.set_epoch(int(state.get("epoch", 0)))
 
 
+class BalancedSolverBatchSampler(Sampler[List[int]]):
+    """Emit solver-balanced batches from a pooled reference dataset.
+
+    Every full batch contains the same number of examples from each configured
+    solver.  The per-solver streams share a shuffled shard order, which keeps
+    most batches local to the same compressed shard while preserving a
+    deterministic, seed-qualified sample order.
+    """
+
+    def __init__(
+        self,
+        dataset: Dataset,
+        *,
+        batch_size: int,
+        seed: int,
+        solvers: List[str],
+        batches_per_epoch: int | None = None,
+    ) -> None:
+        if batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {batch_size}")
+        if not solvers or len(set(solvers)) != len(solvers):
+            raise ValueError("balanced solver sampling requires unique solvers")
+        if batch_size % len(solvers) != 0:
+            raise ValueError(
+                "balanced solver sampling requires batch_size to be divisible "
+                f"by solver count ({len(solvers)}), got {batch_size}"
+            )
+        if batches_per_epoch is not None and batches_per_epoch <= 0:
+            raise ValueError("batches_per_epoch must be positive or null")
+
+        self.dataset = dataset
+        self.batch_size = int(batch_size)
+        self.seed = int(seed)
+        self.solvers = tuple(_canonical_solver_name(name) for name in solvers)
+        if len(set(self.solvers)) != len(self.solvers):
+            raise ValueError(
+                "balanced solver sampling has duplicate canonical solver names"
+            )
+        self.batches_per_epoch = (
+            None if batches_per_epoch is None else int(batches_per_epoch)
+        )
+        self.per_solver_batch_size = self.batch_size // len(self.solvers)
+        self._epoch = 0
+        self._groups = self._solver_groups(dataset)
+        counts = {name: sum(len(group) for group in groups.values()) for name, groups in self._groups.items()}
+        if set(counts) != set(self.solvers):
+            raise ValueError(
+                "balanced solver sampling roster mismatch: "
+                f"expected={list(self.solvers)}, observed={sorted(counts)}"
+            )
+        if len(set(counts.values())) != 1:
+            raise ValueError(
+                "balanced solver sampling requires equal per-solver sample "
+                f"counts, got {counts}"
+            )
+        self.samples_per_solver = int(next(iter(counts.values())))
+        if self.batches_per_epoch is not None:
+            required = self.batches_per_epoch * self.per_solver_batch_size
+            if required > self.samples_per_solver:
+                raise ValueError(
+                    "balanced solver sampling requests more unique examples "
+                    f"per solver ({required}) than available ({self.samples_per_solver})"
+                )
+
+    def _solver_groups(self, dataset: Dataset) -> Dict[str, Dict[int, List[int]]]:
+        groups: Dict[str, Dict[int, List[int]]] = {
+            name: {} for name in self.solvers
+        }
+        source = _sharded_dataset_with_parent_indices(dataset)
+        if source is not None:
+            sharded_dataset, parent_indices = source
+            position_by_parent = {
+                int(parent_index): local_index
+                for local_index, parent_index in enumerate(parent_indices)
+            }
+            offset = 0
+            for shard_idx, count in enumerate(sharded_dataset.counts):
+                arrays = sharded_dataset._load_shard(shard_idx)
+                for local_idx, solver_name in enumerate(arrays.solver_name):
+                    parent_index = offset + local_idx
+                    dataset_index = position_by_parent.get(parent_index)
+                    if dataset_index is None:
+                        continue
+                    name = _canonical_solver_name(str(solver_name))
+                    if name not in groups:
+                        raise ValueError(
+                            "balanced solver sampling encountered unexpected "
+                            f"solver {name!r}; expected {list(self.solvers)}"
+                        )
+                    groups[name].setdefault(shard_idx, []).append(dataset_index)
+                offset += int(count)
+            return groups
+
+        for index in range(len(dataset)):
+            item = dataset[index]
+            name = _canonical_solver_name(str(item.get("solver_name", "")))
+            if name not in groups:
+                raise ValueError(
+                    "balanced solver sampling encountered unexpected solver "
+                    f"{name!r}; expected {list(self.solvers)}"
+                )
+            groups[name].setdefault(0, []).append(index)
+        return groups
+
+    def _stream_for_solver(
+        self,
+        solver: str,
+        shard_order: List[int],
+        rng: np.random.Generator,
+    ) -> List[int]:
+        groups = self._groups[solver]
+        stream: List[int] = []
+        for shard_idx in shard_order:
+            values = groups.get(shard_idx, [])
+            if not values:
+                continue
+            stream.extend(int(values[i]) for i in rng.permutation(len(values)))
+        return stream
+
+    def __iter__(self):
+        rng = np.random.default_rng(self.seed + self._epoch)
+        self._epoch += 1
+        shard_ids = sorted(
+            {
+                shard_idx
+                for groups in self._groups.values()
+                for shard_idx in groups
+            }
+        )
+        shard_order = [shard_ids[i] for i in rng.permutation(len(shard_ids))]
+        streams = {
+            solver: self._stream_for_solver(solver, shard_order, rng)
+            for solver in self.solvers
+        }
+        if self.batches_per_epoch is None:
+            sample_count = self.samples_per_solver
+        else:
+            sample_count = min(
+                self.samples_per_solver,
+                self.batches_per_epoch * self.per_solver_batch_size,
+            )
+
+        for start in range(0, sample_count, self.per_solver_batch_size):
+            stop = min(start + self.per_solver_batch_size, sample_count)
+            batch = [
+                index
+                for solver in self.solvers
+                for index in streams[solver][start:stop]
+            ]
+            if not batch:
+                continue
+            yield [int(batch[i]) for i in rng.permutation(len(batch))]
+
+    def __len__(self) -> int:
+        if self.batches_per_epoch is not None:
+            return int(self.batches_per_epoch)
+        return int(
+            (self.samples_per_solver + self.per_solver_batch_size - 1)
+            // self.per_solver_batch_size
+        )
+
+    def set_epoch(self, epoch: int) -> None:
+        epoch = int(epoch)
+        if epoch < 0:
+            raise ValueError("sampler epoch must be non-negative")
+        self._epoch = epoch
+
+    def state_dict(self) -> Dict[str, Any]:
+        return {
+            "epoch": int(self._epoch),
+            "seed": int(self.seed),
+            "batch_size": int(self.batch_size),
+            "solvers": list(self.solvers),
+            "batches_per_epoch": self.batches_per_epoch,
+        }
+
+    def load_state_dict(self, state: Dict[str, Any]) -> None:
+        if int(state.get("seed", self.seed)) != self.seed:
+            raise ValueError("BalancedSolverBatchSampler seed mismatch during resume")
+        if int(state.get("batch_size", self.batch_size)) != self.batch_size:
+            raise ValueError(
+                "BalancedSolverBatchSampler batch-size mismatch during resume"
+            )
+        if list(state.get("solvers", self.solvers)) != list(self.solvers):
+            raise ValueError("BalancedSolverBatchSampler solver roster mismatch during resume")
+        if state.get("batches_per_epoch", self.batches_per_epoch) != self.batches_per_epoch:
+            raise ValueError(
+                "BalancedSolverBatchSampler update-budget mismatch during resume"
+            )
+        self.set_epoch(int(state.get("epoch", 0)))
+
+
 class WindowedShardBatchSampler(Sampler[List[int]]):
     """Shard-local batches for a WindowedTrajectoryDataset.
 
@@ -739,7 +945,38 @@ def _make_loader(
     shuffle: bool,
     seed: int,
     num_workers: int = 0,
+    balanced_solver_sampling: Dict[str, Any] | None = None,
 ) -> DataLoader:
+    if shuffle and balanced_solver_sampling and bool(
+        balanced_solver_sampling.get("enabled", False)
+    ):
+        raw_solvers = balanced_solver_sampling.get("solvers")
+        if not isinstance(raw_solvers, list) or not raw_solvers:
+            raise ValueError(
+                "data.balanced_solver_sampling.solvers must be a non-empty list"
+            )
+        raw_budget = balanced_solver_sampling.get("batches_per_epoch")
+        sampler = BalancedSolverBatchSampler(
+            dataset,
+            batch_size=batch_size,
+            seed=seed,
+            solvers=[str(name) for name in raw_solvers],
+            batches_per_epoch=(
+                None if raw_budget is None else int(raw_budget)
+            ),
+        )
+        print(
+            "[data] using solver-balanced batch sampler "
+            f"solvers={list(sampler.solvers)} batches={len(sampler)} "
+            f"batch_size={batch_size}"
+        )
+        return DataLoader(
+            dataset,
+            batch_sampler=sampler,
+            num_workers=num_workers,
+            worker_init_fn=make_worker_init_fn(seed),
+        )
+
     if shuffle and _sharded_dataset_with_parent_indices(dataset) is not None:
         batch_sampler = ShardedBatchSampler(dataset, batch_size=batch_size, seed=seed)
         print(
@@ -832,6 +1069,11 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
     seed = int(cfg.get("seed", data_cfg.get("seed", 42)))
 
     loaders: Dict[str, DataLoader] = {}
+    balanced_solver_sampling = data_cfg.get("balanced_solver_sampling")
+    if balanced_solver_sampling is not None and not isinstance(
+        balanced_solver_sampling, dict
+    ):
+        raise ValueError("data.balanced_solver_sampling must be a mapping")
 
     # Preferred mode: use explicit pre-split datasets if provided.
     split_paths = {
@@ -853,6 +1095,9 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
                 shuffle=(split_name == "train"),
                 seed=split_seed,
                 num_workers=num_workers,
+                balanced_solver_sampling=(
+                    balanced_solver_sampling if split_name == "train" else None
+                ),
             )
         if not loaders:
             raise ValueError("Explicit split-path mode was requested, but no split dataset could be loaded.")
@@ -885,6 +1130,9 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
                     shuffle=(split_name == "train"),
                     seed=split_seed,
                     num_workers=num_workers,
+                    balanced_solver_sampling=(
+                        balanced_solver_sampling if split_name == "train" else None
+                    ),
                 )
             if loaders:
                 return loaders
@@ -901,6 +1149,7 @@ def create_dataloaders(cfg: Dict[str, Any]) -> Dict[str, DataLoader]:
             shuffle=True,
             seed=seed,
             num_workers=num_workers,
+            balanced_solver_sampling=balanced_solver_sampling,
         )
     if val_idx.size > 0:
         loaders["val"] = _make_loader(

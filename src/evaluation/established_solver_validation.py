@@ -35,13 +35,28 @@ from src.evaluation.common_time_v2_level_a import (
 SCHEMA_ID = "tsunami-surrogate.minimum-established-solver-validation.v2"
 SCHEMA_ID_V3 = "tsunami-surrogate.minimum-established-solver-validation.v3"
 SCHEMA_ID_V4 = "tsunami-surrogate.minimum-established-solver-validation.v4"
-SUPPORTED_SCHEMA_IDS = (SCHEMA_ID, SCHEMA_ID_V3, SCHEMA_ID_V4)
-HARDENED_SCHEMA_IDS = (SCHEMA_ID_V3, SCHEMA_ID_V4)
+CORRECTED_PRODUCTION_GEOCLAW_SCHEMA_ID = (
+    "tsunami-surrogate.corrected-production-geoclaw-swe.v1"
+)
+SUPPORTED_SCHEMA_IDS = (
+    SCHEMA_ID,
+    SCHEMA_ID_V3,
+    SCHEMA_ID_V4,
+    CORRECTED_PRODUCTION_GEOCLAW_SCHEMA_ID,
+)
+HARDENED_SCHEMA_IDS = (
+    SCHEMA_ID_V3,
+    SCHEMA_ID_V4,
+    CORRECTED_PRODUCTION_GEOCLAW_SCHEMA_ID,
+)
 EXTERNAL_RESULT_SCHEMA_ID = (
     "tsunami-surrogate.minimum-established-solver-external-result.v2"
 )
 EXTERNAL_RESULT_SCHEMA_ID_V3 = (
     "tsunami-surrogate.minimum-established-solver-external-result.v3"
+)
+CORRECTED_PRODUCTION_GEOCLAW_EXTERNAL_RESULT_SCHEMA_ID = (
+    "tsunami-surrogate.corrected-production-geoclaw-external-result.v1"
 )
 EXTERNAL_ACTUAL_TIME_ABS_TOLERANCE = 5.0e-14
 SOLVERS = ("swe_hydrostatic", "swe_muscl_hr", "boussinesq")
@@ -1144,7 +1159,10 @@ def _load_external_result(
         result_schema_id = str(
             requirement.get("result_schema_id", EXTERNAL_RESULT_SCHEMA_ID)
         )
-        if result_schema_id == EXTERNAL_RESULT_SCHEMA_ID_V3:
+        if result_schema_id in {
+            EXTERNAL_RESULT_SCHEMA_ID_V3,
+            CORRECTED_PRODUCTION_GEOCLAW_EXTERNAL_RESULT_SCHEMA_ID,
+        }:
             for key in (
                 "clawpack_commit",
                 "petsc_commit",
@@ -1210,15 +1228,25 @@ def _load_external_result(
     actual_time_error = float(
         np.max(np.abs(actual_times - requested_times))
     )
-    if actual_time_error > EXTERNAL_ACTUAL_TIME_ABS_TOLERANCE:
+    time_tolerance = float(
+        requirement.get(
+            "requested_time_abs_tolerance", EXTERNAL_ACTUAL_TIME_ABS_TOLERANCE
+        )
+    )
+    if not math.isfinite(time_tolerance) or time_tolerance <= 0.0:
+        raise RuntimeError(f"External result {path} has an invalid time tolerance")
+    if actual_time_error > time_tolerance:
         raise RuntimeError(
             f"External result {path} actual-time mismatch: "
             f"{actual_time_error:.3e} > "
-            f"{EXTERNAL_ACTUAL_TIME_ABS_TOLERANCE:.3e}"
+            f"{time_tolerance:.3e}"
         )
     if not np.isfinite(eta).all():
         raise RuntimeError(f"External result {path} contains nonfinite eta")
-    if expected_metadata["schema_id"] == EXTERNAL_RESULT_SCHEMA_ID_V3:
+    if expected_metadata["schema_id"] in {
+        EXTERNAL_RESULT_SCHEMA_ID_V3,
+        CORRECTED_PRODUCTION_GEOCLAW_EXTERNAL_RESULT_SCHEMA_ID,
+    }:
         if run_manifest is None:
             raise RuntimeError("v3 external result requires its frozen run manifest")
         manifest_revisions = run_manifest["revisions"]
@@ -1241,7 +1269,7 @@ def _load_external_result(
             not all(math.isfinite(float(value)) for value in diagnostics.values())
             or diagnostics["runtime_seconds"] < 0.0
             or diagnostics["initial_state_max_abs_error"] > 5.0e-13
-            or diagnostics["requested_time_max_abs_error"] > 5.0e-14
+            or diagnostics["requested_time_max_abs_error"] > time_tolerance
             or diagnostics["nominal_eta_max_abs_difference"]
             > diagnostics["nominal_eta_consistency_floor"]
         ):

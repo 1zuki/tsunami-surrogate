@@ -1,0 +1,15 @@
+defaults:
+  - preprocess_base.yaml
+
+raw:
+  publication_split: train
+  generation_config: configs/data/dataset.yaml
+
+split:
+  train: 1
+  val: 0
+  test: 0
+  seed: 42
+
+input:
+  use_solver_id: false

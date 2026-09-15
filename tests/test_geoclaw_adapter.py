@@ -208,6 +208,39 @@ def test_output_collection_verifies_initial_state_times_and_crop(tmp_path: Path)
     assert diagnostics["requested_time_max_abs_error"] == 0.0
 
 
+def test_output_collection_applies_frozen_block_mean_publication_mapping(
+    tmp_path: Path,
+) -> None:
+    nx = ny = 4
+    bathymetry = -np.ones((nx, ny), dtype=np.float64)
+    eta0 = np.arange(nx * ny, dtype=np.float64).reshape(nx, ny) * 1.0e-6
+    depth = eta0 - bathymetry
+    arrays = {
+        "bathymetry": bathymetry,
+        "eta0": eta0,
+        "initial_depth": depth,
+        "hu0": np.zeros((nx, ny), dtype=np.float64),
+        "hv0": np.zeros((nx, ny), dtype=np.float64),
+        "requested_times": np.asarray([0.1], dtype=np.float64),
+        "output_crop": np.asarray([0, nx, 0, ny], dtype=np.int64),
+        "domain_bounds": np.asarray([0.0, 1.0, 0.0, 1.0]),
+    }
+    for frame, time_value in enumerate((0.0, 0.1)):
+        values = np.zeros((4, nx, ny), dtype=np.float64)
+        values[0] = depth
+        values[3] = eta0 if frame == 0 else eta0 + time_value
+        _write_frame(tmp_path / f"fort.q{frame:04d}", values)
+        _write_time(tmp_path / f"fort.t{frame:04d}", time_value)
+    eta, _actual_times, _diagnostics = _collect_output(
+        run_dir=tmp_path,
+        arrays=arrays,
+        requirement={"eta_shape": [1, 2, 2], "publication_reduction": [2, 2]},
+        tolerance=5.0e-13,
+    )
+    expected = (eta0 + 0.1).reshape(2, 2, 2, 2).mean(axis=(1, 3))
+    np.testing.assert_allclose(eta[0], expected, rtol=0.0, atol=1.0e-16)
+
+
 def test_output_collection_stitches_unordered_level_one_patches(
     tmp_path: Path,
 ) -> None:

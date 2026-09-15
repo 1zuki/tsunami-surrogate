@@ -49,9 +49,13 @@ class CaseSpec:
     checkpoint_path: Path
     sample_id: str
     loader: str
-    expected_rel_l2: float
+    evidence_path: Path
+    evidence_selector: str
     note: str
     crop_label: str = ""
+
+
+DEFAULT_EVALUATION_RUN = ROOT / "evaluation_runs/final-v2-full-nonspeed-20260912-r6"
 
 
 DEFAULT_CASES = [
@@ -62,12 +66,13 @@ DEFAULT_CASES = [
         stats_path=Path("data/processed/hydrostatic/normalization_stats.json"),
         config_path=Path("configs/model/fno.yaml"),
         checkpoint_path=Path("experiments/fno/seed_18/best.pt"),
-        sample_id="sample_001849",
+        sample_id="sample_001460",
         loader="sharded",
-        expected_rel_l2=0.751,
+        evidence_path=Path("direct/fno/physics_diagnostics_per_sample.csv"),
+        evidence_selector="sample_001460",
         note=(
-            "Highest-error rough-source case in the canonical R1 ordinary-test "
-            "per-sample diagnostics."
+            "Highest-error rough-source case in the validated ordinary-test "
+            "per-scenario analysis."
         ),
     ),
     CaseSpec(
@@ -81,12 +86,15 @@ DEFAULT_CASES = [
         ),
         config_path=Path("configs/model/fno_holdout_source_rough.yaml"),
         checkpoint_path=Path("experiments/fno_holdout/source_rough/best.pt"),
-        sample_id="sample_002127",
+        sample_id="sample_000713",
         loader="sharded",
-        expected_rel_l2=1.095,
+        evidence_path=Path(
+            "strict_holdout/source_rough/eval_heldout/"
+            "physics_diagnostics_per_sample.csv"
+        ),
+        evidence_selector="sample_000713",
         note=(
-            "Highest-error case in the canonical R1 family-strict rough-source "
-            "per-sample diagnostics."
+            "Highest-error case in the family-strict rough-source evaluation."
         ),
     ),
     CaseSpec(
@@ -102,10 +110,11 @@ DEFAULT_CASES = [
         checkpoint_path=Path("experiments/fno/seed_18/best.pt"),
         sample_id="sample_000001",
         loader="flat_npy",
-        expected_rel_l2=0.985,
+        evidence_path=Path("real_bathymetry/direct/fno.json"),
+        evidence_selector="appendix_coastline_stress",
         note=(
-            "Selected coastline wet-dry stress case from the accepted v2 suite "
-            "with the suite-specific 5.01 eta ceiling."
+            "Selected coastline wet-dry stress case from the real-bathymetry "
+            "evaluation with the suite-specific 5.01 eta ceiling."
         ),
     ),
 ]
@@ -125,6 +134,38 @@ def _load_json(path: Path) -> dict[str, Any]:
     _require_file(path, "JSON file")
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _evidence_rel_l2(evaluation_run: Path, case: CaseSpec) -> float:
+    """Read the expected relative L2 from the validated evaluation evidence."""
+    path = evaluation_run / case.evidence_path
+    _require_file(path, "evaluation evidence")
+    if path.suffix == ".csv":
+        with path.open(newline="", encoding="utf-8") as handle:
+            matches = [
+                row
+                for row in csv.DictReader(handle)
+                if str(row.get("sample_id", "")) == case.evidence_selector
+            ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"{case.key}: expected one evidence row for "
+                f"{case.evidence_selector!r}, found {len(matches)}"
+            )
+        return float(matches[0]["rel_l2"])
+
+    payload = _load_json(path)
+    matches = [
+        row
+        for row in payload.get("rows", [])
+        if str(row.get("label", "")) == case.evidence_selector
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"{case.key}: expected one evidence row for "
+            f"{case.evidence_selector!r}, found {len(matches)}"
+        )
+    return float(matches[0]["rel_l2_physical"])
 
 
 def _load_meta_jsonl(data_path: Path) -> dict[str, dict[str, Any]]:
@@ -277,6 +318,7 @@ def _load_model(
 
 def _compute_case(
     case: CaseSpec,
+    evaluation_run: Path,
     model_cache: dict[tuple[Path, Path], torch.nn.Module],
     device: torch.device,
     frame_index: int,
@@ -314,6 +356,13 @@ def _compute_case(
     error_frame = np.abs(pred_phys[frame_index] - target_phys[frame_index])
     rel_l2_normalized = _rel_l2(pred, targets)
     frame_rel_l2_normalized = _rel_l2(pred[frame_index], targets[frame_index])
+    expected_rel_l2 = _evidence_rel_l2(evaluation_run, case)
+    computed_rel_l2 = _rel_l2(pred_phys, target_phys)
+    if not np.isclose(computed_rel_l2, expected_rel_l2, atol=1.0e-3, rtol=0.0):
+        raise ValueError(
+            f"{case.key}: computed rel-L2 {computed_rel_l2:.6f} does not match "
+            f"validated evidence {expected_rel_l2:.6f}"
+        )
 
     quality_violations = meta.get("quality_violations", [])
     if isinstance(quality_violations, str):
@@ -329,8 +378,8 @@ def _compute_case(
         "config_path": str(case.config_path),
         "checkpoint_path": str(case.checkpoint_path),
         "sample_id": case.sample_id,
-        "expected_rel_l2": float(case.expected_rel_l2),
-        "computed_rel_l2": _rel_l2(pred_phys, target_phys),
+        "expected_rel_l2": float(expected_rel_l2),
+        "computed_rel_l2": computed_rel_l2,
         "computed_rel_l2_normalized": rel_l2_normalized,
         "frame_index": int(frame_index),
         "frame_rel_l2": _rel_l2(pred_phys[frame_index], target_phys[frame_index]),
@@ -504,6 +553,12 @@ def _write_csv(rows: list[dict[str, Any]], path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--evaluation-run",
+        type=Path,
+        default=DEFAULT_EVALUATION_RUN,
+        help="Validated evaluation-run root containing the expected per-case metrics.",
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--figure-output", type=Path, default=DEFAULT_FIGURE)
     parser.add_argument("--png-output", type=Path, default=None)
@@ -521,10 +576,17 @@ def main() -> None:
     if args.case:
         requested = set(args.case)
         selected = [case for case in DEFAULT_CASES if case.key in requested]
+    evaluation_run = args.evaluation_run.resolve()
+    completion = _load_json(evaluation_run / "completion_manifest.json")
+    if completion.get("status") != "validated":
+        raise ValueError(
+            f"Evaluation run is not validated: {evaluation_run} "
+            f"(status={completion.get('status')!r})"
+        )
     device = torch.device(args.device)
     model_cache: dict[tuple[Path, Path], torch.nn.Module] = {}
     rows = [
-        _compute_case(case, model_cache, device, int(args.frame_index))
+        _compute_case(case, evaluation_run, model_cache, device, int(args.frame_index))
         for case in selected
     ]
 
@@ -545,9 +607,10 @@ def main() -> None:
     payload = {
         "diagnostic": "selected_high_error_failure_cases",
         "interpretation": (
-            "Rows are selected high-error examples requested for appendix reviewer validation; "
+            "Rows are selected high-error examples used to illustrate failure modes; "
             "they are not averages or representative means."
         ),
+        "evaluation_run": str(evaluation_run),
         "frame_index": int(args.frame_index),
         "rows": [_json_safe(row) for row in rows],
         "figure_path": str(args.figure_output),

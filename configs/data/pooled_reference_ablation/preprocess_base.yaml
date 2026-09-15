@@ -1,0 +1,58 @@
+raw:
+  scenario_manifest: data/train/synthetic/scenario_manifest.jsonl
+  fde_manifests:
+    hydrostatic: data/train/synthetic/hydrostatic_manifest.jsonl
+    muscl_hr: data/train/synthetic/muscl_hr_manifest.jsonl
+    boussinesq: data/train/synthetic/boussinesq_manifest.jsonl
+  raw_dirs:
+    hydrostatic: data/train/raw/hydrostatic/samples
+    muscl_hr: data/train/raw/muscl_hr/samples
+    boussinesq: data/train/raw/boussinesq/samples
+
+processed_dir: data/processed/pooled_reference_ablation
+
+fde:
+  mode: multifidelity
+  output_name: anonymous
+  targets: [hydrostatic, muscl_hr, boussinesq]
+  target_field: eta
+
+input:
+  use_bathymetry: true
+  use_source: true
+  use_initial_depth: true
+  use_initial_surface: false
+  use_solver_id: false
+
+target:
+  mode: multi_step
+  variable: eta
+  forecast_steps: 50
+  stride: 1
+
+normalization:
+  method: standardize
+  channels:
+    bathymetry: true
+    source: true
+    initial_depth: true
+    solver_id: false
+    trajectory: true
+  eps: 1.0e-6
+
+saving:
+  format: npy
+  compress: true
+  include_meta: true
+  sharded: true
+  shard_size: 128
+  write_legacy_eval_archive: false
+
+eval_export:
+  enabled: true
+  input_order: [bathymetry, source, initial_depth, initial_surface, solver_id]
+  inputs_name: inputs.npy
+  targets_name: targets.npy
+  ids_name: sample_id.npy
+  archive_name: eval_dataset.npz
+  manifest_name: eval_manifest.json

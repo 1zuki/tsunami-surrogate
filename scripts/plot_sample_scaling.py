@@ -9,6 +9,8 @@ labelled comparator, then emits:
   (log x-axis), the compact main-paper learning-curve figure.
 * ``--appendix-fig-output`` -- three stacked panels (MAE | RMSE | rel-L2)
   sharing the log x-axis, for the appendix.
+* ``--combined-output`` -- compact two-panel appendix plot (rel-L2 and
+  MAE/RMSE) when a single figure is preferable.
 * ``--table-output`` -- a booktabs LaTeX table with MAE, RMSE, rel-L2, and
   max-err for every training-set size, matching the ``tab:accuracy`` style.
 
@@ -41,12 +43,14 @@ sys.path.insert(0, str(ROOT))
 from src.utils.io import load_json, save_json
 
 
+DEFAULT_EVALUATION_RUN = ROOT / "evaluation_runs/final-v2-full-nonspeed-20260912-r6"
 DEFAULT_RESULTS = "experiments/sample_scaling/sample_scaling_results.json"
 DEFAULT_FULL_METRICS = "experiments/fno/eval/metrics.json"
 DEFAULT_FULL_N = 10000
 
 DEFAULT_MAIN_OUTPUT = "paper/figures/sample_scaling.pdf"
 DEFAULT_APPENDIX_FIG_OUTPUT = "paper/figures/sample_scaling_metrics.pdf"
+DEFAULT_COMBINED_OUTPUT = "paper/figures/sample_scaling_combined.pdf"
 DEFAULT_TABLE_OUTPUT = "paper/tables/sample_scaling.tex"
 
 
@@ -230,6 +234,46 @@ def _plot_appendix(points: list[dict[str, Any]], output_path: Path) -> None:
     _save(fig, output_path)
 
 
+def _plot_combined(points: list[dict[str, Any]], output_path: Path) -> None:
+    scaling, comparator = _split_points(points)
+    xs = [p["train_samples"] for p in scaling]
+    fig, (rel_ax, error_ax) = plt.subplots(
+        1, 2, figsize=(8.2, 3.2), constrained_layout=True
+    )
+    rel_ax.plot(xs, [p["rel_l2"] for p in scaling], "o-", color="#1f77b4", label="subset runs")
+    rel_ax.scatter(
+        [p["train_samples"] for p in comparator],
+        [p["rel_l2"] for p in comparator],
+        marker="*", s=85, color="#d62728", label="full-data FNO", zorder=3,
+    )
+    rel_ax.set_ylabel(r"test rel-$L_2$")
+    rel_ax.legend(fontsize=7)
+
+    for key, label, color in (
+        ("mae", "MAE", "#d62728"),
+        ("rmse", "RMSE", "#2ca02c"),
+    ):
+        error_ax.plot(
+            xs, [p[key] for p in scaling], "o-", color=color, label=label
+        )
+        error_ax.scatter(
+            [p["train_samples"] for p in comparator],
+            [p[key] for p in comparator],
+            marker="*", s=75, color=color, zorder=3,
+        )
+    error_ax.set_ylabel("MAE / RMSE (benchmark-scale)")
+    error_ax.legend(fontsize=7)
+
+    for ax in (rel_ax, error_ax):
+        ax.set_xscale("log")
+        ax.set_xlabel("training samples")
+        ax.set_xticks([p["train_samples"] for p in points])
+        ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+        ax.tick_params(axis="x", labelrotation=45, labelsize=7)
+        ax.grid(True, which="both", linestyle=":", linewidth=0.5, alpha=0.6)
+    _save(fig, output_path)
+
+
 def _format_table(points: list[dict[str, Any]]) -> str:
     lines = [
         r"\begin{table}[!htbp]",
@@ -270,15 +314,20 @@ def main() -> None:
     p.add_argument(
         "--evaluation-run",
         type=Path,
-        default=None,
+        default=DEFAULT_EVALUATION_RUN,
         help=(
             "Validated evaluation-run root containing sample_scaling/n_*/metrics.json "
-            "and direct/fno/metrics.json. When supplied, these canonical artifacts "
-            "take precedence over the mutable experiment summaries."
+            "and direct/fno/metrics.json. These canonical artifacts take precedence "
+            "over the mutable experiment summaries."
         ),
     )
     p.add_argument("--main-output", default=DEFAULT_MAIN_OUTPUT)
     p.add_argument("--appendix-fig-output", default=DEFAULT_APPENDIX_FIG_OUTPUT)
+    p.add_argument("--combined-output", default=DEFAULT_COMBINED_OUTPUT)
+    p.add_argument(
+        "--combined-only", action="store_true",
+        help="Write only the compact two-panel figure; leave existing figures and tables untouched.",
+    )
     p.add_argument("--table-output", default=DEFAULT_TABLE_OUTPUT)
     p.add_argument("--points-output", default="experiments/sample_scaling/sample_scaling_points.json")
     args = p.parse_args()
@@ -290,8 +339,14 @@ def main() -> None:
         args.evaluation_run,
     )
 
+    if args.combined_only:
+        _plot_combined(points, Path(args.combined_output))
+        print(f"saved_combined={args.combined_output}")
+        return
+
     _plot_main(points, Path(args.main_output))
     _plot_appendix(points, Path(args.appendix_fig_output))
+    _plot_combined(points, Path(args.combined_output))
 
     table_path = Path(args.table_output)
     table_path.parent.mkdir(parents=True, exist_ok=True)

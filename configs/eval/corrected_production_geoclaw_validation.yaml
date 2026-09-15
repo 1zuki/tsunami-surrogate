@@ -1,0 +1,110 @@
+schema_id: tsunami-surrogate.corrected-production-geoclaw-swe.v1
+artifact_kind: corrected-production-geoclaw-swe-comparison-candidate
+
+# This is a new diagnostic on the corrected R6 benchmark.  It is intentionally
+# separate from the historical Level A/H1/H2 and minimum-established-solver
+# studies, which used the former 96-grid, 0.175-time contract.
+corrected_production:
+  contract_hash: 288d19af5e8f5fe1658c098bf972ada97292a08fe35ed99c086406a291576d2f
+  split: test
+  generation_config: configs/data/dataset_test.yaml
+  raw_root: data/test/raw
+  bathymetry_root: data/test/bathymetry
+  source_root: data/test/sources
+  master_shape: [384, 384]
+  solver_input_shape: [128, 128]
+  computational_shape: [192, 192]
+  publication_shape: [64, 64]
+  buffer_cells: 32
+  cell_size: 18.75
+  publication_mapping:
+    crop_shape: [128, 128]
+    block_mean_reduction: [2, 2]
+  requested_times:
+    start: 8.4
+    step: 8.4
+    count: 50
+    horizon: 420.0
+  # GeoClaw's ASCII headers incur < 6e-14 rounding at this 420-unit horizon.
+  # The bound remains far below any numerical timestep or requested interval.
+  requested_time_abs_tolerance: 1.0e-12
+
+# The cases are fixed before the comparator is run.  Each is the first test
+# sample in one predeclared terrain/source stratum; no GeoClaw discrepancy was
+# inspected while choosing them.
+selection:
+  rule: first_test_sample_in_each_predeclared_terrain_source_stratum
+  outcome_blind: true
+  cases:
+    - sample_index: 1
+      bathymetry_type: continental
+      source_type: gaussian
+    - sample_index: 34
+      bathymetry_type: seamounts
+      source_type: fault
+    - sample_index: 4
+      bathymetry_type: trench
+      source_type: rough
+
+inhouse_references:
+  - swe_hydrostatic
+  - swe_muscl_hr
+
+external_comparator:
+  implementation: GeoClaw
+  package: Clawpack
+  version: 5.14.0
+  mode: standard_single_level_cartesian_swe
+  scope: independent_swe_compatibility_diagnostic
+  expected_revisions:
+    clawpack_commit: 5ce53b4814a3e03536fa17e8ae05e65960194c56
+    geoclaw_commit: 11479f675dd8bb19066a2430c28206999cebf299
+    petsc_commit: fd2ca03442be2a78130b411057f3b922130f6b1b
+    petsc_options_sha256: e7494f0405490bdf6529976490ee9dba1900872569e27b07af22e44ca102763f
+
+external_execution:
+  spatial_order: 2
+  dimensional_split: unsplit
+  transverse_waves: 2
+  limiter: mc
+  use_fwaves: true
+  source_split: godunov
+  cfl_desired: 0.75
+  cfl_max: 1.0
+  dt_initial: 1.0e-4
+  dt_max: 1.0e99
+  steps_max: 100000
+  num_ghost: 2
+  coordinate_system: 1
+  sea_level: 0.0
+  dry_tolerance: 1.0e-12
+  friction_forcing: false
+  coriolis_forcing: false
+  amr_levels: 1
+  output_format: ascii
+  output_t0_for_initial_state_verification: true
+  initial_state_mapping: exact_cell_centered_custom_qinit_and_setaux
+  initial_free_surface_definition: natural_depth_plus_bathymetry_float64
+  nominal_eta_consistency_floor: four_float32_eps_scaled
+  initial_state_abs_tolerance: 5.0e-13
+  sgn: {}
+
+comparison:
+  external_solver_is_truth: false
+  role: descriptive_compatibility_diagnostic
+  boundary_interpretation: >-
+    GeoClaw uses single-level open extrapolation while the in-house SWE
+    references use their recorded radiation-plus-sponge treatment. Agreement
+    metrics therefore describe inter-code compatibility, not pointwise solver
+    equivalence or physical validation.
+  gauges_fractional_cell_locations:
+    - [0.15, 0.50]
+    - [0.30, 0.50]
+    - [0.50, 0.50]
+    - [0.70, 0.50]
+    - [0.85, 0.50]
+  inactive_external_peak_floor: 1.0e-8
+  per_time_signal_floor_fraction: 0.05
+  peak_plateau_fraction: 0.99
+  lag_minimum_overlap_fraction: 0.50
+  diagnostic_boundary_band_cells: 8

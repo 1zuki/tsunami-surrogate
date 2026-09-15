@@ -3,7 +3,7 @@
 
 The feedforward direct models map three static input fields to all 50 target frames in a single pass using the interface in Section~\ref{subsec:forward-task}. Conversely, ConvLSTM processes the same static inputs to emit the trajectory recurrently, initializing with zero feedback and feeding autoregressive predictions into subsequent steps. The seeded window models formulate a distinct task, taking four input channels (two static, two dynamic elevation) to predict five output frames per block. Despite sharing a final output shape, these explicitly distinct interfaces reflect non-equivalent internal prediction dynamics. Here, the Fourier Neural Operator serves as the primary direct benchmark, with remaining models offering spectral, convolutional, encoder--decoder, and recurrent baselines.
 
-The canonical sources are cited in the direct-comparison table and at first use below. Each implementation adapts the cited architecture to the shared three-input, 50-output task and is not intended as an exact reproduction of the original training setup.
+The canonical sources are cited in the direct-comparison table and at first use below. Each model adapts the cited architecture to the shared three-input, 50-output task and is not intended as an exact reproduction of the original training setup.
 
 \subsection{Fourier Neural Operator}
 \label{subsec:fno}
@@ -83,7 +83,7 @@ The baseline configuration uses $L = 6$ blocks, width $d = 48$, modes $m_1 = m_2
 \node[align=left, font=\scriptsize, right=2mm of vout, text width=20mm]
   {$\sigma=\mathrm{GELU}$\\spectral $+$ local};
 \end{tikzpicture}
-\caption{FNO architecture used in this work. \textbf{Top:} the input field $X$ (bathymetry, raw source template, initial depth; $C{=}3$) plus two grid-coordinate channels is lifted to width $d{=}48$, passed through $L{=}6$ Fourier blocks, and projected to the $T{=}50$ forecast frames. \textbf{Bottom:} one Fourier block. The spectral path applies a real FFT, keeps the lowest $14{\times}14$ modes, multiplies them by a learnable complex weight $R$, and inverts the transform; the local path $W$ is a $1{\times}1$ convolution. Their sum passes through a GELU. Truncating to the low modes is what lets the same weights run at a different grid resolution.}
+\caption{FNO architecture used in this work. \textbf{Top:} the input field $X$ (bathymetry, raw source template, initial depth; $C{=}3$) plus two grid-coordinate channels is lifted to width $d{=}48$, passed through $L{=}6$ Fourier blocks, and projected to the $T{=}50$ forecast frames. \textbf{Bottom:} one Fourier block. The spectral path applies a real FFT, keeps the lowest $14{\times}14$ modes, multiplies them by a learnable complex weight $R$, and inverts the transform; the local path $W$ is a $1{\times}1$ convolution. Their sum passes through a GELU. Truncating to the low modes permits the same weights to be evaluated at a different grid resolution.}
 \label{fig:fno-arch}
 \end{figure}
 
@@ -104,7 +104,7 @@ X_s^{\mathrm{win}} \mapsto Y_s^{\mathrm{win}} = [Y_{s+1}, \dots, Y_{s+5}].
 \end{equation}
 Window starts $s \in \{0, 5, \dots, 40, 44\}$ yield ten five-frame targets per 50-frame trajectory; the clamped final window overlaps the preceding target block by one frame to remain in range.
 
-During inference, given the initial observation $Y_0$ as a rollout seed, the model predicts sequential five-frame blocks autoregressively by feeding its final two predictions into subsequent iterations. Evaluation metrics cover predicted frames $Y_1,\ldots,Y_{49}$ and exclude the seed. These windowed configurations measure conditional error accumulation and are not like-for-like direct forecasts.
+During inference, given the initial observation $Y_0$ as a rollout seed, the model predicts sequential five-frame blocks autoregressively by feeding its final two predictions into subsequent iterations. Evaluation metrics cover predicted frames $Y_1,\ldots,Y_{49}$ and exclude the seed. These windowed models measure conditional error accumulation and are not like-for-like direct forecasts.
 
 \subsection{Convolutional and recurrent baselines}
 \label{subsec:conv-baseline}
@@ -125,4 +125,4 @@ Single-frame surface predictions are produced sequentially via a $1 \times 1$ re
 
 \subsection{Ensemble uncertainty}
 \label{subsec:model-ensemble}
-Uncertainty estimation is implemented via a deep ensemble \citep{lakshminarayanan2017deepensembles} of $M = 7$ independently seeded FNO models without structural modifications. Point predictions are defined by the ensemble mean, while the per-element predictive spread serves as the variance metric (Section~\ref{subsec:uncertainty}). Because members share deterministic architectures and training data, this variance primarily reflects seed-dependent optimization variability rather than aleatoric observation noise.
+Uncertainty is estimated with a deep ensemble \citep{lakshminarayanan2017deepensembles} of $M = 7$ independently seeded FNO models without structural modifications. Point predictions are defined by the ensemble mean, while the per-element predictive spread serves as the variance metric (Section~\ref{subsec:uncertainty}). Because members share deterministic architectures and training data, this variance primarily reflects seed-dependent optimization variability rather than aleatoric observation noise.
