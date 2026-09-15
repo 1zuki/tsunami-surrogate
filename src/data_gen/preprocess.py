@@ -241,6 +241,19 @@ class TsunamiPreprocessor:
 
         self.fde_mode = fde_mode
         self.fde_targets = [self._canonical_fde_name(str(v)) for v in list(fde_cfg.get("targets", []))]
+        output_name = str(fde_cfg.get("output_name", "multifidelity")).strip()
+        if not output_name:
+            raise ValueError("fde.output_name must not be empty")
+        output_path = pathlib.PurePath(output_name)
+        if (
+            output_path.is_absolute()
+            or len(output_path.parts) != 1
+            or output_name in {".", ".."}
+        ):
+            raise ValueError(
+                "fde.output_name must be a single relative directory name"
+            )
+        self.fde_output_name = output_name
         self.fde_norm_reference_paths: Dict[str, pathlib.Path] = {}
         raw_norm_map = norm_cfg.get("reference_stats_by_fde", {})
         if isinstance(raw_norm_map, dict):
@@ -2103,7 +2116,7 @@ class TsunamiPreprocessor:
                 val_records.extend(self._records_for_scenarios(records, val_ids))
                 test_records.extend(self._records_for_scenarios(records, test_ids))
 
-            out_dir = self.cfg.processed_dir / "multifidelity"
+            out_dir = self.cfg.processed_dir / self.fde_output_name
             print(f"[preprocess] mode=multifidelity targets={targets} out={out_dir}")
             self._normalize_and_save(
                 train_records,

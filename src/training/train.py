@@ -209,6 +209,12 @@ class Trainer:
         ).strip()
         if not self.checkpoint_metric:
             raise ValueError("checkpoint_metric must be a non-empty metric name")
+        max_batches = train_cfg.get("max_train_batches")
+        self.max_train_batches = (
+            None if max_batches is None else int(max_batches)
+        )
+        if self.max_train_batches is not None and self.max_train_batches <= 0:
+            raise ValueError("train.max_train_batches must be positive or null")
 
     def _resume_from(self, resume_path: Path):
         expected_resume_path = self.checkpoint_dir / "last.pt"
@@ -309,7 +315,25 @@ class Trainer:
         epoch = start_epoch - 1
         for epoch in range(start_epoch, epochs + 1):
             _set_loader_epoch(self.loaders["train"], epoch - 1)
-            train_metrics = train_one_epoch(self.model, self.loaders["train"], self.optimizer, self.loss_fn, self.device, grad_clip)
+            if self.max_train_batches is None:
+                train_metrics = train_one_epoch(
+                    self.model,
+                    self.loaders["train"],
+                    self.optimizer,
+                    self.loss_fn,
+                    self.device,
+                    grad_clip,
+                )
+            else:
+                train_metrics = train_one_epoch(
+                    self.model,
+                    self.loaders["train"],
+                    self.optimizer,
+                    self.loss_fn,
+                    self.device,
+                    grad_clip,
+                    max_batches=self.max_train_batches,
+                )
             val_metrics = evaluate_epoch(self.model, self.loaders["val"], self.loss_fn, self.device) if "val" in self.loaders else {}
 
             row = {"epoch": epoch, **{f"train_{k}": v for k, v in train_metrics.items()}, **{f"val_{k}": v for k, v in val_metrics.items()}}

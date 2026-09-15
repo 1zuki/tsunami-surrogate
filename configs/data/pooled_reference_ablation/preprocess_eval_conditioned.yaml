@@ -1,0 +1,13 @@
+defaults:
+  - preprocess_eval_anonymous.yaml
+
+input:
+  use_solver_id: true
+
+fde:
+  output_name: conditioned
+
+normalization:
+  reference_stats_path: data/processed/pooled_reference_ablation/conditioned/normalization_stats.json
+  channels:
+    solver_id: false

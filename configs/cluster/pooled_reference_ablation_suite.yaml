@@ -1,0 +1,67 @@
+schema_version: 1
+suite_id: pooled_reference_ablation_r6
+classification: pooled_reference_ablation
+description: >-
+  Five-seed R6 pooled-reference ablation. The equal-update cells are the
+  primary causal comparison; same-epoch cells deliberately expose the pooled
+  models to approximately three times as many examples per epoch and are
+  secondary data-and-compute results.
+
+resources:
+  max_concurrent: 5
+  mps_per_job: 2
+  cpus_per_job: 4
+  memory_gb_per_job: 32
+  time_limit: "72:00:00"
+
+required_paths:
+  - data/processed/hydrostatic/train
+  - data/processed/hydrostatic/val
+  - data/processed/muscl_hr/train
+  - data/processed/muscl_hr/val
+  - data/processed/boussinesq/train
+  - data/processed/boussinesq/val
+  - data/processed/pooled_reference_ablation/anonymous/train
+  - data/processed/pooled_reference_ablation/anonymous/val
+  - data/processed/pooled_reference_ablation/conditioned/train
+  - data/processed/pooled_reference_ablation/conditioned/val
+
+entries:
+  - name: fno_hydrostatic
+    config: configs/model/fno.yaml
+    seeds: [18, 36, 67, 72, 154]
+    role: specialist_reference_control_rerun_only_if_missing
+    enabled: false
+    blocked_reason: >-
+      Hydrostatic specialists already exist for all five frozen seeds and must
+      be reused rather than overwritten.
+
+  - name: fno_muscl_hr
+    config: configs/model/fno_muscl_hr.yaml
+    seeds: [18, 36, 67, 72, 154]
+    role: specialist_reference_control
+
+  - name: fno_boussinesq
+    config: configs/model/fno_boussinesq.yaml
+    seeds: [18, 36, 67, 72, 154]
+    role: specialist_reference_control
+
+  - name: fno_pooled_anonymous_equal_updates
+    config: configs/model/pooled_reference_ablation/fno_anonymous.yaml
+    seeds: [18, 36, 67, 72, 154]
+    role: anonymous_pooled_primary
+
+  - name: fno_pooled_conditioned_equal_updates
+    config: configs/model/pooled_reference_ablation/fno_conditioned.yaml
+    seeds: [18, 36, 67, 72, 154]
+    role: conditioned_pooled_primary
+
+  - name: fno_pooled_anonymous_same_epoch
+    config: configs/model/pooled_reference_ablation/fno_anonymous_same_epoch.yaml
+    seeds: [18, 36, 67, 72, 154]
+    role: anonymous_pooled_secondary_same_epoch
+
+  - name: fno_pooled_conditioned_same_epoch
+    config: configs/model/pooled_reference_ablation/fno_conditioned_same_epoch.yaml
+    seeds: [18, 36, 67, 72, 154]
+    role: conditioned_pooled_secondary_same_epoch

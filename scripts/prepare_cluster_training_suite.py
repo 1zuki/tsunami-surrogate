@@ -28,7 +28,11 @@ REQUIRED_TRACKED_FILES = (
     Path("slurm/train_suite_array.slurm"),
     FINALIZER_SCRIPT,
 )
-SUPPORTED_CLASSIFICATIONS = {"final_rebuild_training", "legacy_dev_only"}
+SUPPORTED_CLASSIFICATIONS = {
+    "final_rebuild_training",
+    "legacy_dev_only",
+    "pooled_reference_ablation",
+}
 MAX_ACCOUNT_MPS = 20
 MAX_ACCOUNT_CPUS = 32
 MAX_ACCOUNT_CONCURRENT_JOBS = 5
@@ -55,6 +59,18 @@ PROJECT_MODEL_ROOTS = {
     "fno_modes20_hydrostatic": Path("experiments/fno_modes20"),
     "fno_muscl_hr": Path("experiments/fno_muscl_hr"),
     "fno_boussinesq": Path("experiments/fno_boussinesq"),
+    "fno_pooled_anonymous_equal_updates": Path(
+        "ablation_runs/pooled-reference-ablation-r6/training/anonymous_equal_updates"
+    ),
+    "fno_pooled_conditioned_equal_updates": Path(
+        "ablation_runs/pooled-reference-ablation-r6/training/conditioned_equal_updates"
+    ),
+    "fno_pooled_anonymous_same_epoch": Path(
+        "ablation_runs/pooled-reference-ablation-r6/training/anonymous_same_epoch"
+    ),
+    "fno_pooled_conditioned_same_epoch": Path(
+        "ablation_runs/pooled-reference-ablation-r6/training/conditioned_same_epoch"
+    ),
     "fno_window5_hydrostatic": Path("experiments/fno_window5_hydrostatic"),
     "ffno_window5_hydrostatic": Path("experiments/ffno_window5_hydrostatic"),
 }
@@ -496,10 +512,7 @@ def main() -> None:
         print("[cluster-suite] prepare-only; no jobs submitted")
         return
 
-    if (
-        suite.classification == "legacy_dev_only"
-        and not args.acknowledge_legacy_dev
-    ):
+    if suite.classification == "legacy_dev_only" and not args.acknowledge_legacy_dev:
         parser.error("legacy/dev submission requires --acknowledge-legacy-dev")
     if args.afterok is None:
         parser.error("--submit requires --afterok PREFLIGHT_JOB_ID")

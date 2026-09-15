@@ -1,0 +1,50 @@
+defaults:
+  - ../../train/base.yaml
+
+output_dir: ablation_runs/pooled-reference-ablation-r6/training/anonymous_equal_updates
+seed: 18
+
+data:
+  train_path: data/processed/pooled_reference_ablation/anonymous/train
+  val_path: data/processed/pooled_reference_ablation/anonymous/val
+  test_path: data/processed/pooled_reference_ablation/anonymous/test
+  batch_size: 63
+  num_workers: 4
+  balanced_solver_sampling:
+    enabled: true
+    solvers: [hydrostatic, muscl_hr, boussinesq]
+    batches_per_epoch: 157
+
+model:
+  name: fno2d
+  in_channels: 3
+  out_channels: 50
+  modes1: 14
+  modes2: 14
+  width: 48
+  depth: 6
+  padding: 6
+  use_grid: true
+
+train:
+  epochs: 256
+  max_train_batches: 157
+  lr: 0.0005
+  min_lr: 0.00005
+  scheduler: cosine
+  weight_decay: 1.0e-6
+  grad_clip: 1.0
+  loss: horizon_weighted_mse
+  horizon_min_weight: 0.8
+  horizon_max_weight: 2.0
+  horizon_power: 1.7
+  checkpoint_metric: val_rel_l2
+  early_stopping:
+    patience: 20
+    mode: min
+    min_delta: 1.0e-4
+
+eval:
+  dataset_path: data/processed/pooled_reference_ablation/anonymous/test
+  batch_size: 64
+  output_dir: ablation_runs/pooled-reference-ablation-r6/training/anonymous_equal_updates/eval

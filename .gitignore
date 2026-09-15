@@ -54,6 +54,7 @@ results/*
 # Immutable evaluation runs are local evidence bundles, not source files.
 /evaluation_runs/
 /results_archive/
+/ablation_runs/
 
 # Immutable run snapshots are intentionally versioned.
 !runs/**/results/

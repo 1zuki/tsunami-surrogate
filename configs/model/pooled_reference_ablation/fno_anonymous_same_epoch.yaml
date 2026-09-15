@@ -1,0 +1,14 @@
+defaults:
+  - fno_anonymous.yaml
+
+output_dir: ablation_runs/pooled-reference-ablation-r6/training/anonymous_same_epoch
+
+data:
+  balanced_solver_sampling:
+    batches_per_epoch: 476
+
+train:
+  max_train_batches: 476
+
+eval:
+  output_dir: ablation_runs/pooled-reference-ablation-r6/training/anonymous_same_epoch/eval

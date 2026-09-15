@@ -1,0 +1,30 @@
+defaults:
+  - preprocess_base.yaml
+
+raw:
+  publication_split: test
+  generation_config: configs/data/dataset_test.yaml
+  scenario_manifest: data/test/synthetic/scenario_manifest.jsonl
+  fde_manifests:
+    hydrostatic: data/test/synthetic/hydrostatic_manifest.jsonl
+    muscl_hr: data/test/synthetic/muscl_hr_manifest.jsonl
+    boussinesq: data/test/synthetic/boussinesq_manifest.jsonl
+  raw_dirs:
+    hydrostatic: data/test/raw/hydrostatic/samples
+    muscl_hr: data/test/raw/muscl_hr/samples
+    boussinesq: data/test/raw/boussinesq/samples
+
+split:
+  train: 0
+  val: 0
+  test: 1
+  seed: 42
+
+normalization:
+  reference_stats_path: data/processed/pooled_reference_ablation/anonymous/normalization_stats.json
+
+input:
+  use_solver_id: false
+
+saving:
+  publication_mode: merge_split
