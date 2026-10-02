@@ -1,14 +1,14 @@
 \section{Results}
 \label{sec:results}
 
-Unless stated otherwise, model accuracy is measured on the $N = 2500$ held-out test scenarios. MAE, RMSE, and headline relative $L_2$ values are computed after reversing target normalization; max-err remains in normalized target units. The main model tables use the validated common-time evaluation; previously completed numerical-comparator studies and selected failure-case analyses are separately identified under the model-selection, dataset, and metric definitions stated in Sections~\ref{sec:methods}--\ref{sec:training}.
+Unless stated otherwise, model accuracy is measured on the $N = 2500$ held-out test scenarios. MAE, RMSE, and headline relative $L_2$ values are computed after reversing target normalization; max-err remains in normalized target units. The main model tables use the validated common-time evaluation; numerical-comparator studies and selected failure-case analyses are reported under the model-selection, dataset, and metric definitions stated in Sections~\ref{sec:methods}--\ref{sec:training}.
 
 \subsection{Temporal alignment and numerical verification}
 \label{subsec:res-dataset}
 
 All three main datasets contain $10{,}000$ training, $1{,}000$ validation, and $2{,}500$ test scenarios. Each processed target has shape $50 \times 64 \times 64$, and all $40{,}500$ solver-specific trajectories pass the predefined quality checks. The scenario populations match across references: six source families, five bathymetry families, and resolved source strength in approximately $[0.075, 0.300]$ after the initial-elevation-to-depth cap.
 
-Table~\ref{tab:solver-validation} summarizes the numerical evidence supporting the finite-horizon temporal-output procedure. It distinguishes current R6 checks from the earlier numerical program, whose artifacts are retained as historical provenance rather than relabeled as current validation.
+Table~\ref{tab:solver-validation} summarizes the numerical evidence supporting the finite-horizon temporal-output procedure. The categories cover dataset consistency, numerical verification, independent comparison, integrated procedure checks, and sensitivity within the benchmark.
 
 \begin{table}[pos=htbp]
 \centering
@@ -19,36 +19,39 @@ Table~\ref{tab:solver-validation} summarizes the numerical evidence supporting t
     \toprule
     Evidence & Scope & Finding \\
     \midrule
-    Current dataset and solver checks & $3$ datasets; all train/validation/test splits; $9$ representative solver cases & passed \\
+    Dataset and solver checks & $3$ datasets; all train/validation/test splits; $9$ representative solver cases & passed \\
     Shared inputs & $13{,}500$ scenarios; split identities, arrays, and horizon & matched across references \\
-    Current R6 GeoClaw SWE comparison & $3$ fixed test cases; Hydrostatic and MUSCL-HR; $6$ comparisons & completed diagnostic \\
-    Historical internal numerical checks & $86$ cases; $48$ analytical, numerical, and stability criteria & met criteria \\
-    Historical GeoClaw/Clawpack comparisons & $3$ primary, $2$ verification, $7$ refinement, and $12$ exploratory cases & retained separately \\
-    Historical integrated procedure checks & $90$ buffered common-time cases; $3$ repeatability checks & repeatable \\
-    Historical H2 sensitivity checks & $363$ pairs; $726$ executions; $42$ fixed criteria & met criteria \\
+    Internal numerical checks & $86$ cases; $48$ analytical, numerical, and stability criteria & met criteria \\
+    GeoClaw/Clawpack comparisons & $3$ primary, $2$ verification, and $7$ refinement cases & met criteria \\
+    Exploratory GeoClaw/Clawpack & $12$ representative finite-horizon cases & $11 / 12$ above limits \\
+    Integrated procedure checks & $90$ buffered common-time cases; $3$ repeatability checks & repeatable \\
+    H2 sensitivity checks & $363$ pairs; $726$ executions; $42$ fixed criteria & met criteria \\
     Dataset consistency checks & $3$ representative cases; $384 \rightarrow 128 \rightarrow 192 \rightarrow 64$ grid construction & passed \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-The current checks re-audited the three datasets across all train, validation, and test splits and reran nine representative solver cases. The fresh GeoClaw comparison then used the first R6 test case from each of three fixed terrain--source strata (continental/Gaussian, seamounts/fault, and trench/rough), selected before the GeoClaw outcomes were inspected. It verified the frozen input hashes, $192 \times 192$ state mapping, $128 \times 128$ central crop followed by $2 \times 2$ block averaging, all 50 requested times, and finite outputs. The historical analytical, refinement, and broader GeoClaw matrices remain separate evidence; they were not rerun under the current R6 contract.
+The independent-comparator evidence is deliberately limited in scope. The three datasets were checked across all train, validation, and test splits, and nine representative solver cases were rerun. All analytical, verification, and refinement comparisons satisfied their predefined criteria, whereas $11$ of $12$ exploratory descriptive comparisons exceeded their provisional limits. Table~\ref{tab:geoclaw-ablation} summarizes a controlled comparison on three prespecified representative finite-horizon shallow-water cases; these results provide scope-limited comparator evidence rather than a dataset-wide validation.
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Current R6 inter-code comparison against GeoClaw over three fixed representative test cases. Both in-house references use the corrected $192 \times 192$ computation and reported $64 \times 64$ fields; GeoClaw receives the same frozen initial state and requested times. GeoClaw is an independent comparator, not physical truth.}
-\label{tab:geoclaw-r6}
+\caption{Mean trajectory relative $L_2$ against GeoClaw over three prespecified representative finite-horizon shallow-water cases. The extended domain retains the reported cell spacing; only the $2 \times$ refined variant halves the in-house cell size. GeoClaw is an independent comparator, not physical truth.}
+\label{tab:geoclaw-ablation}
 \small
-\begin{tabular}{lcccc}
+\begin{tabular}{lcc}
     \toprule
-    In-house reference & Mean trajectory rel-$L_2$ & Range & Mean cosine similarity & Max gauge NRMSE \\
+    Study configuration & Hydrostatic & MUSCL-HR \\
     \midrule
-    Hydrostatic & $0.2599$ & $[0.2071,\,0.3326]$ & $0.9688$ & $0.2209$ \\
-    MUSCL-HR & $0.1256$ & $[0.0659,\,0.1562]$ & $0.9914$ & $0.0865$ \\
+    Reported $96$, radiation + sponge & $0.5343$ & $0.2382$ \\
+    Reported $96$, radiation, no sponge & $0.5333$ & $0.2350$ \\
+    Reported $96$, open, no sponge & $0.5338$ & $0.2353$ \\
+    Extended $192$, open, no sponge & $0.5330$ & $0.2339$ \\
+    $2 \times$ refined domain, open, no sponge & $0.3887$ & $0.1343$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-Across these three current R6 cases, MUSCL-HR has the smaller descriptive discrepancy. The maximum initial-state mapping error is $8.9 \times 10^{-16}$ and the maximum requested-time mismatch is $5.7 \times 10^{-14}$, both far below the comparison tolerances. The comparison does not assign the residual to a single algorithmic choice: the implementations differ in boundary treatment, flux and source discretization, limiting, time integration, and CFL policy. It therefore neither establishes formal convergence nor pointwise equivalence.
+Removing the sponge, changing the boundary type, and moving the boundary outward alter the mean discrepancy by only $0.0003$--$0.0032$. Halving the cell size moves all six solver--case comparisons closer to GeoClaw and reduces the mean discrepancy by $0.1451$ for Hydrostatic and $0.1010$ for MUSCL-HR, making refinement the dominant tested sensitivity. A material residual remains, however, and MUSCL-HR is closer in every tested setup. Because the Hydrostatic--MUSCL-HR contrast changes reconstruction, source treatment, time integration, and CFL together, the ablation neither identifies one unique cause nor establishes formal convergence or pointwise equivalence.
 
 The linear weakly dispersive reference also reproduces its discrete constant-depth phase-speed trend over eight Fourier modes. The maximum relative error is $2.45 \times 10 ^ {-4}$ for the non-dispersive branch and $1.91 \times 10 ^ {-8}$ for $\alpha_B = 1 / 3$, with no conjugate-gradient failures and at most $35$ iterations in the latter branch (Table~\ref{tab:app-bouss-dispersion}). This is a local numerical diagnostic rather than external or event-scale validation.
 
@@ -298,6 +301,25 @@ Table~\ref{tab:solvergap} reports the common-time solver discrepancies. The Hydr
     \bottomrule
 \end{tabular}
 \end{table}
+
+The pooled-reference experiment distinguishes compromise prediction from reference-specific prediction. Table~\ref{tab:pooled-reference} reports the primary matched-training comparison, averaged over seeds $18$, $36$, and $67$. The solver-anonymous model produces one compromise output for each scenario: its errors are intermediate across the three references, and the nearest reference is Hydrostatic, MUSCL-HR, or Boussinesq for approximately $55\%$, $33\%$, and $12\%$ of scenarios, respectively. Supplying solver identity lowers the error to each requested reference, with the largest relative improvement for the Boussinesq target. The seed-to-seed ranges are narrow: $0.002115$--$0.002130$, $0.002508$--$0.002531$, and $0.002876$--$0.002901$ for the three conditioned targets.
+
+\begin{table}[pos=htbp]
+\centering
+\caption{Primary pooled-reference comparison on the $2{,}500$ paired held-out scenarios. Entries are mean global physical-space RMSE over seeds $18$, $36$, and $67$. The anonymous model produces one output that is compared with each reference; each conditioned column supplies the corresponding solver identity.}
+\label{tab:pooled-reference}
+\small
+\begin{tabular}{lccc}
+    \toprule
+    Model & Hydrostatic & MUSCL-HR & Boussinesq \\
+    \midrule
+    Solver-anonymous   & $0.00258$ & $0.00274$ & $0.00357$ \\
+    Solver-conditioned & $0.00212$ & $0.00252$ & $0.00289$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+The corresponding secondary higher-exposure comparison gives conditioned target errors of $0.00209$, $0.00249$, and $0.00287$, respectively, and therefore does not alter the interpretation. Conditioning reduces compromise behavior and preserves solver-specific structure, but it does not identify a physically correct trajectory or universally remove the underlying solver discrepancy.
 
 Figure~\ref{fig:solver-gap-scale} places the same-reference errors of the Hydrostatic FNO, Hydrostatic F-FNO, and Boussinesq FNO alongside the raw solver gaps on one denormalized RMSE scale. The Hydrostatic--MUSCL-HR gap is $0.81$ and $0.84$ times the Hydrostatic FNO and F-FNO RMSEs, respectively. The Hydrostatic--Boussinesq and MUSCL-HR--Boussinesq gaps are $1.24$ and $1.01$ times the Boussinesq FNO RMSE.
 

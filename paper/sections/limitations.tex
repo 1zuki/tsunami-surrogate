@@ -5,7 +5,7 @@
 
 \textbf{Reference physics vs. ground truth.} Models are trained against numerical reference solvers rather than physical observations. Discretization, boundary, and interpolation errors persist, and the Boussinesq reference uses a linear, elevation-only formulation without nonlinear wet--dry dynamics.
 
-\textbf{Statistical replication and benchmarking.} The direct architecture comparison is based on selected seed-$18$ checkpoints, with paired intervals quantifying test-scenario variation rather than training-seed uncertainty. The seven-seed ensemble replicates only the baseline FNO and does not establish architecture-level significance. The study does not include a controlled speed comparison, so no operational latency claim is made.
+\textbf{Statistical replication and benchmarking.} The direct architecture comparison is based on selected seed-$18$ checkpoints, with paired intervals quantifying test-scenario variation rather than training-seed uncertainty. The pooled-reference comparison retains three training seeds for its primary matched-training result, while its secondary higher-exposure comparison changes the amount of training exposure and does not isolate that factor. The seven-seed ensemble replicates only the baseline FNO and does not establish architecture-level significance. The study does not include a controlled speed comparison, so no operational latency claim is made.
 
 \textbf{Generalization and uncertainty.} Stress tests assess domain shifts rather than out-of-family invariance. Deep ensembles remain under-dispersed, with scalar variance scaling yielding marginal coverage over space--time pixels rather than calibrated event-level probabilities.
 

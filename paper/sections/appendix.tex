@@ -38,33 +38,63 @@ The experiments share a base training configuration with per-model settings. Tab
 \subsection{Archival training-time summary}
 \label{app:training-time}
 
-To document computational cost, Table~\ref{tab:app-training-time} summarizes wall-clock time for the two conditional windowed models. These are archival measurements from shared university-cluster jobs rather than a controlled efficiency comparison. Each completed run used a maximum of $256$ epochs, and the reported totals include restart attempts.
+To document computational cost, Table~\ref{tab:app-training-time} summarizes the archival wall-clock records for the direct and conditional windowed models. These measurements come from shared university-cluster jobs and are not a controlled hardware-efficiency comparison. Totals include logged restart attempts that contributed to the completed training trajectory. Early stopping produced different epoch counts across direct-model seeds, whereas the windowed runs used the maximum of $256$ epochs.
 
-\begin{table}[pos=htbp]
+\begin{table*}[htbp]
 \centering
-\caption{Archival wall-clock training time for the conditional windowed models. Values are in hours except for the final column. Means are across three training seeds. The F-FNO Window-5 seed-$67$ value is a range because the logs do not contain the timing of the initial epochs before the epoch-$97$ checkpoint.}
+\caption{Archival wall-clock training time by model and seed. Seed-specific and mean wall times are in hours; the final column reports mean seconds per completed epoch. Means use all three seeds unless marked otherwise. Hardware load and, for some resumed runs, accelerator type varied across jobs, so these values document computational cost rather than establish a controlled efficiency ranking.}
 \label{tab:app-training-time}
 \small
 \begin{tabular}{lccccc}
     \toprule
     Model & seed $18$ & seed $36$ & seed $67$ & mean wall time & mean s/epoch \\
     \midrule
+    FNO & $1.70$ & $2.75$ & $3.13$ & $2.53$ & $58.8$ \\
+    F-FNO & $1.97$ & $1.19$ & $2.20$ & $1.79$ & $60.7$ \\
+    FNO (8 modes) & $1.95$ & $1.85$ & $1.48$ & $1.76$ & $40.4$ \\
+    FNO (20 modes) & $1.34$ & $1.50$ & $1.07$ & $1.30$ & $43.4$ \\
+    U-FNO & ---$^{\ddagger}$ & $4.62$ & $4.53$ & $4.58^{\ddagger}$ & $162.7^{\ddagger}$ \\
+    WNO & $1.70$ & $1.01$ & $1.20$ & $1.30$ & $51.6$ \\
+    U-Net & $3.34$ & $3.38$ & $3.31$ & $3.34$ & $47.0$ \\
+    CNN & $3.32$ & $2.93$ & $3.04$ & $3.10$ & $43.5$ \\
+    ConvLSTM & $11.48$ & $11.32$ & $13.19$ & $12.00$ & $343.3$ \\
+    \midrule
     Window-FNO-5 & $22.38$ & $30.44$ & $30.46$ & $27.76 \pm 4.66$ & $390.4 \pm 65.5$ \\
-    Window-F-FNO-5 & $32.66$ & $26.38$ & $25.34$--$28.57 ^ {\dagger}$ & $28.13$--$29.20 ^ {\dagger}$ & $395.5$--$410.7^{\dagger}$ \\
+    Window-F-FNO-5 & $32.66$ & $26.38$ & $25.34$--$28.57^{\dagger}$ & $28.13$--$29.20^{\dagger}$ & $395.5$--$410.7^{\dagger}$ \\
     \bottomrule
 \end{tabular}
 
 \vspace{0.35em}
 \begin{minipage}{0.94\linewidth}
 \footnotesize
-\textsuperscript{\(\dagger\)} The seed-$67$ F-FNO record contains a checkpointed continuation: $5.42$ hours on the initial A100 attempt and $11.97$ hours on the subsequent L40 attempt are directly observed. The unlogged epochs $0$--$96$ are estimated from the successful continuation rate and the two complete peer-seed runs; the resulting range is retained rather than presented as an exact duration.
+\textsuperscript{\(\dagger\)} The seed-$67$ Window-F-FNO-5 record contains a checkpointed continuation: $5.42$ hours on the initial A100 attempt and $11.97$ hours on the subsequent L40 attempt are directly observed. The unlogged epochs $0$--$96$ are estimated from the successful continuation rate and the two complete peer-seed runs; the resulting range is retained rather than presented as an exact duration.
+
+\textsuperscript{\(\ddagger\)} The U-FNO seed-$18$ trajectory spans an interrupted attempt whose intermediate wall time is absent from the archived logs. Its seed-specific total is therefore omitted, and the displayed U-FNO means use seeds $36$ and $67$ only.
 \end{minipage}
+\end{table*}
+
+The remaining archived seed records are listed in Table~\ref{tab:app-training-time-additional}. Exact totals are reported only when the scheduler log records a successful completion. Lower bounds denote interrupted allocations for which later checkpoint progress is present but the complete continuation time is not retained.
+
+\begin{table}[pos=htbp]
+\centering
+\caption{Additional archival wall-clock records for seeds 72 and 154. Values are hours from the retained scheduler logs; $\geq$ indicates a lower bound rather than a complete training duration.}
+\label{tab:app-training-time-additional}
+\begin{tabular}{lcc}
+    \toprule
+    Model & seed $72$ & seed $154$ \\
+    \midrule
+    FNO & $2.17$ & $2.26$ \\
+    F-FNO & $\geq 0.48$ & $0.81$ \\
+    U-Net & $\geq 2.54$ & $\geq 1.63$ \\
+    ConvLSTM & $10.09$ & $8.99$ \\
+    \bottomrule
+\end{tabular}
 \end{table}
 
 \subsection{Supplementary numerical evidence}
 \label{app:validation-details}
 
-The numerical evidence combines current R6 checks with earlier numerical-method and independent-comparator studies. Table~\ref{tab:app-validation-chain} expands the summary in Table~\ref{tab:solver-validation}; the current checks re-audited all train, validation, and test splits of the three datasets, reran nine representative solver cases, and added a fresh three-case R6 GeoClaw SWE comparison. The broader numerical studies remain historical and separately scoped. The 50 learning targets are adjacent-natural-step common-time outputs; no solver-step-indexed output is mixed into the reported evaluation.
+The numerical evidence combines dataset checks, numerical-method checks, independent comparison, integrated procedure checks, and sensitivity analysis. Table~\ref{tab:app-validation-chain} expands the summary in Table~\ref{tab:solver-validation}; the three datasets were checked across all train, validation, and test splits, nine representative solver cases were rerun, and the comparison includes a controlled three-case GeoClaw SWE ablation. The 50 learning targets are adjacent-natural-step common-time outputs; no solver-step-indexed output is mixed into the reported evaluation.
 
 \begin{table}[pos=htbp]
 \centering
@@ -75,20 +105,20 @@ The numerical evidence combines current R6 checks with earlier numerical-method 
     \toprule
     Evidence & Quantitative scope & Interpretation \\
     \midrule
-    Current dataset and solver checks & $3$ datasets; all train/validation/test splits; $9$ representative solver cases & passed \\
+    Dataset and solver checks & $3$ datasets; all train/validation/test splits; $9$ representative solver cases & passed \\
     Shared inputs & $13{,}500$ scenarios reused exactly across three references & identity established \\
-    Current R6 GeoClaw SWE comparison & $3$ fixed test cases; $6$ Hydrostatic/MUSCL-HR comparisons & completed diagnostic \\
-    Historical internal numerical checks & $86$ cases; $48$ analytical, numerical, and stability criteria fixed before evaluation & met criteria \\
-    Historical independent comparisons & $3$ primary comparisons, $2$ verification checks, and $7$ refinement checks & retained separately \\
-    Historical descriptive comparison & $12$ exploratory GeoClaw/Clawpack comparisons & $11$ outside limits \\
-    Historical integrated procedure checks & $90$ cases plus $3$ deterministic repeatability checks & repeatable \\
-    Historical held-out sensitivity checks & $363$ paired cases and $726$ solver executions under $42$ criteria & met criteria \\
+    Controlled GeoClaw SWE ablation & $3$ fixed cases; $5$ configurations for each of two shallow-water references & completed descriptive comparison \\
+    Internal numerical checks & $86$ cases; $48$ analytical, numerical, and stability criteria fixed before evaluation & met criteria \\
+    Independent comparisons & $3$ primary comparisons, $2$ verification checks, and $7$ refinement checks & met criteria \\
+    Exploratory descriptive comparisons & $12$ GeoClaw/Clawpack comparisons & $11$ outside limits \\
+    Integrated procedure checks & $90$ cases plus $3$ deterministic repeatability checks & repeatable \\
+    Held-out sensitivity checks & $363$ paired cases and $726$ solver executions under $42$ criteria & met criteria \\
     Dataset consistency checks & $3$ representative cases; corrected $384 \rightarrow 128 \rightarrow 192 \rightarrow 64$ grid construction & passed \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-The current R6 GeoClaw comparison is the relevant independent-comparator evidence for the published benchmark: Hydrostatic trajectory relative $L_2$ ranges from $0.2071$ to $0.3326$, while MUSCL-HR ranges from $0.0659$ to $0.1562$, across the three fixed cases in Table~\ref{tab:geoclaw-r6}. GeoClaw receives the exact frozen $192 \times 192$ initial state, and its central $128 \times 128$ output is block-mean reduced to the published $64 \times 64$ field. The historical exploratory comparisons and ablation remain provenance for the earlier program, not a rerun of the current benchmark. The numerical program therefore supports the specific finite-horizon procedure used here, but does not establish pointwise equivalence, general boundary independence, formal convergence, or event-scale validity.
+The controlled GeoClaw ablation in Table~\ref{tab:geoclaw-ablation} is descriptive evidence about the tested finite-horizon comparisons. Boundary, sponge, and domain changes produce small shifts, while the nested refinement substantially reduces the discrepancy for both shallow-water references. The residual depends jointly on solver formulation, boundary treatment, and resolution; these results do not establish pointwise equivalence, formal convergence, general boundary independence, or event-scale validity.
 
 \paragraph{Boussinesq dispersion diagnostic.}
 Small-amplitude periodic sinusoidal waves are propagated on a $256 \times 32$ constant-depth grid for modes $1, 2, 4, 8, 12, 16, 24, 32$ at $\Delta t = 1.25 \times 10 ^ {-4}$ and final time $1.5$. Fourier phase tracking is compared with the discrete relation

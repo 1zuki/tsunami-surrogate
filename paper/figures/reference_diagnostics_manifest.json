@@ -58,14 +58,14 @@
   "evaluation_run": "evaluation_runs/final-v2-full-nonspeed-20260912-r6",
   "figures": [
     {
-      "bytes": 17708,
+      "bytes": 17711,
       "path": "paper/figures/solver_gap_vs_surrogate_error.pdf",
-      "sha256": "00a9eb6df4e9137e9e5f0548847f24ccc4f0322b0a02a854e8d892ec0c79c224"
+      "sha256": "f82c671dd40e6e2fddf3820a7ef74e63d1bd6b17002f62209c5ecaed72cd058e"
     },
     {
-      "bytes": 138992,
+      "bytes": 140660,
       "path": "paper/figures/solver_gap_vs_surrogate_error.png",
-      "sha256": "fee9fc1a4809cc9f9d94ebb3ef2c28e340a4f48a69326f0398c3f68a6047bbad"
+      "sha256": "af15f8d23846d652c385b2ef42733c4074c3afbb849c03e486c2ce6376d5467c"
     },
     {
       "bytes": 22255,
@@ -108,7 +108,7 @@
   "schema_id": "tsunami-surrogate.reference-diagnostic-figures.v1",
   "script": {
     "path": "scripts/plot_reference_diagnostics.py",
-    "sha256": "a598e5119ddf875de0e9a29e944637ba637c83aad53cdcd0b7926d3122091adb"
+    "sha256": "2aad954561d5f6fa1cba622e0ddb7dd31352a9e2146a3d4f4d457fa87f61fd4c"
   },
   "source_artifacts": [
     {
