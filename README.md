@@ -1,217 +1,279 @@
-![Python](https://img.shields.io/badge/Python-3.10-blue)
-![PyTorch](https://img.shields.io/badge/PyTorch-DeepLearning-red)
+<div align="center">
+
+# Reference-Aware Tsunami Surrogates
+
+**A controlled multi-reference benchmark for neural PDE surrogates**
+
+[About](#about) | [Results](#results) | [Paper and Data](#paper-and-data) | [Installation](#installation) | [Quick Start](#quick-start)
+
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.10%2B-ee4c2c)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-# Tsunami Surrogate Modeling with Neural Operators
+</div>
 
-## 1) Project Idea
+## About
 
-This repository builds a research benchmark for fast surrogate modeling of tsunami-like wave propagation in a controlled synthetic setting.
+Neural surrogates inherit the numerical choices of the solver used to create
+their labels. This project makes that dependency measurable by advancing the
+same synthetic bathymetry and source scenarios with three reference models:
 
-Instead of running a numerical PDE solver online for every scenario, we train neural surrogates to learn:
+- Hydrostatic shallow-water equations;
+- MUSCL-HR shallow-water equations; and
+- a study-defined linear weakly dispersive Boussinesq-type reference.
 
-`(bathymetry, source/initial disturbance) -> future wave-height trajectory`
+Each reference keeps its natural time steps, then its outputs are interpolated
+to the same 50 requested times from `8.4` to `420.0` benchmark-time units. The
+shared construction is explicit:
 
-The scope is research and benchmarking, not an operational early-warning deployment system.
+```text
+384 x 384 master fields -> 128 x 128 solver inputs
+                       -> 192 x 192 buffered computation
+                       -> central 64 x 64 published target
+```
 
-### From one scenario to a surrogate benchmark
+The main split contains 10,000 training, 1,000 validation, and 2,500 held-out
+test scenarios. The code, configs, manifests, and evaluation wrappers are
+designed to keep solver identity, requested-time alignment, normalization, and
+target resolution visible throughout the pipeline.
 
-Each synthetic scenario is shared by all three numerical references. The diagram shows the main forward-surrogate path used by the benchmark: the references see the same bathymetry and source, but keep their own numerical time stepping. Sharing inputs and requested output times makes the comparisons consistent; it does not make the three references physically equivalent.
+<p align="center">
+  <img src="paper/figures/scenario_gallery.png"
+       alt="Synthetic bathymetry and source scenario gallery"
+       width="980">
+</p>
+
+### Workflow
 
 ```mermaid
-flowchart TD
-    POOLS["Disjoint scenario pools<br/>training: 10,000 · validation: 1,000 · final test: 2,500"]
-
-    subgraph SCENARIO["1. Shared scenario construction"]
-        BATHY["384 × 384 master bathymetry"]
-        SOURCE["384 × 384 master source"]
-        TAPER["Apply a 16-cell taper at the source edge"]
-        PAIR["Shared paired scenario<br/>one bathymetry and source ID"]
-        IDENTITY["Record the input-array and configuration identity"]
-        DOWNSAMPLE["Block-average both fields to 128 × 128"]
-        SPECTRAL["Check that the source remains resolved<br/>on the 128 × 128 solver grid"]
-        BUFFER["Extend the bathymetry at the edge and add<br/>a 32-cell buffer on every side"]
-        DOMAIN["192 × 192 computational domain"]
-
-        POOLS --> BATHY
-        POOLS --> SOURCE
-        SOURCE --> TAPER
-        BATHY --> PAIR
-        TAPER --> PAIR
-        PAIR --> IDENTITY --> DOWNSAMPLE --> SPECTRAL --> BUFFER --> DOMAIN
-    end
-
-    subgraph REFERENCES["2. Three reference trajectories from the same scenario"]
-        HYDRO["Hydrostatic shallow-water reference"]
-        MUSCL["MUSCL-HR shallow-water reference"]
-        BOUSS["Boussinesq-type reference<br/>(linear weakly dispersive comparison)"]
-        NATURAL["Each reference retains its own stable<br/>natural time steps"]
-        TIMES["Interpolate η at 50 shared requested times<br/>from 8.4 to 420 seconds"]
-        QUALITY["Require finite, physically bounded, and<br/>solver-health-checked trajectories"]
-        CROP["Keep the central 64 × 64 field"]
-        RAW["Accepted raw reference publications<br/>separate by split and numerical reference"]
-        RECORD["Scenario and reference records<br/>link identities, quality outcomes, and SHA-256 hashes"]
-
-        DOMAIN --> HYDRO
-        DOMAIN --> MUSCL
-        DOMAIN --> BOUSS
-        HYDRO --> NATURAL
-        MUSCL --> NATURAL
-        BOUSS --> NATURAL
-        NATURAL --> TIMES --> QUALITY --> CROP --> RAW --> RECORD
-    end
-
-    subgraph DATASETS["3. Reference-specific learning datasets"]
-        PREPROCESS["Verify the records, then prepare one dataset per reference<br/>inputs: bathymetry, source, initial depth · label: 50-frame η trajectory"]
-        TRAIN_DATA["Training data<br/>fit normalization statistics"]
-        VAL_DATA["Validation data<br/>reuse the training statistics"]
-        TEST_DATA["Final test data<br/>reuse the training statistics"]
-
-        RECORD --> PREPROCESS
-        PREPROCESS --> TRAIN_DATA
-        PREPROCESS --> VAL_DATA
-        PREPROCESS --> TEST_DATA
-    end
-
-    subgraph MODELS["4. Train and evaluate surrogates"]
-        TRAIN["Train reference-specific surrogate models<br/>FNO is primary; other models provide comparisons"]
-        CHECKPOINT["Selected checkpoint with its resolved configuration<br/>and training history"]
-        EVALUATE["Held-out evaluation on the final test set"]
-        FIDELITY["Same-reference fidelity"]
-        CROSS["Reference gaps and cross-reference comparisons"]
-        ROBUSTNESS["Robustness, resolution, and real-bathymetry diagnostics"]
-        UNCERTAINTY["Uncertainty and controlled runtime comparisons"]
-        EVIDENCE["Figures, tables, and a checksum-bound evaluation record"]
-
-        TRAIN_DATA --> TRAIN
-        VAL_DATA --> TRAIN
-        TRAIN --> CHECKPOINT
-        CHECKPOINT --> EVALUATE
-        TEST_DATA --> EVALUATE
-        EVALUATE --> FIDELITY --> EVIDENCE
-        EVALUATE --> CROSS --> EVIDENCE
-        EVALUATE --> ROBUSTNESS --> EVIDENCE
-        EVALUATE --> UNCERTAINTY --> EVIDENCE
-    end
+flowchart LR
+    A[Shared bathymetry and source] --> B[Three reference solvers]
+    B --> C[Common requested times]
+    C --> D[Buffered crop to 64 x 64 targets]
+    D --> E[Train neural surrogate]
+    E --> F[Direct, cross-reference, and uncertainty evaluation]
 ```
 
-The outer grids serve different purposes. The 384 × 384 master fields define one shared scenario; the 128 × 128 field is the solver-ready representation; the 192 × 192 domain provides an edge buffer; and the central 64 × 64 crop is the published learning target. The records and hashes make a generated example traceable, while the acceptance checks reject unsuitable trajectories rather than silently repairing them.
+Reference solutions are numerical label generators for this benchmark. They
+are not interchangeable physical truth, and the benchmark does not establish
+operational tsunami forecasting or event-scale hazard validity.
 
-### Representative rollouts
+## Results
 
-| Hydrostatic | MUSCL-HR | Boussinesq |
-| --- | --- | --- |
-| ![Representative Hydrostatic rollout: bathymetry, reference elevation, prediction, and absolute error](representative_hydrostatic_surrogate_rollout.gif) | ![Representative MUSCL-HR rollout: bathymetry, reference elevation, prediction, and absolute error](representative_muscl_hr_surrogate_rollout.gif) | ![Representative Boussinesq rollout: bathymetry, reference elevation, prediction, and absolute error](representative_boussinesq_surrogate_rollout.gif) |
+The headline values below are the manuscript's reported held-out evidence.
+They should be read together with the scope and provenance notes in
+[Reproducibility and scope](#reproducibility-and-scope).
 
-These 50-frame examples use `sample_000001` from the test split and the matching seed-18 FNO for each numerical reference. Each panel shows bathymetry, numerical-reference surface elevation, surrogate prediction, and absolute error. The animations share the same requested times (8.4 through 420.0) and a common physical elevation scale, so the wave amplitudes can be compared directly; per-reference error colours remain independently scaled. They are qualitative illustrations, not substitutes for the checksum-bound R6 evaluation metrics.
+### Solver discrepancy
 
-## 2) Research Questions
+| Reference pair | Global solver-gap RMSE |
+|:--|--:|
+| Hydrostatic vs MUSCL-HR | `0.00171` |
+| MUSCL-HR vs Boussinesq | `0.00305` |
+| Hydrostatic vs Boussinesq | `0.00374` |
 
-The current forward-surrogate benchmark focuses on:
+<p align="center">
+  <img src="paper/figures/solver_gap_vs_surrogate_error.png"
+       alt="Solver gap compared with surrogate error"
+       width="980">
+</p>
 
-1. Fidelity: how closely predictions match the shallow-water solver.
-2. Speed: how much inference acceleration is gained over full numerical rollout.
-3. Robustness: how performance changes under distribution shift (unseen bathymetry/source families) and cross-resolution transfer.
-4. Uncertainty quality: whether predictive confidence tracks actual error.
+### Pooled reference ablation
 
-Separate follow-up track (not part of the current forward-surrogate paper):
+| Target reference | Solver-anonymous FNO | Solver-conditioned FNO |
+|:--|--:|--:|
+| Hydrostatic | `0.00258` | `0.00212` |
+| MUSCL-HR | `0.00274` | `0.00252` |
+| Boussinesq | `0.00357` | `0.00289` |
 
-5. Inverse problem: recover source characteristics from observed wave signals/fields.
+Conditioning on solver identity improves reference-specific agreement in this
+comparison. It does not remove the underlying discrepancy or establish which
+reference is physically correct.
 
-## 3) What Is Implemented vs Planned
+### Direct models and uncertainty
 
-- Implemented core: synthetic data generation, preprocessing, forward surrogate training, and benchmark evaluation.
-- Implemented models: FNO (primary), F-FNO, CNN, U-Net, ConvLSTM, U-FNO,
-  WNO, mode ablations, native-resolution variants, and ensemble paths for
-  comparison. The released evaluation includes the completed ConvLSTM
-  baseline; no further ConvLSTM training is required for the current study.
-- Implemented evaluations: accuracy, speed, generalization, resolution transfer, and uncertainty.
-- Separate follow-up work: dedicated inverse-problem experiments and a separate paper track.
+Among nine Hydrostatic direct models, the lowest global relative `L2` values
+are:
 
-### 3a) Current benchmark status
+| Model | Relative `L2` |
+|:--|--:|
+| ConvLSTM | `0.203` |
+| U-FNO | `0.224` |
+| F-FNO | `0.230` |
 
-Updated: 2026-09-01.
+All six tested cross-reference discrepancy ratios exceed one, ranging from
+`1.10` to `1.72`. A seven-member FNO ensemble has `90%` marginal coverage of
+`0.682` before validation scaling and `0.910` after scaling; the reported
+high-strength subgroup reaches `0.796`.
 
-The canonical train, validation, and test configs now define the accepted fresh-generation contract: seeds 42/271/911; 10,000/1,000/2,500 scenarios; 50 requested times from 8.4 through 420.0; shared 384-grid master inputs; 128-grid solver inputs; buffered 192-grid computation; and central 64-grid publications for Hydrostatic, MUSCL-HR, and Boussinesq. The semantic contract hash is `288d19af5e8f5fe1658c098bf972ada97292a08fe35ed99c086406a291576d2f`.
+<p align="center">
+  <img src="representative_hydrostatic_surrogate_rollout.gif"
+       alt="Representative Hydrostatic surrogate rollout"
+       width="820">
+</p>
 
-Earlier datasets, checkpoints, and evaluation results belong to the archived campaign and must not be mixed into this fresh rebuild. The current source has passed the full test suite and isolated all-reference generation/resume canaries, but fresh full generation, preprocessing, training, and evaluation are still required before manuscript values are updated. The native-resolution and real-bathymetry auxiliary generation configs remain deferred until they are independently ported to and verified against the accepted scaling contract.
+<p align="center">
+  <img src="representative_muscl_hr_surrogate_rollout.gif"
+       alt="Representative MUSCL-HR surrogate rollout"
+       width="820">
+</p>
 
-The final evaluation interface is deliberately small:
+<p align="center">
+  <img src="representative_boussinesq_surrogate_rollout.gif"
+       alt="Representative Boussinesq surrogate rollout"
+       width="820">
+</p>
 
-```bash
-# Read-only preflight; creates no evaluation outputs.
-bash scripts/run_eval_suite.sh
+## Models and evaluation lanes
 
-# Read-only preflight including all seven ensemble members.
-bash scripts/run_eval_suite.sh --include-ensemble
+The repository contains direct surrogate baselines and reference-aware lanes
+for the common-time benchmark:
 
-# Read-only preflight for the paper prerequisites, including the ensemble.
-# Full paper-evidence evaluation is execution-only; see the command below.
-bash scripts/run_eval_suite.sh --include-ensemble
+- FNO, F-FNO, U-FNO, WNO, U-Net, CNN, and ConvLSTM baselines;
+- direct same-reference accuracy on the frozen test split;
+- pooled-reference anonymous and solver-conditioned comparisons;
+- cross-reference discrepancy ratios and solver-gap diagnostics;
+- resolution transfer, strict family holdouts, and real-bathymetry diagnostics;
+- ensemble calibration, uncertainty correlation, and coverage analysis.
 
-# Full final execution for a new reproducible evaluation run.
-bash scripts/run_eval_suite.sh \
-  --execute \
-  --run-id <immutable-run-id> \
-  --device cuda \
-  --include-paper-evidence \
-  --include-speed \
-  --deep-payload-audit \
-  --rerun-numerical-validation
+The evaluation wrapper is fail-closed. It records the contract hash, source
+state, dataset manifests, checkpoints, and output provenance under
+`evaluation_runs/`.
+
+## Paper and Data
+
+**Manuscript.** *Reference-Aware Evaluation of Neural PDE Surrogates: A
+Controlled Multi-Reference Benchmark for Tsunami-Like Waves.* The paper source
+is in the [paper directory](paper/), with both journal and arXiv wrapper
+directories.
+
+**Repository.** [github.com/1zuki/tsunami-surrogate](https://github.com/1zuki/tsunami-surrogate)
+
+**Archived reproduction package.** The public reproduction package is archived
+at [Zenodo 10.5281/zenodo.21962844](https://doi.org/10.5281/zenodo.21962844).
+It contains the common-time processed data, normalization statistics, selected
+checkpoints, evaluation evidence, manifests, and checksums associated with the
+archived release.
+
+**Raw trajectories.** The complete raw surface-elevation trajectories are
+available from the [supplementary Google Drive mirror](https://drive.google.com/drive/folders/1avJBArJGgdoosuNRyZMHKqgd3kWX3U84?usp=sharing).
+The mirror is mutable; use the Zenodo package and its checksums as the archival
+reference, or regenerate the raw data from the pinned configs.
+
+### Citation
+
+If this repository or benchmark is useful, cite the associated work:
+
+```bibtex
+@unpublished{nguyen2026referenceaware,
+  author = {Nguyen Tho Binh An and Le Minh Nhut Tan and Tien-Dung Mai},
+  title = {Reference-Aware Evaluation of Neural PDE Surrogates: A Controlled Multi-Reference Benchmark for Tsunami-Like Waves},
+  year = {2026},
+  note = {Manuscript in preparation},
+  url = {https://github.com/1zuki/tsunami-surrogate}
+}
 ```
 
-The real-bathymetry suite is included by default. Paper evidence implies the
-ensemble;
-speed and the fresh numerical-validation chain remain explicit because they are
-the longest lanes. Numerical validation requires a clean committed
-`src/`/`scripts/`/`configs/` source state and creates a checksum-bound archive
-inside the isolated evaluation run. The command writes a new run directory;
-remove older results only after the new run has been checked.
+## Installation
 
-All later work should meet the project standard of polished research software: scientifically defensible scope, explicit provenance, fail-closed data and checkpoint boundaries, reproducible commands, proportionate tests, and no paper/production claim stronger than the artifacts support.
-
-## 4) Main Workflow
-
-The default full-module pipeline in this repo is:
-
-1. Generate synthetic physics rollouts.
-2. Preprocess into train/val/test tensors.
-3. Train surrogate models.
-4. Evaluate solver-fidelity, speed, robustness, and uncertainty.
-5. Export plots/tables and map outputs into paper sections.
-6. Keep inverse-problem workflow as a separate follow-up track (outside current forward-paper claims).
-
-For the released results, restore the benchmark package before evaluation. For
-a new rebuild, start with the raw-data generation path in Section 5b.5 and
-continue through the detailed from-scratch command archive in Appendix A.
-
-## 5) Setup
+The reference environment uses Python 3.10 or newer and PyTorch 2.10.
 
 ```bash
 git clone https://github.com/1zuki/tsunami-surrogate.git
 cd tsunami-surrogate
-python3 --version  # must report Python 3.10.x
-python3 -m venv .venv
+
+python -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-For a fresh Linux or Google Cloud VM, install Git, Python 3.10, and the
-`zstd` command-line tools (`tar` must be able to run `unzstd`). A source-only
-check needs only the repository and Python environment. The released reproduction
-archives total about 40.6 GB before extraction and their recorded source
-payloads are about 41.0 GB; keep at least 100 GB free if the VM retains both
-the downloaded archives and extracted data/checkpoints. The raw publication
-mirror is much larger and is not needed for the normal check.
+For a CUDA installation, install the PyTorch wheel matching the local driver
+before installing the remaining pinned dependencies when the default wheel is
+not suitable for the machine.
 
-## 5a) Reproducibility notes
+## Quick Start
 
-The intended runtime is Python 3.10, with dependencies listed in
-`requirements.txt`. Paper CUDA timing rows use the recorded speed metadata from
-runs with PyTorch 2.10.0+cu128 and CUDA 12.8. The release includes all 33
-selected checkpoints together with their resolved configurations and training
-histories. This archive supports research benchmark reproducibility, not
-operational tsunami prediction.
+### 1. Run the one-sample smoke path
+
+This exercises the dataset-generation entry point without starting a full
+10,000-scenario campaign:
+
+```bash
+bash scripts/quickstart.sh
+```
+
+### 2. Restore or generate the benchmark data
+
+After extracting the release archives into the repository layout, verify every
+archive before use:
+
+```bash
+sha256sum -c SHA256SUMS.txt
+zstd -t --quiet *.tar.zst
+```
+
+To regenerate the three raw splits from the checked-in configs, use the
+resumable generator and then preprocess in order:
+
+```bash
+python scripts/make_dataset.py --config configs/data/dataset.yaml --continue
+python scripts/make_dataset.py --config configs/data/dataset_eval.yaml --continue
+python scripts/make_dataset.py --config configs/data/dataset_test.yaml --continue
+
+python src/data_gen/preprocess.py --config configs/data/preprocess_train.yaml
+python src/data_gen/preprocess.py --config configs/data/preprocess_eval.yaml
+python src/data_gen/preprocess.py --config configs/data/preprocess_test.yaml
+```
+
+Validation and test preprocessing reuse the training normalization statistics.
+Do not run those stages before training preprocessing has completed.
+
+### 3. Train one direct model
+
+With the processed Hydrostatic split available:
+
+```bash
+python scripts/train.py --config configs/model/fno.yaml
+```
+
+The default run writes checkpoints under
+`experiments/fno/seed_18/`, including `best.pt` and
+`checkpoints/last.pt`.
+
+### 4. Evaluate a model on metadata slices
+
+```bash
+python scripts/eval_v2_slices.py \\
+  --config configs/model/fno.yaml \\
+  --checkpoint experiments/fno/seed_18/best.pt \\
+  --dataset data/processed/hydrostatic/test \\
+  --group-by source_type \\
+  --device auto \\
+  --output evaluation_runs/local-source-slices.json
+```
+
+### 5. Run the fail-closed evaluation wrapper
+
+Read-only preflight:
+
+```bash
+bash scripts/run_eval_suite.sh --no-real-bathymetry
+```
+
+The complete paper-evidence lane is intentionally explicit and can require
+large datasets, frozen checkpoints, and external GeoClaw/PETSc dependencies:
+
+```bash
+bash scripts/run_eval_suite.sh \\
+  --execute \\
+  --run-id final-v2-paper-full-local \\
+  --include-paper-evidence \\
+  --device cuda
+```
+
+<details>
+<summary>Advanced command archive</summary>
 
 ## 5b) Fresh-machine checks, generation, and result verification (recommended)
 
@@ -1331,111 +1393,49 @@ python scripts/export_figures.py --config configs/model/fno_muscl_hr.yaml --chec
 python scripts/export_figures.py --config configs/model/fno_boussinesq.yaml --checkpoint experiments/fno_boussinesq/seed_18/best.pt --out paper/figures/fno_boussinesq_prediction.png
 ```
 
-## 7) Current Repository Structure
-
-```text
-tsunami-surrogate/
-├─ README.md
-├─ LICENSE
-├─ requirements.txt
-├─ configs/                        # all experiment/data/model/eval configs
-│  ├─ data/                        # data-generation and preprocessing configs
-│  │  ├─ dataset.yaml              # three-stage generation config + per-FDE raw outputs
-│  │  ├─ dataset_boussinesq.yaml
-│  │  ├─ multires/                 # native 32/64/128 forward-data configs
-│  │  ├─ ood_splits_hydrostatic.yaml
-│  │  ├─ ood_splits_muscl_hr.yaml
-│  │  ├─ ood_splits_boussinesq.yaml
-│  │  ├─ inverse_hydrostatic.yaml
-│  │  ├─ inverse_muscl_hr.yaml
-│  │  ├─ inverse_hydrostatic_sparse_gauges.yaml
-│  │  ├─ inverse_muscl_hr_sparse_gauges.yaml
-│  │  ├─ preprocess_train.yaml     # fits training normalization statistics
-│  │  ├─ preprocess_eval.yaml      # reuses train stats and writes val
-│  │  ├─ preprocess_test.yaml      # reuses train stats and writes test
-│  │  ├─ preprocess.yaml           # standalone test-path compatibility config
-│  │  ├─ preprocess_boussinesq.yaml
-│  │  ├─ bathymetry.yaml           # bathymetry synthesis controls
-│  │  ├─ bathymetry_boussinesq.yaml
-│  │  ├─ source.yaml               # tsunami source family controls
-│  │  ├─ source_boussinesq.yaml
-│  │  └─ multires/preprocess_*_shared_from64.yaml
-│  ├─ model/                       # model-centered train/eval configs
-│  │  ├─ fno.yaml                  # primary FNO config
-│  │  ├─ fno_muscl_hr.yaml         # FNO on MUSCL-HR processed labels
-│  │  ├─ fno_boussinesq.yaml       # FNO on Boussinesq processed labels
-│  │  ├─ fno_res32_hydrostatic.yaml
-│  │  ├─ fno_res64_hydrostatic.yaml
-│  │  ├─ fno_res128_hydrostatic.yaml
-│  │  ├─ fno_res32_muscl_hr.yaml
-│  │  ├─ fno_res64_muscl_hr.yaml
-│  │  ├─ fno_res128_muscl_hr.yaml
-│  │  ├─ fno_res64_shared_from64_hydrostatic.yaml
-│  │  ├─ fno_res64_shared_from64_muscl_hr.yaml
-│  │  ├─ cnn.yaml                  # CNN baseline config
-│  │  ├─ unet.yaml                 # U-Net baseline config
-│  │  ├─ convlstm.yaml             # ConvLSTM baseline config
-│  │  └─ convlstm_muscl_hr.yaml    # ConvLSTM on MUSCL-HR labels
-│  ├─ train/                       # shared/base + training variants
-│  │  ├─ base.yaml                 # common seed/device/data/train defaults
-│  │  ├─ physics_loss.yaml         # physics-regularized FNO variant
-│  │  └─ train_32_to_64.yaml       # resolution-transfer training setup
-│  └─ eval/
-│     ├─ eval_template.yaml        # template for standalone eval scripts
-│     ├─ ood_suites_hydrostatic.yaml
-│     ├─ ood_suites_muscl_hr.yaml
-│     ├─ ood_suites_boussinesq.yaml
-│     ├─ uncertainty_ood_hydrostatic.yaml
-│     ├─ uncertainty_ood_muscl_hr.yaml
-│     ├─ resolution_transfer_proxy_hydrostatic.yaml
-│     ├─ resolution_transfer_proxy_muscl_hr.yaml
-│     ├─ resolution_transfer_proxy_boussinesq.yaml
-│     ├─ resolution_hydrostatic.yaml
-│     ├─ resolution_muscl_hr.yaml
-│     ├─ resolution_hydrostatic_shared_from64.yaml
-│     ├─ resolution_muscl_hr_shared_from64.yaml
-│     ├─ emulator_superiority_hydro_to_muscl_hr.yaml
-│     └─ emulator_superiority_muscl_hr_to_hydro.yaml
-├─ scripts/                        # CLI entrypoints (generate/train/eval/export)
-├─ src/                            # implementation modules
-│  ├─ data_gen/                    # simulation + preprocess pipeline internals
-│  ├─ data/                        # dataset loaders and multires dataset wrappers
-│  ├─ solver/                      # shallow-water and related numerical solvers
-│  ├─ models/                      # FNO/CNN/U-Net/ConvLSTM/ensemble/uncertainty models
-│  ├─ training/                    # trainer, losses, metrics, callbacks, checkpoints
-│  ├─ evaluation/                  # accuracy/speed/generalization/UQ evaluation utils
-│  └─ utils/                       # config/io/logger/device/seed/visualization helpers
-├─ data/                           # generated artifacts (split raw/processed data)
-├─ experiments/                    # run outputs (checkpoints, history, eval json)
-├─ evaluation_runs/                # ignored immutable evaluation evidence
-├─ release/                        # ignored Zenodo/raw release staging
-├─ results/                        # aggregate result dumps
-├─ tests/                          # unit/integration checks
-├─ paper/                          # LaTeX manuscript workspace
-│  ├─ main.tex                     # paper entrypoint
-│  ├─ figures/                     # paper figures
-│  ├─ build/                       # latex build artifacts
-│  └─ sections/                    # section files (role-only naming)
-└─ references-notes/               # literature notes for writing and framing
-```
+</details>
 
 </details>
 
-## 8) Paper Alignment
+## Repository Layout
 
-This README follows the same framing as the paper abstract/introduction:
+```text
+configs/
+  data/                 Dataset generation and preprocessing contracts
+  model/                Direct surrogate model configurations
+  eval/                 Common-time and auxiliary evaluation contracts
+src/
+  data_gen/             Scenario generation and preprocessing
+  models/               FNO and baseline architectures
+  solver/               Reference solver implementations
+  evaluation/           Metrics, calibration, and diagnostics
+scripts/                Training, evaluation, plotting, and release tools
+paper/                  Manuscript source, figures, tables, and wrappers
+tests/                  Contract and regression tests
+data/, experiments/,
+evaluation_runs/        Generated datasets, checkpoints, and evidence bundles
+```
 
-- controlled synthetic benchmark setting;
-- FNO-centered surrogate evaluation against F-FNO, CNN/U-Net, ConvLSTM, and
-  other stated baselines;
-- emphasis on speed-accuracy-robustness trade-offs;
-- explicit non-operational scope (research benchmark, not production warning stack);
-- inverse-problem work kept as separate follow-up paper scope, not part of forward-surrogate claims here.
+## Reproducibility and scope
 
-## 9) Notes
+- Keep raw, processed, checkpoint, and evaluation artifacts bound to their
+  manifests and contract hashes.
+- Treat the reported manuscript values as evidence from their recorded
+  evaluation runs, not as a replacement for a fresh production-contract
+  validation.
+- Preserve the distinction between solver agreement, numerical verification,
+  and physical validation.
+- This is a synthetic, finite-horizon research benchmark. It is not an
+  operational tsunami-warning system, a hazard map, or event-scale validation.
 
-- Reproducibility note: Portions of the codebase were developed with
-  AI-assisted programming support. Treat all code as author-reviewed research
-  software, and run the relevant tests and validation before using it in
-  reported experiments.
-- Test split tip: a quick CI/local check can use `pytest -q -m "not slow"`; full solver dynamics validation can use `pytest -q -m slow`.
+## License
+
+This project is released under the [MIT License](LICENSE).
+
+## Acknowledgements
+
+We acknowledge the University of Information Technology, Vietnam National
+University Ho Chi Minh City, for academic and facility support; the Google
+Cloud Free Tier for dataset-generation infrastructure; and the GEBCO Bathymetric
+Compilation Group and NERC EDS British Oceanographic Data Centre for the
+GEBCO-derived real-bathymetry diagnostic data.
