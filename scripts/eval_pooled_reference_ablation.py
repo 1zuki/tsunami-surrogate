@@ -37,6 +37,7 @@ from scripts.eval_suite_preflight import _expected_times, load_suite_contract
 
 
 SOLVERS = ("hydrostatic", "muscl_hr", "boussinesq")
+IDENTITY_STANDARDIZATION = (0.0, 1.0)
 
 
 def _canonical_solver(name: str) -> str:
@@ -152,13 +153,19 @@ class _PairedReferenceDataset(Dataset):
                 # The paired input tensors carry the same channel ordering in
                 # all accepted v2 roots; rebase each channel to physical units.
                 for channel_index, channel in enumerate(self.input_order):
-                    ref_offset, ref_scale = self.input_stats["hydrostatic"][channel]
-                    cand_offset, cand_scale = self.input_stats[name][channel]
+                    # Channels absent from normalization statistics are already
+                    # stored in physical units and therefore use identity scaling.
+                    ref_offset, ref_scale = self.input_stats["hydrostatic"].get(
+                        channel, IDENTITY_STANDARDIZATION
+                    )
+                    cand_offset, cand_scale = self.input_stats[name].get(
+                        channel, IDENTITY_STANDARDIZATION
+                    )
                     reference_channels.append(
-                        reference[:, channel_index] * ref_scale + ref_offset
+                        reference[channel_index] * ref_scale + ref_offset
                     )
                     candidate_channels.append(
-                        candidate[:, channel_index] * cand_scale + cand_offset
+                        candidate[channel_index] * cand_scale + cand_offset
                     )
                 reference = torch.stack(reference_channels, dim=0)
                 candidate = torch.stack(candidate_channels, dim=0)

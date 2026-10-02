@@ -14,6 +14,7 @@ set -euo pipefail
 
 PROJECT_ROOT="/datastore/vit/tsunami-surrogate"
 ENV_PREFIX="$PROJECT_ROOT/.venv"
+SLURM_BIN="/cm/local/apps/slurm/current/bin"
 RUNS_FILE="${RUNS_FILE:?RUNS_FILE must be exported by the suite submitter}"
 SUITE_ID="${SUITE_ID:?SUITE_ID must be exported by the suite submitter}"
 REQUIRED_VRAM="${REQUIRED_VRAM:-16384}"
@@ -49,6 +50,7 @@ source /datastore/vit/miniconda3/etc/profile.d/conda.sh
 conda activate "$ENV_PREFIX"
 
 export PATH="$ENV_PREFIX/bin:/usr/bin:/bin:$PATH"
+export PATH="$ENV_PREFIX/bin:$SLURM_BIN:$PATH"
 export PIP_CACHE_DIR="$PROJECT_ROOT/.cache/pip"
 export TORCH_HOME="$PROJECT_ROOT/.cache/torch"
 export OMP_NUM_THREADS=1
@@ -62,6 +64,10 @@ if ! command -v nvidia-smi >/dev/null 2>&1; then
 fi
 if [ ! -x /usr/local/bin/gpu_check.sh ]; then
     echo "Missing compute-node helper: /usr/local/bin/gpu_check.sh"
+    exit 1
+fi
+if [ ! -x "$SLURM_BIN/scontrol" ]; then
+    echo "Missing Slurm control command: $SLURM_BIN/scontrol"
     exit 1
 fi
 if grep -Fq "nvidia-smi-i " /usr/local/bin/gpu_check.sh; then
@@ -89,7 +95,7 @@ echo "nvidia-smi    : $(command -v nvidia-smi)"
 unset CUDA_VISIBLE_DEVICES
 
 set +e
-CHECK_OUT=$(env PATH="/usr/bin:/bin:$PATH" \
+CHECK_OUT=$(env PATH="$SLURM_BIN:/usr/bin:/bin:$PATH" \
     /usr/local/bin/gpu_check.sh "$REQUIRED_VRAM" "$SLURM_JOB_ID")
 EXIT_CODE=$?
 set -e

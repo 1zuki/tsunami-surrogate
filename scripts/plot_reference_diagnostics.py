@@ -214,14 +214,16 @@ def _plot_gap_scale(
     for y_pos, row in zip(y, comparisons, strict=True):
         ax.annotate(
             f"{row['gap_to_surrogate_ratio']:.1f}x",
-            (row["solver_gap_rmse"], y_pos),
-            xytext=(7, 0),
+            (np.sqrt(row["solver_gap_rmse"] * row["surrogate_rmse"]), y_pos),
+            xytext=(0, -8),
             textcoords="offset points",
-            va="center",
+            ha="center",
+            va="top",
             fontsize=8,
         )
 
     ax.set_xscale("log")
+    ax.margins(y=0.10)
     ax.set_xlabel("denormalized global field RMSE")
     ax.set_yticks(y)
     ax.set_yticklabels([row["label"] for row in comparisons], fontsize=8)

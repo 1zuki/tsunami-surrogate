@@ -15,10 +15,12 @@ PROJECT_ROOT="/datastore/vit/tsunami-surrogate"
 SUITE_ID="${SUITE_ID:?SUITE_ID must be exported by the suite submitter}"
 ARRAY_JOB_ID="${ARRAY_JOB_ID:?ARRAY_JOB_ID must be exported by the suite submitter}"
 GENERATED_DIR="${GENERATED_DIR:?GENERATED_DIR must be exported by the suite submitter}"
+PRIOR_ARRAY_JOB_IDS="${PRIOR_ARRAY_JOB_IDS:-}"
 ARCHIVE_ROOT="$PROJECT_ROOT/logs/slurm/archives"
 STAGING="$ARCHIVE_ROOT/${SUITE_ID}_${ARRAY_JOB_ID}"
 
 cd "$PROJECT_ROOT"
+export PATH="/cm/local/apps/slurm/current/bin:$PATH"
 if [ -e "$STAGING" ]; then
     echo "Refusing to overwrite existing finalizer staging: $STAGING"
     exit 1
@@ -26,9 +28,22 @@ fi
 mkdir -p "$STAGING/generated" "$STAGING/slurm" "$STAGING/per-run"
 
 cp -a "$GENERATED_DIR"/. "$STAGING/generated/"
-find logs/slurm -maxdepth 1 -type f \
-  \( -name "tsunami_${ARRAY_JOB_ID}_*.out" -o -name "tsunami_${ARRAY_JOB_ID}_*.err" \) \
-  -exec cp -a {} "$STAGING/slurm/" \;
+ARRAY_JOB_IDS="$ARRAY_JOB_ID"
+if [ -n "$PRIOR_ARRAY_JOB_IDS" ]; then
+    ARRAY_JOB_IDS="$ARRAY_JOB_IDS,$PRIOR_ARRAY_JOB_IDS"
+fi
+IFS=',' read -r -a ARRAY_JOB_ID_LIST <<< "$ARRAY_JOB_IDS"
+for job_id in "${ARRAY_JOB_ID_LIST[@]}"; do
+    case "$job_id" in
+        *[!0-9]*|'')
+            echo "Invalid prior array job ID: $job_id"
+            exit 1
+            ;;
+    esac
+    find logs/slurm -maxdepth 1 -type f \
+      \( -name "tsunami_${job_id}_*.out" -o -name "tsunami_${job_id}_*.err" \) \
+      -exec cp -a {} "$STAGING/slurm/" \;
+done
 
 while IFS=$'\t' read -r run_label config_path output_dir seed; do
     mkdir -p "$STAGING/per-run/$run_label"
@@ -39,7 +54,7 @@ while IFS=$'\t' read -r run_label config_path output_dir seed; do
     done
 done < "$GENERATED_DIR/runs.tsv"
 
-sacct -j "$ARRAY_JOB_ID" \
+sacct -j "$ARRAY_JOB_IDS" \
   --format=JobID,JobName,State,Elapsed,AllocCPUS,ReqMem,MaxRSS,ExitCode \
   > "$STAGING/sacct.txt" || true
 git rev-parse HEAD > "$STAGING/git_commit.txt" 2>/dev/null || true

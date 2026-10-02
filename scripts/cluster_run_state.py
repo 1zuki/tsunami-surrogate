@@ -63,6 +63,22 @@ def _checkpoint_summary(payload: Mapping[str, Any], path: Path) -> dict[str, Any
     }
 
 
+def _completed_artifact_config(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Remove provenance fields that may differ when reusing a completed run."""
+    normalized = dict(config)
+    normalized.pop("cluster_suite", None)
+    normalized.pop("output_dir", None)
+    eval_config = normalized.get("eval")
+    if isinstance(eval_config, Mapping):
+        eval_config = dict(eval_config)
+        eval_config.pop("output_dir", None)
+        if eval_config:
+            normalized["eval"] = eval_config
+        else:
+            normalized.pop("eval", None)
+    return normalized
+
+
 def classify_run(
     output_dir: str | Path,
     expected_seed: int,
@@ -111,23 +127,43 @@ def classify_run(
         raise ValueError("last.pt metrics do not match the final history row")
     if best["epoch"] < 1 or best["epoch"] > last["epoch"]:
         raise ValueError("best.pt epoch is outside the completed history")
-    if config_path is not None:
-        generated = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
-        if not isinstance(generated, Mapping):
-            raise ValueError("generated config must be a YAML mapping")
-        if dict(last_payload.get("config", {})) != dict(generated):
-            raise ValueError("last.pt config does not match the generated config")
-        if dict(best_payload.get("config", {})) != dict(generated):
-            raise ValueError("best.pt config does not match the generated config")
 
     horizon_complete = last["epochs"] > 0 and last["epoch"] >= last["epochs"]
     early_complete = (
         last["patience"] > 0 and last["early_count"] >= last["patience"]
     )
+    completed = horizon_complete or early_complete
+    provenance_only_reuse = False
+    if config_path is not None:
+        generated = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
+        if not isinstance(generated, Mapping):
+            raise ValueError("generated config must be a YAML mapping")
+        generated_config = dict(generated)
+        for checkpoint_name, payload in (
+            ("last.pt", last_payload),
+            ("best.pt", best_payload),
+        ):
+            checkpoint_config = dict(payload.get("config", {}))
+            if checkpoint_config == generated_config:
+                continue
+            if (
+                completed
+                and _completed_artifact_config(checkpoint_config)
+                == _completed_artifact_config(generated_config)
+            ):
+                provenance_only_reuse = True
+                continue
+            raise ValueError(
+                f"{checkpoint_name} config does not match the generated config"
+            )
+
     if horizon_complete or early_complete:
+        reason = "training already complete"
+        if provenance_only_reuse:
+            reason += "; reusing compatible completed artifact"
         return {
             "action": "skip",
-            "reason": "training already complete",
+            "reason": reason,
             "last_epoch": last["epoch"],
         }
     if last["epochs"] <= 0 or last["epoch"] >= last["epochs"]:

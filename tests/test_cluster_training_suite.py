@@ -272,6 +272,24 @@ def test_slurm_jobs_use_tsunami_display_name(script_name: str) -> None:
     assert "#SBATCH --job-name=tsunami" in text
 
 
+def test_finalizer_can_archive_prior_array_logs() -> None:
+    text = (ROOT / "slurm/finalize_training_suite.slurm").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'PRIOR_ARRAY_JOB_IDS="${PRIOR_ARRAY_JOB_IDS:-}"' in text
+    assert 'ARRAY_JOB_IDS="$ARRAY_JOB_ID"' in text
+    assert 'sacct -j "$ARRAY_JOB_IDS"' in text
+
+
+def test_array_runner_exposes_slurm_control_to_gpu_helper() -> None:
+    text = (ROOT / "slurm/train_suite_array.slurm").read_text(encoding="utf-8")
+
+    assert 'export PATH="$ENV_PREFIX/bin:$SLURM_BIN:$PATH"' in text
+    assert 'env PATH="$SLURM_BIN:/usr/bin:/bin:$PATH"' in text
+    assert 'if [ ! -x "$SLURM_BIN/scontrol" ]; then' in text
+
+
 def test_array_runner_preserves_exit_code_and_per_run_logs() -> None:
     text = (ROOT / "slurm/train_suite_array.slurm").read_text(
         encoding="utf-8"

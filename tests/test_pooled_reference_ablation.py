@@ -141,6 +141,29 @@ def test_paired_reference_dataset_rejects_input_mismatch() -> None:
         _PairedReferenceDataset(datasets)[0]
 
 
+def test_paired_reference_dataset_allows_unstandardized_input_channel() -> None:
+    datasets = {solver: _Dataset([solver]) for solver in SOLVERS}
+    input_tensor = torch.tensor(
+        [[[0.0, 0.0], [0.0, 0.0]], [[0.5, 0.5], [0.5, 0.5]], [[7.0, 7.0], [7.0, 7.0]]]
+    )
+    for dataset in datasets.values():
+        dataset.items[0]["x"] = input_tensor.clone()
+    input_stats = {
+        solver: {"bathymetry": (1.0, 2.0), "source": (-1.0, 4.0)}
+        for solver in SOLVERS
+    }
+    paired = _PairedReferenceDataset(
+        datasets,
+        input_stats=input_stats,
+        input_order=["bathymetry", "source", "initial_depth"],
+    )
+
+    row = paired[0]
+
+    assert row["x"].shape == (3, 2, 2)
+    assert torch.all(row["x"][2] == 7.0)
+
+
 def test_bootstrap_rmse_is_deterministic() -> None:
     values = [1.0, 4.0, 9.0]
     assert _bootstrap_rmse(values, 7, 32) == _bootstrap_rmse(values, 7, 32)
@@ -187,9 +210,16 @@ def test_pooled_preprocess_configs_bind_train_only_stats() -> None:
         assert cfg["saving"]["publication_mode"] == "merge_split"
 
 
-def test_pooled_suite_reuses_existing_hydrostatic_specialists() -> None:
+def test_pooled_suite_reuses_existing_native_specialists() -> None:
     cfg = load_config("configs/cluster/pooled_reference_ablation_suite.yaml")
     entries = {entry["name"]: entry for entry in cfg["entries"]}
     assert not entries["fno_hydrostatic"]["enabled"]
-    assert entries["fno_muscl_hr"]["seeds"] == [18, 36, 67, 72, 154]
-    assert entries["fno_boussinesq"]["seeds"] == [18, 36, 67, 72, 154]
+    assert not entries["fno_muscl_hr"]["enabled"]
+    assert not entries["fno_boussinesq"]["enabled"]
+    assert entries["fno_muscl_hr"]["role"] == "specialist_reference_control_reuse"
+    assert entries["fno_boussinesq"]["role"] == "specialist_reference_control_reuse"
+    assert all(entry["seeds"] == [18, 36, 67] for entry in entries.values())
+    enabled = [entry for entry in entries.values() if entry.get("enabled", True)]
+    assert len(enabled) == 4
+    assert sum(len(entry["seeds"]) for entry in enabled) == 12
+    assert cfg["resources"]["mps_per_job"] == 4

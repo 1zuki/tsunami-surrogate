@@ -69,6 +69,57 @@ def test_completed_run_is_skipped(tmp_path: Path) -> None:
     assert classify_run(run_dir, 18)["action"] == "skip"
 
 
+def test_completed_run_reuses_provenance_only_config_difference(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    _write_run(run_dir, epoch=5, epochs=5)
+    changed = tmp_path / "changed.yaml"
+    changed.write_text(
+        (
+            "seed: 18\n"
+            "train:\n"
+            "  epochs: 5\n"
+            "  early_stopping:\n"
+            "    patience: 3\n"
+            "output_dir: experiments/pooled/seed_18\n"
+            "eval:\n"
+            "  output_dir: experiments/pooled/seed_18/eval\n"
+            "cluster_suite:\n"
+            "  suite_id: pooled_reference_ablation_r6\n"
+        ),
+        encoding="utf-8",
+    )
+
+    result = classify_run(run_dir, 18, changed)
+
+    assert result["action"] == "skip"
+    assert "reusing compatible completed artifact" in result["reason"]
+
+
+@pytest.mark.parametrize("completed", [False, True])
+def test_scientific_eval_change_fails_closed(tmp_path: Path, completed: bool) -> None:
+    run_dir = tmp_path / "run"
+    _write_run(run_dir, epoch=5 if completed else 2, epochs=5)
+    config = yaml.safe_load((run_dir / "config_resolved.yaml").read_text())
+    config["eval"] = {"dataset_path": "different/test"}
+    changed = tmp_path / "changed.yaml"
+    changed.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not match the generated config"):
+        classify_run(run_dir, 18, changed)
+
+
+def test_incomplete_run_rejects_provenance_only_config_change(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    _write_run(run_dir)
+    config = yaml.safe_load((run_dir / "config_resolved.yaml").read_text())
+    config["output_dir"] = "different/output"
+    changed = tmp_path / "changed.yaml"
+    changed.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not match the generated config"):
+        classify_run(run_dir, 18, changed)
+
+
 def test_partial_run_fails_closed(tmp_path: Path) -> None:
     run_dir = tmp_path / "run"
     run_dir.mkdir()
