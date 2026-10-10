@@ -169,7 +169,7 @@ If this repository or benchmark is useful, cite the associated work:
   author = {Nguyen Tho Binh An and Le Minh Nhut Tan and Tien-Dung Mai},
   title = {Reference-Aware Evaluation of Neural PDE Surrogates: A Controlled Multi-Reference Benchmark for Tsunami-Like Waves},
   year = {2026},
-  note = {Manuscript in preparation},
+  note = {Manuscript in submission},
   url = {https://github.com/1zuki/tsunami-surrogate}
 }
 ```
