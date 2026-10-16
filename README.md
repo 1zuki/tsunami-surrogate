@@ -149,16 +149,7 @@ directories.
 
 **Repository.** [github.com/1zuki/tsunami-surrogate](https://github.com/1zuki/tsunami-surrogate)
 
-**Archived reproduction package.** The public reproduction package is archived
-at [Zenodo 10.5281/zenodo.21962844](https://doi.org/10.5281/zenodo.21962844).
-It contains the common-time processed data, normalization statistics, selected
-checkpoints, evaluation evidence, manifests, and checksums associated with the
-archived release.
-
-**Raw trajectories.** The complete raw surface-elevation trajectories are
-available from the [supplementary Google Drive mirror](https://drive.google.com/drive/folders/1avJBArJGgdoosuNRyZMHKqgd3kWX3U84?usp=sharing).
-The mirror is mutable; use the Zenodo package and its checksums as the archival
-reference, or regenerate the raw data from the pinned configs.
+**Data availability** Dataset will be made available when requested
 
 ### Citation
 
