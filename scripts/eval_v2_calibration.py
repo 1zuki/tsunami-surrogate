@@ -19,11 +19,11 @@ from scripts.eval_ensemble_calibration import (
     _nominal_levels,
 )
 from scripts.eval_v2_slices import _loader, _parse_suite, _select_indices
-from src.data.dataset import _make_dataset
-from src.utils.config import load_config
-from src.utils.device import resolve_device
-from src.utils.io import save_json
-from src.utils.seed import seed_everything
+from tsunami_surrogate.data.dataset import _make_dataset
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.device import resolve_device
+from tsunami_surrogate.utils.io import save_json
+from tsunami_surrogate.utils.seed import seed_everything
 
 
 def main() -> None:

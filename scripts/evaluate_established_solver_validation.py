@@ -8,7 +8,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.established_solver_validation import (
+from tsunami_surrogate.evaluation.established_solver_validation import (
     evaluate_minimum_established_solver_validation,
 )
 

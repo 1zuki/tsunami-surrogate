@@ -12,8 +12,8 @@ from .losses import build_loss
 from .engine import train_one_epoch, evaluate_epoch
 from .callbacks import EarlyStopping
 from .checkpointing import save_checkpoint, load_checkpoint
-from src.models.signature import model_config_signature
-from src.utils.io import save_json, load_json
+from tsunami_surrogate.models.signature import model_config_signature
+from tsunami_surrogate.utils.io import save_json, load_json
 
 
 def _capture_rng_state() -> Dict[str, Any]:

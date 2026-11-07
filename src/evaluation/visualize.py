@@ -15,14 +15,14 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.colors import Normalize
 from matplotlib.widgets import Button
 
-from src.evaluation.calibration import interval_calibration
-from src.evaluation.target_scaling import load_target_denorm, resolve_eval_dataset_path
-from src.evaluation.uncertainty import error_uncertainty_correlation
-from src.evaluation.window_rollout import rollout_trajectory
-from src.models import build_model
-from src.training.checkpointing import load_checkpoint
-from src.utils.config import load_config
-from src.utils.device import resolve_device
+from tsunami_surrogate.evaluation.calibration import interval_calibration
+from tsunami_surrogate.evaluation.target_scaling import load_target_denorm, resolve_eval_dataset_path
+from tsunami_surrogate.evaluation.uncertainty import error_uncertainty_correlation
+from tsunami_surrogate.evaluation.window_rollout import rollout_trajectory
+from tsunami_surrogate.models import build_model
+from tsunami_surrogate.training.checkpointing import load_checkpoint
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.device import resolve_device
 
 
 _SAMPLE_METADATA_KEYS = (

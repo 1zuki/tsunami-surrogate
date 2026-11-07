@@ -11,8 +11,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.common_time_v2_h1 import THREAD_ENV_KEYS
-from src.evaluation.h2_hydro_cfl_continuation import (
+from tsunami_surrogate.evaluation.common_time_v2_h1 import THREAD_ENV_KEYS
+from tsunami_surrogate.evaluation.h2_hydro_cfl_continuation import (
     continuation_status,
     execute_continuation,
     freeze_continuation,

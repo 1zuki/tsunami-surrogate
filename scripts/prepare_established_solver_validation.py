@@ -17,7 +17,7 @@ THREAD_ENV_KEYS = (
     "VECLIB_MAXIMUM_THREADS",
 )
 
-from src.evaluation.established_solver_validation import (
+from tsunami_surrogate.evaluation.established_solver_validation import (
     prepare_minimum_established_solver_validation,
 )
 

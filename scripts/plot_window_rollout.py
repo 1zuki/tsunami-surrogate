@@ -30,13 +30,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts.eval_window_rollout import rollout_trajectory
-from src.data.dataset import ShardedTsunamiDataset
-from src.evaluation.target_scaling import apply_target_denorm, load_target_denorm
-from src.models import build_model
-from src.training.checkpointing import load_checkpoint
-from src.utils.config import load_config
-from src.utils.device import resolve_device
-from src.utils.seed import seed_everything
+from tsunami_surrogate.data.dataset import ShardedTsunamiDataset
+from tsunami_surrogate.evaluation.target_scaling import apply_target_denorm, load_target_denorm
+from tsunami_surrogate.models import build_model
+from tsunami_surrogate.training.checkpointing import load_checkpoint
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.device import resolve_device
+from tsunami_surrogate.utils.seed import seed_everything
 
 
 DEFAULT_CONFIG = "configs/model/ffno_window5_hydrostatic.yaml"

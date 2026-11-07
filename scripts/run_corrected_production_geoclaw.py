@@ -11,12 +11,12 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.corrected_production_geoclaw import (  # noqa: E402
+from tsunami_surrogate.evaluation.corrected_production_geoclaw import (  # noqa: E402
     evaluate_corrected_production_geoclaw,
     prepare_corrected_production_geoclaw_bundle,
     run_corrected_production_geoclaw,
 )
-from src.evaluation.geoclaw_adapter import GeoClawEnvironment  # noqa: E402
+from tsunami_surrogate.evaluation.geoclaw_adapter import GeoClawEnvironment  # noqa: E402
 
 
 def _progress(message: str) -> None:

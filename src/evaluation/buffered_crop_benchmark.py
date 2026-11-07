@@ -10,17 +10,17 @@ from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 
-from src.data_gen.simulate_dataset import (
+from tsunami_surrogate.data_gen.simulate_dataset import (
     BufferedDomainConfig,
     _prepare_buffered_domain,
     _simulate_one_local,
 )
-from src.data_gen.common_time_v2 import candidate_requested_times, hash_array
-from src.evaluation.finite_horizon_boundary_study import comparison_metrics
-from src.solver.boussinesq import BoussinesqSolver
-from src.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
-from src.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
-from src.solver.operator_time import build_sponge_mask
+from tsunami_surrogate.data_gen.common_time_v2 import candidate_requested_times, hash_array
+from tsunami_surrogate.evaluation.finite_horizon_boundary_study import comparison_metrics
+from tsunami_surrogate.solver.boussinesq import BoussinesqSolver
+from tsunami_surrogate.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
+from tsunami_surrogate.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
+from tsunami_surrogate.solver.operator_time import build_sponge_mask
 
 
 SOLVERS = ("swe_hydrostatic", "swe_muscl_hr", "boussinesq")
@@ -238,7 +238,7 @@ def run_buffered_case_detailed(
     resolved_cfl = _resolved_target_cfl(solver_name, target_cfl)
     # Imported lazily to keep the reusable buffered-domain helpers independent
     # of the Level A module that also consumes this runner.
-    from src.evaluation.common_time_v2_level_a import _load_canary_arrays
+    from tsunami_surrogate.evaluation.common_time_v2_level_a import _load_canary_arrays
 
     bathymetry, source, _strength_array, strength, _arrays = _load_canary_arrays(
         record

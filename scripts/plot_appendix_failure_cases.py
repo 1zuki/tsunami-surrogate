@@ -30,9 +30,9 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.models import build_model
-from src.training.checkpointing import load_checkpoint
-from src.utils.config import load_config
+from tsunami_surrogate.models import build_model
+from tsunami_surrogate.training.checkpointing import load_checkpoint
+from tsunami_surrogate.utils.config import load_config
 
 
 DEFAULT_OUTPUT_DIR = Path("results/reviewer_validation/failure_cases")

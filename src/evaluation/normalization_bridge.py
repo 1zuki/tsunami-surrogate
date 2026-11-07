@@ -9,7 +9,7 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 import torch
 
-from src.evaluation.target_scaling import resolve_dataset_npz
+from tsunami_surrogate.evaluation.target_scaling import resolve_dataset_npz
 
 
 @dataclass(frozen=True)

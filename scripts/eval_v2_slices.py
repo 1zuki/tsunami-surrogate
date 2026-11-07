@@ -16,18 +16,18 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.eval_window_suites import _evaluate_suite
-from src.data.dataset import _make_dataset
-from src.evaluation.calibration import interval_calibration
-from src.evaluation.target_scaling import load_target_denorm
-from src.evaluation.uncertainty import ErrorUncertaintyCorrelationAccumulator
-from src.models import build_model
-from src.models.ensemble import EnsemblePredictor
-from src.training.checkpointing import load_checkpoint
-from src.training.metrics import MetricAccumulator, compute_metrics
-from src.utils.config import load_config
-from src.utils.device import resolve_device
-from src.utils.io import save_json
-from src.utils.seed import seed_everything
+from tsunami_surrogate.data.dataset import _make_dataset
+from tsunami_surrogate.evaluation.calibration import interval_calibration
+from tsunami_surrogate.evaluation.target_scaling import load_target_denorm
+from tsunami_surrogate.evaluation.uncertainty import ErrorUncertaintyCorrelationAccumulator
+from tsunami_surrogate.models import build_model
+from tsunami_surrogate.models.ensemble import EnsemblePredictor
+from tsunami_surrogate.training.checkpointing import load_checkpoint
+from tsunami_surrogate.training.metrics import MetricAccumulator, compute_metrics
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.device import resolve_device
+from tsunami_surrogate.utils.io import save_json
+from tsunami_surrogate.utils.seed import seed_everything
 
 
 def _parse_suite(raw: str) -> tuple[str, str, Any]:

@@ -32,7 +32,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.solver.boussinesq import BoussinesqSolver
+from tsunami_surrogate.solver.boussinesq import BoussinesqSolver
 
 
 DEFAULT_OUTPUT_DIR = Path("results/reviewer_validation/boussinesq_dispersion")

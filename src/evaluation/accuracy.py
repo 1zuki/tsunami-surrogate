@@ -4,8 +4,8 @@ from typing import Callable, Dict, Optional, Tuple
 
 import torch
 
-from src.training.metrics import MetricAccumulator
-from src.evaluation.target_scaling import apply_target_denorm
+from tsunami_surrogate.training.metrics import MetricAccumulator
+from tsunami_surrogate.evaluation.target_scaling import apply_target_denorm
 
 
 def _model_output(model, x: torch.Tensor) -> torch.Tensor:

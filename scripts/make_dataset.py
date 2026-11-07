@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.data_gen.simulate_dataset import TsunamiDatasetBuilder  # noqa: E402
+from tsunami_surrogate.data_gen.simulate_dataset import TsunamiDatasetBuilder  # noqa: E402
 
 
 THREAD_ENV_KEYS = (

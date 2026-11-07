@@ -5,8 +5,8 @@ from typing import Any, Literal, Mapping, Optional
 import numpy as np
 
 try:
-    from src.solver.hydrostatic_swe import ShallowWaterSolver
-    from src.solver.boundary_conditions import (
+    from tsunami_surrogate.solver.hydrostatic_swe import ShallowWaterSolver
+    from tsunami_surrogate.solver.boundary_conditions import (
         radiation_boundary_state_x,
         radiation_boundary_state_y,
     )

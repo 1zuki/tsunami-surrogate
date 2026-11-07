@@ -10,13 +10,13 @@ from typing import Any, Mapping
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.alignment import (
+from tsunami_surrogate.evaluation.alignment import (
     SCHEMA_ID,
     stable_hash_payload,
     stable_hash_scenario_ids,
 )
-from src.utils.config import load_config
-from src.utils.io import save_json
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.io import save_json
 
 
 PRIMARY_POLICY_NAME = "primary-4-per-family-cell"

@@ -11,7 +11,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.buffered_production_health import (
+from tsunami_surrogate.evaluation.buffered_production_health import (
     THREAD_ENV_KEYS,
     audit_health_contract,
     execute_health_contract,

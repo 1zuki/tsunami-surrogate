@@ -16,7 +16,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.common_time_v2_level_a import _observed_order, _run_mode
+from tsunami_surrogate.evaluation.common_time_v2_level_a import _observed_order, _run_mode
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:

@@ -13,7 +13,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.data_gen.simulate_dataset import (
+from tsunami_surrogate.data_gen.simulate_dataset import (
     BufferedDomainConfig,
     TsunamiDatasetBuilder,
     _make_boussinesq_solver_from_cfg,
@@ -23,10 +23,10 @@ from src.data_gen.simulate_dataset import (
     _resolved_solver_cfg_for_fde,
     _simulate_requested_times_local,
 )
-from src.data_gen.common_time_v2 import RequestedOutputConfig
-from src.utils.config import load_config
-from src.utils.device import hardware_info, resolve_device
-from src.utils.io import save_json
+from tsunami_surrogate.data_gen.common_time_v2 import RequestedOutputConfig
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.device import hardware_info, resolve_device
+from tsunami_surrogate.utils.io import save_json
 
 
 def _canonical_solver_name(name: str) -> str:

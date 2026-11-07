@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 try:
-    from src.data_gen.common_time_v2 import (
+    from tsunami_surrogate.data_gen.common_time_v2 import (
         ETA_SAMPLE_SCHEMA_ID,
         PUBLICATION_SCHEMA_ID,
         RequestedOutputConfig,
@@ -35,7 +35,7 @@ try:
         stable_hash_payload,
         validate_publication,
     )
-    from src.data_gen.operational_timing import (
+    from tsunami_surrogate.data_gen.operational_timing import (
         GenerationTimingRecorder,
         effective_worker_count,
     )
@@ -58,24 +58,24 @@ except ImportError:
     from operational_timing import GenerationTimingRecorder, effective_worker_count
 
 try:
-    from src.data_gen.generate_bathymetry import BathymetryGenerator
-    from src.data_gen.generate_sources import SourceGenerator
+    from tsunami_surrogate.data_gen.generate_bathymetry import BathymetryGenerator
+    from tsunami_surrogate.data_gen.generate_sources import SourceGenerator
 except ImportError:
     from generate_bathymetry import BathymetryGenerator
     from generate_sources import SourceGenerator
 
 try:
-    from src.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
+    from tsunami_surrogate.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
 except ImportError:
     from hydrostatic_swe import HydrostaticShallowWaterSolver
 
 try:
-    from src.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
+    from tsunami_surrogate.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
 except ImportError:
     from muscl_hr_swe import MUSCLHRShallowWaterSolver
 
 try:
-    from src.solver.boussinesq import BoussinesqSolver
+    from tsunami_surrogate.solver.boussinesq import BoussinesqSolver
 except ImportError:
     from boussinesq import BoussinesqSolver
 
@@ -5125,7 +5125,7 @@ class TsunamiDatasetBuilder:
         requested = self.dataset.requested_output
         if requested is None or not records:
             return None
-        from src.data_gen.common_time_v2 import write_operational_shard_manifest
+        from tsunami_surrogate.data_gen.common_time_v2 import write_operational_shard_manifest
 
         publication_hashes: dict[str, str] = {}
         resolved_config_hashes: dict[str, str] = {}

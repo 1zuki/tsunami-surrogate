@@ -15,8 +15,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
-from src.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
+from tsunami_surrogate.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
+from tsunami_surrogate.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
 
 
 SOLVERS = {

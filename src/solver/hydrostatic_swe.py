@@ -3,7 +3,7 @@ from typing import Any, Literal, Mapping, NamedTuple, Optional, Tuple, Union
 import numpy as np
 
 try:
-    from src.solver.boundary_conditions import (
+    from tsunami_surrogate.solver.boundary_conditions import (
         BoundaryMode,
         boundary_state_x,
         boundary_state_y,
@@ -22,7 +22,7 @@ except ImportError:
     )
 
 try:
-    from src.solver.operator_time import (
+    from tsunami_surrogate.solver.operator_time import (
         build_sponge_mask,
         sponge_factor,
         validate_sponge_profile,

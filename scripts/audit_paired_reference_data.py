@@ -16,8 +16,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.data.dataset import ShardedTsunamiDataset, TsunamiDataset
-from src.evaluation.alignment import (
+from tsunami_surrogate.data.dataset import ShardedTsunamiDataset, TsunamiDataset
+from tsunami_surrogate.evaluation.alignment import (
     DEFAULT_COMMON_TIME_GRID,
     DEFAULT_ENDPOINT_TOLERANCE,
     DEFAULT_ZERO_TIME_TOLERANCE,
@@ -28,13 +28,13 @@ from src.evaluation.alignment import (
     validate_common_time_grid,
     validate_timestamps,
 )
-from src.evaluation.normalization_bridge import (
+from tsunami_surrogate.evaluation.normalization_bridge import (
     load_input_order,
     load_standardization_spec,
 )
-from src.evaluation.target_scaling import resolve_dataset_npz
-from src.utils.config import load_config
-from src.utils.io import get_git_commit, save_json
+from tsunami_surrogate.evaluation.target_scaling import resolve_dataset_npz
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.io import get_git_commit, save_json
 
 
 SOLVER_ORDER = ("hydrostatic", "muscl_hr", "boussinesq")

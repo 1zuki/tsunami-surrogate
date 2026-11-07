@@ -18,9 +18,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.data_gen.generate_bathymetry import BathymetryGenerator
-from src.data_gen.generate_sources import SourceGenerator
-from src.solver.boussinesq import BoussinesqSolver
+from tsunami_surrogate.data_gen.generate_bathymetry import BathymetryGenerator
+from tsunami_surrogate.data_gen.generate_sources import SourceGenerator
+from tsunami_surrogate.solver.boussinesq import BoussinesqSolver
 
 
 @dataclass

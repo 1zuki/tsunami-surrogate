@@ -40,7 +40,7 @@ import matplotlib.ticker
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.utils.io import load_json, save_json
+from tsunami_surrogate.utils.io import load_json, save_json
 
 
 DEFAULT_EVALUATION_RUN = ROOT / "evaluation_runs/final-v2-full-nonspeed-20260912-r6"

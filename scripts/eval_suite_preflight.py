@@ -23,17 +23,17 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.data_gen.common_time_v2 import (  # noqa: E402
+from tsunami_surrogate.data_gen.common_time_v2 import (  # noqa: E402
     PUBLICATION_SCHEMA_ID,
     parse_requested_output_config,
     stable_hash_payload,
     validate_requested_times,
 )
-from src.models.signature import model_config_signature  # noqa: E402
-from src.training.checkpointing import capture_data_provenance  # noqa: E402
-from src.training.checkpointing import training_contract_signature  # noqa: E402
-from src.utils.config import load_config  # noqa: E402
-from src.utils.hashing import sha256_file  # noqa: E402
+from tsunami_surrogate.models.signature import model_config_signature  # noqa: E402
+from tsunami_surrogate.training.checkpointing import capture_data_provenance  # noqa: E402
+from tsunami_surrogate.training.checkpointing import training_contract_signature  # noqa: E402
+from tsunami_surrogate.utils.config import load_config  # noqa: E402
+from tsunami_surrogate.utils.hashing import sha256_file  # noqa: E402
 
 
 SUITE_SCHEMA_ID = "tsunami-surrogate.final-v2-evaluation-suite.v1"

@@ -23,15 +23,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.data_gen.generate_bathymetry import BathymetryGenerator  # noqa: E402
-from src.data_gen.common_time_v2 import (  # noqa: E402
+from tsunami_surrogate.data_gen.generate_bathymetry import BathymetryGenerator  # noqa: E402
+from tsunami_surrogate.data_gen.common_time_v2 import (  # noqa: E402
     code_state,
     hash_array,
     parse_requested_output_config,
     sha256_file,
     stable_hash_payload,
 )
-from src.data_gen.simulate_dataset import (  # noqa: E402
+from tsunami_surrogate.data_gen.simulate_dataset import (  # noqa: E402
     BufferedDomainConfig,
     QualityPolicy,
     RolloutResult,

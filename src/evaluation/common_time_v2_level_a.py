@@ -18,7 +18,7 @@ from typing import Any, Callable, Mapping, Sequence
 import numpy as np
 import yaml
 
-from src.data_gen.common_time_v2 import (
+from tsunami_surrogate.data_gen.common_time_v2 import (
     authoritative_input_fingerprint,
     candidate_requested_times,
     code_state,
@@ -26,13 +26,13 @@ from src.data_gen.common_time_v2 import (
     sha256_file,
     stable_hash_payload,
 )
-from src.data_gen.simulate_dataset import (
+from tsunami_surrogate.data_gen.simulate_dataset import (
     BufferedDomainConfig,
     _prepare_buffered_domain,
     _simulate_one_local,
 )
-from src.solver.boussinesq import BoussinesqSolver
-from src.evaluation.boussinesq_boundary import (
+from tsunami_surrogate.solver.boussinesq import BoussinesqSolver
+from tsunami_surrogate.evaluation.boussinesq_boundary import (
     SpectralPacketSpec,
     build_reference_packet,
     cosine_taper,
@@ -42,9 +42,9 @@ from src.evaluation.boussinesq_boundary import (
     evolve_reference as evolve_boussinesq_reference,
     packet_timing as boussinesq_packet_timing,
 )
-from src.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
-from src.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
-from src.solver.operator_time import build_sponge_mask
+from tsunami_surrogate.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
+from tsunami_surrogate.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
+from tsunami_surrogate.solver.operator_time import build_sponge_mask
 
 
 LEVEL_A_SCHEMA_ID = "tsunami-surrogate.common-time-v2.level-a.v1"
@@ -1729,7 +1729,7 @@ def _compute_level_a_task(
             canary
         )
         solver_name = str(spec["solver"])
-        from src.evaluation.buffered_crop_benchmark import run_buffered_case
+        from tsunami_surrogate.evaluation.buffered_crop_benchmark import run_buffered_case
 
         buffered_row, eta = run_buffered_case(
             canary,

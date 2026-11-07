@@ -17,14 +17,14 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.buffered_crop_benchmark import (
+from tsunami_surrogate.evaluation.buffered_crop_benchmark import (
     SOLVERS,
     load_inventory_records,
     run_buffered_case,
     write_result,
 )
-from src.evaluation.common_time_v2_level_a import _load_canary_arrays
-from src.evaluation.finite_horizon_boundary_study import comparison_metrics
+from tsunami_surrogate.evaluation.common_time_v2_level_a import _load_canary_arrays
+from tsunami_surrogate.evaluation.finite_horizon_boundary_study import comparison_metrics
 
 
 DEFAULT_INVENTORY = Path(

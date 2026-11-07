@@ -35,12 +35,12 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.data_gen.common_time_v2 import code_state, stable_hash_payload  # noqa: E402
-from src.evaluation.common_time_v2_level_a import (  # noqa: E402
+from tsunami_surrogate.data_gen.common_time_v2 import code_state, stable_hash_payload  # noqa: E402
+from tsunami_surrogate.evaluation.common_time_v2_level_a import (  # noqa: E402
     _trajectory_eta,
     validate_checksums,
 )
-from src.evaluation.established_solver_validation import (  # noqa: E402
+from tsunami_surrogate.evaluation.established_solver_validation import (  # noqa: E402
     _comparison_metrics_v4,
     _load_external_result,
     _load_external_run_manifest,

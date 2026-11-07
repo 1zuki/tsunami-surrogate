@@ -8,15 +8,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.cli_progress import (
+from tsunami_surrogate.evaluation.cli_progress import (
     ScenarioProgressLogger,
     resolve_progress_every,
 )
-from src.evaluation.dense_reference_validation import (
+from tsunami_surrogate.evaluation.dense_reference_validation import (
     mapping_arg,
     run_dense_reference_validation,
 )
-from src.utils.config import load_config
+from tsunami_surrogate.utils.config import load_config
 
 
 def main(argv: list[str] | None = None) -> None:

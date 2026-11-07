@@ -17,13 +17,13 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.data.dataset import ShardedTsunamiDataset
-from src.data_gen.simulate_dataset import (
+from tsunami_surrogate.data.dataset import ShardedTsunamiDataset
+from tsunami_surrogate.data_gen.simulate_dataset import (
     _make_boussinesq_solver_from_cfg,
     _make_hydrostatic_solver_from_cfg,
     _make_muscl_solver_from_cfg,
 )
-from src.utils.config import load_config
+from tsunami_surrogate.utils.config import load_config
 
 
 SOLVERS = ("swe_hydrostatic", "swe_muscl_hr", "boussinesq")

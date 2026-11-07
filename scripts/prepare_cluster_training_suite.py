@@ -14,8 +14,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.utils.config import deep_update, load_config, load_yaml, save_config
-from src.utils.io import get_git_commit
+from tsunami_surrogate.utils.config import deep_update, load_config, load_yaml, save_config
+from tsunami_surrogate.utils.io import get_git_commit
 
 
 DEFAULT_MANIFEST = Path("configs/cluster/final_rebuild_training_suite.yaml")

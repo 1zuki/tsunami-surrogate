@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.archive_common_time_stage_c import STAGE_C_SOURCES
-from src.data_gen.common_time_v2 import (
+from tsunami_surrogate.data_gen.common_time_v2 import (
     CONTRACT_SCHEMA_ID,
     authoritative_input_fingerprint,
     build_candidate_contract,
