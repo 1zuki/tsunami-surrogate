@@ -7,7 +7,7 @@ sys.path.insert(0, str(ROOT))
 
 import argparse
 
-from src.evaluation.visualize import run_visualization
+from tsunami_surrogate.evaluation.visualize import run_visualization
 
 
 def main():

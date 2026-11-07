@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.utils.io import load_json, save_json
+from tsunami_surrogate.utils.io import load_json, save_json
 
 
 def _read_payload(path: str) -> Dict[str, Any]:

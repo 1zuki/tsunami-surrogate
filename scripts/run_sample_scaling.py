@@ -14,8 +14,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.utils.config import load_config, save_config
-from src.utils.io import get_git_commit, load_json, save_json
+from tsunami_surrogate.utils.config import load_config, save_config
+from tsunami_surrogate.utils.io import get_git_commit, load_json, save_json
 
 
 def _utc_now() -> str:

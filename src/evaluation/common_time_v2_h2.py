@@ -15,25 +15,25 @@ from typing import Any, Callable, Mapping, Sequence
 import numpy as np
 import yaml
 
-from src.data_gen.common_time_v2 import (
+from tsunami_surrogate.data_gen.common_time_v2 import (
     candidate_requested_times,
     code_state,
     hash_array,
     sha256_file,
     stable_hash_payload,
 )
-from src.evaluation.buffered_crop_benchmark import (
+from tsunami_surrogate.evaluation.buffered_crop_benchmark import (
     SOLVERS,
     run_buffered_case_detailed,
 )
-from src.evaluation.common_time_v2_h1 import (
+from tsunami_surrogate.evaluation.common_time_v2_h1 import (
     THREAD_ENV_KEYS,
     _solver_health_checks,
     _summarize_diagnostics,
     _verify_prerequisites as _verify_pre_h1_prerequisites,
     validate_h1_checksums,
 )
-from src.evaluation.common_time_v2_level_a import _load_canary_arrays
+from tsunami_surrogate.evaluation.common_time_v2_level_a import _load_canary_arrays
 
 
 SCHEMA_ID = "tsunami-surrogate.common-time-v2.h2.v1"
@@ -1119,10 +1119,10 @@ def _verify_post_h2_diagnostic_evidence(
     swe_diagnostic_root: Path,
     hydro_continuation_root: Path,
 ) -> dict[str, Any]:
-    from src.evaluation.h2_hydro_cfl_continuation import (
+    from tsunami_surrogate.evaluation.h2_hydro_cfl_continuation import (
         validate_continuation_checksums,
     )
-    from src.evaluation.h2_swe_cfl_diagnostic import (
+    from tsunami_surrogate.evaluation.h2_swe_cfl_diagnostic import (
         validate_diagnostic_checksums,
     )
 

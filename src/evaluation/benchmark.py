@@ -6,7 +6,7 @@ from typing import Dict
 
 import torch
 
-from src.utils.precision import PrecisionConfig, autocast_context
+from tsunami_surrogate.utils.precision import PrecisionConfig, autocast_context
 
 
 def _model_output(model, x: torch.Tensor) -> torch.Tensor:

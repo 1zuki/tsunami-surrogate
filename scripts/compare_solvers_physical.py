@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.aligned_comparison import MODE_SAVED_INDEX_LEGACY
+from tsunami_surrogate.evaluation.aligned_comparison import MODE_SAVED_INDEX_LEGACY
 
 from scripts.compare_solvers_aligned import main as aligned_main
 

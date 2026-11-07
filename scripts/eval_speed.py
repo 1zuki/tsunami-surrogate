@@ -9,15 +9,15 @@ from typing import Any, Dict
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.data.dataset import create_dataloaders
-from src.evaluation.benchmark import benchmark_inference
-from src.models import build_model
-from src.training.checkpointing import load_checkpoint
-from src.utils.config import load_config
-from src.utils.device import hardware_info, resolve_device
-from src.utils.io import save_json
-from src.utils.model_io import validate_model_io_channels
-from src.utils.precision import (
+from tsunami_surrogate.data.dataset import create_dataloaders
+from tsunami_surrogate.evaluation.benchmark import benchmark_inference
+from tsunami_surrogate.models import build_model
+from tsunami_surrogate.training.checkpointing import load_checkpoint
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.device import hardware_info, resolve_device
+from tsunami_surrogate.utils.io import save_json
+from tsunami_surrogate.utils.model_io import validate_model_io_channels
+from tsunami_surrogate.utils.precision import (
     cast_model_for_precision,
     configure_torch_precision,
     parse_optional_bool,

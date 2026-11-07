@@ -9,7 +9,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.buffered_crop_benchmark import (
+from tsunami_surrogate.evaluation.buffered_crop_benchmark import (
     load_inventory_records,
     run_benchmark,
     write_result,

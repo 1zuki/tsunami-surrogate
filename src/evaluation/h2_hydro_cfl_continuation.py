@@ -12,14 +12,14 @@ from typing import Any, Callable, Mapping, Sequence
 import numpy as np
 import yaml
 
-from src.data_gen.common_time_v2 import (
+from tsunami_surrogate.data_gen.common_time_v2 import (
     candidate_requested_times,
     code_state,
     stable_hash_payload,
     sha256_file,
 )
-from src.evaluation.common_time_v2_h1 import THREAD_ENV_KEYS
-from src.evaluation.common_time_v2_h2 import (
+from tsunami_surrogate.evaluation.common_time_v2_h1 import THREAD_ENV_KEYS
+from tsunami_surrogate.evaluation.common_time_v2_h2 import (
     _distribution,
     _environment_snapshot,
     _read_json,
@@ -28,8 +28,8 @@ from src.evaluation.common_time_v2_h2 import (
     _write_text,
     paired_cfl_metrics,
 )
-from src.evaluation.common_time_v2_level_a import _load_canary_arrays
-from src.evaluation.h2_swe_cfl_diagnostic import (
+from tsunami_surrogate.evaluation.common_time_v2_level_a import _load_canary_arrays
+from tsunami_surrogate.evaluation.h2_swe_cfl_diagnostic import (
     observed_order,
     validate_diagnostic_checksums,
 )

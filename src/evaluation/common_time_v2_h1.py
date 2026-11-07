@@ -14,18 +14,18 @@ from typing import Any, Callable, Mapping, Sequence
 import numpy as np
 import yaml
 
-from src.data_gen.common_time_v2 import (
+from tsunami_surrogate.data_gen.common_time_v2 import (
     candidate_requested_times,
     code_state,
     hash_array,
     sha256_file,
     stable_hash_payload,
 )
-from src.evaluation.buffered_crop_benchmark import (
+from tsunami_surrogate.evaluation.buffered_crop_benchmark import (
     SOLVERS,
     run_buffered_case_detailed,
 )
-from src.evaluation.common_time_v2_level_a import (
+from tsunami_surrogate.evaluation.common_time_v2_level_a import (
     _load_canary_arrays,
     validate_checksums as validate_level_a_checksums,
 )

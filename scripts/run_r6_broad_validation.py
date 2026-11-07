@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.evaluation.r6_broad_validation import (  # noqa: E402
+from tsunami_surrogate.evaluation.r6_broad_validation import (  # noqa: E402
     execute_r6_broad_validation,
     preflight_r6_broad_validation,
 )

@@ -4,12 +4,12 @@ from typing import Any, Literal, Mapping, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 
-from src.solver.boundary_conditions import (
+from tsunami_surrogate.solver.boundary_conditions import (
     BoundaryMode,
     pad_scalar_field,
     resolve_boundary_modes,
 )
-from src.solver.operator_time import (
+from tsunami_surrogate.solver.operator_time import (
     build_sponge_mask,
     filter_coefficient,
     sponge_factor,

@@ -8,7 +8,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.common_time_v2_level_a import preregister_level_a
+from tsunami_surrogate.evaluation.common_time_v2_level_a import preregister_level_a
 
 
 def main() -> None:

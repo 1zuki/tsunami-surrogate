@@ -11,7 +11,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from src.utils.hashing import sha256_file
+from tsunami_surrogate.utils.hashing import sha256_file
 
 
 CONTRACT_SCHEMA_ID = "tsunami-surrogate.common-time-v2.contract.v1"

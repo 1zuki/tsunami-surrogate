@@ -12,8 +12,8 @@ from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 import numpy as np
 
-from src.data.dataset import ShardedTsunamiDataset, TsunamiDataset
-from src.evaluation.alignment import (
+from tsunami_surrogate.data.dataset import ShardedTsunamiDataset, TsunamiDataset
+from tsunami_surrogate.evaluation.alignment import (
     DEFAULT_ENDPOINT_TOLERANCE,
     DEFAULT_ZERO_TIME_TOLERANCE,
     MODE_COMMON_TIME,
@@ -28,12 +28,12 @@ from src.evaluation.alignment import (
     validate_common_time_grid,
     validate_timestamps,
 )
-from src.evaluation.normalization_bridge import (
+from tsunami_surrogate.evaluation.normalization_bridge import (
     load_input_order,
     load_standardization_spec,
     normalize_raw_inputs_for_model,
 )
-from src.evaluation.target_scaling import resolve_dataset_npz
+from tsunami_surrogate.evaluation.target_scaling import resolve_dataset_npz
 
 
 ALIGNED_SOLVER_COMPARISON_ARTIFACT = "aligned-solver-comparison"

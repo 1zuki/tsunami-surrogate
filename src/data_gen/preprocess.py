@@ -18,8 +18,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.utils.hashing import sha256_file, stable_json_sha256
-from src.data_gen.common_time_v2 import (
+from tsunami_surrogate.utils.hashing import sha256_file, stable_json_sha256
+from tsunami_surrogate.data_gen.common_time_v2 import (
     RequestedOutputConfig,
     parse_requested_output_config,
 )
@@ -424,7 +424,7 @@ class TsunamiPreprocessor:
 
         if publication_path.is_file():
             try:
-                from src.data_gen.common_time_v2 import (
+                from tsunami_surrogate.data_gen.common_time_v2 import (
                     CONTRACT_SCHEMA_ID,
                     ETA_SAMPLE_SCHEMA_ID,
                     validate_candidate_times,

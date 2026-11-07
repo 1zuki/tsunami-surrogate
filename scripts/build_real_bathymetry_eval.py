@@ -26,14 +26,14 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.data_gen.preprocess import TsunamiPreprocessor
-from src.data_gen.simulate_dataset import (
+from tsunami_surrogate.data_gen.preprocess import TsunamiPreprocessor
+from tsunami_surrogate.data_gen.simulate_dataset import (
     NATIVE_INPUT_SCHEMA_ID,
     TsunamiDatasetBuilder,
     _block_mean_downsample,
     _seed_for_sample,
 )
-from src.utils.hashing import sha256_file
+from tsunami_surrogate.utils.hashing import sha256_file
 
 
 REAL_BATHYMETRY_LINEAGE_SCHEMA_ID = "tsunami-surrogate.real-bathymetry-input.v2"

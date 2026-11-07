@@ -16,19 +16,19 @@ from typing import Any, Callable, Mapping, Sequence
 import numpy as np
 import yaml
 
-from src.data_gen.common_time_v2 import (
+from tsunami_surrogate.data_gen.common_time_v2 import (
     code_state,
     hash_array,
     sha256_file,
     stable_hash_payload,
 )
-from src.data_gen.simulate_dataset import _simulate_one_local
-from src.evaluation.common_time_v2_level_a import (
+from tsunami_surrogate.data_gen.simulate_dataset import _simulate_one_local
+from tsunami_surrogate.evaluation.common_time_v2_level_a import (
     _load_canary_arrays,
     _select_canaries,
     _solver,
 )
-from src.solver.operator_time import build_sponge_mask
+from tsunami_surrogate.solver.operator_time import build_sponge_mask
 
 
 SCHEMA_ID = "tsunami-surrogate.common-time-v2.finite-horizon-boundary-study.v5"

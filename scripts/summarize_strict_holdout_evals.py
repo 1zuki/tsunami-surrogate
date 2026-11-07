@@ -11,8 +11,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.utils.config import load_config
-from src.utils.io import save_json
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.io import save_json
 
 
 HOLDOUTS = [

@@ -14,8 +14,8 @@ sys.path.insert(0, str(ROOT))
 
 import torch
 
-from src.models import build_model
-from src.utils.config import load_config
+from tsunami_surrogate.models import build_model
+from tsunami_surrogate.utils.config import load_config
 
 
 DEFAULT_MODELS = [

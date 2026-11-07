@@ -9,16 +9,16 @@ from typing import Any, Dict
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.data.dataset import create_dataloaders
-from src.evaluation.accuracy import evaluate_accuracy
-from src.evaluation.target_scaling import load_target_denorm
-from src.models import build_model
-from src.training.checkpointing import load_checkpoint
-from src.utils.config import load_config
-from src.utils.device import resolve_device
-from src.utils.io import save_json
-from src.utils.model_io import validate_model_io_channels
-from src.utils.seed import seed_everything
+from tsunami_surrogate.data.dataset import create_dataloaders
+from tsunami_surrogate.evaluation.accuracy import evaluate_accuracy
+from tsunami_surrogate.evaluation.target_scaling import load_target_denorm
+from tsunami_surrogate.models import build_model
+from tsunami_surrogate.training.checkpointing import load_checkpoint
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.device import resolve_device
+from tsunami_surrogate.utils.io import save_json
+from tsunami_surrogate.utils.model_io import validate_model_io_channels
+from tsunami_surrogate.utils.seed import seed_everything
 
 
 GRIDS = (32, 64, 128)

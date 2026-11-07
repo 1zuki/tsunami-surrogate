@@ -11,8 +11,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.common_time_v2_h1 import THREAD_ENV_KEYS
-from src.evaluation.h2_swe_cfl_diagnostic import (
+from tsunami_surrogate.evaluation.common_time_v2_h1 import THREAD_ENV_KEYS
+from tsunami_surrogate.evaluation.h2_swe_cfl_diagnostic import (
     diagnostic_status,
     execute_diagnostic,
     freeze_diagnostic,

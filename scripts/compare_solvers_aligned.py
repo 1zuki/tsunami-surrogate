@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.aligned_comparison import (
+from tsunami_surrogate.evaluation.aligned_comparison import (
     MODE_COMMON_TIME,
     compare_solver_scenarios,
     iter_paired_raw_reference_samples,
@@ -16,9 +16,9 @@ from src.evaluation.aligned_comparison import (
     require_explicit_mode,
     write_jsonl,
 )
-from src.evaluation.cli_progress import ScenarioProgressLogger, resolve_progress_every
-from src.utils.config import load_config
-from src.utils.io import get_git_commit, save_json
+from tsunami_surrogate.evaluation.cli_progress import ScenarioProgressLogger, resolve_progress_every
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.io import get_git_commit, save_json
 
 
 def _default_output_path(

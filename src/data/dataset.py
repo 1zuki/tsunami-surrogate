@@ -11,8 +11,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, Sampler, Subset
 
-from src.utils.seed import make_torch_generator, make_worker_init_fn
-from src.utils.hashing import sha256_file
+from tsunami_surrogate.utils.seed import make_torch_generator, make_worker_init_fn
+from tsunami_surrogate.utils.hashing import sha256_file
 
 
 PROCESSED_MANIFEST_SCHEMA_ID = "tsunami-surrogate.processed-dataset.v2"

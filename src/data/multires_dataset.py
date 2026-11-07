@@ -7,8 +7,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from src.data.dataset import ShardedTsunamiDataset, _as_nchw, _to_nchw_if_single
-from src.utils.resample import resize_field
+from tsunami_surrogate.data.dataset import ShardedTsunamiDataset, _as_nchw, _to_nchw_if_single
+from tsunami_surrogate.utils.resample import resize_field
 
 
 class MultiResolutionDataset(Dataset):

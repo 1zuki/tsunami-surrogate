@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Any, Dict, Mapping
 import torch
 
-from src.models.signature import model_config_signature
-from src.utils.hashing import sha256_file
+from tsunami_surrogate.models.signature import model_config_signature
+from tsunami_surrogate.utils.hashing import sha256_file
 
 
 DATA_PROVENANCE_SCHEMA_ID = "tsunami-surrogate.checkpoint-data-provenance.v1"

@@ -16,17 +16,17 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.data.dataset import _make_dataset
-from src.evaluation.accuracy import evaluate_accuracy
-from src.evaluation.normalization_bridge import (
+from tsunami_surrogate.data.dataset import _make_dataset
+from tsunami_surrogate.evaluation.accuracy import evaluate_accuracy
+from tsunami_surrogate.evaluation.normalization_bridge import (
     load_evaluation_normalization_bridge,
 )
-from src.models import build_model
-from src.training.checkpointing import load_checkpoint
-from src.utils.config import load_config
-from src.utils.device import resolve_device
-from src.utils.io import save_json
-from src.utils.seed import seed_everything
+from tsunami_surrogate.models import build_model
+from tsunami_surrogate.training.checkpointing import load_checkpoint
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.device import resolve_device
+from tsunami_surrogate.utils.io import save_json
+from tsunami_surrogate.utils.seed import seed_everything
 
 
 def _load_specs(contract_path: str) -> list[dict[str, Any]]:

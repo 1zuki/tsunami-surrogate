@@ -9,7 +9,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.geoclaw_adapter import GeoClawEnvironment, run_geoclaw_bundle
+from tsunami_surrogate.evaluation.geoclaw_adapter import GeoClawEnvironment, run_geoclaw_bundle
 
 
 def main() -> None:

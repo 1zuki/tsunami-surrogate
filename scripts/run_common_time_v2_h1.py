@@ -11,7 +11,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.evaluation.common_time_v2_h1 import (
+from tsunami_surrogate.evaluation.common_time_v2_h1 import (
     THREAD_ENV_KEYS,
     execute_h1_contract,
     freeze_h1_contract,

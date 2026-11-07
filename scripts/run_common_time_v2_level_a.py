@@ -57,7 +57,7 @@ def main() -> None:
     _configure_worker_threads(args.workers)
 
     sys.path.insert(0, str(ROOT))
-    from src.evaluation.common_time_v2_level_a import execute_level_a
+    from tsunami_surrogate.evaluation.common_time_v2_level_a import execute_level_a
 
     wall_started = time.monotonic()
 

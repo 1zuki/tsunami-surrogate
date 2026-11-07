@@ -20,24 +20,24 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.audit_common_time_v2_h0 import audit_h0_regression
-from src.data_gen.common_time_v2 import code_state
-from src.evaluation.common_time_v2_h1 import (
+from tsunami_surrogate.data_gen.common_time_v2 import code_state
+from tsunami_surrogate.evaluation.common_time_v2_h1 import (
     execute_h1_contract,
     freeze_h1_contract,
 )
-from src.evaluation.common_time_v2_h2 import (
+from tsunami_surrogate.evaluation.common_time_v2_h2 import (
     execute_h2_contract,
     freeze_h2_contract,
 )
-from src.evaluation.common_time_v2_level_a import (
+from tsunami_surrogate.evaluation.common_time_v2_level_a import (
     execute_level_a,
     preregister_level_a,
 )
-from src.evaluation.established_solver_validation import (
+from tsunami_surrogate.evaluation.established_solver_validation import (
     evaluate_minimum_established_solver_validation,
     prepare_minimum_established_solver_validation,
 )
-from src.evaluation.geoclaw_adapter import (
+from tsunami_surrogate.evaluation.geoclaw_adapter import (
     GeoClawEnvironment,
     run_geoclaw_bundle,
     validate_geoclaw_environment,

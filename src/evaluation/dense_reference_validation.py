@@ -11,13 +11,13 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import numpy as np
 
-from src.data_gen.simulate_dataset import (
+from tsunami_surrogate.data_gen.simulate_dataset import (
     _make_boussinesq_solver_from_cfg,
     _make_hydrostatic_solver_from_cfg,
     _make_muscl_solver_from_cfg,
     _simulate_one_local,
 )
-from src.evaluation.alignment import (
+from tsunami_surrogate.evaluation.alignment import (
     DEFAULT_ENDPOINT_TOLERANCE,
     MODE_COMMON_TIME,
     SCHEMA_ID,
@@ -31,8 +31,8 @@ from src.evaluation.alignment import (
     validate_elevation_series,
     validate_timestamps,
 )
-from src.utils.config import load_config
-from src.utils.io import get_git_commit, save_json
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.io import get_git_commit, save_json
 
 
 ROOT = Path(__file__).resolve().parents[2]

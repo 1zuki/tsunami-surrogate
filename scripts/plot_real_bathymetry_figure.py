@@ -34,9 +34,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts.eval_window_rollout import rollout_trajectory
-from src.models import build_model
-from src.training.checkpointing import load_checkpoint
-from src.utils.config import load_config
+from tsunami_surrogate.models import build_model
+from tsunami_surrogate.training.checkpointing import load_checkpoint
+from tsunami_surrogate.utils.config import load_config
 
 
 PROCESSED_ROOT = "data/processed_real_bathymetry_v2"

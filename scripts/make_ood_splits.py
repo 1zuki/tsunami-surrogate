@@ -13,7 +13,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.utils.io import save_json
+from tsunami_surrogate.utils.io import save_json
 
 
 def _as_array(data: Dict[str, np.ndarray], key: str, n: int, default: Any) -> np.ndarray:

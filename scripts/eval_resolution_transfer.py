@@ -6,15 +6,15 @@ sys.path.insert(0, str(ROOT))
 
 import argparse
 from torch.utils.data import DataLoader
-from src.utils.config import load_config
-from src.utils.device import resolve_device
-from src.data.multires_dataset import MultiResolutionDataset
-from src.models import build_model
-from src.training.checkpointing import load_checkpoint
-from src.training.metrics import MetricAccumulator
-from src.evaluation.target_scaling import load_target_denorm
-from src.utils.io import save_json
-from src.utils.seed import seed_everything
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.device import resolve_device
+from tsunami_surrogate.data.multires_dataset import MultiResolutionDataset
+from tsunami_surrogate.models import build_model
+from tsunami_surrogate.training.checkpointing import load_checkpoint
+from tsunami_surrogate.training.metrics import MetricAccumulator
+from tsunami_surrogate.evaluation.target_scaling import load_target_denorm
+from tsunami_surrogate.utils.io import save_json
+from tsunami_surrogate.utils.seed import seed_everything
 import torch
 
 

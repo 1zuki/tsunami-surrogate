@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.evaluation.finite_horizon_boundary_study import (
+from tsunami_surrogate.evaluation.finite_horizon_boundary_study import (
     run_numerical_study,
     run_static_audit,
     verify_artifact_checksums,

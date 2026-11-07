@@ -23,12 +23,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.data_gen.common_time_v2 import (  # noqa: E402
+from tsunami_surrogate.data_gen.common_time_v2 import (  # noqa: E402
     PUBLICATION_SCHEMA_ID,
     code_state,
     parse_requested_output_config,
 )
-from src.data_gen.simulate_dataset import (  # noqa: E402
+from tsunami_surrogate.data_gen.simulate_dataset import (  # noqa: E402
     BufferedDomainConfig,
     _block_mean_downsample,
     _block_mean_downsample_spatial,
@@ -38,7 +38,7 @@ from src.data_gen.simulate_dataset import (  # noqa: E402
     _prepare_buffered_domain,
     _simulate_one_local,
 )
-from src.utils.hashing import sha256_file  # noqa: E402
+from tsunami_surrogate.utils.hashing import sha256_file  # noqa: E402
 
 
 SCHEMA_ID = "tsunami-surrogate.current-production-contract-validation.v1"

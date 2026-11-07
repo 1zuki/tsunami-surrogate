@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.eval_suite_preflight import load_suite_contract
-from src.utils.io import save_json
+from tsunami_surrogate.utils.io import save_json
 
 
 def _read_object(path: Path) -> dict[str, Any]:
