@@ -8,23 +8,20 @@
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.10%2B-ee4c2c)
-![License](https://img.shields.io/badge/License-MIT-green)
+[![Code license: MIT](https://img.shields.io/badge/Code-MIT-green)](LICENSE)
+[![Paper license: CC BY-NC-ND 4.0](https://img.shields.io/badge/Paper-CC_BY--NC--ND_4.0-blue)](paper/LICENSE)
 
 </div>
 
 ## About
 
-Neural surrogates inherit the numerical choices of the solver used to create
-their labels. This project makes that dependency measurable by advancing the
-same synthetic bathymetry and source scenarios with three reference models:
+Neural surrogates inherit the numerical choices of the solver used to create their labels. This project makes that dependency measurable by advancing the same synthetic bathymetry and source scenarios with three reference models:
 
 - Hydrostatic shallow-water equations;
 - MUSCL-HR shallow-water equations; and
 - a study-defined linear weakly dispersive Boussinesq-type reference.
 
-Each reference keeps its natural time steps, then its outputs are interpolated
-to the same 50 requested times from `8.4` to `420.0` benchmark-time units. The
-shared construction is explicit:
+Each reference keeps its natural time steps, then its outputs are interpolated to the same 50 requested times from `8.4` to `420.0` benchmark-time units. The shared construction is explicit:
 
 ```text
 384 x 384 master fields -> 128 x 128 solver inputs
@@ -32,10 +29,7 @@ shared construction is explicit:
                        -> central 64 x 64 published target
 ```
 
-The main split contains 10,000 training, 1,000 validation, and 2,500 held-out
-test scenarios. The code, configs, manifests, and evaluation wrappers are
-designed to keep solver identity, requested-time alignment, normalization, and
-target resolution visible throughout the pipeline.
+The main split contains 10,000 training, 1,000 validation, and 2,500 held-out test scenarios. The code, configs, manifests, and evaluation wrappers are designed to keep solver identity, requested-time alignment, normalization, and target resolution visible throughout the pipeline.
 
 <p align="center">
   <img src="paper/figures/scenario_gallery.png"
@@ -54,15 +48,11 @@ flowchart LR
     E --> F[Direct, cross-reference, and uncertainty evaluation]
 ```
 
-Reference solutions are numerical label generators for this benchmark. They
-are not interchangeable physical truth, and the benchmark does not establish
-operational tsunami forecasting or event-scale hazard validity.
+Reference solutions are numerical label generators for this benchmark. They are not interchangeable physical truth, and the benchmark does not establish operational tsunami forecasting or event-scale hazard validity.
 
 ## Results
 
-The headline values below are the manuscript's reported held-out evidence.
-They should be read together with the scope and provenance notes in
-[Reproducibility and scope](#reproducibility-and-scope).
+The headline values below are the manuscript's reported held-out evidence. They should be read together with the scope and provenance notes in [Reproducibility and scope](#reproducibility-and-scope).
 
 ### Solver discrepancy
 
@@ -86,14 +76,11 @@ They should be read together with the scope and provenance notes in
 | MUSCL-HR | `0.00274` | `0.00252` |
 | Boussinesq | `0.00357` | `0.00289` |
 
-Conditioning on solver identity improves reference-specific agreement in this
-comparison. It does not remove the underlying discrepancy or establish which
-reference is physically correct.
+Conditioning on solver identity improves reference-specific agreement in this comparison. It does not remove the underlying discrepancy or establish which reference is physically correct.
 
 ### Direct models and uncertainty
 
-Among nine Hydrostatic direct models, the lowest global relative `L2` values
-are:
+Among nine Hydrostatic direct models, the lowest global relative `L2` values are:
 
 | Model | Relative `L2` |
 |:--|--:|
@@ -101,10 +88,7 @@ are:
 | U-FNO | `0.224` |
 | F-FNO | `0.230` |
 
-All six tested cross-reference discrepancy ratios exceed one, ranging from
-`1.10` to `1.72`. A seven-member FNO ensemble has `90%` marginal coverage of
-`0.682` before validation scaling and `0.910` after scaling; the reported
-high-strength subgroup reaches `0.796`.
+All six tested cross-reference discrepancy ratios exceed one, ranging from `1.10` to `1.72`. A seven-member FNO ensemble has `90%` marginal coverage of `0.682` before validation scaling and `0.910` after scaling; the reported high-strength subgroup reaches `0.796`.
 
 <p align="center">
   <img src="representative_hydrostatic_surrogate_rollout.gif"
@@ -126,8 +110,7 @@ high-strength subgroup reaches `0.796`.
 
 ## Models and evaluation lanes
 
-The repository contains direct surrogate baselines and reference-aware lanes
-for the common-time benchmark:
+The repository contains direct surrogate baselines and reference-aware lanes for the common-time benchmark:
 
 - FNO, F-FNO, U-FNO, WNO, U-Net, CNN, and ConvLSTM baselines;
 - direct same-reference accuracy on the frozen test split;
@@ -136,29 +119,15 @@ for the common-time benchmark:
 - resolution transfer, strict family holdouts, and real-bathymetry diagnostics;
 - ensemble calibration, uncertainty correlation, and coverage analysis.
 
-The evaluation wrapper is fail-closed. It records the contract hash, source
-state, dataset manifests, checkpoints, and output provenance under
-`evaluation_runs/`.
+The evaluation wrapper is fail-closed. It records the contract hash, source state, dataset manifests, checkpoints, and output provenance under `evaluation_runs/`.
 
 ## Paper and Data
 
-**Manuscript.** *Reference-Aware Evaluation of Neural PDE Surrogates: A
-Controlled Multi-Reference Benchmark for Tsunami-Like Waves.* The paper source
-is in the [paper directory](paper/), with both journal and arXiv wrapper
-directories.
+**Manuscript.** *Reference-Aware Evaluation of Neural Surrogates for Shallow-Water Flows: A Controlled Multi-Reference Computational-Fluid Benchmark.* The paper source is in the [paper directory](paper/), with both journal and arXiv wrapper directories. See the [arXiv wrapper build instructions](paper/arxiv/README.md); article highlights are supplied separately in [highlights.txt](paper/highlights.txt).
 
 **Repository.** [github.com/1zuki/tsunami-surrogate](https://github.com/1zuki/tsunami-surrogate)
 
-**Archived reproduction package.** The public reproduction package is archived
-at [Zenodo 10.5281/zenodo.21962844](https://doi.org/10.5281/zenodo.21962844).
-It contains the common-time processed data, normalization statistics, selected
-checkpoints, evaluation evidence, manifests, and checksums associated with the
-archived release.
-
-**Raw trajectories.** The complete raw surface-elevation trajectories are
-available from the [supplementary Google Drive mirror](https://drive.google.com/drive/folders/1avJBArJGgdoosuNRyZMHKqgd3kWX3U84?usp=sharing).
-The mirror is mutable; use the Zenodo package and its checksums as the archival
-reference, or regenerate the raw data from the pinned configs.
+**Data availability.** The public repository contains the source code, configuration files, data-generation and evaluation scripts, plotting scripts, and provenance helpers. The processed common-time benchmark data are publicly available from [Zenodo](https://doi.org/10.5281/zenodo.22997509); the raw numerical-reference data are available from [Zenodo](https://doi.org/10.5281/zenodo.22997523). Each record includes a release manifest and SHA-256 files for verifying the archive parts and reconstructed archives. The Zenodo records do not include the selected model checkpoints used for the reported evaluations; these are available from the corresponding author upon reasonable request. This README and the current manuscript do not cite the superseded benchmark DOI or the earlier mutable file mirror. The real-bathymetry diagnostic uses the third-party GEBCO\_2026 Grid cited in the manuscript.
 
 ### Citation
 
@@ -166,8 +135,8 @@ If this repository or benchmark is useful, cite the associated work:
 
 ```bibtex
 @unpublished{nguyen2026referenceaware,
-  author = {Nguyen Tho Binh An and Le Minh Nhut Tan and Tien-Dung Mai},
-  title = {Reference-Aware Evaluation of Neural PDE Surrogates: A Controlled Multi-Reference Benchmark for Tsunami-Like Waves},
+  author = {Nguyen, Tho Binh An and Le, Minh Nhut Tan and Mai, Tien-Dung},
+  title = {Reference-Aware Evaluation of Neural Surrogates for Shallow-Water Flows: A Controlled Multi-Reference Computational-Fluid Benchmark},
   year = {2026},
   note = {Manuscript in submission},
   url = {https://github.com/1zuki/tsunami-surrogate}
@@ -188,33 +157,28 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-For a CUDA installation, install the PyTorch wheel matching the local driver
-before installing the remaining pinned dependencies when the default wheel is
-not suitable for the machine.
+For a CUDA installation, install the PyTorch wheel matching the local driver before installing the remaining pinned dependencies when the default wheel is not suitable for the machine.
 
 ## Quick Start
 
 ### 1. Run the one-sample smoke path
 
-This exercises the dataset-generation entry point without starting a full
-10,000-scenario campaign:
+This exercises the dataset-generation entry point without starting a full 10,000-scenario campaign:
 
 ```bash
 bash scripts/quickstart.sh
 ```
 
-### 2. Restore or generate the benchmark data
+### 2. Obtain or generate the benchmark data
 
-After extracting the release archives into the repository layout, verify every
-archive before use:
+The processed common-time dataset is available from [Zenodo](https://doi.org/10.5281/zenodo.22997509), and the raw numerical-reference data are available from [Zenodo](https://doi.org/10.5281/zenodo.22997523). The records provide archive parts, release manifests, and checksums. They do not include the model checkpoints used for the reported evaluations; request selected checkpoints from the corresponding author if you need to replay those results. If you already have a local benchmark archive, verify every archive before use. The commands below assume a Unix-like shell with GNU coreutils and `zstd` installed:
 
 ```bash
 sha256sum -c SHA256SUMS.txt
 zstd -t --quiet *.tar.zst
 ```
 
-To regenerate the three raw splits from the checked-in configs, use the
-resumable generator and then preprocess in order:
+To regenerate the three raw splits from the checked-in configs, use the resumable generator and then preprocess in order:
 
 ```bash
 python scripts/make_dataset.py --config configs/data/dataset.yaml --continue
@@ -226,8 +190,7 @@ python src/data_gen/preprocess.py --config configs/data/preprocess_eval.yaml
 python src/data_gen/preprocess.py --config configs/data/preprocess_test.yaml
 ```
 
-Validation and test preprocessing reuse the training normalization statistics.
-Do not run those stages before training preprocessing has completed.
+Validation and test preprocessing reuse the training normalization statistics. Do not run those stages before training preprocessing has completed.
 
 ### 3. Train one direct model
 
@@ -237,9 +200,7 @@ With the processed Hydrostatic split available:
 python scripts/train.py --config configs/model/fno.yaml
 ```
 
-The default run writes checkpoints under
-`experiments/fno/seed_18/`, including `best.pt` and
-`checkpoints/last.pt`.
+The default run writes checkpoints under `experiments/fno/seed_18/`, including `best.pt` and `checkpoints/last.pt`.
 
 ### 4. Evaluate a model on metadata slices
 
@@ -261,8 +222,7 @@ Read-only preflight:
 bash scripts/run_eval_suite.sh --no-real-bathymetry
 ```
 
-The complete paper-evidence lane is intentionally explicit and can require
-large datasets, frozen checkpoints, and external GeoClaw/PETSc dependencies:
+The complete paper-evidence lane is intentionally explicit and can require large datasets, frozen checkpoints, and external GeoClaw/PETSc dependencies:
 
 ```bash
 bash scripts/run_eval_suite.sh \\
@@ -277,24 +237,16 @@ bash scripts/run_eval_suite.sh \\
 
 ## 5b) Fresh-machine checks, generation, and result verification (recommended)
 
-Cloning the GitHub repository does **not** download the ignored datasets,
-checkpoints, or evaluation archives. Do not start by running every historical
-command in Appendix A. You can either restore the released benchmark package
-or rebuild the solver data from scratch:
+Cloning the GitHub repository does **not** download the ignored datasets, checkpoints, or evaluation archives. Do not start by running every historical command in Appendix A. You can either download the public benchmark data described in Section 5c or rebuild the solver data from scratch:
 
 - **Archived-result inspection:** restore the processed data, checkpoints, and archived evidence described in Section 5b.2 only when inspecting the earlier campaign; do not mix those artifacts with a fresh rebuild.
-- **From-scratch path:** generate the raw solver publications with the
-  split-specific configs in Section 5b.5, then continue with the detailed
-  generation, preprocessing, training, and evaluation commands in Appendix A.
+- **From-scratch path:** generate the raw solver publications with the split-specific configs in Section 5b.5, then continue with the detailed generation, preprocessing, training, and evaluation commands in Appendix A.
 
-The sections below cover source checks, released data, evaluation, and
-from-scratch generation:
+The sections below cover source checks, current data status, evaluation, and from-scratch generation:
 
 ### 5b.1 Source check
 
-This checks the installed dependencies, imports, Python compilation, and shell
-syntax. It does not regenerate solver data, retrain models, or establish
-scientific validity.
+This checks the installed dependencies, imports, Python compilation, and shell syntax. It does not regenerate solver data, retrain models, or establish scientific validity.
 
 ```bash
 PYTHONPATH=. python -c "import numpy, torch, scipy, yaml; import src"
@@ -302,9 +254,7 @@ python -m compileall -q src scripts
 bash -n scripts/*.sh
 ```
 
-The broader non-slow pytest collection is optional. It can take substantially
-longer than this check and some tests exercise release-only scientific
-fixtures (for example, strict-holdout manifests):
+The broader non-slow pytest collection is optional. It can take substantially longer than this check and some tests exercise release-only scientific fixtures (for example, strict-holdout manifests):
 
 For a fast contract-level check that works from a bare clone:
 
@@ -328,61 +278,15 @@ PYTHONPATH=. \
 python -m pytest -q -m 'not slow'
 ```
 
-Run it after restoring the release artifacts when you want the broader
-implementation check. Passing it is still not a replacement for the
-data/evaluation and numerical-validation checks below.
+Run it after restoring the required benchmark artifacts when you want the broader implementation check. Passing it is still not a replacement for the data/evaluation and numerical-validation checks below.
 
-### 5b.2 Released-data check
+### 5b.2 Data-status check
 
-Download the released reproduction package from the Zenodo record and verify
-its contents before extracting it:
+The processed common-time dataset and raw numerical-reference data are publicly available from [Zenodo](https://doi.org/10.5281/zenodo.22997509) and [Zenodo](https://doi.org/10.5281/zenodo.22997523). Both records provide release manifests and checksum files. The records do not include model checkpoints; request the selected checkpoints from the corresponding author for exact result replay, or regenerate them from the pinned configurations in Section 5b.5. Do not use the superseded benchmark DOI or the earlier mutable file mirror in a new reproduction record.
 
-```bash
-REPO="$PWD"
-BUNDLE="$HOME/tsunami-surrogate-reproduction"
+If you already have a locally obtained archived bundle from the earlier campaign, keep it outside the repository source directory and verify its checksums before extraction. Treat that bundle as historical evidence for the archived run, not as the current public data release. Do not mix its artifacts with a fresh rebuild.
 
-(cd "$BUNDLE" && sha256sum -c SHA256SUMS.txt)
-
-# Required for the main direct-model and paper-evidence datasets.
-for f in "$BUNDLE"/main_processed/*.tar.zst; do
-  tar --use-compress-program=unzstd -xf "$f" -C "$REPO"
-done
-tar --use-compress-program=unzstd \
-  -xf "$BUNDLE/models/selected_checkpoints.tar.zst" \
-  -C "$REPO"
-
-# Required by the auxiliary/paper matrix.
-tar --use-compress-program=unzstd \
-  -xf "$BUNDLE/models/multiseed_checkpoints.tar.zst" \
-  -C "$REPO"
-for f in "$BUNDLE"/supplementary/*.tar.zst; do
-  tar --use-compress-program=unzstd -xf "$f" -C "$REPO"
-done
-```
-
-Keep the archived result bundles outside the repository source directory so they cannot
-silently overwrite current helper scripts:
-
-```bash
-EVIDENCE="$HOME/tsunami-surrogate-evidence"
-mkdir -p "$EVIDENCE"
-tar --use-compress-program=unzstd \
-  -xf "$BUNDLE/results/final_paper_evaluation.tar.zst" \
-  -C "$EVIDENCE"
-tar --use-compress-program=unzstd \
-  -xf "$BUNDLE/results/multiseed_geoclaw_evidence.tar.zst" \
-  -C "$EVIDENCE"
-```
-
-The extracted evidence contains the validated archived paper run and the later
-multiseed/GeoClaw analysis outputs. The release archive records the historical
-evaluation code state as commit
-`043fff969ebd887b2b4b5dbf1e3f5db00584d97b`; current `main`
-contains later analysis/documentation changes. Do not mix a historical
-evidence directory with a newly generated run.
-
-For a small independent model/data check after extraction, run one metric
-directly and write its output outside the repository:
+For a small independent model/data check after the required local artifacts are available, run one metric directly and write its output outside the repository:
 
 ```bash
 mkdir -p "$HOME/tsunami-source-check"
@@ -393,29 +297,18 @@ python scripts/eval_accuracy.py \
   --output "$HOME/tsunami-source-check/fno_hydrostatic.json"
 ```
 
-The full fail-closed `run_eval_suite.sh` additionally expects the complete
-project provenance used by the final run: frozen generation artifacts,
-training sidecars such as `checkpoints/last.pt`, and a clean evaluation source
-state. The release upload intentionally packages selected `best.pt` files,
-resolved configs, histories, processed data, and archived evidence rather than
-turning the Zenodo download into a full editable project copy. Therefore,
-on a bare fresh clone, use the source check and direct metric check above
-to verify the public source; run the full wrapper only from a fully restored
-project directory that contains those additional supporting run records.
+The full fail-closed `run_eval_suite.sh` additionally expects the complete project provenance used by the final run: frozen generation artifacts, training sidecars such as `checkpoints/last.pt`, and a clean evaluation source state. On a bare fresh clone, use the source check and direct metric check above to verify the public source; run the full wrapper only from a fully restored project directory that contains the required data and run records.
 
 ### 5b.3 Full evaluation
 
-On a fully restored project directory, first run the read-only prerequisite
-preflight:
+On a fully restored project directory, first run the read-only prerequisite preflight:
 
 ```bash
 # CPU is portable; use --device cuda on a configured CUDA VM.
 bash scripts/run_eval_suite.sh --include-ensemble --device cpu
 ```
 
-If it passes, execute the suite once with a new immutable run ID. Results are
-staged under `evaluation_runs/<run-id>.staging/` and promoted only after
-consolidation validates the declared outputs:
+If it passes, execute the suite once with a new immutable run ID. Results are staged under `evaluation_runs/<run-id>.staging/` and promoted only after consolidation validates the declared outputs:
 
 ```bash
 bash scripts/run_eval_suite.sh \
@@ -425,16 +318,9 @@ bash scripts/run_eval_suite.sh \
   --include-paper-evidence
 ```
 
-Use `--device cuda` on a configured GPU VM. Add `--include-speed` only when
-timing rows are intentionally being regenerated, and add
-`--deep-payload-audit` when a full payload re-hash is wanted. Do not reuse an
-existing run ID, and do not run the complete suite twice unless the first run
-fails or the environment changes. The paper-evidence option already includes
-the seven-member ensemble and every metric declared in the paper suite.
+Use `--device cuda` on a configured GPU VM. Add `--include-speed` only when timing rows are intentionally being regenerated, and add `--deep-payload-audit` when a full payload re-hash is wanted. Do not reuse an existing run ID, and do not run the complete suite twice unless the first run fails or the environment changes. The paper-evidence option already includes the seven-member ensemble and every metric declared in the paper suite.
 
-The separate three-seed direct-model and GeoClaw-discrepancy follow-up
-analyses are packaged and rerun separately; they are not silently folded into
-this wrapper. From a fully restored project directory, their commands are:
+The separate three-seed direct-model and GeoClaw-discrepancy follow-up analyses are packaged and rerun separately; they are not silently folded into this wrapper. From a fully restored project directory, their commands are:
 
 ```bash
 bash scripts/run_multiseed_evaluation.sh --preflight-only
@@ -442,15 +328,11 @@ bash scripts/run_multiseed_evaluation.sh
 python scripts/run_geoclaw_discrepancy_ablation.py --workers 4
 ```
 
-These commands write separate multiseed/GeoClaw outputs. If the archived
-outputs are sufficient for the review, inspect those instead of regenerating
-them.
+These commands write separate multiseed/GeoClaw outputs. If the archived outputs are sufficient for the review, inspect those instead of regenerating them.
 
 ### 5b.4 Optional fresh numerical-validation replay
 
-The numerical-validation flag is a separate, much heavier H0/Level-A/Level-B/
-H1/H2 replay. It requires a clean committed `src/`/`scripts/`/`configs/` state,
-GeoClaw 5.14.0, PETSc, and the paths supplied through the environment:
+The numerical-validation flag is a separate, much heavier H0/Level-A/Level-B/H1/H2 replay. It requires a clean committed `src/`/`scripts/`/`configs/` state, GeoClaw 5.14.0, PETSc, and the paths supplied through the environment:
 
 ```bash
 export CLAW_ROOT=/path/to/clawpack-v5.14.0
@@ -467,9 +349,7 @@ bash scripts/run_eval_suite.sh \
   --rerun-numerical-validation
 ```
 
-If GeoClaw/PETSc are not installed, omit this flag and inspect the archived
-numerical evidence instead. Do not regenerate the approximately 31 GB raw
-publication set or retrain the ensemble merely to check out the source.
+If GeoClaw/PETSc are not installed, omit this flag and inspect the archived numerical evidence instead. Do not regenerate the approximately 31 GB raw publication set or retrain the ensemble merely to check out the source.
 
 ### 5b.5 Generate the raw benchmark from scratch
 
@@ -534,57 +414,22 @@ The older `configs/data/preprocess.yaml` remains a standalone test-path
 configuration. Use the three split-specific configs above for the main
 train/validation/test dataset.
 
-## 5c) Reproduce from the released benchmark data
+## 5c) Reproduce from benchmark data
 
-You do **not** need to regenerate the approximately 31 GB eta-primary raw
-publications to inspect or replay the reported paper outputs. The released
-benchmark bundle ships the model-ready *processed* arrays, selected
-checkpoints, and archived evidence.
+Download the processed common-time dataset from [Zenodo](https://doi.org/10.5281/zenodo.22997509) and the raw numerical-reference data from [Zenodo](https://doi.org/10.5281/zenodo.22997523). The records include release manifests and checksums but not the selected model checkpoints used for the reported evaluations; those are available from the corresponding author upon reasonable request. The source repository contains the generation, preprocessing, evaluation, plotting, and provenance code needed to reproduce the campaign from the pinned configurations.
 
-1. Download the released reproduction package from
-   https://doi.org/10.5281/zenodo.21962844.
-2. Verify integrity, then extract the required archives into the repository
-   root:
+Cite the DOI for each dataset you use and follow that record’s manifest and checksums. Do not use the superseded benchmark DOI or the earlier mutable file mirror for new submissions or reproduction records.
 
-```bash
-# from the bundle directory
-sha256sum -c SHA256SUMS.txt
-
-# main 64x64 references (Hydrostatic / MUSCL-HR / Boussinesq)
-for f in main_processed/*.tar.zst; do
-  tar --use-compress-program=unzstd -xf "$f" -C /path/to/tsunami-surrogate
-done
-
-# selected checkpoints
-tar --use-compress-program=unzstd -xf models/selected_checkpoints.tar.zst -C /path/to/tsunami-surrogate
-
-# optional replicated checkpoints used by the later multiseed analysis
-tar --use-compress-program=unzstd -xf models/multiseed_checkpoints.tar.zst -C /path/to/tsunami-surrogate
-
-# strict holdouts, native resolution, and real-bathymetry diagnostics
-for f in supplementary/*.tar.zst; do
-  tar --use-compress-program=unzstd -xf "$f" -C /path/to/tsunami-surrogate
-done
-
-# Keep archived results in a separate directory; see Section 5b.2.
-```
-
-After extraction you should have `data/processed/hydrostatic/{train,val,test}`, `data/processed/muscl_hr/...`, and `data/processed/boussinesq/...`, which is what the training and evaluation configs expect. The exact archive layout, per-suite contents, and citation are documented in the bundle's own `README.md`.
-
-The complete raw numerical publications are optional and are available through
-the supplementary mirror documented in the bundle README. Skipping the bundle
-means rebuilding the split-specific generation and preprocessing inputs
-yourself; this is a large CPU/storage workflow, not the normal source check.
-All data paths in `configs/` are repo-relative (`./data/...`), so commands run from the repository root without edits.
+The from-scratch route is intentionally large: it regenerates the raw train, validation, and test solver publications before preprocessing and training. For a normal source check, follow Section 5b.1 instead of launching a full campaign.
 
 ## 6) Command reference
 
 For a fresh Google Cloud or Linux setup, choose one of these routes:
 
-1. **Released-result route**
+1. **Data-assisted route**
    1. Complete the source check in Section 5b.1.
-   2. Restore the released processed-data/checkpoint package if result replay is
-      required (Section 5c).
+   2. Download the processed data and request the selected checkpoints if
+      result replay is required (Section 5c).
     3. Run the read-only paper-prerequisite preflight:
 
       ```bash
@@ -596,7 +441,7 @@ For a fresh Google Cloud or Linux setup, choose one of these routes:
    2. Continue with the detailed preprocessing, training, and evaluation steps
       in Appendix A.
 
-After the released-result preflight passes, execute one fresh immutable run:
+After the data-assisted preflight passes, execute one fresh immutable run:
 
 ```bash
 bash scripts/run_eval_suite.sh \
@@ -606,16 +451,9 @@ bash scripts/run_eval_suite.sh \
   --include-paper-evidence
 ```
 
-Use `--device cuda` on a configured GPU VM. Add `--include-speed` for timing
-rows and `--deep-payload-audit` for the expensive raw-payload pass. The wrapper
-stages under `evaluation_runs/<run-id>.staging/`, refuses reused run IDs, and
-promotes only after completeness validation.
+Use `--device cuda` on a configured GPU VM. Add `--include-speed` for timing rows and `--deep-payload-audit` for the expensive raw-payload pass. The wrapper stages under `evaluation_runs/<run-id>.staging/`, refuses reused run IDs, and promotes only after completeness validation.
 
-The paper-evidence option covers the current core paper matrix, including
-the seven-member Hydrostatic FNO ensemble, metadata slices, native MUSCL-HR
-transfer, reference-gap/cross-reference analysis, wave metrics, arrival maps,
-calibration, and the real-bathymetry suite. The three-seed direct-model analysis and
-the GeoClaw discrepancy ablation are separate follow-up lanes:
+The paper-evidence option covers the current core paper matrix, including the seven-member Hydrostatic FNO ensemble, metadata slices, native MUSCL-HR transfer, reference-gap/cross-reference analysis, wave metrics, arrival maps, calibration, and the real-bathymetry suite. The three-seed direct-model analysis and the GeoClaw discrepancy ablation are separate follow-up lanes:
 
 ```bash
 bash scripts/run_multiseed_evaluation.sh --preflight-only
@@ -623,14 +461,11 @@ bash scripts/run_multiseed_evaluation.sh
 python scripts/run_geoclaw_discrepancy_ablation.py --workers 4
 ```
 
-Their archived outputs are sufficient for inspection when a fresh rerun is not
-needed. Do not use the deprecated `compare_solvers_physical.py` wrapper for
-common-time comparisons; use the main paper wrapper.
+Their archived outputs are sufficient for inspection when a fresh rerun is not needed. Do not use the deprecated `compare_solvers_physical.py` wrapper for common-time comparisons; use the main paper wrapper.
 
 ### 6.1 Optional from-scratch generation and training
 
-These commands are for intentionally rebuilding upstream artifacts, not for a
-normal source check:
+These commands are for intentionally rebuilding upstream artifacts, not for a normal source check:
 
 ```bash
 # Generate and preprocess train/validation first.
@@ -646,8 +481,7 @@ python src/data_gen/preprocess.py --config configs/data/preprocess_test.yaml
 
 This is a large CPU/storage workflow that generates 40,500 solver publications.
 
-If training is intentionally being rebuilt, the complete direct-model command
-list is in Section 6.3. The three reference-specific FNO commands are:
+If training is intentionally being rebuilt, the complete direct-model command list is in Section 6.3. The three reference-specific FNO commands are:
 
 ```bash
 python scripts/train.py --config configs/model/fno.yaml
@@ -655,10 +489,7 @@ python scripts/train.py --config configs/model/fno_muscl_hr.yaml
 python scripts/train.py --config configs/model/fno_boussinesq.yaml
 ```
 
-The ordinary released models use seed 18. The replicated subset uses the
-configs under `configs/model/multiseed/` for seeds 36 and 67; the seven-member
-uncertainty ensemble uses seeds 11, 22, 33, 44, 55, 66, and 77. Do not launch
-fresh training merely to verify a clone.
+The ordinary released models use seed 18. The replicated subset uses the configs under `configs/model/multiseed/` for seeds 36 and 67; the seven-member uncertainty ensemble uses seeds 11, 22, 33, 44, 55, 66, and 77. Do not launch fresh training merely to verify a clone.
 
 ### 6.2 Optional post-hoc figure regeneration
 
@@ -671,37 +502,20 @@ python scripts/plot_sample_scaling.py \
   --evaluation-run evaluation_runs/<run-id>
 ```
 
-Paper figures belong under `paper/figures/`. Keep archived evaluation outputs
-outside the source directory unless you are deliberately restoring the full
-project and its evaluation artifacts.
+Paper figures belong under `paper/figures/`. Keep archived evaluation outputs outside the source directory unless you are deliberately restoring the full project and its evaluation artifacts.
 
 ### 6.3 Optional fresh numerical-validation replay
 
-Only run this on a clean committed scientific source/config tree with GeoClaw
-5.14.0 and PETSc installed. See Section 5b.4 for the environment variables and
-the complete command. Otherwise, inspect the checksum-bound numerical evidence
-in the release package.
+Only run this on a clean committed scientific source/config tree with GeoClaw 5.14.0 and PETSc installed. See Section 5b.4 for the environment variables and the complete command. Otherwise, inspect the historical numerical evidence from a locally obtained archived bundle.
 
 ## Appendix A) Additional workflows
 
-The material below contains detailed diagnostics and optional from-scratch
-runs. It is not the shortest reproduction path. Some entries
-describe exploratory or historical lanes and may intentionally use different
-data contracts; do not copy them as a fresh-machine checklist. Use Section 5b
-and the current command reference above for source/result verification.
+The material below contains detailed diagnostics and optional from-scratch runs. It is not the shortest reproduction path. Some entries describe exploratory or historical lanes and may intentionally use different data contracts; do not copy them as a fresh-machine checklist. Use Section 5b and the current command reference above for source/result verification.
 
 <details>
 <summary>Expand additional command archive</summary>
 
-The main evaluation entry point is
-`scripts/run_eval_suite.sh`. Its default mode is read-only preflight; actual
-execution requires `--execute` and a new `--run-id`. The numbered commands
-below are retained as advanced from-scratch workflows for
-regenerating raw data, preprocessing, training, or individual diagnostics.
-They are not the first command to run on a fresh clone and should not be used
-to overwrite a released evidence package accidentally. For a normal
-source/result check, use Section 5b and stop after the main wrapper or the
-archived evidence.
+The main evaluation entry point is `scripts/run_eval_suite.sh`. Its default mode is read-only preflight; actual execution requires `--execute` and a new `--run-id`. The numbered commands below are retained as advanced from-scratch workflows for regenerating raw data, preprocessing, training, or individual diagnostics. They are not the first command to run on a fresh clone and should not be used to overwrite a released evidence package accidentally. For a normal source/result check, use Section 5b and stop after the main wrapper or the archived evidence.
 
 From-scratch workflow order:
 1. `6.1` generate raw physics rollouts
@@ -716,21 +530,13 @@ From-scratch workflow order:
 10. `6.10` compute emulator-superiority ratios
 11. `6.11`-`6.17` run optional diagnostics, inverse scaffold, quick checks, uncertainty, arrival maps, learning curves, and figure exports
 
-Use the wrapper for the final paper suite. Use the manual commands below
-only when you intentionally need to regenerate a particular upstream artifact.
+Use the wrapper for the final paper suite. Use the manual commands below only when you intentionally need to regenerate a particular upstream artifact.
 
 ### 6.0 Full Paper Pipeline (From Scratch)
 
-This section is intentionally expensive and is not required for a normal
-source or result check. It is a reference for rebuilding upstream artifacts,
-not the current paper-reproduction command.
+This section is intentionally expensive and is not required for a normal source or result check. It is a reference for rebuilding upstream artifacts, not the current paper-reproduction command.
 
-This is the condensed ordered run for the core paper-facing benchmark. The
-three generation configs use the same solver settings but distinct
-train/validation/test scenario pools. Use `--num-workers` and `--num-samples`
-as CLI overrides if the machine/run needs them; otherwise the YAML values are
-used. Extra diagnostics, uncertainty, arrival-map, learning-curve, and
-figure-export commands are listed in the detailed sections after `6.9`.
+This is the condensed ordered run for the core paper-facing benchmark. The three generation configs use the same solver settings but distinct train/validation/test scenario pools. Use `--num-workers` and `--num-samples` as CLI overrides if the machine/run needs them; otherwise the YAML values are used. Extra diagnostics, uncertainty, arrival-map, learning-curve, and figure-export commands are listed in the detailed sections after `6.9`.
 
 ```bash
 # 1. Raw train, validation, and test data for all three solvers.
@@ -874,9 +680,7 @@ Manifests are separated as:
 - scenario-level: `data/<split>/synthetic/scenario_manifest.jsonl`
 - solver-level: `data/<split>/synthetic/{hydrostatic,muscl_hr,boussinesq}_manifest.jsonl`
 
-Runnable FDEs currently include `swe_hydrostatic`, `swe_muscl_hr`, and `boussinesq`.
-Default `configs/data/dataset.yaml` enables all three so the raw targets are comparable on the same bathymetry/source scenarios.
-Legacy alias `swe_muscl` is still accepted and automatically mapped to `swe_muscl_hr` for backward compatibility.
+Runnable FDEs currently include `swe_hydrostatic`, `swe_muscl_hr`, and `boussinesq`. Default `configs/data/dataset.yaml` enables all three so the raw targets are comparable on the same bathymetry/source scenarios. Legacy alias `swe_muscl` is still accepted and automatically mapped to `swe_muscl_hr` for backward compatibility.
 
 Do not split the three-solver roster across temporary configs for the corrected campaign. Each canonical publication is bound to the complete config, code state, paired-input inventory, and solver roster; use storage large enough for the full split and resume only with the same canonical config.
 
@@ -917,11 +721,7 @@ python src/data_gen/preprocess.py --config configs/data/preprocess_eval.yaml
 python src/data_gen/preprocess.py --config configs/data/preprocess_test.yaml
 ```
 
-Do not run validation or test preprocessing before training preprocessing.
-They intentionally refuse to fit their own normalization statistics. Their
-outputs are merged into the existing per-solver roots without replacing the
-other splits. If training preprocessing is rerun, rerun validation and test
-preprocessing afterward.
+Do not run validation or test preprocessing before training preprocessing. They intentionally refuse to fit their own normalization statistics. Their outputs are merged into the existing per-solver roots without replacing the other splits. If training preprocessing is rerun, rerun validation and test preprocessing afterward.
 
 Large paper-facing preprocess configs use bounded shards by default:
 - `saving.sharded: true`
@@ -942,9 +742,7 @@ Boussinesq-only preprocessing for the separate diagnostic regime:
 python src/data_gen/preprocess.py --config configs/data/preprocess_boussinesq.yaml
 ```
 
-Use this only with `configs/data/dataset_boussinesq.yaml` outputs. For the main
-benchmark, use `preprocess_train.yaml`, `preprocess_eval.yaml`, and
-`preprocess_test.yaml` in that order.
+Use this only with `configs/data/dataset_boussinesq.yaml` outputs. For the main benchmark, use `preprocess_train.yaml`, `preprocess_eval.yaml`, and `preprocess_test.yaml` in that order.
 
 Main outputs used by training/eval:
 - `data/processed/hydrostatic/{train,val,test}/shards_manifest.json`
@@ -984,41 +782,26 @@ python scripts/train.py --config configs/model/fno_window5_hydrostatic.yaml
 python scripts/train.py --config configs/model/ffno_window5_hydrostatic.yaml
 ```
 
-Each command is independent; run only the model cells needed for the intended
-experiment. All of them expect the train, validation, and test preprocessing
-steps in Section 6.2 to be complete.
+Each command is independent; run only the model cells needed for the intended experiment. All of them expect the train, validation, and test preprocessing steps in Section 6.2 to be complete.
 
-To train replicated models sequentially, add a top-level seed list to the model
-config. The existing single `seed` behavior is unchanged when `seeds` is absent.
+To train replicated models sequentially, add a top-level seed list to the model config. The existing single `seed` behavior is unchanged when `seeds` is absent.
 
 ```yaml
 seeds: [36, 67]
 ```
 
-For `output_dir: experiments/fno`, these runs are written to
-`experiments/fno/seed_18`, `experiments/fno/seed_36`, and so on. Each
-directory contains the complete run artifacts, including resolved config,
-metadata, history, and checkpoints.
+For `output_dir: experiments/fno`, these runs are written to `experiments/fno/seed_18`, `experiments/fno/seed_36`, and so on. Each directory contains the complete run artifacts, including resolved config, metadata, history, and checkpoints.
 
-The current ordinary-model checkpoints use seed 18. The later replicated
-direct-model analysis adds seeds 36 and 67 through the configs under
-`configs/model/multiseed/`, giving the prespecified three-seed set
-`{18, 36, 67}`. The dedicated uncertainty ensemble uses members
-`[11, 22, 33, 44, 55, 66, 77]`.
+The current ordinary-model checkpoints use seed 18. The later replicated direct-model analysis adds seeds 36 and 67 through the configs under `configs/model/multiseed/`, giving the prespecified three-seed set `{18, 36, 67}`. The dedicated uncertainty ensemble uses members `[11, 22, 33, 44, 55, 66, 77]`.
 
 Optional training tracks:
 - Ensemble for uncertainty: `python scripts/train_ensemble.py --config configs/model/fno_ensemble.yaml`
-- Replicated direct-model subset: use the six configs in
-  `configs/model/multiseed/`, then validate/evaluate them with
-  `scripts/run_multiseed_evaluation.sh` from a fully restored project directory.
-- ConvLSTM is a reported Hydrostatic baseline in the current paper and release;
-  no additional ConvLSTM training is planned.
+- Replicated direct-model subset: use the six configs in `configs/model/multiseed/`, then validate/evaluate them with `scripts/run_multiseed_evaluation.sh` from a fully restored project directory.
+- ConvLSTM is a reported Hydrostatic baseline in the current paper and release; no additional ConvLSTM training is planned.
 
 Native-resolution training tracks:
-- Current paper lane: MUSCL-HR at 32/64/128, using
-  `configs/model/fno_res{32,64,128}_muscl_hr.yaml`.
-- Hydrostatic and shared-from-64 configurations remain exploratory
-  paths and are not part of the final paper-evaluation roster.
+- Current paper lane: MUSCL-HR at 32/64/128, using `configs/model/fno_res{32,64,128}_muscl_hr.yaml`.
+- Hydrostatic and shared-from-64 configurations remain exploratory paths and are not part of the final paper-evaluation roster.
 - Shared-from64 normalization checkpoints:
   - `configs/model/fno_res64_shared_from64_hydrostatic.yaml`
   - `configs/model/fno_res64_shared_from64_muscl_hr.yaml`
@@ -1103,8 +886,7 @@ Output file:
 
 ### 6.7 Step 7 - Resolution Transfer (Proxy, No Extra Training)
 
-This track uses one trained checkpoint from `6.3` and evaluates it on resized versions of one test archive.
-It is a proxy study, not native re-simulation at each resolution.
+This track uses one trained checkpoint from `6.3` and evaluates it on resized versions of one test archive. It is a proxy study, not native re-simulation at each resolution.
 
 ```bash
 python scripts/eval_resolution_transfer.py \
@@ -1149,8 +931,7 @@ python src/data_gen/preprocess.py --config configs/data/multires/preprocess_64.y
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_128.yaml
 ```
 
-Evaluate the completed MUSCL-HR checkpoints across all real resolutions in one
-JSON table:
+Evaluate the completed MUSCL-HR checkpoints across all real resolutions in one JSON table:
 
 ```bash
 python scripts/eval_full_resolution.py \
@@ -1165,8 +946,7 @@ Native-resolution normalization policy:
 - `configs/eval/resolution_*.yaml` now defaults to `real_resolution.normalization_policy: require_target_stats_match`.
 - This fails fast if suite target normalization does not match the configured training/reference dataset stats (`normalization_reference_path`), which avoids misleading cross-resolution claims.
 
-Optional shared-normalization cross-resolution transfer from
-the res64 reference:
+Optional shared-normalization cross-resolution transfer from the res64 reference:
 
 ```bash
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_32_shared_from64.yaml
@@ -1186,8 +966,7 @@ python scripts/eval_full_resolution.py \
 
 Important:
 - `eval_full_resolution.py` now validates that checkpoint training normalization stats match the configured reference stats.  
-- For the final paper claim, use the native MUSCL-HR roster. Do not present
-  the exploratory Hydrostatic/shared-from64 paths as part of that result.
+- For the final paper claim, use the native MUSCL-HR roster. Do not present the exploratory Hydrostatic/shared-from64 paths as part of that result.
 - For native/shared-from64 claims, do not reuse generic `6.3` checkpoints; use dedicated shared-from64 checkpoints.
 
 ### 6.9 Historical saved-index comparison (deprecated)
@@ -1418,24 +1197,19 @@ evaluation_runs/        Generated datasets, checkpoints, and evidence bundles
 
 ## Reproducibility and scope
 
-- Keep raw, processed, checkpoint, and evaluation artifacts bound to their
-  manifests and contract hashes.
-- Treat the reported manuscript values as evidence from their recorded
-  evaluation runs, not as a replacement for a fresh production-contract
-  validation.
-- Preserve the distinction between solver agreement, numerical verification,
-  and physical validation.
-- This is a synthetic, finite-horizon research benchmark. It is not an
-  operational tsunami-warning system, a hazard map, or event-scale validation.
+- Keep raw, processed, checkpoint, and evaluation artifacts bound to their manifests and contract hashes.
+- Treat the reported manuscript values as evidence from their recorded evaluation runs, not as a replacement for a fresh production-contract validation.
+- Preserve the distinction between solver agreement, numerical verification, and physical validation.
+- This is a synthetic, finite-horizon research benchmark. It is not an operational tsunami-warning system, a hazard map, or event-scale validation.
 
 ## License
 
-This project is released under the [MIT License](LICENSE).
+**Code:** The source code is released under the [MIT License](LICENSE).
+
+**Paper:** The manuscript text and original figures in the paper directory are
+licensed under [CC BY-NC-ND 4.0](paper/LICENSE). Third-party material is
+excluded from this license and remains subject to its own terms.
 
 ## Acknowledgements
 
-We acknowledge the University of Information Technology, Vietnam National
-University Ho Chi Minh City, for academic and facility support; the Google
-Cloud Free Tier for dataset-generation infrastructure; and the GEBCO Bathymetric
-Compilation Group and NERC EDS British Oceanographic Data Centre for the
-GEBCO-derived real-bathymetry diagnostic data.
+We acknowledge the University of Information Technology, Vietnam National University Ho Chi Minh City, for academic and facility support; and the GEBCO Bathymetric Compilation Group and NERC EDS British Oceanographic Data Centre for the GEBCO-derived real-bathymetry diagnostic data.
