@@ -1,11 +1,24 @@
 \documentclass[a4paper,fleqn]{cas-sc}
 
-\usepackage[numbers]{natbib}
+\usepackage[numbers,sort&compress]{natbib}
 \usepackage{enumitem}
 \usepackage{xurl}
 \usepackage{tikz}
 \usepackage{placeins}
 \usetikzlibrary{arrows.meta, positioning, calc, fit}
+
+\ExplSyntaxOn
+\NewCommandCopy{\BenchmarkCASParseName}{\parsename}
+\RenewDocumentCommand \parsename { m }
+  {
+    \str_case:nnF { #1 }
+      {
+        { Nguyen~Tho~Binh~An } { \invparsename { #1 } }
+        { Le~Minh~Nhut~Tan } { \invparsename { #1 } }
+      }
+      { \BenchmarkCASParseName { #1 } }
+  }
+\ExplSyntaxOff
 
 \begin{document}
 \let\WriteBookmarks\relax
@@ -14,18 +27,18 @@
 \emergencystretch=2em
 \Urlmuskip=0mu plus 2mu
 
-\shorttitle{Reference-aware neural PDE-surrogate evaluation}
+\shorttitle{Reference-aware neural surrogates for shallow-water flows}
 \shortauthors{Nguyen et~al.}
 
-\title[mode=title]{Reference-Aware Evaluation of Neural PDE Surrogates: A Controlled Multi-Reference Benchmark for Tsunami-Like Waves}
+\title[mode=title]{Reference-Aware Evaluation of Neural Surrogates for Shallow-Water Flows: A Controlled Multi-Reference Computational-Fluid Benchmark}
 
 \author[1,2]{Nguyen Tho Binh An}
-[orcid=0009-0001-1635-225X]
+[style=chinese,orcid=0009-0001-1635-225X]
 \fnmark[1]
 \ead{25520020@gm.uit.edu.vn}
 
 \author[1,2]{Le Minh Nhut Tan}
-[orcid=0009-0005-5471-605X]
+[style=chinese,orcid=0009-0005-5471-605X]
 \fnmark[1]
 \ead{25521650@gm.uit.edu.vn}
 
@@ -53,13 +66,6 @@
 
 \input{sections/abstract}
 
-\begin{highlights}
-\item A common-time procedure aligns outputs from adaptive numerical references.
-\item Cross-reference ratios exceed one in all six tested directions.
-\item Cross-reference closeness does not establish physical superiority.
-\item Verification supports a finite-horizon benchmark, not event validity.
-\end{highlights}
-
 \begin{keywords}
 neural PDE surrogates \sep reference-solver discrepancy \sep numerical verification \sep neural operators \sep shallow-water equations \sep scientific machine learning
 \end{keywords}
@@ -83,6 +89,7 @@ neural PDE surrogates \sep reference-solver discrepancy \sep numerical verificat
 \input{sections/appendix}
 
 \clearpage
+\input{sections/ai_disclosure}
 \bibliographystyle{cas-model2-names}
 \bibliography{sections/references}
 

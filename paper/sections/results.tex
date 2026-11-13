@@ -12,7 +12,7 @@ Table~\ref{tab:solver-validation} summarizes the numerical evidence supporting t
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Numerical verification and inter-code comparison for the finite-horizon temporal-output procedure. This evidence assesses numerical consistency, not event-scale physical validity.}
+\caption{Numerical verification and inter-code comparison for the finite-horizon temporal-output procedure. Numerical-method, GeoClaw/Clawpack, integrated-procedure, and H2 sensitivity results summarize studies conducted during method development. Dataset and grid-construction results describe the data analyzed here. This evidence addresses numerical consistency, not event-scale physical validity.}
 \label{tab:solver-validation}
 \small
 \begin{tabular}{p{0.23\linewidth}p{0.55\linewidth}p{0.13\linewidth}}
@@ -306,7 +306,7 @@ The pooled-reference experiment distinguishes compromise prediction from referen
 
 \begin{table}[pos=htbp]
 \centering
-\caption{Primary pooled-reference comparison on the $2{,}500$ paired held-out scenarios. Entries are mean global physical-space RMSE over seeds $18$, $36$, and $67$. The anonymous model produces one output that is compared with each reference; each conditioned column supplies the corresponding solver identity.}
+\caption{Primary pooled-reference comparison on the $2{,}500$ paired held-out scenarios. Entries are mean global denormalized benchmark-scale RMSE over seeds $18$, $36$, and $67$. The anonymous model produces one output that is compared with each reference; each conditioned column supplies the corresponding solver identity.}
 \label{tab:pooled-reference}
 \small
 \begin{tabular}{lccc}

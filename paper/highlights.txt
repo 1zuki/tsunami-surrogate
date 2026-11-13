@@ -1,0 +1,4 @@
+- A common-time procedure aligns outputs from adaptive numerical references.
+- Cross-reference ratios exceed one in all six tested directions.
+- Cross-reference closeness does not establish physical superiority.
+- Verification supports a finite-horizon benchmark, not event validity.
