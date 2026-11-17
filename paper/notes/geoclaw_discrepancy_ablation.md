@@ -51,3 +51,7 @@ Negative delta means the changed setup moved closer to GeoClaw.
 - The nested 2x refinement halves `dx` on the same physical in-house domain and preserves coarse cell averages. It is a numerical sensitivity check, not new high-resolution physical bathymetry.
 - The extended 192/open/no-sponge residual uses the same frozen domain, central state, cell size, requested times, and broad open boundary class as GeoClaw. Its remaining difference is attributable to the combined numerical-method/configuration package, not to one isolated reconstruction component.
 - The Hydrostatic-versus-MUSCL-HR contrast changes reconstruction, topographic-source treatment, time integration, and solver-specific CFL together; it must not be described as reconstruction order alone.
+
+## Current-environment refresh (2026-11-17)
+
+The corrected three-case bundle was rerun after the laptop restart with the current adapter and written to `/mnt/Windows/Dataset/geoclaw_refresh_20261117`. The run completed all 3 cases and all 6 in-house/reference comparisons. The live environment probe reported Clawpack 5.14.0, GeoClaw commit `11479f6`, PETSc commit `fd2ca03`, Python 3.10.20, and NumPy 2.2.6. The external run manifest records adapter schema v2 and adapter hash `82cb246d`; this refreshed output is the current provenance anchor for the comparator.
