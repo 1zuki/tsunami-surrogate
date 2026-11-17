@@ -279,13 +279,8 @@ def _plot_cross_reference_forest(
             colors.append("#7f7f7f")
 
     fig, ax = plt.subplots(figsize=(7.1, 4.35), constrained_layout=True)
-    for y_pos, value, lo, hi, color in zip(
-        y,
-        point,
-        lower,
-        upper,
-        colors,
-        strict=True,
+    for row_index, (y_pos, value, lo, hi, color) in enumerate(
+        zip(y, point, lower, upper, colors, strict=True)
     ):
         ax.errorbar(
             value,
@@ -299,11 +294,22 @@ def _plot_cross_reference_forest(
             linewidth=1.4,
             zorder=3,
         )
+        if row_index == 0:
+            # Anchor the first label at the left end of its interval so the
+            # text stays clear of the marker and error bar.
+            annotation_xy = (lo, y_pos)
+            annotation_offset = (-7, 0)
+            annotation_ha = "right"
+        else:
+            annotation_xy = (hi, y_pos)
+            annotation_offset = (7, 0)
+            annotation_ha = "left"
         ax.annotate(
             f"{value:.3f} [{lo:.3f}, {hi:.3f}]",
-            (hi, y_pos),
-            xytext=(7, 0),
+            annotation_xy,
+            xytext=annotation_offset,
             textcoords="offset points",
+            ha=annotation_ha,
             va="center",
             fontsize=8,
         )
@@ -327,10 +333,11 @@ def _plot_cross_reference_forest(
         fontsize=8,
     )
     padding = 0.035
-    ax.set_xlim(float(lower.min() - padding), float(upper.max() + 0.08))
+    left_limit = min(0.95, float(lower.min() - padding))
+    ax.set_xlim(left_limit, float(upper.max() + 0.08))
     ax.set_xlabel(
-        r"cross-reference discrepancy ratio $\rho$ "
-        r"(95\% paired-bootstrap interval)"
+        r"Cross-reference discrepancy ratio $\rho$ "
+        r"(95% paired-scenario bootstrap interval)"
     )
     ax.grid(True, axis="x", linestyle=":", linewidth=0.6, alpha=0.7)
     paths = _save_figure(fig, output)

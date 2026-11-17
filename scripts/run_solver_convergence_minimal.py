@@ -245,6 +245,17 @@ def _metrics(a: np.ndarray, b: np.ndarray) -> dict[str, float]:
     }
 
 
+def _observed_order(coarse_error: float, fine_error: float) -> float:
+    """Estimate p from two successive self-differences, E_h/E_{h/2}=2^p."""
+    coarse = float(coarse_error)
+    fine = float(fine_error)
+    if not math.isfinite(coarse) or not math.isfinite(fine):
+        return float("nan")
+    if coarse <= 0.0 or fine <= 0.0:
+        return float("nan")
+    return float(math.log(coarse / fine, 2.0))
+
+
 def _summary(values: Iterable[float]) -> dict[str, Any]:
     arr = np.asarray([float(v) for v in values if math.isfinite(float(v))], dtype=float)
     if arr.size == 0:
@@ -325,6 +336,7 @@ def main() -> None:
 
     run_rows: list[dict[str, Any]] = []
     grid_rows: list[dict[str, Any]] = []
+    order_rows: list[dict[str, Any]] = []
     cfl_rows: list[dict[str, Any]] = []
     final_eta: dict[tuple[str, str, float, int], np.ndarray] = {}
 
@@ -416,6 +428,45 @@ def main() -> None:
                     row.update(_metrics(eta32, _restrict_mean(eta128, 32)))
                     grid_rows.append(row)
 
+                if eta32 is not None and eta64 is not None and eta128 is not None:
+                    coarse_fine = _metrics(
+                        eta32, _restrict_mean(eta64, 32)
+                    )
+                    fine_reference = _metrics(
+                        eta64, _restrict_mean(eta128, 64)
+                    )
+                    order_rows.append(
+                        {
+                            "solver": SOLVER_LABELS[solver_name],
+                            "solver_name": solver_name,
+                            "scenario_id": scenario_id,
+                            "target_cfl": float(cfl),
+                            "coarse_fine_rel_l2": coarse_fine["rel_l2"],
+                            "fine_reference_rel_l2": fine_reference["rel_l2"],
+                            "coarse_fine_rmse": coarse_fine["rmse"],
+                            "fine_reference_rmse": fine_reference["rmse"],
+                            "rel_l2_ratio": (
+                                coarse_fine["rel_l2"]
+                                / fine_reference["rel_l2"]
+                                if fine_reference["rel_l2"] > 0.0
+                                else float("nan")
+                            ),
+                            "rmse_ratio": (
+                                coarse_fine["rmse"] / fine_reference["rmse"]
+                                if fine_reference["rmse"] > 0.0
+                                else float("nan")
+                            ),
+                            "observed_order_rel_l2": _observed_order(
+                                coarse_fine["rel_l2"],
+                                fine_reference["rel_l2"],
+                            ),
+                            "observed_order_rmse": _observed_order(
+                                coarse_fine["rmse"],
+                                fine_reference["rmse"],
+                            ),
+                        }
+                    )
+
             if len(cfl_values) >= 2:
                 low = min(cfl_values)
                 high = max(cfl_values)
@@ -462,6 +513,20 @@ def main() -> None:
             "max_abs_eta",
         ),
     )
+    order_summary = _aggregate(
+        order_rows,
+        ("solver", "target_cfl"),
+        (
+            "coarse_fine_rel_l2",
+            "fine_reference_rel_l2",
+            "coarse_fine_rmse",
+            "fine_reference_rmse",
+            "rel_l2_ratio",
+            "rmse_ratio",
+            "observed_order_rel_l2",
+            "observed_order_rmse",
+        ),
+    )
 
     output_dir = ROOT / args.output_dir
     payload = {
@@ -478,10 +543,12 @@ def main() -> None:
             "Shared physical scenarios are generated at 128x128 and restricted to 64x64/32x32 by cell averaging.",
             "All rollouts are adaptively stepped to the same requested final physical time; the final step is clipped.",
             "Final eta fields are compared after restricting the finer-grid result to the coarser grid.",
-            "This compact diagnostic documents stability and grid/time sensitivity; it is not a formal convergence proof.",
+            "Observed order is estimated from successive restricted-grid self-differences as log2(E_32/64 / E_64/128).",
+            "This compact diagnostic provides empirical self-convergence evidence, not an exact-solution error or formal convergence proof.",
         ],
         "run_summary": run_summary,
         "grid_comparison_summary": grid_summary,
+        "self_convergence_order_summary": order_summary,
         "cfl_sensitivity_summary": cfl_summary,
         "elapsed_s": float(time.time() - started),
     }
@@ -489,6 +556,8 @@ def main() -> None:
     _write_csv(output_dir / "run_rows.csv", run_rows)
     _write_csv(output_dir / "grid_comparison_rows.csv", grid_rows)
     _write_csv(output_dir / "grid_comparison_summary.csv", grid_summary)
+    _write_csv(output_dir / "self_convergence_order_rows.csv", order_rows)
+    _write_csv(output_dir / "self_convergence_order_summary.csv", order_summary)
     _write_csv(output_dir / "cfl_sensitivity_rows.csv", cfl_rows)
     _write_csv(output_dir / "cfl_sensitivity_summary.csv", cfl_summary)
 
