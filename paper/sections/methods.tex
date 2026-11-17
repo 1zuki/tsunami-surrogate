@@ -27,6 +27,8 @@ sampled at the requested evaluation times $t_k = 8.4k$ ($k = 1, \dots, 50$).
 
 The final target snapshot is evaluated at $t = 420$ in elapsed benchmark-time units, whereas the initial state ($t = 0$) is omitted from the target sequence. The underlying coordinate system governs an abstract benchmark domain and carries no implicit rescaling to dimensional physical time or specific oceanic bathymetry scales.
 
+For reproducibility, the normalized coordinates are tied to the benchmark grid by an explicit metadata contract. The central $128 \times 128$ solver region spans $2400$ length units with $\Delta x = \Delta y = 18.75$; a 32-cell buffer on each side therefore gives a $192 \times 192$ computational grid spanning $3600$ length units, and the reported $64 \times 64$ target is the block-mean reduction of the central solver region. The \texttt{physical\_scaling} record stores a horizontal scale of $2400$~m, a time scale of $2400$~s, a vertical scale of $1$~m, and aspect ratio $2400$. These fields document the benchmark's intended coordinate relationship and are validated as metadata; the solver and neural-network inputs remain in benchmark units, and no site-specific dimensional ocean interpretation is implied.
+
 \subsection{Common-time extraction and buffered domain}
 \label{subsec:common-time-extraction}
 
@@ -144,7 +146,7 @@ U ^ {n + 1} = \frac{1}{2} U ^ n +
 \frac{1}{2}\Phi_{\Delta t}\!\left(U ^ {(1)}\right).
 \end{equation}
 
-Positivity and dry-momentum projections are checked after the stage updates and after the final average. Consequently, MUSCL-HR differs from the primary reference through both its piecewise-linear spatial reconstruction and two-stage temporal integration, rather than a simple CFL adjustment.
+Positivity and dry-momentum projections are verified after the stage updates and after the final average. Consequently, MUSCL-HR differs from the primary reference through both its piecewise-linear spatial reconstruction and two-stage temporal integration, rather than a simple CFL adjustment.
 
 \paragraph{Weakly dispersive Boussinesq comparison.}
 The Boussinesq comparison evolves surface elevation and its time derivative, $[\eta, \eta_t] ^ \top$, rather than depth and discharge. We define it as a study-specific linear, elevation-only dispersive benchmark rather than a complete coastal Boussinesq model. Its variable-depth elliptic acceleration system is:
@@ -174,22 +176,22 @@ The shallow-water references use bathymetry-aware linearized radiation states at
 
 All references apply a 32-cell cosine sponge layer within the outer domain boundary. Given reference mask $D(x, y) \in [0.8, 1]$ and baseline step $\Delta t_{\mathrm{ref}} = 8.4$, per-step damping follows $D^{\Delta t/\Delta t_{\mathrm{ref}}}$, ensuring uniform cumulative dissipation over equivalent elapsed benchmark times regardless of step size. The shallow-water sponge damps momentum and free-surface displacement about rest depth; the Boussinesq sponge damps $\eta$ and $\eta_t$. The optional Boussinesq smoothing filter is disabled. Across all three references, the benchmark omits Coriolis acceleration, bottom friction, moving bathymetry, and event-specific forcing after initialization.
 
-\subsection{Numerical verification and validation scope}
+\subsection{Numerical accuracy and validation scope}
 \label{subsec:reference-validation}
 
-The numerical evidence covers dataset consistency, internal numerical checks, independent GeoClaw comparison, integrated procedure checks, and held-out sensitivity tests. Dataset checks verify the source, grid, and requested-time construction used for the surrogate experiments. A controlled GeoClaw SWE comparison evaluates three prespecified finite-horizon cases while varying boundary treatment, sponge use, domain extent, and spatial refinement. Together, these components address numerical consistency, inter-code discrepancy, procedure repeatability, and sensitivity within the finite-horizon benchmark.
+The numerical evidence is organized around accuracy signals first: a periodic linear-wave analysis, nested-grid self-convergence, controlled GeoClaw comparison and refinement, reproduction of the requested-time outputs under the stated benchmark settings, boundary-flux measurements under the stated benchmark settings, local dispersive phase-speed behavior, and closed-domain mass-conservation cases. Dataset records establish the source, grid, and requested-time construction used for the surrogate experiments. The independent comparison evaluates three prespecified finite-horizon cases while varying boundary treatment, sponge use, domain extent, and spatial refinement. Together, these components address numerical accuracy, inter-code discrepancy, requested-time reproduction consistency, and sensitivity within the finite-horizon benchmark.
 
-Numerical-method studies, GeoClaw/Clawpack comparisons, trials of the integrated procedure, and sensitivity analyses assess numerical behavior under the tested settings. For the data reported here, we verified the $384 \rightarrow 128 \rightarrow 192 \rightarrow 64$ grid sequence used to prepare the datasets and confirmed the train, validation, and test split structure. We also reran three representative scenarios with each reference solver. These results describe distinct aspects of numerical consistency.
+Numerical-method studies, GeoClaw/Clawpack comparisons, trials of the integrated procedure, and sensitivity analyses assess numerical behavior under the tested settings. For the datasets reported here, we verified the $384 \rightarrow 128 \rightarrow 192 \rightarrow 64$ grid sequence used to prepare them and confirmed the train, validation, and test split structure. We also evaluated three representative scenarios with each reference solver. These results document reproducibility and define the scope of the accuracy analyses.
 
 \begin{enumerate}[leftmargin=2.2em]
-    \item \textbf{Input identity:} all scenario definitions are checked for split-qualified identity, array equality, horizon coverage, and exact reuse across the three references.
-    \item \textbf{Internal verification:} analytical-wave, lake-at-rest, conservation, spatial/temporal sensitivity, requested-output, boundary/sponge, dispersive, numerical-stability, and deterministic-repeatability checks are performed with thresholds fixed before evaluation.
+    \item \textbf{Input identity:} all scenario definitions are verified for split-qualified identity, array equality, horizon coverage, and exact reuse across the three references.
+    \item \textbf{Internal numerical evidence:} analytical-wave, lake-at-rest, conservation, spatial/temporal sensitivity, requested-output, boundary/sponge, dispersive, numerical-stability, and deterministic-repeatability analyses are evaluated with thresholds fixed before evaluation.
     \item \textbf{Independent comparison:} three prespecified finite-horizon cases are evaluated against GeoClaw/Clawpack 5.14.0 at the same requested times. The comparison includes explicit contrasts in boundary treatment, sponge use, domain extent, and nested spatial refinement; GeoClaw remains an independent comparator, not automatic truth or evidence of pointwise equivalence \citep{leveque2011tsunami,berger2011geoclaw}.
-    \item \textbf{Integrated evaluation procedure:} the buffered-domain integration, adaptive stepping, requested-time interpolation, and quality screening are assessed on cases separate from the component-level numerical checks.
-    \item \textbf{Independent sensitivity set:} additional training-pool cases, excluded from the diagnostic selections, test the reported and comparison CFL settings, time extraction, numerical-admissibility criteria, and repeatability.
+    \item \textbf{Integrated evaluation procedure:} the buffered-domain integration, adaptive stepping, requested-time interpolation, trajectory reproduction, boundary activity, and quality screening are assessed on cases separate from the component-level numerical analyses.
+    \item \textbf{Independent sensitivity set:} additional training-pool cases, excluded from the diagnostic selections, assess the reported and comparison CFL settings, time extraction, numerical-admissibility criteria, and repeatability.
 \end{enumerate}
 
-The controlled GeoClaw comparison is descriptive rather than a formal convergence study because the solver formulations, boundary treatments, and spatial resolutions differ across contrasts. The results identify a substantial residual discrepancy after the tested boundary, sponge, and domain changes, while the refined comparison moves both references closer to GeoClaw. Together these checks support the finite-horizon evaluation setting used here; they do not establish observed-event validity, shoreline accuracy, generally non-reflecting boundaries, formal convergence, or equivalence with an operational tsunami code.
+The controlled GeoClaw comparison is descriptive rather than a formal convergence study because the solver formulations, boundary treatments, and spatial resolutions differ across contrasts. The results identify a substantial residual discrepancy after the tested boundary, sponge, and domain changes, while the refined comparison moves both references closer to GeoClaw. Together these analyses support the finite-horizon evaluation setting used here; they do not establish observed-event validity, shoreline accuracy, generally non-reflecting boundaries, formal convergence, or equivalence with an operational tsunami code.
 
 Each dataset trajectory is additionally screened for finiteness, positivity/depth, amplitude, velocity, sanitization, projection, clipping, post-step CFL, and, where relevant, conjugate-gradient convergence. Trajectories that do not satisfy these criteria are excluded.
 
@@ -220,7 +222,7 @@ Per-frame relative $L_2$ errors evaluate spatial slices at specific time instanc
 \qquad
 \overline{h}(t) = \frac{1}{HW}\sum_{i, j}\bigl(\eta_{i, j}(t) - b_{i, j}\bigr),
 \end{equation}
-where $\overline{h}$ is a fully wet mass proxy rather than an independently conserved model output. Spectral error is computed from orthonormal two-dimensional FFT coefficients in radial wavenumber bands $\kappa \leq 8$, $8 < \kappa \leq 16$, and $\kappa > 16$:
+where $\overline{h}$ is a fully wet mass proxy rather than an independently conserved model output. Because the bathymetry is fixed, the numerator of this proxy is exactly the spatial-mean free-surface error, while its relative denominator includes the background water column. A small relative mass-proxy value therefore measures agreement in depth mean and must not be interpreted as evidence of conservation. Spectral error is computed from orthonormal two-dimensional FFT coefficients in radial wavenumber bands $\kappa \leq 8$, $8 < \kappa \leq 16$, and $\kappa > 16$:
 \begin{equation}
 E_{\mathcal{B}} = \frac{\|\mathcal{M}_{\mathcal{B}}\mathcal{F}(\widehat{Y} - Y)\|_2}{\|\mathcal{M}_{\mathcal{B}}\mathcal{F}(Y)\|_2}.
 \end{equation}

@@ -3,35 +3,14 @@
 
 Unless stated otherwise, model accuracy is measured on the $N = 2500$ held-out test scenarios. MAE, RMSE, and headline relative $L_2$ values are computed after reversing target normalization; max-err remains in normalized target units. The main model tables use the validated common-time evaluation; numerical-comparator studies and selected failure-case analyses are reported under the model-selection, dataset, and metric definitions stated in Sections~\ref{sec:methods}--\ref{sec:training}.
 
-\subsection{Temporal alignment and numerical verification}
+\subsection{Numerical accuracy and reference validation}
 \label{subsec:res-dataset}
 
-All three main datasets contain $10{,}000$ training, $1{,}000$ validation, and $2{,}500$ test scenarios. Each processed target has shape $50 \times 64 \times 64$, and all $40{,}500$ solver-specific trajectories pass the predefined quality checks. The scenario populations match across references: six source families, five bathymetry families, and resolved source strength in approximately $[0.075, 0.300]$ after the initial-elevation-to-depth cap.
+All three main datasets contain $10{,}000$ training, $1{,}000$ validation, and $2{,}500$ test scenarios. Each processed target has shape $50 \times 64 \times 64$, and all $40{,}500$ solver-specific trajectories satisfy the predefined quality criteria. The scenario populations match across references: six source families, five bathymetry families, and resolved source strength in approximately $[0.075, 0.300]$ after the initial-elevation-to-depth cap.
 
-Table~\ref{tab:solver-validation} summarizes the numerical evidence supporting the finite-horizon temporal-output procedure. The categories cover dataset consistency, numerical verification, independent comparison, integrated procedure checks, and sensitivity within the benchmark.
+The main numerical evidence combines controlled refinement against GeoClaw, nested-grid self-convergence, reproduction of the requested-time outputs under the stated benchmark settings, boundary-flux measurements under the stated benchmark settings, closed-domain mass-conservation analyses, and the local Boussinesq phase-speed analysis. The detailed dataset identity, numerical criteria, integrated-evaluation, and sensitivity inventory is provided in Appendix~\ref{app:validation-details}. These results are finite-horizon numerical evidence; they do not establish event-scale physical validity.
 
-\begin{table}[pos=htbp]
-\centering
-\caption{Numerical verification and inter-code comparison for the finite-horizon temporal-output procedure. Numerical-method, GeoClaw/Clawpack, integrated-procedure, and H2 sensitivity results summarize studies conducted during method development. Dataset and grid-construction results describe the data analyzed here. This evidence addresses numerical consistency, not event-scale physical validity.}
-\label{tab:solver-validation}
-\small
-\begin{tabular}{p{0.23\linewidth}p{0.55\linewidth}p{0.13\linewidth}}
-    \toprule
-    Evidence & Scope & Finding \\
-    \midrule
-    Dataset and solver checks & $3$ datasets; all train/validation/test splits; $9$ representative solver cases & passed \\
-    Shared inputs & $13{,}500$ scenarios; split identities, arrays, and horizon & matched across references \\
-    Internal numerical checks & $86$ cases; $48$ analytical, numerical, and stability criteria & met criteria \\
-    GeoClaw/Clawpack comparisons & $3$ primary, $2$ verification, and $7$ refinement cases & met criteria \\
-    Exploratory GeoClaw/Clawpack & $12$ representative finite-horizon cases & $11 / 12$ above limits \\
-    Integrated procedure checks & $90$ buffered common-time cases; $3$ repeatability checks & repeatable \\
-    H2 sensitivity checks & $363$ pairs; $726$ executions; $42$ fixed criteria & met criteria \\
-    Dataset consistency checks & $3$ representative cases; $384 \rightarrow 128 \rightarrow 192 \rightarrow 64$ grid construction & passed \\
-    \bottomrule
-\end{tabular}
-\end{table}
-
-The independent-comparator evidence is deliberately limited in scope. The three datasets were checked across all train, validation, and test splits, and nine representative solver cases were rerun. All analytical, verification, and refinement comparisons satisfied their predefined criteria, whereas $11$ of $12$ exploratory descriptive comparisons exceeded their provisional limits. Table~\ref{tab:geoclaw-ablation} summarizes a controlled comparison on three prespecified representative finite-horizon shallow-water cases; these results provide scope-limited comparator evidence rather than a dataset-wide validation.
+The independent-comparator evidence is deliberately limited in scope. The three datasets were verified across all train, validation, and test splits, and nine representative solver cases were evaluated. All analytical, comparison, and refinement criteria were met, whereas $11$ of $12$ exploratory descriptive comparisons exceeded their provisional limits. Table~\ref{tab:geoclaw-ablation} summarizes a controlled comparison on three prespecified representative finite-horizon shallow-water cases; these results provide scope-limited comparator evidence rather than a dataset-wide validation.
 
 \begin{table}[pos=htbp]
 \centering
@@ -53,9 +32,34 @@ The independent-comparator evidence is deliberately limited in scope. The three 
 
 Removing the sponge, changing the boundary type, and moving the boundary outward alter the mean discrepancy by only $0.0003$--$0.0032$. Halving the cell size moves all six solver--case comparisons closer to GeoClaw and reduces the mean discrepancy by $0.1451$ for Hydrostatic and $0.1010$ for MUSCL-HR, making refinement the dominant tested sensitivity. A material residual remains, however, and MUSCL-HR is closer in every tested setup. Because the Hydrostatic--MUSCL-HR contrast changes reconstruction, source treatment, time integration, and CFL together, the ablation neither identifies one unique cause nor establishes formal convergence or pointwise equivalence.
 
-The linear weakly dispersive reference also reproduces its discrete constant-depth phase-speed trend over eight Fourier modes. The maximum relative error is $2.45 \times 10 ^ {-4}$ for the non-dispersive branch and $1.91 \times 10 ^ {-8}$ for $\alpha_B = 1 / 3$, with no conjugate-gradient failures and at most $35$ iterations in the latter branch (Table~\ref{tab:app-bouss-dispersion}). This is a local numerical diagnostic rather than external or event-scale validation.
+We evaluated nested-grid self-convergence on twelve shared smooth variable-bathymetry scenarios. Each scenario was generated on a $128 \times 128$ master grid, restricted by cell averaging to $64 \times 64$ and $32 \times 32$, and advanced to $t = 0.02$ with adaptive stepping, reflective boundaries, and the sponge disabled. The two solvers were evaluated at CFL values $0.1125$ and $0.225$; Table~\ref{tab:self-convergence} reports the selected rows, with the alternate-CFL results in the Appendix. The observed order is estimated from successive restricted-grid differences, $p = \log_2(E_{32/64}/E_{64/128})$, together with the smallest relative-$L_2$ contraction ratio over the twelve scenarios. All $144$ simulations remained finite. This provides empirical self-convergence evidence for the tested smooth benchmark, not an exact-solution error estimate or a formal convergence result for the full solver.
 
-The central evaluation result is that reference discrepancy and surrogate error are on the same benchmark scale, but their ordering depends on the reference pair and architecture. As quantified in Section~\ref{subsec:res-solver-fidelity}, the Hydrostatic--MUSCL-HR gap is smaller than the selected direct Hydrostatic FNO and F-FNO RMSEs, whereas the cross-family gaps are comparable to or larger than the direct Boussinesq FNO RMSE. The architecture comparisons below therefore demonstrate the consequences of the reference-aware framework rather than defining its primary contribution.
+\begin{table}[pos=htbp]
+\centering
+\caption{Nested-grid self-convergence analysis on twelve smooth variable-bathymetry scenarios with reflective boundaries and no sponge. Orders are medians with the observed minimum and maximum in brackets; the final column is the minimum relative-$L_2$ ratio $E_{32/64}/E_{64/128}$ across scenarios.}
+\label{tab:self-convergence}
+\small
+\begin{tabular}{lcccc}
+    \toprule
+    Solver & CFL & $p_{\mathrm{rel}\,L_2}$ & $p_{\mathrm{RMSE}}$ & min.\ contraction \\
+    \midrule
+    Hydrostatic & $0.1125$ & $0.457\,[0.398,\,0.637]$ & $0.357\,[0.234,\,0.592]$ & $1.317$ \\
+    MUSCL-HR    & $0.2250$ & $1.456\,[1.341,\,1.705]$ & $1.372\,[1.210,\,1.689]$ & $2.533$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+To complement the self-differences, a separate constant-depth periodic linear-wave diagnostic used $32$, $64$, $128$, $256$, and $512$ grids at three CFL values. On the finest grid, the relative-$L_2$ error against the linearized reference was $0.0334$--$0.0526$ for Hydrostatic and $0.007394$--$0.007396$ for MUSCL-HR. Hydrostatic approached first-order behavior through the finest pair. MUSCL-HR gave approximately $1.3$--$1.5$ order on the first two pairs, about $1.04$--$1.05$ on the $128$--$256$ pair, and about $0.29$ on the $256$--$512$ pair as an error floor emerged. This is solver-specific empirical accuracy evidence; it does not support a blanket second-order or formal convergence claim for the full solver. The full table is retained in Appendix~\ref{app:validation-details}.
+
+We regenerated all $120$ selected scenarios from the paired 128-cell inputs in the test set with the benchmark 192-cell buffered configurations and recomputed all $360$ solver--scenario trajectories to the requested times $8.4$--$420$. All computations remained finite, every natural-step count matched the stored natural-step records, and the natural-step histories agreed to floating-point precision. The median relative-$L_2$ differences from the stored requested outputs were $1.289\times10^{-5}$ for Hydrostatic, $1.168\times10^{-5}$ for MUSCL-HR, and $3.314\times10^{-8}$ for Boussinesq; the corresponding $95$th percentiles were $5.423\times10^{-5}$, $4.808\times10^{-5}$, and $3.382\times10^{-8}$. This is a requested-time reproduction result, not an exact-solution accuracy estimate or a formal interpolation proof. The complete distribution and provenance are in Appendix~\ref{app:validation-details}.
+
+Closed-domain mass-conservation cases also met all six solver--case criteria at $64 \times 64$, $t = 0.02$, and $128 \times 128$, $t = 0.05$, with reflective boundaries and no sponge. The maximum relative mass drift was $1.97 \times 10^{-16}$ and $1.11 \times 10^{-16}$, respectively. These results describe conservation in a closed domain; they do not provide an open-boundary mass or flux budget.
+
+For the same computations under the stated benchmark settings, the finite-volume mass flux at each outer interface was recorded for all $120$ Hydrostatic and MUSCL-HR scenarios with their radiation boundaries and elapsed-time-consistent sponge. The $95$th-percentile maximum boundary mass flux was $0.1125$ for Hydrostatic and $0.1337$ for MUSCL-HR; the corresponding $95$th-percentile absolute cumulative residuals, normalized by initial domain mass, were $2.813\times10^{-3}$ and $2.903\times10^{-3}$. All $240$ shallow-water computations remained finite. These values quantify boundary activity and damping under the stated benchmark settings, not a dimensional conservation or event-scale flux budget (Table~\ref{tab:app-boundary-flux}).
+
+The linear weakly dispersive reference also reproduces its discrete constant-depth phase-speed trend over eight Fourier modes. The maximum relative error is $2.45 \times 10 ^ {-4}$ for the non-dispersive branch and $1.91 \times 10 ^ {-8}$ for $\alpha_B = 1 / 3$, with no conjugate-gradient failures and at most $35$ iterations in the latter branch (Table~\ref{tab:app-bouss-dispersion}). This is a local numerical analysis rather than external or event-scale validation.
+
+Together, these analyses separate numerical accuracy evidence from reference identity and evaluation procedure. The central model result is that reference discrepancy and surrogate error are on the same benchmark scale, but their ordering depends on the reference pair and architecture. As quantified in Section~\ref{subsec:res-solver-fidelity}, the Hydrostatic--MUSCL-HR gap is smaller than the selected direct Hydrostatic FNO and F-FNO RMSEs, whereas the cross-family gaps are comparable to or larger than the direct Boussinesq FNO RMSE. The architecture comparisons below therefore demonstrate the consequences of the reference-aware framework rather than defining its primary contribution.
 
 \subsection{Direct same-reference accuracy}
 \label{subsec:res-accuracy}
@@ -138,6 +142,8 @@ Table~\ref{tab:physics-diag} compares the Hydrostatic integral and spectral diag
     \bottomrule
 \end{tabular}
 \end{table}
+
+The mass-proxy values are intentionally much smaller than the free-surface integral errors: subtracting the same fixed bathymetry from prediction and target cancels in the numerator, while the relative denominator includes the background depth. These values therefore quantify a depth-mean proxy and do not demonstrate conservation.
 
 \subsection{Runtime comparison}
 \label{subsec:res-speed}
@@ -318,6 +324,8 @@ The pooled-reference experiment distinguishes compromise prediction from referen
     \bottomrule
 \end{tabular}
 \end{table}
+
+For three equally weighted reference trajectories, the squared-error-optimal solver-anonymous target is their per-scenario arithmetic mean. The paired physical-space evaluation computes this centroid baseline at global RMSE $0.001705$ (95\% bootstrap interval $[0.001665,\,0.001745]$). The three anonymous checkpoints have equal-reference RMSE $0.002995 \pm 0.000004$ (sample standard deviation across seeds $18$, $36$, and $67$), so the remaining gap is model and optimization error above the irreducible reference ambiguity. This analytical baseline is a reference-consensus diagnostic, not a comparison with physical truth.
 
 The corresponding secondary higher-exposure comparison gives conditioned target errors of $0.00209$, $0.00249$, and $0.00287$, respectively, and therefore does not alter the interpretation. Conditioning reduces compromise behavior and preserves solver-specific structure, but it does not identify a physically correct trajectory or universally remove the underlying solver discrepancy.
 

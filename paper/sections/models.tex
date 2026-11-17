@@ -108,7 +108,7 @@ During inference, given the initial observation $Y_0$ as a rollout seed, the mod
 
 \subsection{Convolutional and recurrent baselines}
 \label{subsec:conv-baseline}
-To check whether the spectral, global structure of the FNO actually helps, we include local convolutional, encoder-decoder, and recurrent baselines.
+To assess whether the spectral, global structure of the FNO actually helps, we include local convolutional, encoder-decoder, and recurrent baselines.
 
 The \textbf{CNN} is a small fully convolutional neural network: $3 \times 3$ convolutions followed by a GELU activation, then a $1 \times 1$ output convolution that produces $T$ output frames at a width-$d = 48$. It has no down-sampling and no global mixing, so its receptive field grows only with depth. It therefore represents the simplest reasonable local predictor and is useful as a lower comparison anchor.
 
