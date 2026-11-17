@@ -68,14 +68,14 @@
       "sha256": "af15f8d23846d652c385b2ef42733c4074c3afbb849c03e486c2ce6376d5467c"
     },
     {
-      "bytes": 22255,
+      "bytes": 22102,
       "path": "paper/figures/cross_reference_ratio_forest.pdf",
-      "sha256": "ed50b601728825cdf19d0766928f60d53f5b767ab4a7b87d671fb3f254892cad"
+      "sha256": "ef8fa94194a58dfe9f4c5d1ed23eab3911acd7a0f06d959d97b5c77bf22cbba5"
     },
     {
-      "bytes": 144325,
+      "bytes": 149190,
       "path": "paper/figures/cross_reference_ratio_forest.png",
-      "sha256": "a25f336981ad2326098db66741ca090ec29d4d5e990308af3cdcea455830255a"
+      "sha256": "132b83de9a2bbef4a4e31bfa7fc118c168a4531b4b84fd3dbcf4943c1ca6b4ad"
     }
   ],
   "gap_scale_comparisons": [
@@ -108,7 +108,7 @@
   "schema_id": "tsunami-surrogate.reference-diagnostic-figures.v1",
   "script": {
     "path": "scripts/plot_reference_diagnostics.py",
-    "sha256": "2aad954561d5f6fa1cba622e0ddb7dd31352a9e2146a3d4f4d457fa87f61fd4c"
+    "sha256": "c2ca31cc3f6dee2c87c3ea8c544ea89d1b5c1aad99ea2389e055cc71e1f7345f"
   },
   "source_artifacts": [
     {

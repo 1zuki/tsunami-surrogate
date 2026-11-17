@@ -98,7 +98,7 @@ Numerical-admissibility criteria are applied during generation before a sample i
 \subsection{Preprocessing and learning targets}
 \label{subsec:preprocessing-targets}
 
-Preprocessing converts accepted trajectory records into arrays used for model training and evaluation. The $10{,}000 / 1{,}000 / 2{,}500$ train/validation/test pools remain separate, and normalization is fit from the training pool only. Before analysis, each processed split is checked for the expected numerical references, array dimensions, metadata completeness, finite values, and correspondence with the accepted raw trajectories.
+Preprocessing converts accepted trajectory records into arrays used for model training and evaluation. The $10{,}000 / 1{,}000 / 2{,}500$ train/validation/test pools remain separate, and normalization is fit from the training pool only. Before analysis, each processed split is examined for the expected numerical references, array dimensions, metadata completeness, finite values, and correspondence with the accepted raw trajectories.
 
 The raw scenario stores the source template $q$, scalar \texttt{source\_strength} $s$, scaled perturbation \texttt{eta0}, initial depth $h_0$, and initial free surface separately. The default model inputs are bathymetry, the raw source template, and initial depth; the target is the 50-frame common-time $\eta$ trajectory. Additional initial-surface and solver-identity channels are available, but are not used by the direct single-reference models reported here.
 
