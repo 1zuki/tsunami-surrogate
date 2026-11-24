@@ -603,6 +603,12 @@ def evaluate_corrected_production_geoclaw(
         if progress is not None:
             progress(f"[corrected-geoclaw-evaluate] {case_index}/{len(frozen['cases'])} {case_id}")
     output_root.mkdir(parents=True, exist_ok=False)
+    computational_shapes = {tuple(case["external_domain"]["shape"]) for case in frozen["cases"]}
+    publication_shapes = {tuple(case["publication_shape"]) for case in frozen["cases"]}
+    if len(computational_shapes) != 1 or len(publication_shapes) != 1:
+        raise ValueError("Comparison cases must share computational and output shapes")
+    computational_shape = list(next(iter(computational_shapes)))
+    publication_shape = list(next(iter(publication_shapes)))
     summary = {
         "schema_id": CORRECTED_PRODUCTION_GEOCLAW_SCHEMA_ID,
         "artifact_kind": "corrected-production-geoclaw-swe-evaluation",
@@ -614,8 +620,10 @@ def evaluate_corrected_production_geoclaw(
         "requested_time_count": int(times.size),
         "requested_time_start": float(times[0]),
         "requested_time_horizon": float(times[-1]),
-        "computational_shape": [192, 192],
-        "publication_shape": [64, 64],
+        "computational_shape": computational_shape,
+        "publication_shape": publication_shape,
+        "refinement": frozen.get("refinement"),
+        "inhouse_role": "unchanged archived baseline fields" if frozen.get("refinement") else "benchmark fields",
         "external_solver_is_truth": False,
         "comparison_role": comparison["role"],
         "boundary_interpretation": comparison["boundary_interpretation"],
@@ -626,11 +634,13 @@ def evaluate_corrected_production_geoclaw(
     _write_json(output_root / "comparison_rows.json", rows)
     _write_csv(output_root / "comparison_rows.csv", rows)
     (output_root / "README.md").write_text(
-        "# Corrected-production GeoClaw SWE comparison\n\n"
-        "The completed run validates exact frozen R6 input identity, 192-cell domain, "
-        "64-cell publication crop, t=0 state mapping, 50 requested output times, "
+        "# GeoClaw shallow-water comparison\n\n"
+        f"The completed run checks frozen initial fields on a {computational_shape[0]} by {computational_shape[1]} domain, "
+        f"a {publication_shape[0]} by {publication_shape[1]} output grid, t=0 state mapping, {times.size} requested output times, "
         "and finite GeoClaw output. The reported field metrics are descriptive "
-        "inter-code compatibility diagnostics; GeoClaw is not treated as physical truth.\n",
+        "inter-code compatibility diagnostics; GeoClaw is not treated as physical truth. "
+        + ("The external grid is refined from the parent benchmark while the in-house fields retain their archived baseline resolution.\n"
+           if frozen.get("refinement") else "\n"),
         encoding="utf-8",
     )
     _write_checksums(output_root)

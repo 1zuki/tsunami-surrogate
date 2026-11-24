@@ -1,0 +1,28 @@
+dataset_config: configs/data/dataset_test.yaml
+dataset_root: /mnt/Windows/Users/Izu/tsunami-surrogate/data/test
+baseline_core: 128
+publication_core: 64
+coarse_core: 64
+fine_core: 256
+common_cfl: 0.1125
+extended_buffer_cells: 64
+
+# First test-manifest index in each of these prespecified family pairs.
+# The three GeoClaw comparison cases are also the boundary-control roster.
+cases:
+  - {index: 1, bathymetry: continental, source: gaussian, boundary_controls: true}
+  - {index: 4, bathymetry: trench, source: rough, boundary_controls: true}
+  - {index: 5, bathymetry: island, source: multi-gauss}
+  - {index: 13, bathymetry: seamounts, source: okada-like}
+  - {index: 28, bathymetry: canyon, source: dipole}
+  - {index: 34, bathymetry: seamounts, source: fault, boundary_controls: true}
+
+# Periodic steady flow across a smooth bed, with discharge and Bernoulli head fixed.
+moving_equilibrium:
+  grids: [128, 256]
+  transverse_cells: 8
+  length: 2400.0
+  mean_bed: -2.0
+  bed_amplitude: 0.2
+  discharge: 0.2
+  bernoulli_head: 0.0
