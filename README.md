@@ -50,6 +50,21 @@ flowchart LR
 
 Reference solutions are numerical label generators for this benchmark. They are not interchangeable physical truth, and the benchmark does not establish operational tsunami forecasting or event-scale hazard validity.
 
+### Experiment status for the current manuscript
+
+Updated 25 November 2026. The native-resolution experiment and the GEBCO-derived bathymetry evaluation are completed studies. Their status should be distinguished from the readiness of individual regeneration templates:
+
+| Study | Completed evidence and scope |
+|:--|:--|
+| Native MUSCL-HR resolution transfer | Three separately trained FNOs evaluated on all three native grids, giving nine comparisons on 150 matched test scenarios. See [Section 6.8](#68-native-real-resolution-benchmark-3264128) for the matrix and evaluation command. This study is not deferred. |
+| GEBCO-derived bathymetry | Archived direct and conditional-window evaluations include ten fully wet morphology crops with synthetic forcing. Some checked-in generation templates remain outdated; use the saved generation settings described below. This is morphology transfer, not real-event validation. |
+| Full-horizon numerical sensitivity | Completed 92-rollout study of grid, time-step, boundary, lake-at-rest, and moving-equilibrium behavior. The six nested-grid cases show decreasing adjacent-grid differences for both SWE solvers; these are not formal convergence orders. |
+| Fixed-prediction reference sensitivity | Completed comparison of four models and three seeds on six cases. Refining the Hydrostatic reference core from 128 to 256 raises mean per-scenario relative `L2` by 2.04–5.08%, with predictions held unchanged. This is separate from native neural-network resolution transfer. |
+| Matched GeoClaw comparison | Completed 24 comparisons across two in-house and two GeoClaw grids. In-house refinement improves Hydrostatic agreement in all three cases; MUSCL-HR improves in two cases but worsens by 17.34% for the rough-trench case at the finer GeoClaw grid. |
+| Whole-trajectory uncertainty | Completed evaluation on 1,000 validation and 2,500 test scenarios. At nominal 90%, test coverage is 88.72% overall and 67.80% in the high-strength subgroup. This differs from the pointwise coverage reported below. |
+
+The native-resolution and GEBCO evaluations are recorded in `evaluation_runs/final-v2-full-nonspeed-20260912-r6/`. The later numerical and whole-trajectory analyses have separate result files; their scripts and replay instructions are described under [Checkpoint and numerical evidence bundles](#checkpoint-and-numerical-evidence-bundles). Generated evaluation records, checkpoints, and local evidence archives are not all included in a source-only clone. The public data archives and checkpoint availability are described under [Paper and Data](#paper-and-data).
+
 ## Results
 
 The headline values below are the manuscript's reported held-out evidence. They should be read together with the scope and provenance notes in [Reproducibility and scope](#reproducibility-and-scope).
@@ -88,7 +103,17 @@ Among nine Hydrostatic direct models, the lowest global relative `L2` values are
 | U-FNO | `0.224` |
 | F-FNO | `0.230` |
 
+The headline table uses selected seed-18 checkpoints. A separate three-seed evaluation of the four leading Hydrostatic models (`18`, `36`, and `67`) preserves the same rank under mean per-scenario relative `L2`: ConvLSTM `0.2049 ± 0.0026`, U-FNO `0.2403 ± 0.0041`, F-FNO `0.2489 ± 0.0014`, and FNO `0.2673 ± 0.0053` (mean ± sample standard deviation across seeds). These values use a different aggregation from the global field values above; see `scripts/run_multiseed_evaluation.sh` for the evaluation procedure.
+
 All six tested cross-reference discrepancy ratios exceed one, ranging from `1.10` to `1.72`. A seven-member FNO ensemble has `90%` marginal coverage of `0.682` before validation scaling and `0.910` after scaling; the reported high-strength subgroup reaches `0.796`.
+
+Marginal coverage counts individual space–time values. A stricter analysis asks whether a band covers an entire trajectory: after validation scaling, nominal 90% whole-trajectory coverage is `0.8872` overall and `0.6780` in the high-strength subgroup. These empirical results do not establish an independent conformal coverage guarantee, because validation data also informed checkpoint selection.
+
+<p align="center">
+  <img src="paper/figures/cross_reference_ratio_forest.png"
+       alt="Cross-reference discrepancy ratios with paired scenario-bootstrap intervals"
+       width="820">
+</p>
 
 <p align="center">
   <img src="representative_hydrostatic_surrogate_rollout.gif"
@@ -119,7 +144,7 @@ The repository contains direct surrogate baselines and reference-aware lanes for
 - resolution transfer, strict family holdouts, and real-bathymetry diagnostics;
 - ensemble calibration, uncertainty correlation, and coverage analysis.
 
-The evaluation wrapper is fail-closed. It records the contract hash, source state, dataset manifests, checkpoints, and output provenance under `evaluation_runs/`.
+The evaluation wrapper is fail-closed. It records the data settings, code version, file inventories, checkpoints, and output details under `evaluation_runs/`.
 
 ## Paper and Data
 
@@ -355,7 +380,9 @@ If GeoClaw/PETSc are not installed, omit this flag and inspect the archived nume
 
 The repository supports rebuilding the synthetic solver data instead of downloading processed archives. The full core campaign creates 10,000 training, 1,000 validation, and 2,500 test scenarios for each of the three configured references (40,500 solver publications in total). This is a large CPU/storage workload; reserve at least 100 GB for the raw campaign and additional space for processed arrays, checkpoints, and evaluation outputs.
 
-For this core launch, use only `configs/data/dataset.yaml`, `configs/data/dataset_eval.yaml`, and `configs/data/dataset_test.yaml`. Do not launch `configs/data/multires/dataset_*.yaml` or `configs/data/real_bathymetry_v2/*_dataset.yaml`; those auxiliary configs are deliberately marked provisional until their spatial and temporal scaling is redesigned and validated.
+For this core launch, use only `configs/data/dataset.yaml`, `configs/data/dataset_eval.yaml`, and `configs/data/dataset_test.yaml`. The native-resolution configs under `configs/data/multires/` describe the separate, completed native-resolution experiment; they use 50 outputs from 8.4 to 420 and a shared 384-cell master input.
+
+The completed GEBCO evaluations used saved generation settings under `data/real_bathymetry_v2/configs/`, including `main_morphology_suite_10_dataset.yaml`, together with the corresponding scenario and paired-input inventories under `data/real_bathymetry_v2/manifests/`. These saved settings use the 8.4-to-420 output schedule and horizontal/time scales of 2400. By contrast, the checked-in templates at `configs/data/real_bathymetry_v2/*_dataset.yaml` still specify the earlier 0.0035-to-0.175 schedule and are marked for preparation only. They are not suitable for reproducing the reported GEBCO results. This limitation concerns regeneration from those templates; it does not mean the archived evaluation is unfinished. The saved data and settings must be obtained separately if absent from a source-only clone.
 
 From the repository root, after completing Section 5, run the split-specific
 generation configs:
@@ -393,7 +420,7 @@ python scripts/make_dataset.py \
   2>&1 | tee "$CANARY_ROOT/generation.log"
 ```
 
-This canary root is disposable and must not be copied into `data/train/`. A successful run produces eight scenario rows, eight rows in each solver manifest, 24 quality-`ok` publications, and one complete operational shard bound to the accepted contract hash.
+This canary root is disposable and must not be copied into `data/train/`. A successful run produces eight scenario rows, eight rows in each solver manifest, 24 quality-`ok` publications, and one complete output shard with matching generation settings.
 
 After all three raw splits exist, preprocess them in this order:
 
@@ -903,7 +930,7 @@ python scripts/eval_resolution_transfer.py \
 Output file:
 - `.../eval_resolution_proxy/resolution_transfer_proxy.json`
 
-### 6.8 Deferred Real-Resolution Benchmark (Native 32/64/128)
+### 6.8 Native Real-Resolution Benchmark (32/64/128)
 
 Prerequisites:
 - generate native-grid forward data per resolution
@@ -911,9 +938,19 @@ Prerequisites:
 - use the completed MUSCL-HR checkpoints from the final paper roster for
   cross-resolution evaluation
 
-This auxiliary lane still encodes the superseded spatial/time scaling and is not approved for the fresh core rebuild. Its configs are marked provisional so an ordinary `make_dataset.py` launch fails closed. Port and validate the shared-master construction, physical scaling, requested times, solver spacing, and normalization lineage before regenerating or using this lane in the revised manuscript.
+This completed auxiliary experiment is separate from the core $64 \times 64$ campaign. The checked-in `configs/data/multires/dataset_{32,64,128}.yaml` files specify the shared output times and grid construction: 50 requested times from 8.4 to 420, horizontal and temporal scales of 2400, vertical scale of 1, and paired inputs reduced from a shared 384-cell master to solver and target grids of 32, 64, or 128 cells. Each grid has 700/150/150 train/validation/test scenarios. The archived result is `evaluation_runs/final-v2-full-nonspeed-20260912-r6/paper_evidence/resolution/native_muscl_hr.json`; it identifies the three checkpoints and all nine training-grid/test-grid comparisons. The matrix values in the manuscript come from that run, not from the earlier `final-v2-paper-full-r2` archive.
 
-Historical command shape, retained for reference only:
+Each entry below is denormalized benchmark-scale relative `L2` on 150 matched test scenarios:
+
+| Training grid | Test 32 | Test 64 | Test 128 |
+|:--|--:|--:|--:|
+| 32 | **0.353** | 0.670 | 0.808 |
+| 64 | 0.473 | **0.387** | 0.530 |
+| 128 | 0.591 | 0.433 | **0.412** |
+
+For each model, evaluation inputs are converted to that model's training normalization, and predictions and targets are compared after denormalization. Shared physical scaling does not mean that independently fitted normalization statistics are assumed equal. Each native model uses 700 training scenarios, so comparison with the main 10,000-scenario Hydrostatic model cannot isolate the effect of resolution.
+
+To regenerate the native-resolution data, use the current configs and matching preprocessing configs:
 
 ```bash
 python scripts/make_dataset.py --config configs/data/multires/dataset_32.yaml
@@ -921,9 +958,9 @@ python scripts/make_dataset.py --config configs/data/multires/dataset_64.yaml
 python scripts/make_dataset.py --config configs/data/multires/dataset_128.yaml
 ```
 
-Do not run these commands for the corrected campaign yet. After this lane is redesigned, its first gate must be an isolated canary that checks the new timestamps, quality status, crop, provenance, convergence behavior, and peak memory before any full native-resolution generation.
+Run a small isolated canary and verify its timestamps, quality status, crop, paired-input provenance, and peak memory before generating a full resolution split. Keep this auxiliary generation separate from the core data roots.
 
-Historical preprocessing command shape:
+Preprocess each generated dataset with its matching configuration:
 
 ```bash
 python src/data_gen/preprocess.py --config configs/data/multires/preprocess_32.yaml
@@ -934,15 +971,16 @@ python src/data_gen/preprocess.py --config configs/data/multires/preprocess_128.
 Evaluate the completed MUSCL-HR checkpoints across all real resolutions in one JSON table:
 
 ```bash
-python scripts/eval_full_resolution.py \
-  --config configs/eval/resolution_muscl_hr.yaml \
-  --checkpoint experiments/fno_res64_muscl_hr/seed_18/best.pt
+python scripts/eval_v2_native_transfer.py \
+  --contract configs/eval/final_v2_suite.yaml \
+  --device cpu \
+  --output native-resolution-results.json
 ```
 
 Output file:
-- `.../eval_resolution/real_resolution.json` (includes `evaluation_type: native_real_resolution_benchmark`)
+- `native-resolution-results.json`, containing all nine comparisons and the normalization settings used for each model. This requires the three native-resolution checkpoints and the three processed test datasets listed in `configs/eval/final_v2_suite.yaml`.
 
-Native-resolution normalization policy:
+For separate single-checkpoint experiments, `eval_full_resolution.py` uses a stricter normalization policy:
 - `configs/eval/resolution_*.yaml` now defaults to `real_resolution.normalization_policy: require_target_stats_match`.
 - This fails fast if suite target normalization does not match the configured training/reference dataset stats (`normalization_reference_path`), which avoids misleading cross-resolution claims.
 
@@ -967,7 +1005,7 @@ python scripts/eval_full_resolution.py \
 Important:
 - `eval_full_resolution.py` now validates that checkpoint training normalization stats match the configured reference stats.  
 - For the final paper claim, use the native MUSCL-HR roster. Do not present the exploratory Hydrostatic/shared-from64 paths as part of that result.
-- For native/shared-from64 claims, do not reuse generic `6.3` checkpoints; use dedicated shared-from64 checkpoints.
+- The reported native matrix uses the dedicated `fno_res{32,64,128}_muscl_hr` checkpoints. The optional shared-from64 experiments require their own shared-from64 checkpoints; generic core-model checkpoints cannot substitute for either set.
 
 ### 6.9 Historical saved-index comparison (deprecated)
 
@@ -1180,9 +1218,9 @@ python scripts/export_figures.py --config configs/model/fno_boussinesq.yaml --ch
 
 ```text
 configs/
-  data/                 Dataset generation and preprocessing contracts
+  data/                 Dataset generation and preprocessing settings
   model/                Direct surrogate model configurations
-  eval/                 Common-time and auxiliary evaluation contracts
+  eval/                 Common-time and auxiliary evaluation settings
 src/
   data_gen/             Scenario generation and preprocessing
   models/               FNO and baseline architectures
@@ -1190,15 +1228,15 @@ src/
   evaluation/           Metrics, calibration, and diagnostics
 scripts/                Training, evaluation, plotting, and release tools
 paper/                  Manuscript source, figures, tables, and wrappers
-tests/                  Contract and regression tests
+tests/                  Consistency and regression tests
 data/, experiments/,
 evaluation_runs/        Generated datasets, checkpoints, and evidence bundles
 ```
 
 ## Reproducibility and scope
 
-- Keep raw, processed, checkpoint, and evaluation artifacts bound to their manifests and contract hashes.
-- Treat the reported manuscript values as evidence from their recorded evaluation runs, not as a replacement for a fresh production-contract validation.
+- Keep raw data, processed data, checkpoints, and evaluation outputs together with their file inventories and generation settings.
+- Treat the reported manuscript values as evidence from their recorded evaluation runs, not as a replacement for a fresh check of the data-generation and evaluation settings.
 - Preserve the distinction between solver agreement, numerical verification, and physical validation.
 - This is a synthetic, finite-horizon research benchmark. It is not an operational tsunami-warning system, a hazard map, or event-scale validation.
 
@@ -1213,3 +1251,46 @@ excluded from this license and remains subject to its own terms.
 ## Acknowledgements
 
 We acknowledge the University of Information Technology, Vietnam National University Ho Chi Minh City, for academic and facility support; and the GEBCO Bathymetric Compilation Group and NERC EDS British Oceanographic Data Centre for the GEBCO-derived real-bathymetry diagnostic data.
+
+## Checkpoint and numerical evidence bundles
+
+A local checkpoint bundle can be prepared from the archived evaluation run and original training outputs. From the repository root, use the project Python environment to preview the contents and build a new archive:
+
+```bash
+python scripts/build_core_checkpoint_release.py --plan
+python scripts/build_core_checkpoint_release.py --plan --trajectory-evidence /path/to/verified-trajectory-results
+python scripts/build_core_checkpoint_release.py --build artifacts/tsunami-core-checkpoints.tar --trajectory-evidence /path/to/verified-trajectory-results
+```
+
+The build prints the archive SHA-256. The bundle contains inference weights, resolved training configurations, normalization statistics, archived metrics, and a manifest that maps the replay commands to manuscript tables. The trajectory-results directory must contain the full validation/test scores, physical-risk summary, lineage audit, and the exact source snapshots used to compute them; the builder checks their identities before packaging. The original checkpoint hashes and the archived evaluation code identity are recorded separately from the exported weights and bundled source.
+
+To include the twelve completed-training records needed for the reference-resolution comparison, add `--reference-resolution-preflight /path/to/reference_resolution_checkpoint_preflight.json` when planning or building. The builder checks this record against the original checkpoints and includes it with the inference weights.
+
+After verifying and extracting the bundle, restore the processed data from [Zenodo](https://doi.org/10.5281/zenodo.22997509) under `data/processed` and install the dependencies in `requirements.txt`. Run the following command from the extracted directory to verify the inputs and replay the direct accuracy, multi-seed, cross-reference, primary pooled-reference, ensemble, and whole-trajectory reliability metrics into a new directory:
+
+```bash
+python scripts/build_core_checkpoint_release.py --replay replay-results --device cuda
+python scripts/plot_trajectory_reliability.py --input replay-results/trajectory/trajectory_calibration_physical.json --output trajectory-reliability.pdf
+```
+
+The separate numerical evidence archive contains the completed 92-run study. With that archive extracted and the checkpoint bundle built with the completed-training records, score fixed predictions against the four Hydrostatic reference fields from the checkpoint directory:
+
+```bash
+python scripts/eval_reference_resolution_sensitivity.py --release-root . --study /path/to/revision-evidence/benchmark_numerical --device cuda --batch-size 2 --output reference-resolution-results.json
+```
+
+This comparison uses six prescribed scenarios and the same predictions at every reference resolution; it does not retrain the models or test native neural-network resolution transfer. The checkpoint bundle contains inference weights rather than the optimizer state needed to resume training.
+
+The numerical evidence archive also includes 24 matched comparisons between newly computed in-house trajectories and both GeoClaw grids, together with the six input files needed to verify their initial states. From its extracted directory, regenerate these comparisons without running either solver:
+
+```bash
+python scripts/summarize_matched_geoclaw_comparison.py \
+  --study benchmark_numerical --geoclaw-summary geoclaw_resolution_summary_final.json \
+  --coarse-bundle geoclaw_frozen_192 --coarse-external geoclaw_external \
+  --fine-bundle geoclaw_frozen_384 --fine-external geoclaw_refined_external \
+  --input-root matched_geoclaw_inputs --output matched-comparison-rerun.json
+```
+
+The benchmark data record and checkpoint bundle are distributed separately. Public publication of the checkpoint bundle is pending.
+
+The numerical archive and locally built manuscript PDFs are also separate from the published benchmark datasets. An earlier evidence archive may contain an earlier manuscript revision; use the current `paper/` sources when reviewing the current paper. The full 120-scenario reproduction rerun was not completed and is not used to support the results above.
