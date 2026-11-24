@@ -52,18 +52,18 @@ Reference solutions are numerical label generators for this benchmark. They are 
 
 ### Experiment status for the current manuscript
 
-Updated 25 November 2026. The native-resolution experiment and the GEBCO-derived bathymetry evaluation are completed studies. Their status should be distinguished from the readiness of individual regeneration templates:
+Updated 25 November 2026. The native-resolution, GEBCO-derived bathymetry, and additional thirty-case reference-sensitivity experiments are completed studies. Their scope and reproduction requirements are summarized below:
 
 | Study | Completed evidence and scope |
 |:--|:--|
 | Native MUSCL-HR resolution transfer | Three separately trained FNOs evaluated on all three native grids, giving nine comparisons on 150 matched test scenarios. See [Section 6.8](#68-native-real-resolution-benchmark-3264128) for the matrix and evaluation command. This study is not deferred. |
-| GEBCO-derived bathymetry | Archived direct and conditional-window evaluations include ten fully wet morphology crops with synthetic forcing. Some checked-in generation templates remain outdated; use the saved generation settings described below. This is morphology transfer, not real-event validation. |
+| GEBCO-derived bathymetry | Archived direct and conditional-window evaluations include ten fully wet morphology crops with synthetic forcing. The four public generation configurations now match the saved run settings; their schedules and output identities were checked against all 13 archived trajectories, including the separate illustrative and stress cases. This is morphology transfer, not real-event validation. |
 | Full-horizon numerical sensitivity | Completed 92-rollout study of grid, time-step, boundary, lake-at-rest, and moving-equilibrium behavior. The six nested-grid cases show decreasing adjacent-grid differences for both SWE solvers; these are not formal convergence orders. |
-| Fixed-prediction reference sensitivity | Completed comparison of four models and three seeds on six cases. Refining the Hydrostatic reference core from 128 to 256 raises mean per-scenario relative `L2` by 2.04–5.08%, with predictions held unchanged. This is separate from native neural-network resolution transfer. |
+| Fixed-prediction reference sensitivity | Completed 90-rollout Hydrostatic extension on 30 additional family-balanced scenarios, four models, and three seeds. Refining the reference core from 128 to 256 raises observed aggregate mean relative `L2` by 2.82–6.60% and swaps F-FNO/U-FNO ordering, with predictions unchanged. The original six-case result remains separate. |
 | Matched GeoClaw comparison | Completed 24 comparisons across two in-house and two GeoClaw grids. In-house refinement improves Hydrostatic agreement in all three cases; MUSCL-HR improves in two cases but worsens by 17.34% for the rough-trench case at the finer GeoClaw grid. |
 | Whole-trajectory uncertainty | Completed evaluation on 1,000 validation and 2,500 test scenarios. At nominal 90%, test coverage is 88.72% overall and 67.80% in the high-strength subgroup. This differs from the pointwise coverage reported below. |
 
-The native-resolution and GEBCO evaluations are recorded in `evaluation_runs/final-v2-full-nonspeed-20260912-r6/`. The later numerical and whole-trajectory analyses have separate result files; their scripts and replay instructions are described under [Checkpoint and numerical evidence bundles](#checkpoint-and-numerical-evidence-bundles). Generated evaluation records, checkpoints, and local evidence archives are not all included in a source-only clone. The public data archives and checkpoint availability are described under [Paper and Data](#paper-and-data).
+The native-resolution and GEBCO evaluations are recorded in `evaluation_runs/final-v2-full-nonspeed-20260912-r6/`. The later numerical and whole-trajectory analyses have separate result files; their scripts and replay instructions are described under [Checkpoint and numerical evidence bundles](#checkpoint-and-numerical-evidence-bundles). A portable summary of the thirty-case scores and selected scenarios is included in [reference_sensitivity_30.json](paper/data/reference_sensitivity_30.json). Generated trajectory checkpoints, model weights, and full local evidence archives are not all included in a source-only clone. The public data archives and checkpoint availability are described under [Paper and Data](#paper-and-data).
 
 ## Results
 
@@ -82,6 +82,21 @@ The headline values below are the manuscript's reported held-out evidence. They 
        alt="Solver gap compared with surrogate error"
        width="980">
 </p>
+
+### Changing the evaluation reference
+
+On 30 additional scenarios, one per bathymetry–source combination, each of four models at three training seeds produces a fixed prediction. Only the Hydrostatic reference changes. The 90 new rollouts cover solver cores of 64, 128, and 256 cells, with all fields compared on the same 64-by-64 output grid.
+
+| Model | Mean relative `L2`, core 128 | Mean relative `L2`, core 256 | Change in mean |
+|:--|--:|--:|--:|
+| ConvLSTM | 0.2078 | 0.2137 | +2.82% |
+| F-FNO | 0.2446 | 0.2607 | +6.60% |
+| U-FNO | 0.2486 | 0.2577 | +3.68% |
+| FNO | 0.2640 | 0.2758 | +4.48% |
+
+Values average per-scenario denormalized relative `L2` over seeds and equally weighted scenarios. Percentages are changes in the aggregate means, calculated before rounding. F-FNO and U-FNO exchange aggregate positions, and at least one model-pair ordering reverses in 7 of 30 scenarios after averaging seeds within each scenario. Adjacent-grid differences contract in all 30 cases.
+
+This exploratory, family-balanced extension excludes the original six cases. It is not a population-weighted ranking or a new untouched test set. The observed mean increases are positive, but descriptive scenario-bootstrap intervals include zero for ConvLSTM and U-FNO; the ordering change does not establish architectural superiority. The original six-case study separately found increases of 2.04–5.08% with stable aggregate ordering.
 
 ### Pooled reference ablation
 
@@ -382,7 +397,15 @@ The repository supports rebuilding the synthetic solver data instead of download
 
 For this core launch, use only `configs/data/dataset.yaml`, `configs/data/dataset_eval.yaml`, and `configs/data/dataset_test.yaml`. The native-resolution configs under `configs/data/multires/` describe the separate, completed native-resolution experiment; they use 50 outputs from 8.4 to 420 and a shared 384-cell master input.
 
-The completed GEBCO evaluations used saved generation settings under `data/real_bathymetry_v2/configs/`, including `main_morphology_suite_10_dataset.yaml`, together with the corresponding scenario and paired-input inventories under `data/real_bathymetry_v2/manifests/`. These saved settings use the 8.4-to-420 output schedule and horizontal/time scales of 2400. By contrast, the checked-in templates at `configs/data/real_bathymetry_v2/*_dataset.yaml` still specify the earlier 0.0035-to-0.175 schedule and are marked for preparation only. They are not suitable for reproducing the reported GEBCO results. This limitation concerns regeneration from those templates; it does not mean the archived evaluation is unfinished. The saved data and settings must be obtained separately if absent from a source-only clone.
+The completed GEBCO evaluations used saved generation settings under `data/real_bathymetry_v2/configs/`, together with the corresponding scenario and paired-input inventories under `data/real_bathymetry_v2/manifests/`. The public `configs/data/real_bathymetry_v2/*_dataset.yaml` files now reproduce those settings exactly: the 8.4-to-420 output schedule, horizontal/time scales of 2400, source-strength range 0.15–0.30, shared master inputs, and 128-cell core with a 32-cell buffer. Their preprocessing configurations name the matching public generation file and retain the archived normalization settings. The saved crops, source inputs, inventories, and selected checkpoints are still required; configuration repair alone does not make a source-only clone a complete reproduction package.
+
+With the saved GEBCO data present, verify the public settings against all four saved configuration snapshots and all 13 archived trajectory outputs:
+
+```bash
+python scripts/verify_real_bathymetry_configs.py --output gebco-config-verification.json
+```
+
+This checks saved configuration equality, requested times, output-setting identities, finite trajectories, and preprocessing settings. It does not download GEBCO, regenerate crops, or rerun the solver. The ten morphology crops and three separate illustrative/stress trajectories are distinct suites, not 13 independent morphology-test crops.
 
 From the repository root, after completing Section 5, run the split-specific
 generation configs:
@@ -1279,7 +1302,9 @@ The separate numerical evidence archive contains the completed 92-run study. Wit
 python scripts/eval_reference_resolution_sensitivity.py --release-root . --study /path/to/revision-evidence/benchmark_numerical --device cuda --batch-size 2 --output reference-resolution-results.json
 ```
 
-This comparison uses six prescribed scenarios and the same predictions at every reference resolution; it does not retrain the models or test native neural-network resolution transfer. The checkpoint bundle contains inference weights rather than the optimizer state needed to resume training.
+This command replays the original six-case comparison using the same predictions at every reference resolution; it does not retrain the models or test native neural-network resolution transfer. The checkpoint bundle contains inference weights rather than the optimizer state needed to resume training.
+
+The additional thirty-case study is separate from that archive. Its completed result is `reference_resolution_sensitivity_30.json`, accompanied by 90 numerical trajectory checkpoints, twelve saved prediction sets, and their input and model identities. The portable [manuscript evidence file](paper/data/reference_sensitivity_30.json) contains the selected scenarios, per-seed scores, aggregate table values, and ordering changes. It does not contain the full reference trajectories or model weights, and the earlier checkpoint/numerical archives have not been repackaged to include this extension. Selection and execution use `configs/eval/reference_sensitivity_30.yaml`, `scripts/plan_reference_sensitivity.py`, and `scripts/run_reference_sensitivity_30.py`; `scripts/resume_reference_sensitivity_30.py` reuses verified checkpoints and predictions after an interruption. Reproduction requires the original data and selected model weights, not just this score summary.
 
 The numerical evidence archive also includes 24 matched comparisons between newly computed in-house trajectories and both GeoClaw grids, together with the six input files needed to verify their initial states. From its extracted directory, regenerate these comparisons without running either solver:
 

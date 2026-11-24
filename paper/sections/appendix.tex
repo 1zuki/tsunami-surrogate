@@ -198,11 +198,15 @@ A right-going sinusoid of amplitude $10^{-3}$ at unit rest depth was propagated 
 
 The solvers advance nonlinear equations while the reference is linearized, so the error includes finite-amplitude effects and harmonic generation. The MUSCL-HR plateau cannot be attributed uniquely to discretization, and fixed-grid CFL comparisons do not establish temporal order.
 
+At CFL $0.1125$, an amplitude check repeated the $128$, $256$, and $512$ grids at initial amplitudes $10 ^ {-4}$ and $10 ^ {-5}$, alongside the original $10 ^ {-3}$ runs. The MUSCL-HR finest-grid relative error decreased from $0.007394$ to $0.001865$ and $0.001722$; Hydrostatic changed from $0.05259$ to $0.05218$ and $0.05217$. Amplitude reduction therefore removes part of the discrepancy but leaves a residual; it does not isolate spatial error or establish spatial order.
+
+On the continental/Gaussian case, a separate $128$-cell-core check at common CFL $0.1125$ shortened steps to land on all 50 output times. Relative trajectory differences from natural-step interpolation were $0.0134\%$ for Hydrostatic and $0.00182\%$ for MUSCL-HR. This one-case contrast changes time integration as well as output extraction and does not isolate interpolation error or establish its size across the benchmark.
+
 \FloatBarrier
 \subsection{Independent-comparator grid sensitivity}
 \label{app:geoclaw-grid-sensitivity}
 
-GeoClaw was refined from $192\times192$ to $384\times384$ over the same $3600\times3600$ domain, repeating parent bathymetry and conserved-state cell averages. Both grids use second-order GeoClaw, open extrapolation boundaries, CFL $0.75$, and $50$ requested times through $420$. The fine central $256\times256$ crop is averaged to $64\times64$; smaller adaptive steps make this combined space--time refinement.
+GeoClaw was refined from $192\times192$ to $384\times384$ over the same $3600\times3600$ domain, repeating parent bathymetry and conserved-state cell averages. Both grids use second-order GeoClaw, open extrapolation boundaries, CFL $0.75$, and $50$ requested times through $420$. The fine central $256\times256$ crop is averaged to $64\times64$; smaller adaptive steps make this combined space--time refinement. Table~\ref{tab:app-geoclaw-grid-sensitivity} reports the resulting discrepancies.
 
 \begin{table}[pos=!htbp]
 \centering

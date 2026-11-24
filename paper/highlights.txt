@@ -1,4 +1,5 @@
-- A common-time procedure aligns outputs from adaptive numerical references.
+- Reference refinement changes scores for unchanged neural predictions.
+- A 30-case study reverses the aggregate F-FNO and U-FNO ordering.
 - Cross-reference ratios exceed one in all six tested directions.
 - Cross-reference closeness does not establish physical superiority.
 - Verification supports a finite-horizon benchmark, not event validity.

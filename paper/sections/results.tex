@@ -66,24 +66,26 @@ The full-horizon lake-at-rest runs over five bathymetry families had maximum fre
 
 \FloatBarrier
 \paragraph{Consequences for unchanged surrogate predictions.}
-Changing only the Hydrostatic reference resolution changes the measured errors of all four leading models (Table~\ref{tab:fixed-prediction-resolution}). Refining the reference core from $128$ to $256$ increases mean per-scenario relative $L_2$ by $2.04\%$--$5.08\%$, despite leaving the predictions unchanged. The ordering averaged over the six cases and three seeds remains ConvLSTM, U-FNO, FNO, then F-FNO at every reference grid. This six-case ordering differs from the full-test ordering and does not establish a population-wide architecture ranking. Within individual cases and seeds, refinement reverses one model pair in five of the eighteen case--seed combinations, involving three distinct scenarios. Aggregate rank stability therefore coexists with reference-sensitive case-level comparisons.
+On the $30$ additional cases, refining only the Hydrostatic evaluation reference from $128$ to $256$ cells raises observed mean per-scenario relative $L_2$ by $2.82\%$--$6.60\%$ (Table~\ref{tab:fixed-prediction-resolution}). The aggregate ordering changes from ConvLSTM, F-FNO, U-FNO, FNO to ConvLSTM, U-FNO, F-FNO, FNO. After averaging training seeds within each scenario, at least one model-pair ordering reverses in $7$ of the $30$ cases. All $90$ rollouts remain finite, and the baseline--fine trajectory RMSE is smaller than the coarse--baseline RMSE in every case. The descriptive intervals for ConvLSTM and U-FNO include zero, so positive observed mean changes do not establish a uniform effect across cases or a statistically established architecture ranking.
 
 \begin{table}[pos=!htbp]
 \centering
-\caption{Reference-resolution sensitivity of fixed predictions on six prescribed cases and three training seeds. Entries average per-scenario denormalized relative $L_2$ across cases and seeds. The first three numeric columns specify the Hydrostatic solver-core grid used to generate the evaluation target; every prediction and target is evaluated on the same $64\times64$ output grid.}
+\caption{Reference-resolution sensitivity of fixed predictions on $30$ additional family-balanced scenarios and three training seeds. Entries average denormalized per-scenario relative $L_2$ across seeds and scenarios; grid columns identify the Hydrostatic solver core, with all fields compared on the same $64\times64$ output. Percentages use unrounded means. The last column describes paired scenario-bootstrap variation in the absolute mean change, not population-wide uncertainty.}
 \label{tab:fixed-prediction-resolution}
 \small
-\begin{tabular}{lcccc}
+\begin{tabular}{lccccc}
 \toprule
-Model & $64$ & $128$ & $256$ & Change $128\rightarrow256$ \\
+Model & $64$ & $128$ & $256$ & Change $128\rightarrow256$ & $95\%$ interval for $\Delta\bar e$ \\
 \midrule
-ConvLSTM & $0.2837$ & $0.2268$ & $0.2314$ & $+2.04\%$ \\
-U-FNO & $0.3061$ & $0.2719$ & $0.2857$ & $+5.08\%$ \\
-FNO & $0.3391$ & $0.3009$ & $0.3086$ & $+2.55\%$ \\
-F-FNO & $0.3394$ & $0.3058$ & $0.3166$ & $+3.54\%$ \\
+ConvLSTM & $0.2772$ & $0.2078$ & $0.2137$ & $+2.82\%$ & $[-0.0079,\,+0.0194]$ \\
+F-FNO & $0.2875$ & $0.2446$ & $0.2607$ & $+6.60\%$ & $[+0.0060,\,+0.0257]$ \\
+U-FNO & $0.3023$ & $0.2486$ & $0.2577$ & $+3.68\%$ & $[-0.0029,\,+0.0210]$ \\
+FNO & $0.3071$ & $0.2640$ & $0.2758$ & $+4.48\%$ & $[+0.0003,\,+0.0231]$ \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+The original six-case comparison remains separate: its observed increases were $2.04\%$--$5.08\%$, its aggregate ordering was stable, and it contained reversals in five of eighteen case--seed combinations across three distinct scenarios. The additional cohort covers every bathymetry--source combination but weights combinations equally rather than matching their test-population frequencies. The two cohorts therefore support reference-sensitive evaluation without establishing population-wide architecture orderings.
 
 The earlier nested-grid self-convergence study used twelve shared smooth variable-bathymetry scenarios. Each scenario was generated on a $128 \times 128$ master grid, restricted by cell averaging to $64 \times 64$ and $32 \times 32$, and advanced to $t = 0.02$ with adaptive stepping, reflective boundaries, and the sponge disabled. The two solvers were evaluated at CFL values $0.1125$ and $0.225$; Table~\ref{tab:self-convergence} reports the selected rows, with the alternate-CFL results in the Appendix. The observed order is estimated from successive restricted-grid differences, $p = \log_2(E_{32/64}/E_{64/128})$, together with the smallest relative-$L_2$ contraction ratio over the twelve scenarios. All $144$ simulations remained finite. This provides empirical self-convergence evidence for the tested smooth benchmark, not an exact-solution error estimate or a formal convergence result for the full solver.
 
