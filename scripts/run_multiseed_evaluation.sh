@@ -35,6 +35,7 @@ checkpoint() {
     fno_muscl_hr) echo "experiments/fno_muscl_hr/seed_${seed}/best.pt" ;;
     fno_boussinesq) echo "experiments/fno_boussinesq/seed_${seed}/best.pt" ;;
     ffno_hydrostatic) echo "experiments/ffno/seed_${seed}/best.pt" ;;
+    ufno_hydrostatic) echo "experiments/ufno/seed_${seed}/best.pt" ;;
     unet_hydrostatic) echo "experiments/unet/seed_${seed}/best.pt" ;;
     convlstm_hydrostatic) echo "experiments/convlstm/seed_${seed}/best.pt" ;;
     *)
@@ -110,6 +111,7 @@ MODELS=(
   fno_muscl_hr
   fno_boussinesq
   ffno_hydrostatic
+  ufno_hydrostatic
   unet_hydrostatic
 )
 
@@ -119,7 +121,7 @@ for model in "${MODELS[@]}"; do
   done
 done
 
-echo "[multiseed-preflight] status=passed models=${#MODELS[@]} checkpoints=18"
+echo "[multiseed-preflight] status=passed models=${#MODELS[@]} checkpoints=$((${#MODELS[@]} * 3))"
 if [ "$PREFLIGHT_ONLY" = 1 ]; then
   exit 0
 fi
@@ -148,6 +150,12 @@ run_seed_metrics \
   "$(checkpoint ffno_hydrostatic 18)" \
   "$(checkpoint ffno_hydrostatic 36)" \
   "$(checkpoint ffno_hydrostatic 67)"
+run_seed_metrics \
+  ufno_hydrostatic hydrostatic configs/model/ufno.yaml \
+  data/processed/hydrostatic/test 8 \
+  "$(checkpoint ufno_hydrostatic 18)" \
+  "$(checkpoint ufno_hydrostatic 36)" \
+  "$(checkpoint ufno_hydrostatic 67)"
 run_seed_metrics \
   unet_hydrostatic hydrostatic configs/model/unet.yaml \
   data/processed/hydrostatic/test 64 \
