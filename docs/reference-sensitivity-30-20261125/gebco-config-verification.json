@@ -1,0 +1,38 @@
+{
+  "status": "verified",
+  "suites": [
+    {
+      "suite": "appendix_coastline_fully_wet",
+      "samples_checked": 1,
+      "config_sha256": "06f8dbabfca53928c81e8b78bf68301427d55d59c8bdb8a85a38d26205b39430",
+      "saved_config_sha256": "06f8dbabfca53928c81e8b78bf68301427d55d59c8bdb8a85a38d26205b39430",
+      "snapshot_sha256": "06f8dbabfca53928c81e8b78bf68301427d55d59c8bdb8a85a38d26205b39430",
+      "requested_times_identity": "288d19af5e8f5fe1658c098bf972ada97292a08fe35ed99c086406a291576d2f"
+    },
+    {
+      "suite": "appendix_coastline_stress",
+      "samples_checked": 1,
+      "config_sha256": "1bda77b8af73a25f8fa88a17816ddf6ec680f8085e6bc263c65171e0901e2eab",
+      "saved_config_sha256": "1bda77b8af73a25f8fa88a17816ddf6ec680f8085e6bc263c65171e0901e2eab",
+      "snapshot_sha256": "1bda77b8af73a25f8fa88a17816ddf6ec680f8085e6bc263c65171e0901e2eab",
+      "requested_times_identity": "288d19af5e8f5fe1658c098bf972ada97292a08fe35ed99c086406a291576d2f"
+    },
+    {
+      "suite": "main_morphology",
+      "samples_checked": 1,
+      "config_sha256": "3da77039ea9ce0806d775070bc6b7819b259bdd955d6cdefa73460e721a64e42",
+      "saved_config_sha256": "3da77039ea9ce0806d775070bc6b7819b259bdd955d6cdefa73460e721a64e42",
+      "snapshot_sha256": "3da77039ea9ce0806d775070bc6b7819b259bdd955d6cdefa73460e721a64e42",
+      "requested_times_identity": "288d19af5e8f5fe1658c098bf972ada97292a08fe35ed99c086406a291576d2f"
+    },
+    {
+      "suite": "main_morphology_suite_10",
+      "samples_checked": 10,
+      "config_sha256": "3cd8e36d1bf0567ef9b6182a7b49c693fa55f540e17e21af1251deb0bb77d9fd",
+      "saved_config_sha256": "3cd8e36d1bf0567ef9b6182a7b49c693fa55f540e17e21af1251deb0bb77d9fd",
+      "snapshot_sha256": "3cd8e36d1bf0567ef9b6182a7b49c693fa55f540e17e21af1251deb0bb77d9fd",
+      "requested_times_identity": "288d19af5e8f5fe1658c098bf972ada97292a08fe35ed99c086406a291576d2f"
+    }
+  ],
+  "interpretation": "Settings match saved run snapshots and every stored output schedule and field. This check does not regenerate the GEBCO inputs or rerun the solver."
+}

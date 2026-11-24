@@ -1,0 +1,19 @@
+# Planning only: no solver or neural-network execution is started by this file.
+selection_seed: 20261125
+exclude_indices: [1, 4, 5, 13, 28, 34]
+scenario_count: 30
+selection: one per bathymetry/source combination, balanced across resolved-strength terciles
+reference_solver: swe_hydrostatic
+solver_cores: [64, 128, 256]
+output_core: 64
+training_seeds: [18, 36, 67]
+models: [convlstm, ufno, fno, ffno]
+requested_times: {start: 8.4, step: 8.4, count: 50, horizon: 420.0}
+max_workers: 4
+analysis:
+  primary: paired change in per-scenario denormalized relative L2 from reference core 128 to 256
+  secondary: model-pair ordering changes and adjacent-grid RMSE
+  aggregation: average training seeds within each scenario before scenario-level summaries
+  intervals: paired scenario bootstrap, resampling whole scenarios with all models and seeds together
+  population: equally weighted bathymetry/source combinations; not test-population-weighted accuracy
+  subgroup_scope: descriptive only; one scenario per family combination is insufficient for cell-level intervals

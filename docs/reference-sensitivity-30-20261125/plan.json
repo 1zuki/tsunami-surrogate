@@ -1,0 +1,403 @@
+{
+  "status": "planned_not_executed",
+  "settings": {
+    "selection_seed": 20261125,
+    "exclude_indices": [
+      1,
+      4,
+      5,
+      13,
+      28,
+      34
+    ],
+    "scenario_count": 30,
+    "selection": "one per bathymetry/source combination, balanced across resolved-strength terciles",
+    "reference_solver": "swe_hydrostatic",
+    "solver_cores": [
+      64,
+      128,
+      256
+    ],
+    "output_core": 64,
+    "training_seeds": [
+      18,
+      36,
+      67
+    ],
+    "models": [
+      "convlstm",
+      "ufno",
+      "fno",
+      "ffno"
+    ],
+    "requested_times": {
+      "start": 8.4,
+      "step": 8.4,
+      "count": 50,
+      "horizon": 420.0
+    },
+    "max_workers": 4,
+    "analysis": {
+      "primary": "paired change in per-scenario denormalized relative L2 from reference core 128 to 256",
+      "secondary": "model-pair ordering changes and adjacent-grid RMSE",
+      "aggregation": "average training seeds within each scenario before scenario-level summaries",
+      "intervals": "paired scenario bootstrap, resampling whole scenarios with all models and seeds together",
+      "population": "equally weighted bathymetry/source combinations; not test-population-weighted accuracy",
+      "subgroup_scope": "descriptive only; one scenario per family combination is insufficient for cell-level intervals"
+    }
+  },
+  "source_sha256": {
+    "manifest": "8c5736aa42039e211fb6d3769569a6da602987d204767ea046f89380ee0176d1",
+    "completed_study": "4cab1f9eed9deadf485fc078b83ade481dc47518996b7304cf496f1a3da39587",
+    "config": "0ae4c8dba6f1909b9276978a16937a174f7800497269ffd7c06c44edb8c00683",
+    "planner": "76b23729a283e044a0fd4f4f642e218fad4dac3402149fe8f95bde892c16d015"
+  },
+  "strength_tercile_boundaries": [
+    0.1950836479663849,
+    0.24250385165214539
+  ],
+  "roster": [
+    {
+      "sample_index": 1578,
+      "scenario_id": "scenario_001578",
+      "bathymetry_type": "canyon",
+      "source_type": "dipole",
+      "source_strength": 0.1672212779521942,
+      "strength_tercile": 1,
+      "eligible_in_stratum": 19
+    },
+    {
+      "sample_index": 1536,
+      "scenario_id": "scenario_001536",
+      "bathymetry_type": "canyon",
+      "source_type": "fault",
+      "source_strength": 0.20108355581760406,
+      "strength_tercile": 2,
+      "eligible_in_stratum": 31
+    },
+    {
+      "sample_index": 610,
+      "scenario_id": "scenario_000610",
+      "bathymetry_type": "canyon",
+      "source_type": "gaussian",
+      "source_strength": 0.28764545917510986,
+      "strength_tercile": 3,
+      "eligible_in_stratum": 28
+    },
+    {
+      "sample_index": 123,
+      "scenario_id": "scenario_000123",
+      "bathymetry_type": "canyon",
+      "source_type": "multi-gauss",
+      "source_strength": 0.17414137721061707,
+      "strength_tercile": 1,
+      "eligible_in_stratum": 33
+    },
+    {
+      "sample_index": 577,
+      "scenario_id": "scenario_000577",
+      "bathymetry_type": "canyon",
+      "source_type": "okada-like",
+      "source_strength": 0.24100789427757263,
+      "strength_tercile": 2,
+      "eligible_in_stratum": 29
+    },
+    {
+      "sample_index": 881,
+      "scenario_id": "scenario_000881",
+      "bathymetry_type": "canyon",
+      "source_type": "rough",
+      "source_strength": 0.24967265129089355,
+      "strength_tercile": 3,
+      "eligible_in_stratum": 22
+    },
+    {
+      "sample_index": 1468,
+      "scenario_id": "scenario_001468",
+      "bathymetry_type": "continental",
+      "source_type": "dipole",
+      "source_strength": 0.20910075306892395,
+      "strength_tercile": 2,
+      "eligible_in_stratum": 30
+    },
+    {
+      "sample_index": 1606,
+      "scenario_id": "scenario_001606",
+      "bathymetry_type": "continental",
+      "source_type": "fault",
+      "source_strength": 0.2516482174396515,
+      "strength_tercile": 3,
+      "eligible_in_stratum": 19
+    },
+    {
+      "sample_index": 1131,
+      "scenario_id": "scenario_001131",
+      "bathymetry_type": "continental",
+      "source_type": "gaussian",
+      "source_strength": 0.18323321640491486,
+      "strength_tercile": 1,
+      "eligible_in_stratum": 29
+    },
+    {
+      "sample_index": 2117,
+      "scenario_id": "scenario_002117",
+      "bathymetry_type": "continental",
+      "source_type": "multi-gauss",
+      "source_strength": 0.2026064097881317,
+      "strength_tercile": 2,
+      "eligible_in_stratum": 28
+    },
+    {
+      "sample_index": 1302,
+      "scenario_id": "scenario_001302",
+      "bathymetry_type": "continental",
+      "source_type": "okada-like",
+      "source_strength": 0.2520509958267212,
+      "strength_tercile": 3,
+      "eligible_in_stratum": 29
+    },
+    {
+      "sample_index": 736,
+      "scenario_id": "scenario_000736",
+      "bathymetry_type": "continental",
+      "source_type": "rough",
+      "source_strength": 0.15264831483364105,
+      "strength_tercile": 1,
+      "eligible_in_stratum": 29
+    },
+    {
+      "sample_index": 1506,
+      "scenario_id": "scenario_001506",
+      "bathymetry_type": "island",
+      "source_type": "dipole",
+      "source_strength": 0.27242913842201233,
+      "strength_tercile": 3,
+      "eligible_in_stratum": 41
+    },
+    {
+      "sample_index": 1091,
+      "scenario_id": "scenario_001091",
+      "bathymetry_type": "island",
+      "source_type": "fault",
+      "source_strength": 0.15731458365917206,
+      "strength_tercile": 1,
+      "eligible_in_stratum": 26
+    },
+    {
+      "sample_index": 705,
+      "scenario_id": "scenario_000705",
+      "bathymetry_type": "island",
+      "source_type": "gaussian",
+      "source_strength": 0.2008909434080124,
+      "strength_tercile": 2,
+      "eligible_in_stratum": 29
+    },
+    {
+      "sample_index": 503,
+      "scenario_id": "scenario_000503",
+      "bathymetry_type": "island",
+      "source_type": "multi-gauss",
+      "source_strength": 0.2873799800872803,
+      "strength_tercile": 3,
+      "eligible_in_stratum": 20
+    },
+    {
+      "sample_index": 1862,
+      "scenario_id": "scenario_001862",
+      "bathymetry_type": "island",
+      "source_type": "okada-like",
+      "source_strength": 0.15510247647762299,
+      "strength_tercile": 1,
+      "eligible_in_stratum": 23
+    },
+    {
+      "sample_index": 2214,
+      "scenario_id": "scenario_002214",
+      "bathymetry_type": "island",
+      "source_type": "rough",
+      "source_strength": 0.2280026078224182,
+      "strength_tercile": 2,
+      "eligible_in_stratum": 17
+    },
+    {
+      "sample_index": 699,
+      "scenario_id": "scenario_000699",
+      "bathymetry_type": "seamounts",
+      "source_type": "dipole",
+      "source_strength": 0.1908692717552185,
+      "strength_tercile": 1,
+      "eligible_in_stratum": 23
+    },
+    {
+      "sample_index": 1733,
+      "scenario_id": "scenario_001733",
+      "bathymetry_type": "seamounts",
+      "source_type": "fault",
+      "source_strength": 0.22591941058635712,
+      "strength_tercile": 2,
+      "eligible_in_stratum": 27
+    },
+    {
+      "sample_index": 2317,
+      "scenario_id": "scenario_002317",
+      "bathymetry_type": "seamounts",
+      "source_type": "gaussian",
+      "source_strength": 0.2746647596359253,
+      "strength_tercile": 3,
+      "eligible_in_stratum": 36
+    },
+    {
+      "sample_index": 2341,
+      "scenario_id": "scenario_002341",
+      "bathymetry_type": "seamounts",
+      "source_type": "multi-gauss",
+      "source_strength": 0.17595012485980988,
+      "strength_tercile": 1,
+      "eligible_in_stratum": 42
+    },
+    {
+      "sample_index": 227,
+      "scenario_id": "scenario_000227",
+      "bathymetry_type": "seamounts",
+      "source_type": "okada-like",
+      "source_strength": 0.2414465993642807,
+      "strength_tercile": 2,
+      "eligible_in_stratum": 27
+    },
+    {
+      "sample_index": 450,
+      "scenario_id": "scenario_000450",
+      "bathymetry_type": "seamounts",
+      "source_type": "rough",
+      "source_strength": 0.25095099210739136,
+      "strength_tercile": 3,
+      "eligible_in_stratum": 32
+    },
+    {
+      "sample_index": 1190,
+      "scenario_id": "scenario_001190",
+      "bathymetry_type": "trench",
+      "source_type": "dipole",
+      "source_strength": 0.2403985559940338,
+      "strength_tercile": 2,
+      "eligible_in_stratum": 20
+    },
+    {
+      "sample_index": 77,
+      "scenario_id": "scenario_000077",
+      "bathymetry_type": "trench",
+      "source_type": "fault",
+      "source_strength": 0.2737680971622467,
+      "strength_tercile": 3,
+      "eligible_in_stratum": 24
+    },
+    {
+      "sample_index": 42,
+      "scenario_id": "scenario_000042",
+      "bathymetry_type": "trench",
+      "source_type": "gaussian",
+      "source_strength": 0.17543239891529083,
+      "strength_tercile": 1,
+      "eligible_in_stratum": 30
+    },
+    {
+      "sample_index": 703,
+      "scenario_id": "scenario_000703",
+      "bathymetry_type": "trench",
+      "source_type": "multi-gauss",
+      "source_strength": 0.19822032749652863,
+      "strength_tercile": 2,
+      "eligible_in_stratum": 32
+    },
+    {
+      "sample_index": 1707,
+      "scenario_id": "scenario_001707",
+      "bathymetry_type": "trench",
+      "source_type": "okada-like",
+      "source_strength": 0.2682875990867615,
+      "strength_tercile": 3,
+      "eligible_in_stratum": 22
+    },
+    {
+      "sample_index": 448,
+      "scenario_id": "scenario_000448",
+      "bathymetry_type": "trench",
+      "source_type": "rough",
+      "source_strength": 0.15850836038589478,
+      "strength_tercile": 1,
+      "eligible_in_stratum": 26
+    }
+  ],
+  "hydrostatic_rollout_count": 90,
+  "both_swe_rollout_count": 180,
+  "timing": {
+    "basis": "Observed elapsed times from six completed cases per solver/grid on this machine; these are not isolated CPU timings.",
+    "workers": 4,
+    "solvers": {
+      "swe_hydrostatic": {
+        "observed_seconds": {
+          "coarse": {
+            "count": 6,
+            "mean_seconds": 8.065820348499926,
+            "minimum_seconds": 5.293815729999551,
+            "maximum_seconds": 13.650322580000648
+          },
+          "baseline": {
+            "count": 6,
+            "mean_seconds": 85.9014687493331,
+            "minimum_seconds": 46.4309133429997,
+            "maximum_seconds": 130.3135403790002
+          },
+          "fine": {
+            "count": 6,
+            "mean_seconds": 721.3345469131667,
+            "minimum_seconds": 490.4309414620002,
+            "maximum_seconds": 1060.1499455310004
+          }
+        },
+        "projected_sum_task_hours": 6.794181966758331,
+        "idealized_four_worker_hours": 1.6985454916895828,
+        "planning_wall_hours": [
+          2.1231818646119787,
+          2.97245461045677
+        ]
+      },
+      "swe_muscl_hr": {
+        "observed_seconds": {
+          "coarse": {
+            "count": 6,
+            "mean_seconds": 9.375402059499853,
+            "minimum_seconds": 7.454944007999984,
+            "maximum_seconds": 11.562398828000369
+          },
+          "baseline": {
+            "count": 6,
+            "mean_seconds": 93.61467806449996,
+            "minimum_seconds": 68.48538604100031,
+            "maximum_seconds": 123.2769557260001
+          },
+          "fine": {
+            "count": 6,
+            "mean_seconds": 975.8597970696665,
+            "minimum_seconds": 596.4445493330004,
+            "maximum_seconds": 1516.5804615109998
+          }
+        },
+        "projected_sum_task_hours": 8.990415643280553,
+        "idealized_four_worker_hours": 2.247603910820138,
+        "planning_wall_hours": [
+          2.809504888525173,
+          3.9333068439352417
+        ]
+      }
+    },
+    "uncertainty": "1.25\u20131.75 allowance for different cases, memory pressure, scheduling and I/O; this is a planning range, not a confidence interval.",
+    "prediction_evaluation_allowance_hours": [
+      0.25,
+      0.5
+    ],
+    "prediction_allowance_basis": "Unmeasured planning allowance; four models, three seeds, thirty cases. Benchmark a small batch before launch.",
+    "memory_note": "Four simultaneous fine-grid jobs may require fewer workers if memory is insufficient; serial execution takes approximately the summed task hours."
+  },
+  "interpretation": "Post-review exploratory extension on an already examined test distribution. Case selection uses metadata only. Thirty family-balanced cases do not establish population-wide or within-cell ranking uncertainty."
+}
