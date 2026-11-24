@@ -1,0 +1,126 @@
+{
+  "interpretation": "Finite-horizon sensitivity on fixed raster inputs under adaptive stepping. Ranges describe tested cases and are not confidence intervals or formal convergence orders.",
+  "script_sha256": "3acf99e503185d5ebe04500e418e194ff4b864b7eb2ee264e8b92ea3dc936514",
+  "source_result": "/mnt/Windows/Dataset/verdict_revision_20261124/benchmark_numerical/benchmark_numerical_study.json",
+  "source_sha256": "4cab1f9eed9deadf485fc078b83ade481dc47518996b7304cf496f1a3da39587",
+  "statistics": {
+    "adjacent_grid": {
+      "swe_hydrostatic": {
+        "baseline_fine_rmse": {
+          "count": 6,
+          "maximum": 0.0008738653188468562,
+          "median": 0.00046621988738269107,
+          "minimum": 0.00014825911353486307
+        },
+        "coarse_baseline_rmse": {
+          "count": 6,
+          "maximum": 0.00110324437389051,
+          "median": 0.0007315010659358317,
+          "minimum": 0.00020359759835123767
+        },
+        "contracting_case_count": 6,
+        "paired_contraction_ratio": {
+          "count": 6,
+          "maximum": 1.6245717682021132,
+          "median": 1.4458872056156338,
+          "minimum": 1.2624878801075894
+        }
+      },
+      "swe_muscl_hr": {
+        "baseline_fine_rmse": {
+          "count": 6,
+          "maximum": 0.00036118245968611354,
+          "median": 0.0001995241411969022,
+          "minimum": 6.774005201832092e-05
+        },
+        "coarse_baseline_rmse": {
+          "count": 6,
+          "maximum": 0.0009030049205783745,
+          "median": 0.0004550243575817324,
+          "minimum": 0.00016176565167830368
+        },
+        "contracting_case_count": 6,
+        "paired_contraction_ratio": {
+          "count": 6,
+          "maximum": 2.50013503247952,
+          "median": 2.282573775717019,
+          "minimum": 1.8830627387936394
+        }
+      }
+    },
+    "between_swe_solvers": {
+      "128": {
+        "count": 6,
+        "maximum": 0.0021057497268166894,
+        "median": 0.0011595995688136918,
+        "minimum": 0.0003563359423366694
+      },
+      "256": {
+        "count": 6,
+        "maximum": 0.0014599976812925872,
+        "median": 0.0007268154198576315,
+        "minimum": 0.00024044527043686826
+      },
+      "64": {
+        "count": 6,
+        "maximum": 0.002346439358823258,
+        "median": 0.001458012401791305,
+        "minimum": 0.000410735257488406
+      }
+    },
+    "controls": {
+      "swe_hydrostatic": {
+        "buffer_extent_and_extended_exterior": {
+          "count": 3,
+          "maximum": 0.0003919760866543889,
+          "median": 0.00027605922622058447,
+          "minimum": 4.46099828379085e-05
+        },
+        "half_common_cfl": {
+          "count": 6,
+          "maximum": 7.583787757691827e-05,
+          "median": 2.9887970078117336e-05,
+          "minimum": 9.431950242293982e-06
+        },
+        "radiation_to_open": {
+          "count": 3,
+          "maximum": 0.0008713946034158193,
+          "median": 0.0005862586509342374,
+          "minimum": 0.00010911545203116174
+        },
+        "sponge_on_off": {
+          "count": 3,
+          "maximum": 0.0005685857877849774,
+          "median": 0.00041219561820799176,
+          "minimum": 0.0003453804832078397
+        }
+      },
+      "swe_muscl_hr": {
+        "buffer_extent_and_extended_exterior": {
+          "count": 3,
+          "maximum": 0.0004606911415991137,
+          "median": 0.00032518984257633794,
+          "minimum": 5.143330344032573e-05
+        },
+        "half_common_cfl": {
+          "count": 6,
+          "maximum": 2.41828647093665e-06,
+          "median": 7.869043688983606e-07,
+          "minimum": 7.65088127382137e-08
+        },
+        "radiation_to_open": {
+          "count": 3,
+          "maximum": 0.0009348580194063558,
+          "median": 0.0006316392521776948,
+          "minimum": 0.00011218963040332506
+        },
+        "sponge_on_off": {
+          "count": 3,
+          "maximum": 0.000673855178542957,
+          "median": 0.00047930703303815446,
+          "minimum": 0.0003779283501231727
+        }
+      }
+    }
+  }
+}

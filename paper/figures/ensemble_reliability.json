@@ -1,0 +1,14 @@
+{
+  "source_result": "/home/izu/Projects/tsunami-surrogate/evaluation_runs/final-v2-full-nonspeed-20260912-r6/paper_evidence/ensemble/calibration.json",
+  "source_sha256": "26dc1f5ec5eee0dab25adfc28084b606d6e8d661654f01734a21e580248c43cf",
+  "script_sha256": "0699c1701fa0e9cfc5fedd37b08ffafdea45578ae4b0e0fb47d0742713b3d2de",
+  "plot_implementation_sha256": "564d0892e934ecaddbf1498bb45252f94a6ca77ce6dd1c0f1773e735090bc28c",
+  "labels": {
+    "validation": "Validation",
+    "test": "Test",
+    "source_holdout_multi_gauss": "Multi-Gaussian subset",
+    "bathymetry_holdout_trench": "Trench subset",
+    "source_strength_extreme_high": "High-strength subgroup"
+  },
+  "interpretation": "Unchanged archived marginal-coverage curves; labels identify within-support subgroups."
+}

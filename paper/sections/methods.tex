@@ -1,7 +1,7 @@
 \section{Problem formulation and evaluation framework}
 \label{sec:methods}
 
-This section defines the supervised task, numerical references, validation boundaries, and evaluation metrics. Data construction is described in Section~\ref{sec:data-generation}; model and optimization details are given in Sections~\ref{sec:models} and~\ref{sec:training}.
+This section defines the task, references, and metrics; data, models, and training are detailed in Sections~\ref{sec:data-generation}--\ref{sec:training}.
 
 \subsection{Forward emulation task}
 \label{subsec:forward-task}
@@ -14,10 +14,7 @@ Given a sampled source-strength multiplier $s$, the initial free-surface perturb
 \eta_0(x, y) = s\,q(x, y), \qquad h_0(x, y) = \max\{h_{\mathrm{rest}}(x, y) + \eta_0(x, y), 0\}.
 \end{equation}
 For dataset construction, the source-strength multiplier $s$ is sampled from $[0.15, 0.30]$ and may be reduced before storage when the initial-elevation-to-depth cap is active; consequently, some evaluated scenarios have resolved strengths below the sampling interval.
-For the supervised surrogate modeling task, the default input representation concatenates these spatial fields into a three-channel tensor:
-\begin{equation}
-X = [\,b, q, h_0\,] \in \mathbb{R}^{3 \times H \times W}.
-\end{equation}
+For the supervised surrogate modeling task, the default input representation concatenates these spatial fields into a three-channel tensor $X = [b, q, h_0]\in\mathbb{R} ^ {3\times H\times W}$.
 
 Note that the input tensor incorporates the raw source profile $q$ instead of the scaled perturbation $\eta_0$; both quantities are stored with the scenario metadata. For a given numerical solver reference $r$, the target trajectory $Y_r$ consists of 50 discrete temporal snapshots defined on a $64 \times 64$ spatial grid:
 \begin{equation}
@@ -25,15 +22,15 @@ Y_r = \left[\eta_r(t_1), \dots, \eta_r(t_{50})\right] \in \mathbb{R}^{50 \times 
 \end{equation}
 sampled at the requested evaluation times $t_k = 8.4k$ ($k = 1, \dots, 50$).
 
-The final target snapshot is evaluated at $t = 420$ in elapsed benchmark-time units, whereas the initial state ($t = 0$) is omitted from the target sequence. The underlying coordinate system governs an abstract benchmark domain and carries no implicit rescaling to dimensional physical time or specific oceanic bathymetry scales.
+The sequence excludes $t=0$ and ends at $420$ in benchmark-time units, without a site-specific dimensional interpretation.
 
-For reproducibility, the normalized coordinates are tied to the benchmark grid by an explicit metadata contract. The central $128 \times 128$ solver region spans $2400$ length units with $\Delta x = \Delta y = 18.75$; a 32-cell buffer on each side therefore gives a $192 \times 192$ computational grid spanning $3600$ length units, and the reported $64 \times 64$ target is the block-mean reduction of the central solver region. The \texttt{physical\_scaling} record stores a horizontal scale of $2400$~m, a time scale of $2400$~s, a vertical scale of $1$~m, and aspect ratio $2400$. These fields document the benchmark's intended coordinate relationship and are validated as metadata; the solver and neural-network inputs remain in benchmark units, and no site-specific dimensional ocean interpretation is implied.
+For reproducibility, the normalized coordinates are tied to the benchmark grid by explicit metadata. The central $128 \times 128$ solver region spans $2400$ length units with $\Delta x = \Delta y = 18.75$; a 32-cell buffer on each side therefore gives a $192 \times 192$ computational grid spanning $3600$ length units, and the reported $64 \times 64$ target is the block-mean reduction of the central solver region. The metadata specify a horizontal scale of $2400$~m, a time scale of $2400$~s, a vertical scale of $1$~m, and aspect ratio $2400$. These values document the intended coordinate relationship; the solver and neural-network inputs remain in benchmark units, and no site-specific dimensional ocean interpretation is implied.
 
 \subsection{Common-time extraction and buffered domain}
 \label{subsec:common-time-extraction}
 
 Each reference advances on its own natural time sequence $\tau_r ^ 0 < \tau_r ^ 1 < \cdots$. The shallow-water steps adapt to the evolving state, whereas the Boussinesq step is CFL-selected once from the fixed depth field of each scenario and remains constant within that rollout.
-When a target time $t_k$ falls between two consecutive solver steps ($\tau_r^n < t_k < \tau_r^{n+1}$), the interpolation weight $\lambda_{r,k} \in (0, 1)$ is given by:
+When a target time $t_k$ falls between two consecutive solver steps ($\tau_r^n < t_k < \tau_r^{n + 1}$), the interpolation weight $\lambda_{r,k} \in (0, 1)$ is given by:
 \begin{equation}
 \lambda_{r, k} = \frac{t_k - \tau_r ^ n}{\tau_r ^ {n + 1} - \tau_r ^ n}
 \end{equation}
@@ -44,15 +41,12 @@ The corresponding output state is then linearly reconstructed as:
 
 For the shallow-water references, $Z = [h, hu, hv] ^ \top$ and the free surface is then recovered using the time-independent bathymetry; for Boussinesq, $\eta$ is already part of the evolved state. If $t_k$ exactly equals a natural time, the corresponding state is copied without interpolation. Several requested times may fall inside one natural-step interval, but every output is formed only from that adjacent pair.
 
-The interpolation is performed in float64 before the reported frame is cast to float32. It is output-only: interpolated states are never fed back into the time integrator, so the natural solver trajectory is unchanged. For each reported frame, the dataset metadata record the bracketing times, interpolation weight, bracket width, exact-knot status, and natural-step index. This design prevents the cross-reference time mismatch that would arise from solver-step-indexed sampling while allowing each solver to retain its natural time stepping. It does not remove the interpolation approximation or make the three governing models equivalent.
+Interpolation uses float64 before reported frames are cast to float32. It never feeds back into integration. Metadata retain bracket times, weights, widths, exact-knot status, and natural-step indices. Common-time extraction removes solver-step-index sampling mismatch while retaining interpolation error and differences between governing models.
 
-The central reported domain contains $64 \times 64$ cells. Each $384 \times 384$ master grid is block-mean reduced to a $128 \times 128$ solver grid and extended by 32 cells around every side to form a $192 \times 192$ computational grid. Bathymetry is extended by its edge values into the buffer, and the source is tapered at the master-grid stage according to the same construction procedure. The central $128 \times 128$ solver region is then block-mean reduced to the reported $64 \times 64$ learning target. The buffer and elapsed-time sponge reduce direct boundary exposure over the finite horizon, but they do not establish a generally non-reflecting boundary condition.
+The $384 \times 384$ master input is averaged to $128 \times 128$, edge-extended by $32$ cells per side, and integrated on $192 \times 192$. Source tapering occurs on the master grid. The central solver region is averaged to $64 \times 64$ output. Buffering and the sponge reduce exposure without establishing non-reflecting boundaries.
 
-The surrogate $f_\theta$ approximates the solver-conditioned mapping operator:
-\begin{equation}
-f_\theta: X \mapsto \widehat{Y}_r \approx Y_r.
-\end{equation}
-In this setup, the hydrostatic reconstruction scheme serves as the primary numerical reference. A second shallow-water reference is provided by a MUSCL-HR solver, while a weakly dispersive Boussinesq model is included as an exploratory comparison reference.
+The surrogate approximates the mapping $f_\theta:X \mapsto\widehat{Y}_r\approx Y_r$.
+Hydrostatic is the primary reference, MUSCL-HR the second shallow-water reference, and Boussinesq an exploratory weakly dispersive comparison.
 
 \subsection{Numerical references}
 \label{subsec:numerical-reference-formulation}
@@ -131,13 +125,13 @@ q_i ^ \pm = q_i \pm\frac{1}{2}s_i.
 \end{equation}
 which zeroes gradients at local extrema to enforce TVD stability, reverting locally to first-order accuracy near discontinuities. Reconstructed depths are constrained to be non-negative, face velocities are clamped to the prescribed maximum speed bound, and face bathymetry is consistently retrieved via $b ^ \pm = \eta ^ \pm - h ^ \pm$. Hydrostatic reconstruction and the Rusanov flux are subsequently applied to these face states \citep{clain2016secondorder,hou2015muscl}.
 
-\paragraph{Topographic source discretization}. To preserve well-balancedness, each Euler stage incorporates the reconstructed bed-slope momentum source:
+\paragraph{Topographic source discretization}. Each Euler stage incorporates the reconstructed bed-slope momentum source:
 \begin{equation}
 S_{hu} = -\frac{g}{2}(h_E + h_W)\frac{b_E - b_W}{\Delta x},
 \qquad
 S_{hv} = -\frac{g}{2}(h_N + h_S)\frac{b_N - b_S}{\Delta y},
 \end{equation}
-where subscripts $\{E, W, N, S\}$ denote limited face states reconstructed at cell boundaries. Applied prior to the Heun stage averaging, this source term operates alongside hydrostatic interface corrections to support topographic balance.
+where subscripts $\{E, W, N, S\}$ denote limited face states reconstructed at cell boundaries. Applied before the Heun stage averaging, this source term operates alongside the hydrostatic interface corrections. At a lake at rest with all reconstructed interfaces wet, constant $\eta$ implies $b_E - b_W = -(h_E - h_W)$. The corrected cell-side momentum fluxes are $gh_E ^ 2/2$ and $gh_W ^ 2/2$, so their difference contributes $-g(h_E ^ 2 - h_W ^ 2) / (2\Delta x)$ to the momentum tendency, while the reconstructed source contributes the opposite term. The same cancellation holds in the transverse direction and is retained by the Heun average, up to floating-point roundoff. Their combined stationary behavior is checked for three benchmark bathymetries over 32 steps in Appendix~\ref{app:lake-at-rest}; this finite check does not establish balance for moving equilibria or arbitrary reconstructed states.
 
 Time integration uses a two-stage Heun form. Denoting one explicit limited finite-volume Euler step by $\Phi_{\Delta t}(U)$, the cell update reads:
 \begin{equation}
@@ -174,24 +168,29 @@ Designed as a linear, elevation-only benchmark, this weakly dispersive formulati
 \paragraph{Boundaries, damping, and shared scope.}
 The shallow-water references use bathymetry-aware linearized radiation states at all four outer edges. The outgoing free-surface characteristic is continued through the face around the local rest depth, while the tangential velocity is carried from the adjacent interior cell. This treatment reduces direct reflection for small outgoing waves but is not an exact non-reflecting condition for nonlinear, oblique, or strongly heterogeneous propagation. The Boussinesq comparison instead uses open zero-gradient scalar boundaries.
 
-All references apply a 32-cell cosine sponge layer within the outer domain boundary. Given reference mask $D(x, y) \in [0.8, 1]$ and baseline step $\Delta t_{\mathrm{ref}} = 8.4$, per-step damping follows $D^{\Delta t/\Delta t_{\mathrm{ref}}}$, ensuring uniform cumulative dissipation over equivalent elapsed benchmark times regardless of step size. The shallow-water sponge damps momentum and free-surface displacement about rest depth; the Boussinesq sponge damps $\eta$ and $\eta_t$. The optional Boussinesq smoothing filter is disabled. Across all three references, the benchmark omits Coriolis acceleration, bottom friction, moving bathymetry, and event-specific forcing after initialization.
+All references apply a 32-cell cosine sponge layer within the outer domain boundary. Given reference mask $D(x, y) \in [0.8, 1]$ and baseline step $\Delta t_{\mathrm{ref}} = 8.4$, per-step damping follows $D^{\Delta t/\Delta t_{\mathrm{ref}}}$, so that the mask factors multiply to the same attenuation factor for equal elapsed benchmark times. The resulting mass and energy changes still depend on the evolving state and the ordering of damping and dynamical updates. The shallow-water sponge damps momentum and free-surface displacement about rest depth; the Boussinesq sponge damps $\eta$ and $\eta_t$. The optional Boussinesq smoothing filter is disabled. Across all three references, the benchmark omits Coriolis acceleration, bottom friction, moving bathymetry, and event-specific forcing after initialization.
 
 \subsection{Numerical accuracy and validation scope}
 \label{subsec:reference-validation}
 
-The numerical evidence is organized around accuracy signals first: a periodic linear-wave analysis, nested-grid self-convergence, controlled GeoClaw comparison and refinement, reproduction of the requested-time outputs under the stated benchmark settings, boundary-flux measurements under the stated benchmark settings, local dispersive phase-speed behavior, and closed-domain mass-conservation cases. Dataset records establish the source, grid, and requested-time construction used for the surrogate experiments. The independent comparison evaluates three prespecified finite-horizon cases while varying boundary treatment, sponge use, domain extent, and spatial refinement. Together, these components address numerical accuracy, inter-code discrepancy, requested-time reproduction consistency, and sensitivity within the finite-horizon benchmark.
+The evidence combines full-horizon and nested-grid sensitivities, periodic waves, closed-domain conservation, local dispersion, and GeoClaw comparisons. GeoClaw uses three fixed benchmark cases at $192$ and $384$ computational grids; the earlier normalized-domain ablation has a different construction and is reported separately.
 
-Numerical-method studies, GeoClaw/Clawpack comparisons, trials of the integrated procedure, and sensitivity analyses assess numerical behavior under the tested settings. For the datasets reported here, we verified the $384 \rightarrow 128 \rightarrow 192 \rightarrow 64$ grid sequence used to prepare them and confirmed the train, validation, and test split structure. We also evaluated three representative scenarios with each reference solver. These results document reproducibility and define the scope of the accuracy analyses.
+\paragraph{Matched refinement against GeoClaw.}
+We compare the newly computed shallow-water trajectories at $128$- and $256$-cell cores against GeoClaw on both $192$- and $384$-cell computational grids for the three paired cases. Initial bathymetry, depth, zero momentum, physical domain, requested times, and spatial restriction are checked at each grid level. This gives $24$ comparisons on the common $50 \times 64 \times 64$ elevation arrays. GeoClaw retains open extrapolation boundaries while the in-house solvers retain radiation boundaries and the sponge; the comparison therefore measures inter-code agreement under these different boundary treatments. Holding the GeoClaw grid fixed isolates the measured effect of refining the in-house computation, without identifying its error against an exact solution.
 
-\begin{enumerate}[leftmargin=2.2em]
-    \item \textbf{Input identity:} all scenario definitions are verified for split-qualified identity, array equality, horizon coverage, and exact reuse across the three references.
-    \item \textbf{Internal numerical evidence:} analytical-wave, lake-at-rest, conservation, spatial/temporal sensitivity, requested-output, boundary/sponge, dispersive, numerical-stability, and deterministic-repeatability analyses are evaluated with thresholds fixed before evaluation.
-    \item \textbf{Independent comparison:} three prespecified finite-horizon cases are evaluated against GeoClaw/Clawpack 5.14.0 at the same requested times. The comparison includes explicit contrasts in boundary treatment, sponge use, domain extent, and nested spatial refinement; GeoClaw remains an independent comparator, not automatic truth or evidence of pointwise equivalence \citep{leveque2011tsunami,berger2011geoclaw}.
-    \item \textbf{Integrated evaluation procedure:} the buffered-domain integration, adaptive stepping, requested-time interpolation, trajectory reproduction, boundary activity, and quality screening are assessed on cases separate from the component-level numerical analyses.
-    \item \textbf{Independent sensitivity set:} additional training-pool cases, excluded from the diagnostic selections, assess the reported and comparison CFL settings, time extraction, numerical-admissibility criteria, and repeatability.
-\end{enumerate}
+\paragraph{Full-horizon numerical sensitivity.}
+For the two shallow-water references, we fix six test cases before inspecting their new numerical sensitivities: the first test scenario in each of the continental/Gaussian, trench/rough, island/multi-Gaussian, seamounts/Okada-like, canyon/dipole, and seamounts/fault combinations. This covers all five bathymetry families and six source families, with one case for each selected pair rather than a population-representative sample. Each case is advanced to the same 50 requested times through $420$ on solver cores of $64$, $128$, and $256$ cells per axis, corresponding to $96$, $192$, and $384$ buffered computational grids. The physical core and buffer extents remain fixed. The $128$-cell initial bathymetry and conserved depth fields are held as raster cell averages: coarser inputs use area means, while finer inputs repeat each parent cell average. Requested states are retained in double precision, and elevation fields are restricted to the shared $64 \times 64$ core for comparison. The differences therefore describe combined space--time numerical sensitivity of fixed raster inputs, rather than a formal convergence order for a smooth underlying seabed.
 
-The controlled GeoClaw comparison is descriptive rather than a formal convergence study because the solver formulations, boundary treatments, and spatial resolutions differ across contrasts. The results identify a substantial residual discrepancy after the tested boundary, sponge, and domain changes, while the refined comparison moves both references closer to GeoClaw. Together these analyses support the finite-horizon evaluation setting used here; they do not establish observed-event validity, shoreline accuracy, generally non-reflecting boundaries, formal convergence, or equivalence with an operational tsunami code.
+At the $128$-cell core, both solvers are also evaluated at target CFL $0.1125$ and half that value. Common target CFL does not imply identical natural time steps, and halving it changes both time integration and interpolation to the requested outputs. Boundary controls use the same three cases as the GeoClaw comparison. We separately remove the sponge, replace radiation with open boundaries on the unchanged no-sponge domain, and double the buffer width with radiation boundaries and no sponge. The enlarged domain extends bathymetry and initial depth by edge replication, so that contrast includes the assumed exterior state. We record trajectory and per-time RMSE, minimum depth, velocity, and numerical-state corrections, together with water volume and mechanical energy per unit density over the full computational domain. Changes in integrated volume and mechanical energy are measured relative to each computation's initial state; open boundaries and damping prevent interpreting these changes as closed-system conservation tests.
+
+Stationary and moving equilibria provide complementary source--flux tests. Five lake-at-rest cases use one representative of each bathymetry family and zero initial elevation and momentum, retaining the benchmark grid and full horizon. For moving flow, a smooth periodic bed $b(x) = -2 + 0.2 \cos(2\pi x/2400)$ carries constant discharge $hu = 0.2$, $hv = 0$. Initial depth is obtained from the subcritical branch of $h + b + (hu) ^ 2 / (2gh ^ 2)=0$. Both solvers are advanced to $420$ on $128 \times 8$ and $256 \times 8$ grids with periodic boundaries and no sponge. The flow is one-dimensional, represented by eight identical transverse cells at each longitudinal resolution. Elevation and discharge drift are measured against the sampled steady solution. Nonzero drift is retained in the results; the test does not assume exact moving-equilibrium preservation.
+
+\paragraph{Fixed-prediction sensitivity to reference resolution.}
+On the same six cases, we evaluate FNO, F-FNO, U-FNO, and ConvLSTM checkpoints trained with seeds $18$, $36$, and $67$. Each checkpoint receives its original $64 \times 64$ inputs and produces one unchanged prediction, restored with its training normalization. That prediction is scored against the archived Hydrostatic target and the newly computed $64$-, $128$-, and $256$-cell-core targets, all restricted to the same $64 \times 64$ output. We report physical RMSE and mean per-scenario relative $L_2$, average the latter across the three seeds, and compare model orderings within each case and seed. This is a descriptive test of changing the evaluation reference, rather than retraining or native neural-network resolution transfer.
+
+The $92$-rollout plan combines the six-case grid/CFL study, three-case boundary controls, five bathymetry families for stationary tests, and two periodic moving-flow resolutions. Dataset checks verify the $384\rightarrow128\rightarrow192\rightarrow64$ construction, split-qualified identities, shared inputs, output coverage, and numerical criteria. Separate training-pool sensitivity cases assess CFL, time extraction, and repeatability.
+
+The GeoClaw comparisons are descriptive rather than formal convergence studies. The current comparator refinement retains the physical domain and raster inputs while changing the external grid and adaptive time steps; the archived in-house fields remain fixed in that comparison. Boundary and algorithmic differences persist between codes. These analyses do not establish observed-event validity, shoreline accuracy, generally non-reflecting boundaries, formal convergence, or equivalence with an operational tsunami code.
 
 Each dataset trajectory is additionally screened for finiteness, positivity/depth, amplitude, velocity, sanitization, projection, clipping, post-step CFL, and, where relevant, conjugate-gradient convergence. Trajectories that do not satisfy these criteria are excluded.
 
@@ -210,11 +209,11 @@ Field errors are evaluated elementwise across entire trajectories using standard
 \end{equation}
 where $k$ indexes all space-time grid points. MAE, RMSE, and relative $L_2$ are computed in denormalized benchmark-scale units. Maximum absolute error ($\mathrm{max\text{-}err}$) is reported in normalized target units unless explicitly noted otherwise.
 
-For a full split, the underlying sums are accumulated before reduction, giving one global relative $L_2$ and one global maximum. Metadata subgroup tables instead compute per-scenario metrics first and then average within the group. These two aggregations answer different questions and are labelled separately.
+Full-split metrics accumulate sums before reduction, yielding global relative $L_2$ and maximum error. Subgroups average per-scenario metrics; the two aggregations are labelled separately.
 
 For the selected single-seed Hydrostatic architecture comparison, we also use a paired nonparametric bootstrap: one shared index draw resamples the same $2{,}500$ scenario identities $2{,}000$ times with seed $20260813$. We report mean per-scenario denormalized relative $L_2$ and paired differences from FNO. These are test-scenario intervals for fixed checkpoints, not training-seed uncertainty or population-level architecture rankings.
 
-Seed variation in the uncertainty analysis is assessed with a seven-member Hydrostatic FNO ensemble using seeds $\{11, 22, 33, 44, 55, 66, 77\}$. The member-level means, sample standard deviation, and range describe seed stability for that FNO uncertainty construction; they are not a replicated architecture comparison.
+Ensemble seeds $\{11, 22, 33, 44, 55, 66, 77\}$ assess FNO seed stability, not replicated architecture comparisons.
 
 Per-frame relative $L_2$ errors evaluate spatial slices at specific time instances. Physical conservation properties are monitored via domain-averaged quantities:
 \begin{equation}
@@ -231,20 +230,16 @@ These diagnostics localize error in integral and spectral structure; none of the
 \subsection{Generalization and resolution transfer}
 \label{subsec:generalization-protocol}
 
-Metadata-filtered suites select the \texttt{multi-gauss} or \texttt{trench} groups and, when nonempty under the predefined test split, a predeclared source-strength subgroup from the ordinary test set. These are difficult subgroups within the training support, not unseen-family OOD datasets. The strict tests remove one bathymetry or source family before preprocessing and training, refit normalization on the filtered training set, and evaluate the excluded family separately. When a checkpoint is applied to data standardized with another training distribution, the inputs are first restored with the dataset statistics and then re-standardized with the checkpoint's training statistics. Predictions and targets are finally compared after target denormalization in one benchmark-scale space.
+Metadata-filtered \texttt{multi-gauss}, \texttt{trench}, and source-strength groups remain within training support. Strict tests instead remove a family before training and fit normalization on the retained training set. Cross-dataset inference restores inputs with dataset statistics, re-standardizes them with checkpoint-training statistics, and evaluates denormalized predictions and targets in one benchmark space.
 
-The proxy resolution diagnostic resizes the processed Hydrostatic test fields to $32 \times 32$ or $128 \times 128$ and applies the same $64 \times 64$ checkpoint. The native experiment instead uses paired MUSCL-HR simulations at $32$, $64$, and $128$ resolution. Three checkpoints are trained separately, and the full train-grid/test-grid matrix is evaluated. Each target dataset is rebased into the checkpoint's training normalization before inference.
+The proxy resolution diagnostic resizes the processed Hydrostatic test fields to $32 \times 32$ or $128 \times 128$ and applies the same $64 \times 64$ checkpoint. The native experiment instead uses paired MUSCL-HR simulations at $32$, $64$, and $128$ resolution. All three resolutions start from a shared $384 \times 384$ master input and use the same 50 requested times from $8.4$ to $420$. Three checkpoints are trained separately, and the full train-grid/test-grid matrix is evaluated. Each target dataset is rebased into the checkpoint's training normalization before inference. The reported values come from the September 2026 evaluation, which included all nine train-grid/test-grid combinations.
 
 \subsection{Runtime benchmarking}
 \label{subsec:runtime}
 
-To compare computational cost, we measure the repeated forward task under fixed hardware and precision. The numerical references are timed in float64 on the local CPU using the common-time $192 \times 192$ computational-grid rollout and central $64 \times 64$ crop, excluding bathymetry and source generation. The reference solvers use vectorized NumPy/SciPy implementations; each timing uses eight fixed scenarios, one warm-up pass, and three measured repeats. Direct surrogates are timed on an NVIDIA GeForce RTX 4050 Laptop GPU with an Intel Core i5-13420H CPU, in fp32 at batch size one, with TF32 disabled, five warm-up passes, twenty measured passes, and CUDA synchronization. The ratio is defined as:
-\begin{equation}
-\mathrm{speedup} = \frac{T_{\mathrm{reference}}}{T_{\mathrm{surrogate}}},
-\end{equation}
-where $T$ denotes average rollout time per sample.
+To compare computational cost, we measure the repeated forward task under fixed hardware and precision. The numerical references are timed in float64 on the local CPU using the requested-time $192 \times 192$ rollout with the central $128 \times 128$ region reduced by cell averaging to $64 \times 64$, excluding bathymetry and source generation. The reference solvers use vectorized NumPy/SciPy implementations; each timing uses eight fixed scenarios, one warm-up pass, and three measured repeats. Direct surrogates are timed on an NVIDIA GeForce RTX 4050 Laptop GPU with an Intel Core i5-13420H CPU, in fp32 at batch size one, with TF32 disabled, five warm-up passes, twenty measured passes, and CUDA synchronization. The reported ratio is $T_{\mathrm{reference}}/T_{\mathrm{surrogate}}$, using mean rollout time per sample.
 
-Input loading, preparation, and solver construction are recorded separately and excluded from the ratio. The comparison therefore measures the repeated forward calculation under the stated hardware, not end-to-end hazard-system latency. The result is hardware-specific and should not be interpreted as an operational speedup over a compiled, GPU, or adaptive-mesh tsunami solver.
+Loading, preparation, and solver construction are excluded from the timing ratio. These hardware-specific forward costs do not establish end-to-end latency or speedups over compiled, GPU, or adaptive-mesh solvers.
 
 \subsection{Cross-reference discrepancy}
 \label{subsec:cross-solver}
@@ -256,6 +251,14 @@ The raw solver gap compares two numerical references on the same scenarios and r
      {\mathrm{RMSE}(\mathrm{ref}\, A, \mathrm{ref}\, B)}.
 \end{equation}
 All terms use the global denormalized benchmark-scale RMSE, and confidence intervals use 2,000 scenario bootstrap resamples. A value $\rho < 1$ means that the surrogate is closer to reference $B$ in this benchmark metric than reference $A$ is. Without observational truth or a stronger physical reference, this is not evidence of physical superiority.
+
+For the squared-error interpretation, let $d_{AB} = Y_A - Y_B$ be the raw reference difference and $e_A = \widehat{Y}_A - Y_A$ be the surrogate error relative to its training reference, with all fields vectorized over the same scenarios, times, and spatial cells. The cross-reference numerator then obeys the exact identity
+\begin{equation}
+\rho(A \rightarrow B)^2
+= 1 + \frac{\lVert e_A \rVert_2 ^ 2}{\lVert d_{AB} \rVert_2 ^ 2}
++ 2\frac{\langle e_A,d_{AB}\rangle}{\lVert d_{AB} \rVert_2 ^ 2}.
+\end{equation}
+The first term after one is the surrogate-error contribution and is nonnegative; the alignment term can either increase or reduce the ratio. This decomposition describes the benchmark metric exactly, but it does not identify which reference is closer to physical truth.
 
 \subsection{Pooled-reference experiment}
 \label{subsec:pooled-reference}
@@ -294,3 +297,9 @@ We report the empirical coverage and the Pearson correlation coefficient between
 \gamma = \max\left\{1,\, \frac{1}{N_{\mathrm{val}}} \sum_{k=1}^{N_{\mathrm{val}}} \frac{(Y_k - \bar{Y}_k)^2}{\max(\sigma_k^2, \varepsilon)}\right\}.
 \end{equation}
 The calibrated predictive interval is obtained by rescaling $\sigma$ to $\sqrt{\gamma}\sigma$, applying this factor directly to both the test and subgroup evaluation sets without further tuning. Because the empirical coverage is computed marginally across correlated pixels and frames, these metrics serve as interval-scale reliability diagnostics rather than calibrated event probabilities.
+
+We additionally evaluate simultaneous coverage of an entire requested trajectory. For each of the $1{,}000$ validation scenarios, we compute
+\begin{equation}
+S_i = \max_{t, x, y} \frac{|Y_i (t, x, y) - \bar{Y}_i(t, x, y)|}{\max\{\sigma_i(t, x, y), \epsilon_\sigma\}},
+\end{equation}
+where $\epsilon_\sigma$ is $10 ^ {-6}$ times the training target standard deviation. For nominal coverage $p\in\{0.50, 0.80, 0.90, 0.95\}$, the multiplier $q_p$ is the validation score at ordered rank $\lceil(1{,}000 + 1)p\rceil$. The resulting band is $\bar{Y}\pm q_p\max\{\sigma, \epsilon_\sigma\}$. A test scenario is covered only when every cell at all 50 requested times lies inside this band. The validation multipliers are applied unchanged to all $2{,}500$ test scenarios and to their source, bathymetry, and high-strength subgroups; the latter uses the same source-strength threshold, $s\geq0.285$, as the marginal-coverage analysis. We also rank test scenarios by their mean predicted standard deviation and report error and coverage as increasingly uncertain scenarios are removed. This is a retrospective ranking within the test cohort, rather than a deployment threshold. Because validation also informed checkpoint selection, these are empirical reliability measurements, without an independent-calibration coverage guarantee.

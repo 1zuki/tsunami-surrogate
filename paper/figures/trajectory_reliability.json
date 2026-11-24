@@ -1,0 +1,6 @@
+{
+  "source_result": "/mnt/Windows/Dataset/verdict_revision_20261124/trajectory_calibration_physical.json",
+  "source_sha256": "f407ed16030d021597cd7eedcb807b860f199ff38a7b55a9971bd920d06dd43a",
+  "plot_script_sha256": "c867d811093d18dd15b4b5a786ba305844407dbb5ab5f4483ac5c60d11f22add",
+  "interpretation": "Empirical numerical-reference trajectory coverage and retrospective scenario ranking"
+}

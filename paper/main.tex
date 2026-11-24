@@ -4,8 +4,18 @@
 \usepackage{enumitem}
 \usepackage{xurl}
 \usepackage{tikz}
-\usepackage{placeins}
+\usepackage[section]{placeins}
 \usetikzlibrary{arrows.meta, positioning, calc, fit}
+
+% Keep floats near their discussion without forcing rigid page breaks.
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{3}
+\setcounter{totalnumber}{6}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.85}
+\renewcommand{\textfraction}{0.08}
+\renewcommand{\floatpagefraction}{0.75}
+
 
 \ExplSyntaxOn
 \NewCommandCopy{\BenchmarkCASParseName}{\parsename}

@@ -8,33 +8,86 @@ Unless stated otherwise, model accuracy is measured on the $N = 2500$ held-out t
 
 All three main datasets contain $10{,}000$ training, $1{,}000$ validation, and $2{,}500$ test scenarios. Each processed target has shape $50 \times 64 \times 64$, and all $40{,}500$ solver-specific trajectories satisfy the predefined quality criteria. The scenario populations match across references: six source families, five bathymetry families, and resolved source strength in approximately $[0.075, 0.300]$ after the initial-elevation-to-depth cap.
 
-The main numerical evidence combines controlled refinement against GeoClaw, nested-grid self-convergence, reproduction of the requested-time outputs under the stated benchmark settings, boundary-flux measurements under the stated benchmark settings, closed-domain mass-conservation analyses, and the local Boussinesq phase-speed analysis. The detailed dataset identity, numerical criteria, integrated-evaluation, and sensitivity inventory is provided in Appendix~\ref{app:validation-details}. These results are finite-horizon numerical evidence; they do not establish event-scale physical validity.
+Section~\ref{subsec:reference-validation} defines the numerical studies; Appendix~\ref{app:validation-details} retains supporting checks. The results below assess finite-horizon sensitivity rather than event-scale physical validity.
 
-The independent-comparator evidence is deliberately limited in scope. The three datasets were verified across all train, validation, and test splits, and nine representative solver cases were evaluated. All analytical, comparison, and refinement criteria were met, whereas $11$ of $12$ exploratory descriptive comparisons exceeded their provisional limits. Table~\ref{tab:geoclaw-ablation} summarizes a controlled comparison on three prespecified representative finite-horizon shallow-water cases; these results provide scope-limited comparator evidence rather than a dataset-wide validation.
+The independent-comparator evidence is deliberately limited in scope. Table~\ref{tab:geoclaw-ablation} compares the two shallow-water references with GeoClaw on three fixed test cases using the same $192 \times 192$ computational grid, paired initial fields, and 50 requested times from $8.4$ to $420$. The central $128 \times 128$ fields are reduced by cell averaging to $64 \times 64$ for comparison. GeoClaw uses open extrapolation boundaries, whereas the benchmark references retain their radiation boundaries and sponge. These results therefore measure inter-code discrepancy under the stated settings; they do not establish pointwise equivalence or dataset-wide numerical accuracy. The earlier boundary and refinement ablation used a different grid and scenario construction and is reported separately in Appendix~\ref{app:legacy-geoclaw-ablation}.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
-\caption{Mean trajectory relative $L_2$ against GeoClaw over three prespecified representative finite-horizon shallow-water cases. The extended domain retains the reported cell spacing; only the $2 \times$ refined variant halves the in-house cell size. GeoClaw is an independent comparator, not physical truth.}
+\caption{Trajectory relative $L_2$ against GeoClaw for three fixed test cases under the benchmark grid and output-time construction. All computations extend to $t=420$. GeoClaw is an independent numerical comparator, not physical truth.}
 \label{tab:geoclaw-ablation}
 \small
 \begin{tabular}{lcc}
     \toprule
-    Study configuration & Hydrostatic & MUSCL-HR \\
+    Bathymetry / source & Hydrostatic & MUSCL-HR \\
     \midrule
-    Reported $96$, radiation + sponge & $0.5343$ & $0.2382$ \\
-    Reported $96$, radiation, no sponge & $0.5333$ & $0.2350$ \\
-    Reported $96$, open, no sponge & $0.5338$ & $0.2353$ \\
-    Extended $192$, open, no sponge & $0.5330$ & $0.2339$ \\
-    $2 \times$ refined domain, open, no sponge & $0.3887$ & $0.1343$ \\
+    Continental / Gaussian & $0.3326$ & $0.1562$ \\
+    Seamounts / fault & $0.2399$ & $0.1548$ \\
+    Trench / rough & $0.2071$ & $0.0659$ \\
+    Mean & $0.2599$ & $0.1256$ \\
     \bottomrule
 \end{tabular}
 \end{table}
 
-Removing the sponge, changing the boundary type, and moving the boundary outward alter the mean discrepancy by only $0.0003$--$0.0032$. Halving the cell size moves all six solver--case comparisons closer to GeoClaw and reduces the mean discrepancy by $0.1451$ for Hydrostatic and $0.1010$ for MUSCL-HR, making refinement the dominant tested sensitivity. A material residual remains, however, and MUSCL-HR is closer in every tested setup. Because the Hydrostatic--MUSCL-HR contrast changes reconstruction, source treatment, time integration, and CFL together, the ablation neither identifies one unique cause nor establishes formal convergence or pointwise equivalence.
+MUSCL-HR is closer to GeoClaw in all three cases, but both references retain material discrepancies. The maximum initial-state mismatch is $8.88 \times 10 ^ {-16}$, and the maximum requested-time mismatch is $5.69 \times 10 ^ {-14}$, so these comparisons are not explained by a mismatched initial state or output schedule. Boundary treatment, discretization, and time integration still differ. The three cases cover only three bathymetry--source combinations and cannot establish a population-wide accuracy ranking or a unique cause of the remaining discrepancy.
 
-We evaluated nested-grid self-convergence on twelve shared smooth variable-bathymetry scenarios. Each scenario was generated on a $128 \times 128$ master grid, restricted by cell averaging to $64 \times 64$ and $32 \times 32$, and advanced to $t = 0.02$ with adaptive stepping, reflective boundaries, and the sponge disabled. The two solvers were evaluated at CFL values $0.1125$ and $0.225$; Table~\ref{tab:self-convergence} reports the selected rows, with the alternate-CFL results in the Appendix. The observed order is estimated from successive restricted-grid differences, $p = \log_2(E_{32/64}/E_{64/128})$, together with the smallest relative-$L_2$ contraction ratio over the twelve scenarios. All $144$ simulations remained finite. This provides empirical self-convergence evidence for the tested smooth benchmark, not an exact-solution error estimate or a formal convergence result for the full solver.
+Doubling the GeoClaw grid to $384 \times 384$ on the same physical domain gives coarse--fine RMSEs of $3.86 \times 10 ^ {-5}$--$9.42 \times 10 ^ {-5}$ after restriction to the common output grid. Using the finer comparator increases RMSE against the archived benchmark fields in all six comparisons, by $0.006\%$--$3.523\%$. The remaining inter-code discrepancy is therefore much larger than this tested comparator-grid sensitivity, although neither GeoClaw grid is an exact solution (Appendix~\ref{app:geoclaw-grid-sensitivity}).
 
-\begin{table}[pos=htbp]
+Refining the in-house computations gives a different result from refining GeoClaw alone. Against the fixed $384 \times 384$ GeoClaw comparator, Hydrostatic RMSE decreases by $20.3\%$--$25.2\%$ in all three cases when its core is refined from $128$ to $256$ cells. MUSCL-HR improves by $4.48\%$ and $2.16\%$ on the continental/Gaussian and seamounts/fault cases, but worsens by $17.34\%$ on trench/rough (Table~\ref{tab:matched-geoclaw-refinement}). Mean trajectory relative $L_2$ against this comparator changes from $0.2608$ to $0.1996$ for Hydrostatic and from $0.1265$ to $0.1270$ for MUSCL-HR. Thus the remaining discrepancy does not decrease uniformly with in-house refinement. The boundary treatments still differ, and neither grid supplies physical truth.
+
+\begin{table}[pos=!htbp]
+\centering
+\caption{New in-house trajectories against the fixed $384 \times 384$ GeoClaw comparator. Entries are trajectory RMSE in benchmark elevation units on the common $50\times64\times64$ output. Column grid sizes refer to the in-house solver core.}
+\label{tab:matched-geoclaw-refinement}
+\small
+\begin{tabular}{lcccc}
+\toprule
+Bathymetry / source & \shortstack{Hydrostatic\\$128$} & \shortstack{Hydrostatic\\$256$} & \shortstack{MUSCL-HR\\$128$} & \shortstack{MUSCL-HR\\$256$} \\
+\midrule
+Continental / Gaussian & $0.002767$ & $0.002071$ & $0.001300$ & $0.001242$ \\
+Trench / rough & $0.001804$ & $0.001363$ & $0.000591$ & $0.000693$ \\
+Seamounts / fault & $0.001259$ & $0.001004$ & $0.000809$ & $0.000792$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The full-horizon study comprised $92$ rollouts over six fixed cases, three boundary-control cases, five lake-at-rest cases, and two moving-equilibrium resolutions. All rollouts remained finite. The minimum recorded water depth was $0.7413$ benchmark units, the largest post-step CFL was $0.2251$, and no NaN replacement, positivity or dry-state projection, or velocity clipping was recorded. For the six cases with nested grids, the median trajectory RMSE from $64 \rightarrow 128$ was $7.32 \times 10 ^ {-4}$ for Hydrostatic and $4.55 \times 10 ^ {-4}$ for MUSCL-HR; from $128 \rightarrow 256$ it was $4.66 \times 10 ^ {-4}$ and $2.00 \times 10 ^ {-4}$, respectively. For both solvers, the baseline--fine difference was smaller than the coarse--baseline difference in every case. The median Hydrostatic--MUSCL-HR discrepancy decreased from $1.46 \times 10 ^ {-3}$ at the $64$-cell core to $1.16 \times 10 ^ {-3}$ at $128$ and $7.27 \times 10 ^ {-4}$ at $256$. Figure~\ref{fig:full-horizon-numerical-study} shows these paired comparisons. These are fixed-raster, combined space--time differences, not formal convergence orders.
+
+The median difference between the common-CFL and half-CFL runs was $2.99 \times 10 ^ {-5}$ for Hydrostatic and $7.87 \times 10 ^ {-7}$ for MUSCL-HR. Removing the sponge changed the baseline trajectories by median RMSEs of $4.12 \times 10 ^ {-4}$ and $4.79 \times 10 ^  {-4}$, replacing radiation with open boundaries changed them by $5.86 \times 10 ^ {-4}$ and $6.32 \times 10 ^ {-4}$, and extending the no-sponge exterior changed them by $2.76 \times 10 ^ {-4}$ and $3.25 \times 10 ^ {-4}$ for Hydrostatic and MUSCL-HR, respectively. The median $128 \rightarrow 256$ per-time difference peaked near the middle of the horizon at $5.69 \times 10 ^ {-4}$ for Hydrostatic and $2.96 \times 10 ^ {-4}$ for MUSCL-HR before declining to $1.56 \times 10 ^ {-4}$ and $8.00 \times 10 ^ {-5}$ at $t = 420$. Full-domain water-volume and mechanical-energy changes were recorded as diagnostics; across the six baseline cases, peak absolute water-volume changes from the initial state ranged from $4.87 \times 10 ^ 3$--$1.21 \times 10 ^ 5$ and $5.68 \times 10 ^ 3$--$1.24 \times 10 ^ 5$, and the corresponding peak absolute mechanical-energy changes per unit density ranged from $5.82 \times 10 ^ 2$--$1.79 \times 10 ^ 4$ and $5.82 \times 10 ^ 2$--$1.79 \times 10 ^ 4$ for Hydrostatic and MUSCL-HR. Open boundaries and damping prevent interpreting these values as closed-system conservation errors.
+
+\begin{figure}[pos=!htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/full_horizon_numerical_study.pdf}
+\caption{Full-horizon numerical sensitivity on six fixed test cases. (a) Thin lines connect the two adjacent-grid differences for each of six cases per solver; thick lines and squares show medians. (b) The median $128\rightarrow256$ difference through the 50 requested times, with the range across cases. (c) Hydrostatic--MUSCL-HR differences decrease across the tested solver cores. (d) Controlled setting changes: dots show individual cases, short horizontal ticks show medians, and thin vertical lines span the minimum and maximum. Dots are offset horizontally for visibility. Ranges describe tested cases and are not confidence intervals or formal convergence orders.}
+\label{fig:full-horizon-numerical-study}
+\end{figure}
+
+The full-horizon lake-at-rest runs over five bathymetry families had maximum free-surface drift below $2.7 \times 10 ^ {-15}$ and maximum velocity below $1.8 \times 10 ^ {-14}$; the largest discharge drift was $1.75 \times 10 ^ {-13}$. The moving-equilibrium test retained nonzero drift: at the two resolutions, Hydrostatic elevation and discharge drifts were $2.21 \times 10 ^ {-4}$ and $1.00 \times 10 ^ {-3}$ at $128$ cells and $1.12 \times 10 ^ {-4}$ and $5.34 \times 10 ^ {-4}$ at $256$ cells, whereas MUSCL-HR gave $6.61 \times 10 ^ {-6}$ and $2.67 \times 10 ^ {-5}$ and then $1.75 \times 10 ^ {-6}$ and $6.74 \times 10 ^ {-6}$. These stationary and moving tests support solver-specific empirical statements under the stated setup; they do not establish general well-balancedness or physical accuracy.
+
+\FloatBarrier
+\paragraph{Consequences for unchanged surrogate predictions.}
+Changing only the Hydrostatic reference resolution changes the measured errors of all four leading models (Table~\ref{tab:fixed-prediction-resolution}). Refining the reference core from $128$ to $256$ increases mean per-scenario relative $L_2$ by $2.04\%$--$5.08\%$, despite leaving the predictions unchanged. The ordering averaged over the six cases and three seeds remains ConvLSTM, U-FNO, FNO, then F-FNO at every reference grid. This six-case ordering differs from the full-test ordering and does not establish a population-wide architecture ranking. Within individual cases and seeds, refinement reverses one model pair in five of the eighteen case--seed combinations, involving three distinct scenarios. Aggregate rank stability therefore coexists with reference-sensitive case-level comparisons.
+
+\begin{table}[pos=!htbp]
+\centering
+\caption{Reference-resolution sensitivity of fixed predictions on six prescribed cases and three training seeds. Entries average per-scenario denormalized relative $L_2$ across cases and seeds. The first three numeric columns specify the Hydrostatic solver-core grid used to generate the evaluation target; every prediction and target is evaluated on the same $64\times64$ output grid.}
+\label{tab:fixed-prediction-resolution}
+\small
+\begin{tabular}{lcccc}
+\toprule
+Model & $64$ & $128$ & $256$ & Change $128\rightarrow256$ \\
+\midrule
+ConvLSTM & $0.2837$ & $0.2268$ & $0.2314$ & $+2.04\%$ \\
+U-FNO & $0.3061$ & $0.2719$ & $0.2857$ & $+5.08\%$ \\
+FNO & $0.3391$ & $0.3009$ & $0.3086$ & $+2.55\%$ \\
+F-FNO & $0.3394$ & $0.3058$ & $0.3166$ & $+3.54\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The earlier nested-grid self-convergence study used twelve shared smooth variable-bathymetry scenarios. Each scenario was generated on a $128 \times 128$ master grid, restricted by cell averaging to $64 \times 64$ and $32 \times 32$, and advanced to $t = 0.02$ with adaptive stepping, reflective boundaries, and the sponge disabled. The two solvers were evaluated at CFL values $0.1125$ and $0.225$; Table~\ref{tab:self-convergence} reports the selected rows, with the alternate-CFL results in the Appendix. The observed order is estimated from successive restricted-grid differences, $p = \log_2(E_{32/64}/E_{64/128})$, together with the smallest relative-$L_2$ contraction ratio over the twelve scenarios. All $144$ simulations remained finite. This provides empirical self-convergence evidence for the tested smooth benchmark, not an exact-solution error estimate or a formal convergence result for the full solver.
+
+\begin{table}[pos=!htbp]
 \centering
 \caption{Nested-grid self-convergence analysis on twelve smooth variable-bathymetry scenarios with reflective boundaries and no sponge. Orders are medians with the observed minimum and maximum in brackets; the final column is the minimum relative-$L_2$ ratio $E_{32/64}/E_{64/128}$ across scenarios.}
 \label{tab:self-convergence}
@@ -49,26 +102,25 @@ We evaluated nested-grid self-convergence on twelve shared smooth variable-bathy
 \end{tabular}
 \end{table}
 
-To complement the self-differences, a separate constant-depth periodic linear-wave diagnostic used $32$, $64$, $128$, $256$, and $512$ grids at three CFL values. On the finest grid, the relative-$L_2$ error against the linearized reference was $0.0334$--$0.0526$ for Hydrostatic and $0.007394$--$0.007396$ for MUSCL-HR. Hydrostatic approached first-order behavior through the finest pair. MUSCL-HR gave approximately $1.3$--$1.5$ order on the first two pairs, about $1.04$--$1.05$ on the $128$--$256$ pair, and about $0.29$ on the $256$--$512$ pair as an error floor emerged. This is solver-specific empirical accuracy evidence; it does not support a blanket second-order or formal convergence claim for the full solver. The full table is retained in Appendix~\ref{app:validation-details}.
+To complement the self-differences, a separate constant-depth periodic linear-wave diagnostic used $32$, $64$, $128$, $256$, and $512$ grids at three CFL values. On the finest grid, the relative-$L_2$ error against the linearized reference was $0.0334$--$0.0526$ for Hydrostatic and $0.007394$--$0.007396$ for MUSCL-HR. Hydrostatic approached first-order behavior through the finest pair. MUSCL-HR gave approximately $1.3$--$1.5$ order on the first two pairs, about $1.04$--$1.05$ on the $128$--$256$ pair, and about $0.29$ on the $256$--$512$ pair as discrepancy from the linearized reference leveled off. Finite-amplitude nonlinear effects contribute to this discrepancy, so its plateau cannot be assigned uniquely to discretization. This is solver-specific empirical accuracy evidence; it does not support a blanket second-order or formal convergence claim for the full solver. The full table is retained in Appendix~\ref{app:validation-details}.
 
-We regenerated all $120$ selected scenarios from the paired 128-cell inputs in the test set with the benchmark 192-cell buffered configurations and recomputed all $360$ solver--scenario trajectories to the requested times $8.4$--$420$. All computations remained finite, every natural-step count matched the stored natural-step records, and the natural-step histories agreed to floating-point precision. The median relative-$L_2$ differences from the stored requested outputs were $1.289\times10^{-5}$ for Hydrostatic, $1.168\times10^{-5}$ for MUSCL-HR, and $3.314\times10^{-8}$ for Boussinesq; the corresponding $95$th percentiles were $5.423\times10^{-5}$, $4.808\times10^{-5}$, and $3.382\times10^{-8}$. This is a requested-time reproduction result, not an exact-solution accuracy estimate or a formal interpolation proof. The complete distribution and provenance are in Appendix~\ref{app:validation-details}.
+A separate short component-level lake-at-rest check also covered three representative bathymetries for 32 steps with reflective boundaries and no sponge. MUSCL-HR had zero recorded free-surface drift in each case; its largest absolute velocity component was $3.11 \times 10^{-15}$ benchmark units (Appendix~\ref{app:lake-at-rest}).
 
 Closed-domain mass-conservation cases also met all six solver--case criteria at $64 \times 64$, $t = 0.02$, and $128 \times 128$, $t = 0.05$, with reflective boundaries and no sponge. The maximum relative mass drift was $1.97 \times 10^{-16}$ and $1.11 \times 10^{-16}$, respectively. These results describe conservation in a closed domain; they do not provide an open-boundary mass or flux budget.
-
-For the same computations under the stated benchmark settings, the finite-volume mass flux at each outer interface was recorded for all $120$ Hydrostatic and MUSCL-HR scenarios with their radiation boundaries and elapsed-time-consistent sponge. The $95$th-percentile maximum boundary mass flux was $0.1125$ for Hydrostatic and $0.1337$ for MUSCL-HR; the corresponding $95$th-percentile absolute cumulative residuals, normalized by initial domain mass, were $2.813\times10^{-3}$ and $2.903\times10^{-3}$. All $240$ shallow-water computations remained finite. These values quantify boundary activity and damping under the stated benchmark settings, not a dimensional conservation or event-scale flux budget (Table~\ref{tab:app-boundary-flux}).
 
 The linear weakly dispersive reference also reproduces its discrete constant-depth phase-speed trend over eight Fourier modes. The maximum relative error is $2.45 \times 10 ^ {-4}$ for the non-dispersive branch and $1.91 \times 10 ^ {-8}$ for $\alpha_B = 1 / 3$, with no conjugate-gradient failures and at most $35$ iterations in the latter branch (Table~\ref{tab:app-bouss-dispersion}). This is a local numerical analysis rather than external or event-scale validation.
 
 Together, these analyses separate numerical accuracy evidence from reference identity and evaluation procedure. The central model result is that reference discrepancy and surrogate error are on the same benchmark scale, but their ordering depends on the reference pair and architecture. As quantified in Section~\ref{subsec:res-solver-fidelity}, the Hydrostatic--MUSCL-HR gap is smaller than the selected direct Hydrostatic FNO and F-FNO RMSEs, whereas the cross-family gaps are comparable to or larger than the direct Boussinesq FNO RMSE. The architecture comparisons below therefore demonstrate the consequences of the reference-aware framework rather than defining its primary contribution.
 
+\FloatBarrier
 \subsection{Direct same-reference accuracy}
 \label{subsec:res-accuracy}
 
 Table~\ref{tab:accuracy} contains the selected seed-$18$ results for all eleven direct model--reference configurations. Among the Hydrostatic configurations, ConvLSTM has the lowest global relative $L_2$ ($0.203$), followed by U-FNO ($0.224$) and F-FNO ($0.230$). The base FNO and its mode variants form a narrow $0.236$--$0.240$ group, while WNO, U-Net, and CNN are less accurate. F-FNO uses $0.411$M parameters, about $7.6\%$ as many as the $5.443$M-parameter FNO, so parameter count alone does not explain the observed ranking.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
-\caption{Direct same-reference field accuracy on the held-out test split ($N = 2500$). Canonical sources are FNO and its mode variants \citep{li2021fno}, F-FNO \citep{tran2023ffno}, ConvLSTM \citep{shi2015convlstm}, U-FNO \citep{wen2022ufno}, WNO \citep{tripura2023wno}, U-Net \citep{ronneberger2015unet}, and the general CNN precedent \citep{lecun1998gradient}; the reported implementations are defined in Section~\ref{sec:models}. Params are millions. MAE, RMSE, and relative $L_2$ are in the denormalized benchmark space; max-err is the global normalized-unit maximum.}
+\caption{Selected seed-$18$ direct-model accuracy on $2500$ test scenarios. Architectures are defined in Section~\ref{sec:models}. Params are millions; MAE, RMSE, and relative $L_2$ use denormalized benchmark units, while max-err uses normalized target units.}
 \label{tab:accuracy}
 \small
 \begin{tabular}{llccccc}
@@ -93,12 +145,32 @@ Table~\ref{tab:accuracy} contains the selected seed-$18$ results for all eleven 
 
 The Boussinesq FNO has a larger relative $L_2$ than the Hydrostatic FNO and a similar denormalized RMSE to the raw cross-family gaps. This is why the reference-specific ranking must not be reduced to one number: target scale and waveform structure differ across equation families.
 
+\paragraph{Three-seed replication of leading Hydrostatic models.}
+Table~\ref{tab:accuracy} uses the selected seed-$18$ checkpoint for each architecture. To quantify initialization variability, we also evaluated the four leading Hydrostatic models trained with seeds $18$, $36$, and $67$ on the same $2{,}500$ held-out scenarios. Table~\ref{tab:multiseed-architecture} reports the mean of per-scenario denormalized relative $L_2$ for each checkpoint, followed by the mean and sample standard deviation across seeds. This per-scenario aggregation differs from the global field relative $L_2$ in Table~\ref{tab:accuracy}; the numerical values in the two tables therefore summarize different quantities. ConvLSTM, U-FNO, F-FNO, and FNO ranked first, second, third, and fourth, respectively, for every replicated seed. This supports rank stability for the four-model subset, but it is not a three-seed replication of all nine architectures and does not provide paired cross-model confidence intervals.
+
+\begin{table}[pos=!htbp]
+\centering
+\caption{Three-seed Hydrostatic replication on the common $N = 2500$ held-out test split. Entries are mean per-scenario denormalized benchmark-scale relative $L_2$ for each trained model. The mean and sample SD columns summarize the three seeds, and the final column lists the rank for seeds $18$, $36$, and $67$.}
+\label{tab:multiseed-architecture}
+\small
+\begin{tabular}{lcccccc}
+    \toprule
+    Model & seed $18$ & seed $36$ & seed $67$ & mean & sample SD & rank \\
+    \midrule
+    ConvLSTM & $0.2077$ & $0.2045$ & $0.2026$ & $0.2049$ & $0.0026$ & $1/1/1$ \\
+    U-FNO    & $0.2356$ & $0.2436$ & $0.2417$ & $0.2403$ & $0.0041$ & $2/2/2$ \\
+    F-FNO    & $0.2503$ & $0.2474$ & $0.2489$ & $0.2489$ & $0.0014$ & $3/3/3$ \\
+    FNO      & $0.2700$ & $0.2707$ & $0.2612$ & $0.2673$ & $0.0053$ & $4/4/4$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
 \paragraph{Paired scenario uncertainty.}
 The paired scenario bootstrap gives mean per-scenario relative $L_2$ values of $0.250$ ($95\%$ interval $[0.246, 0.255]$) for F-FNO, $0.208$ ($[0.203, 0.212]$) for ConvLSTM, and $0.270$ ($[0.265, 0.275]$) for FNO. Relative to FNO, the paired mean differences are $-0.020$ ($[-0.022, -0.017]$) for F-FNO and $-0.062$ ($[-0.066, -0.059]$) for ConvLSTM. Their per-scenario errors are lower than FNO on $63.9\%$ and $79.4\%$ of the test scenarios, respectively. These intervals describe variation over the fixed test scenarios for the selected checkpoints; they are not training-seed significance claims.
 
-For the seed-$18$ global metric in Table~\ref{tab:accuracy}, ConvLSTM improves Hydrostatic relative $L_2$ by approximately $15\%$ relative to FNO, while F-FNO uses about $7.6\%$ as many parameters as FNO. ConvLSTM also has the lowest final-frame error among the three models shown in Table~\ref{tab:perframe}. Figure~\ref{fig:rollout} illustrates one direct Hydrostatic FNO rollout at the first, middle, and final requested times. These are fixed-checkpoint results rather than broad population-level architecture claims.
+ConvLSTM improves global relative $L_2$ by about $15\%$ over FNO; F-FNO uses $7.6\%$ as many parameters. Figure~\ref{fig:rollout} shows a median-error FNO example.
 
-\begin{figure}[pos=htbp]
+\begin{figure}[pos=!htbp]
 \centering
 \includegraphics[width=0.72\linewidth]{figures/hydrostatic_rollout.pdf}
 \caption{Direct FNO prediction for common-time Hydrostatic test scenario \texttt{scenario\_001302}, a continental/Okada-like pair selected near the test-split median error. Reference, prediction, and absolute error are shown at $t = 8.4$, $210.0$, and $420.0$ in elapsed benchmark-time units. All $\eta$ panels are denormalized benchmark-scale fields.}
@@ -108,7 +180,7 @@ For the seed-$18$ global metric in Table~\ref{tab:accuracy}, ConvLSTM improves H
 \paragraph{Per-frame behavior.}
 Table~\ref{tab:perframe} reports denormalized benchmark-scale relative $L_2$ at the first, middle, and final requested times. Errors generally grow over the horizon, with ConvLSTM showing the flattest selected curve and the Boussinesq FNO also increasing substantially by the final frame.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
 \caption{Per-frame denormalized benchmark-scale relative $L_2$ on the $N = 2500$ test split.}
 \label{tab:perframe}
@@ -128,7 +200,7 @@ Table~\ref{tab:perframe} reports denormalized benchmark-scale relative $L_2$ at 
 \paragraph{Physics diagnostics.}
 Table~\ref{tab:physics-diag} compares the Hydrostatic integral and spectral diagnostics. ConvLSTM has the lowest integral, low-frequency, and mid-frequency errors among the three diagnostic models. F-FNO improves the low-frequency error relative to FNO but has larger mid- and high-frequency errors. These quantities diagnose where the error lies; they do not imply conservation enforcement.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
 \caption{Hydrostatic denormalized benchmark-scale diagnostics on the full test split. Integral columns are relative $L_2$ of spatial-mean time series; spectral columns are bandwise field relative $L_2$.}
 \label{tab:physics-diag}
@@ -145,12 +217,13 @@ Table~\ref{tab:physics-diag} compares the Hydrostatic integral and spectral diag
 
 The mass-proxy values are intentionally much smaller than the free-surface integral errors: subtracting the same fixed bathymetry from prediction and target cancels in the numerator, while the relative denominator includes the background depth. These values therefore quantify a depth-mean proxy and do not demonstrate conservation.
 
+\FloatBarrier
 \subsection{Runtime comparison}
 \label{subsec:res-speed}
 
-Table~\ref{tab:speed} reports matched reference and batch-one inference timings. The float64 CPU reference rollouts take $19.923$~s for Hydrostatic, $30.318$~s for MUSCL-HR, and $16.457$~s for Boussinesq per sample. Direct GPU inference ranges from $0.138$~ms for CNN to $22.190$~ms for ConvLSTM. Comparing only the forward calculations, the measured ratios range from $898 \times$ to $144{,}170 \times$ across the reported models.
+Table~\ref{tab:speed} reports reference-rollout and batch-one inference timings for the same output task. The float64 CPU reference rollouts take $19.923$~s for Hydrostatic, $30.318$~s for MUSCL-HR, and $16.457$~s for Boussinesq per sample. Direct GPU inference ranges from $0.138$~ms for CNN to $22.190$~ms for ConvLSTM. Comparing only the forward calculations, the measured ratios range from $898 \times$ to $144{,}170 \times$ across the reported models.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
 \caption{Batch-one model inference time on the laptop GPU versus the matched float64 CPU common-time reference rollout. Model timing uses five warm-up and twenty measured passes with TF32 disabled; each solver mean uses eight scenarios, one warm-up, and three measured repeats. Loading, input preparation, and solver setup are excluded from the comparison.}
 \label{tab:speed}
@@ -176,12 +249,13 @@ Table~\ref{tab:speed} reports matched reference and batch-one inference timings.
 
 These ratios reflect the particular CPU and laptop-GPU implementations used in this study. They should not be interpreted as speedups over operational, compiled, GPU, or adaptive-mesh solvers.
 
+\FloatBarrier
 \subsection{Distribution shift and sample scaling}
 \label{subsec:res-ood}
 
 Table~\ref{tab:ood} groups the Hydrostatic FNO by source family using means of per-scenario denormalized benchmark-scale relative $L_2$. Dipole sources are the hardest group ($0.330$), while the other families lie between $0.236$ and $0.293$. The bathymetry grouping identifies continental fields as the hardest family ($0.317$). Because every family appears in training, these are subgroup diagnostics, not unseen-family tests.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
 \caption{Hydrostatic FNO source-family subgroups. Metrics are means of per-scenario denormalized benchmark-scale values.}
 \label{tab:ood}
@@ -201,7 +275,7 @@ Table~\ref{tab:ood} groups the Hydrostatic FNO by source family using means of p
 
 The strict holdouts in Table~\ref{tab:strict-holdout} are more demanding for some families. The held-out/ID relative-$L_2$ ratios are $1.02$ for trench, $2.15$ for continental bathymetry, $1.33$ for rough sources, and $1.12$ for Okada-like sources. The full-distribution model is better on every excluded family, indicating that removing the family costs more than any benefit from specializing the normalization and training distribution. This remains a single-seed comparison and does not separate representation limits from reduced training-set diversity.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
     \caption{Strict Hydrostatic FNO held-out-family tests. Values are denormalized benchmark-scale relative $L_2$ after applying the normalization statistics associated with each model.}
 \label{tab:strict-holdout}
@@ -219,12 +293,13 @@ The strict holdouts in Table~\ref{tab:strict-holdout} are more demanding for som
 
 The six seed-$18$ sample-scaling experiments are monotone: relative $L_2$ falls from $0.544$ with $100$ training scenarios to $0.259$ with $5{,}000$, while the $10{,}000$-scenario direct FNO reaches $0.240$. Full values and curves are given in Appendix~\ref{app:sample-scaling}; this is a diagnostic learning curve, not a fitted scaling law.
 
+\FloatBarrier
 \subsection{Resolution transfer}
 \label{subsec:res-crossres}
 
 Table~\ref{tab:crossres} reports the proxy Hydrostatic experiment, which applies the same FNO trained at $64 \times 64$ after resizing the processed test fields. Error rises in both directions, to $0.396$ at $32 \times 32$ and $0.364$ at $128 \times 128$.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
 \caption{Proxy Hydrostatic FNO resolution transfer ($ N = 2500$). The $64 \times 64$ row is the ordinary test set.}
 \label{tab:crossres}
@@ -239,9 +314,9 @@ Table~\ref{tab:crossres} reports the proxy Hydrostatic experiment, which applies
 \end{tabular}
 \end{table}
 
-The stronger native experiment in Table~\ref{tab:crossres-native-transfer} uses paired MUSCL-HR simulations and three separately trained models. The diagonal errors are $0.353$, $0.387$, and $0.412$ for $32$, $64$, and $128$ grids. Off-diagonal transfer is consistently worse than the corresponding diagonal, with the largest degradation from $32$-grid training to the $128$-grid test.
+The native MUSCL-HR matrix (Table~\ref{tab:crossres-native-transfer}) shows larger errors off the training-grid diagonal, especially from $32$-grid training to $128$-grid testing.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
 \caption{Native MUSCL-HR FNO transfer matrix. Rows are training grids and columns are native test grids; each cell is denormalized benchmark-scale relative $L_2$ on $150$ matched scenarios.}
 \label{tab:crossres-native-transfer}
@@ -258,12 +333,13 @@ The stronger native experiment in Table~\ref{tab:crossres-native-transfer} uses 
 
 Each native model sees only $700$ training scenarios, so the matrix should not be compared directly with the main $10{,}000$-scenario Hydrostatic model as though resolution were the only variable.
 
+\FloatBarrier
 \subsection{Synthetic-forcing transfer to real bathymetry}
 \label{subsec:res-real}
 
 Table~\ref{tab:real-bath} summarizes the main morphology suite of ten GEBCO-derived fully wet crops rescaled into the training depth range and paired with synthetic sources, while Figure~\ref{fig:real-bath} illustrates one offshore crop at the final requested time. Direct F-FNO transfers better than direct FNO, with denormalized benchmark-scale relative $L_2$ $0.293$ versus $0.358$. The seeded window results are lower but are not like-for-like direct forecasts.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
 \caption{Real-bathymetry morphology suite under synthetic forcing. Window models receive the first true target frame and are scored on the remaining $49$ frames.}
 \label{tab:real-bath}
@@ -279,7 +355,7 @@ Table~\ref{tab:real-bath} summarizes the main morphology suite of ten GEBCO-deri
 \end{tabular}
 \end{table}
 
-\begin{figure}[pos=htbp]
+\begin{figure}[pos=!htbp]
 \centering
 \includegraphics[width=0.72\linewidth]{figures/real_bathymetry_offshore.pdf}
 \caption{Synthetic-forcing morphology transfer on one illustrative fully wet offshore crop derived from the GEBCO\_2026 Grid \citep{gebco2026}. At the final requested time, the figure compares the reference field with direct-FNO and first-frame-seeded Window-FNO-5 errors. Their full-trajectory denormalized benchmark-scale relative $L_2$ values are $0.212$ and $0.035$. This is not real-event validation.}
@@ -288,12 +364,13 @@ Table~\ref{tab:real-bath} summarizes the main morphology suite of ten GEBCO-deri
 
 The fully wet coastline ablation remains usable, but the coastline stress case with positive topography gives relative $L_2$ near one for all four models. This isolates a clear scope boundary: transfer to offshore morphology does not imply shoreline or wet--dry skill.
 
+\FloatBarrier
 \subsection{Common-time solver gaps and cross-reference ratios}
 \label{subsec:res-solver-fidelity}
 
 Table~\ref{tab:solvergap} reports the common-time solver discrepancies. The Hydrostatic--MUSCL-HR gap is the smallest pairwise discrepancy: its global field RMSE is $0.00171$, compared with $0.00305$ and $0.00374$ for the two shallow-water--Boussinesq pairs. The relative $L_2$ is directional because it divides by the second reference's norm.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
 \caption{Common-time solver gaps on all $2500$ shared test scenarios. Scenario metrics are means with the second solver as the relative-$L_2$ reference.}
 \label{tab:solvergap}
@@ -308,9 +385,9 @@ Table~\ref{tab:solvergap} reports the common-time solver discrepancies. The Hydr
 \end{tabular}
 \end{table}
 
-The pooled-reference experiment distinguishes compromise prediction from reference-specific prediction. Table~\ref{tab:pooled-reference} reports the primary matched-training comparison, averaged over seeds $18$, $36$, and $67$. The solver-anonymous model produces one compromise output for each scenario: its errors are intermediate across the three references, and the nearest reference is Hydrostatic, MUSCL-HR, or Boussinesq for approximately $55\%$, $33\%$, and $12\%$ of scenarios, respectively. Supplying solver identity lowers the error to each requested reference, with the largest relative improvement for the Boussinesq target. The seed-to-seed ranges are narrow: $0.002115$--$0.002130$, $0.002508$--$0.002531$, and $0.002876$--$0.002901$ for the three conditioned targets.
+Table~\ref{tab:pooled-reference} reports the matched-training comparison over seeds $18$, $36$, and $67$. The anonymous output is nearest to Hydrostatic, MUSCL-HR, or Boussinesq for approximately $55\%$, $33\%$, and $12\%$ of scenarios. Conditioning lowers error against every requested reference, most strongly for Boussinesq.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
 \caption{Primary pooled-reference comparison on the $2{,}500$ paired held-out scenarios. Entries are mean global denormalized benchmark-scale RMSE over seeds $18$, $36$, and $67$. The anonymous model produces one output that is compared with each reference; each conditioned column supplies the corresponding solver identity.}
 \label{tab:pooled-reference}
@@ -325,13 +402,19 @@ The pooled-reference experiment distinguishes compromise prediction from referen
 \end{tabular}
 \end{table}
 
-For three equally weighted reference trajectories, the squared-error-optimal solver-anonymous target is their per-scenario arithmetic mean. The paired physical-space evaluation computes this centroid baseline at global RMSE $0.001705$ (95\% bootstrap interval $[0.001665,\,0.001745]$). The three anonymous checkpoints have equal-reference RMSE $0.002995 \pm 0.000004$ (sample standard deviation across seeds $18$, $36$, and $67$), so the remaining gap is model and optimization error above the irreducible reference ambiguity. This analytical baseline is a reference-consensus diagnostic, not a comparison with physical truth.
+For three equally weighted reference trajectories, the squared-error-optimal solver-anonymous target is their per-scenario arithmetic mean, $\bar{Y}$. For each scenario, the squared error averaged across references decomposes as
+\begin{equation}
+\frac{1}{R} \sum_{r = 1} ^ {R}\|f(X) - Y_r\|_2 ^ 2
+= \|f(X) - \bar{Y}\|_2 ^ 2
++ \frac{1}{R} \sum_{r = 1} ^ {R}\|Y_r - \bar{Y}\|_2 ^ 2.
+\end{equation}
+Comparing the centroid with the three references gives a global RMSE of $0.001705$ (95\% bootstrap interval $[0.001665,\, 0.001745]$). The three anonymous checkpoints have equal-reference RMSE $0.002995 \pm 0.000004$ (sample standard deviation across seeds $18$, $36$, and $67$). Applying the decomposition to the mean squared errors across these seeds gives a model-to-centroid RMS term of $0.002462$; this term measures the anonymous model's deviation from the reference centroid. The centroid term quantifies disagreement among the three equally weighted references, while the model-to-centroid term includes surrogate approximation and optimization error. This reference-consensus diagnostic does not identify physical truth.
 
 The corresponding secondary higher-exposure comparison gives conditioned target errors of $0.00209$, $0.00249$, and $0.00287$, respectively, and therefore does not alter the interpretation. Conditioning reduces compromise behavior and preserves solver-specific structure, but it does not identify a physically correct trajectory or universally remove the underlying solver discrepancy.
 
 Figure~\ref{fig:solver-gap-scale} places the same-reference errors of the Hydrostatic FNO, Hydrostatic F-FNO, and Boussinesq FNO alongside the raw solver gaps on one denormalized RMSE scale. The Hydrostatic--MUSCL-HR gap is $0.81$ and $0.84$ times the Hydrostatic FNO and F-FNO RMSEs, respectively. The Hydrostatic--Boussinesq and MUSCL-HR--Boussinesq gaps are $1.24$ and $1.01$ times the Boussinesq FNO RMSE.
 
-\begin{figure}[pos=htbp]
+\begin{figure}[pos=!htbp]
 \centering
 \includegraphics[width=0.88\linewidth]{figures/solver_gap_vs_surrogate_error.pdf}
 \caption{Raw common-time solver gaps compared with the same-reference errors of the Hydrostatic FNO, Hydrostatic F-FNO, and Boussinesq FNO in the same denormalized global-RMSE units. Lines connect each surrogate error to its paired solver gap; annotations give the gap-to-surrogate ratio.}
@@ -340,7 +423,7 @@ Figure~\ref{fig:solver-gap-scale} places the same-reference errors of the Hydros
 
 Table~\ref{tab:superiority} reports all six directions for the selected seed-$18$ checkpoints. Every ratio exceeds one, ranging from $1.10$ to $1.72$, so none of the tested emulators bridges its raw solver gap in this global-RMSE metric.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
 \caption{Seed-$18$ cross-reference discrepancy ratio $\rho$ with $95\%$ paired scenario-bootstrap intervals. Values below one would mean closer to the second numerical reference in global RMSE, not physical superiority.}
 \label{tab:superiority}
@@ -359,25 +442,48 @@ Table~\ref{tab:superiority} reports all six directions for the selected seed-$18
 \end{tabular}
 \end{table}
 
-The cross-family effects are smaller than the shallow-water-direction ratios but remain above one in the present comparison. Thus the strongest statement supported by these results is that all six tested directions retain a larger emulator-to-reference discrepancy than the corresponding raw solver gap; this is a benchmark-relative result, not evidence that any reference is physically more accurate.
+All six directions retain larger emulator-to-reference discrepancy than the corresponding raw solver gap; this does not rank physical accuracy.
 
-Figure~\ref{fig:cross-reference-forest} shows the seed-$18$ ratios with their paired scenario-bootstrap intervals. The reference line at $\rho = 1$ is the raw solver-gap scale; Table~\ref{tab:superiority} separately reports training-seed variation.
+\FloatBarrier
+Figure~\ref{fig:cross-reference-forest} visualizes the six ratios and paired scenario-bootstrap intervals in Table~\ref{tab:superiority}. The dashed line at $\rho=1$ marks the raw solver-gap scale.
 
-\begin{figure}[pos=htbp]
+\begin{figure}[pos=!htbp]
 \centering
 \includegraphics[width=0.88\linewidth]{figures/cross_reference_ratio_forest.pdf}
-\caption{Seed-$18$ cross-reference discrepancy ratios with $95\%$ paired scenario-bootstrap intervals. The dashed line denotes equality with the corresponding raw solver gap, not equality with physical truth.}
+\caption{Cross-reference discrepancy ratios for the selected seed-$18$ checkpoints, with $95\%$ paired scenario-bootstrap intervals. All six exceed the raw solver-gap reference $\rho=1$. These intervals describe test-scenario variation, not training-seed uncertainty or physical accuracy.}
 \label{fig:cross-reference-forest}
 \end{figure}
 
+Applying the squared-error identity to the same global RMSE values separates the normalized surrogate-error and alignment contributions. Table~\ref{tab:ratio-decomposition} reports $\lVert e_A\rVert_2 ^ 2/\lVert d_{AB}\rVert_2 ^ 2$, the normalized alignment term $2\langle e_A, d_{AB}\rangle/\lVert d_{AB}\rVert_2 ^ 2$, and their resulting $\rho ^ 2$. The positive alignment term for Hydrostatic $\rightarrow$ MUSCL-HR increases the ratio, whereas the negative terms in several reverse or cross-family directions partially cancel the surrogate-error contribution. These are algebraic properties of the stored benchmark fields, not evidence of error cancellation toward physical truth.
+
+\begin{table}[pos=!htbp]
+\centering
+\caption{Squared-error decomposition of the seed-$18$ cross-reference ratios. The error and alignment columns are normalized by the squared raw solver gap; their sum plus one equals $\rho^2$ up to rounding.}
+\label{tab:ratio-decomposition}
+\small
+\begin{tabular}{llccc}
+    \toprule
+    Trained on $A$ & Compared with $B$ & $\lVert e_A\rVert^2/\lVert d_{AB}\rVert^2$ & $2\langle e_A,d_{AB}\rangle/\lVert d_{AB}\rVert^2$ & $\rho^2$ \\
+    \midrule
+    Hydrostatic & MUSCL-HR   & $1.537$ & $+0.430$ & $2.968$ \\
+    Hydrostatic & Boussinesq & $0.321$ & $+0.121$ & $1.441$ \\
+    MUSCL-HR    & Hydrostatic & $2.275$ & $-0.891$ & $2.384$ \\
+    MUSCL-HR    & Boussinesq  & $0.713$ & $+0.100$ & $1.813$ \\
+    Boussinesq  & Hydrostatic & $0.655$ & $-0.451$ & $1.204$ \\
+    Boussinesq  & MUSCL-HR    & $0.985$ & $-0.303$ & $1.682$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+\FloatBarrier
 \subsection{Gauge, arrival, and peak diagnostics}
 \label{subsec:res-wave}
 
-Table~\ref{tab:wave-metrics} summarizes nine virtual gauges per scenario. Waveform NRMSE increases from Hydrostatic to MUSCL-HR to Boussinesq, while median arrival and time-to-peak errors are $25.2$ and $4.2$ benchmark-time units for all three targets. The compared arrival counts are $6{,}545$, $6{,}927$, and $7{,}050$ after excluding gauges already active at the first requested time; no missing predicted arrivals were recorded. The eligibility difference is therefore a property of the target waveforms and threshold policy, not a shortage of virtual gauges.
+The nine-gauge results (Table~\ref{tab:wave-metrics}) show increasing waveform NRMSE from Hydrostatic to Boussinesq. Eligible arrival counts differ because gauges active at the first requested frame are excluded; no missing predicted arrivals were recorded.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
-\caption{FNO virtual-gauge diagnostics. Arrival errors use only eligible target gauges; time values are normalized benchmark-time units.}
+\caption{FNO virtual-gauge diagnostics. Arrival errors use only eligible target gauges; time values are in elapsed benchmark-time units.}
 \label{tab:wave-metrics}
 \small
 \setlength{\tabcolsep}{3pt}
@@ -397,6 +503,7 @@ The pixelwise arrival maps give mean per-scenario eligible-pixel absolute differ
 \paragraph{Conditional windowed forecasts.}
 First-target-frame-seeded Window-FNO-5 and Window-F-FNO-5 provide long-horizon drift diagnostics, but they solve an easier conditional task than the direct $50$-frame forecast. Their full metrics and speed--accuracy trade-off are therefore retained in Table~\ref{tab:app-window} rather than included in the primary model comparison.
 
+\FloatBarrier
 \subsection{Ensemble uncertainty and seed stability}
 \label{subsec:res-uncertainty}
 
@@ -404,7 +511,7 @@ Table~\ref{tab:uncertainty} summarizes the seven-member ensemble reliability. Th
 
 A validation-only variance multiplier $\gamma = 4.995$ (standard-deviation scale $2.235$) raises test $90\%$ coverage from $0.682$ to $0.910$. It also improves the multi-Gaussian subgroup from $0.613$ to $0.877$ and trench from $0.697$ to $0.918$, while the high-strength tail remains under-covered at $0.796$.
 
-\begin{table}[pos=htbp]
+\begin{table}[pos=!htbp]
 \centering
 \caption{Seven-member FNO ensemble reliability. Coverage is marginal over correlated pixels and frames.}
 \label{tab:uncertainty}
@@ -424,3 +531,32 @@ A validation-only variance multiplier $\gamma = 4.995$ (standard-deviation scale
 Across the seven individual seeds, the mean per-scenario relative $L_2$ ranges from $0.257$ to $0.273$, with member mean $0.265$ and standard deviation $0.0055$. This seven-member set supports the Hydrostatic FNO uncertainty analysis; it is not a replicated architecture comparison.
 
 Variance inflation improves interval scale but does not make the ensemble uniformly calibrated. The corrected test coverage is close to nominal at $90\%$, while the high-strength subgroup remains about ten percentage points below nominal. Together with the moderate error--uncertainty correlation, this supports using ensemble spread as a relative diagnostic within the benchmark rather than as a calibrated hazard probability.
+
+\paragraph{Whole-trajectory reliability.}
+The simultaneous bands cover every cell at every requested time in $51.24\%$, $79.56\%$, $88.72\%$, and $95.12\%$ of the test trajectories at nominal levels of $50\%$, $80\%$, $90\%$, and $95\%$, respectively. The $90\%$ band has a mean half-width of $0.03133$ benchmark units. The high-strength subgroup remains substantially less reliable: only $67.80\%$ of its trajectories are fully covered, despite a mean half-width of $0.02739$ (Table~\ref{tab:trajectory-coverage}). Thus aggregate coverage near the nominal level does not establish subgroup reliability.
+
+\begin{table}[pos=!htbp]
+\centering
+\caption{Simultaneous coverage of whole test trajectories at nominal $90\%$, using one multiplier fitted on validation scenarios and applied unchanged to all groups. Half-widths are averaged over all space--time cells within each group, in denormalized benchmark units.}
+\label{tab:trajectory-coverage}
+\small
+\begin{tabular}{lrcc}
+    \toprule
+    Test group & $n$ & Whole-trajectory coverage & Mean half-width \\
+    \midrule
+    All scenarios & $2500$ & $0.8872$ & $0.03133$ \\
+    Multi-Gaussian sources & $410$ & $0.8415$ & $0.03646$ \\
+    Trench bathymetry & $484$ & $0.9174$ & $0.03873$ \\
+    High strength ($s\geq0.285$) & $177$ & $0.6780$ & $0.02739$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+Scenario ranking by mean predicted standard deviation also fails to reduce relative error in this test cohort. Retaining the lowest-spread $25\%$ of scenarios gives mean per-scenario relative $L_2=0.2321$, compared with $0.2247$ for all scenarios (Figure~\ref{fig:trajectory-reliability}). Pointwise error--spread correlation therefore does not translate into useful ranking of whole-scenario relative error. The bands are calibrated against numerical references, and validation also informed model selection; the reported coverage remains empirical rather than a guarantee for new events.
+
+\begin{figure}[pos=!htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/trajectory_reliability.pdf}
+\caption{Whole-trajectory reliability of the seven-member Hydrostatic FNO ensemble. Left: empirical simultaneous coverage for all test scenarios and the high-strength subgroup, with multipliers fitted only on validation scores. Right: denormalized relative error after retaining scenarios with lower mean predicted spread. The horizontal dashed line is the full-test mean. Coverage near its nominal level does not establish subgroup reliability, and lower predicted spread does not reduce the scenario-level relative error in this cohort.}
+\label{fig:trajectory-reliability}
+\end{figure}

@@ -8,7 +8,25 @@ Models are trained on the processed datasets detailed in Section~\ref{sec:data-g
 Normalization statistics are computed exclusively on the training split to prevent data leakage. Bathymetry and source input channels are standardized, while trajectory targets are standardized during training and denormalized to the stored benchmark scale for metric evaluation. The \texttt{initial\_depth} feature remains in its stored scale.
 \subsection{Optimization}
 \label{subsec:train-optim}
-Models are trained using the AdamW optimizer with an initial learning rate of $5 \times 10^{-4}$, weight decay of $10^{-6}$, and gradient clipping at a maximum norm of $1.0$. The learning rate decays via cosine annealing to a minimum of $5 \times 10^{-5}$. The batch size is set to $64$ for most direct models, but reduced to $8$ for U-FNO and $4$ for ConvLSTM due to memory constraints.
+Models are trained using the AdamW optimizer with an initial learning rate of $5 \times 10^{-4}$, weight decay of $10^{-6}$, and gradient clipping at a maximum norm of $1.0$. The learning rate decays via cosine annealing to a minimum of $5 \times 10^{-5}$. The batch size is set to $64$ for most direct models, but reduced to $8$ for U-FNO and $4$ for ConvLSTM due to memory constraints. With $10{,}000$ training scenarios and all training samples retained in each epoch, the archived optimizer counters confirm $157$, $1{,}250$, and $2{,}500$ updates per completed epoch, respectively. Table~\ref{tab:leading-training-budget} reports the actual completed epochs and updates for the three-seed leading-model comparison. Thus, a shared maximum epoch budget permits substantially different numbers of optimizer updates across architectures. The results compare accuracy under these training settings; they do not establish an accuracy ranking at matched computational cost.
+
+\begin{table}[pos=!htbp]
+\centering
+\caption{Observed training effort for the leading Hydrostatic models. Entries follow seeds $18$, $36$, and $67$ in that order. Update counts are read from the final AdamW states, with completed epochs checked against the full training histories. They measure optimizer exposure rather than matched wall-clock or floating-point cost.}
+\label{tab:leading-training-budget}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrll}
+    \toprule
+    Model & Batch size & Completed epochs & Optimizer updates \\
+    \midrule
+    FNO & $64$ & $104 / 166 / 195$ & $16{,}328 / 26{,}062 / 30{,}615$ \\
+    F-FNO & $64$ & $99 / 80 / 140$ & $15{,}543 / 12{,}560 / 21{,}980$ \\
+    U-FNO & $8$ & $155 / 97 / 106$ & $193{,}750 / 121{,}250 / 132{,}500$ \\
+    ConvLSTM & $4$ & $111 / 129 / 139$ & $277{,}500 / 322{,}500 / 347{,}500$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
 
 We optimize a horizon-weighted mean-squared error that places greater weight on later frames:
 \begin{equation}
@@ -16,18 +34,18 @@ We optimize a horizon-weighted mean-squared error that places greater weight on 
 \end{equation}
 with $w_{\min} = 0.8$, $w_{\max} = 2.0$, and $p = 1.7$. Model selection and early stopping (patience of 20 epochs, up to a maximum of 256 epochs) are governed by the relative $L_2$ error on \emph{normalized} validation targets. Final reported metrics are subsequently evaluated after target denormalization in benchmark-scale units.
 
-
+\FloatBarrier
 \subsection{Experiment configurations}
 \label{subsec:train-configs}
 The primary direct-prediction models are evaluated across Hydrostatic, MUSCL-HR, and Boussinesq targets using a unified training procedure (loss function, selection metric, and maximum epoch budget). Hydrostatic comparisons comprise FNO, F-FNO, FNO-modes8, FNO-modes20, U-FNO, WNO, CNN, U-Net, and ConvLSTM. The weakly dispersive Boussinesq model serves as a qualitative contrast under identical scenario domain settings.
 
 For autoregressive drift analysis, Window-FNO-5 and Window-F-FNO-5 are trained on hydrostatic data to predict 5-frame blocks ($K = 5$) given two prior elevation states. In inference, rollouts are seeded with the first target frame and evaluated over the remaining 49 frames. These windowed models quantify conditional error propagation rather than direct single-pass performance.
 
-Uncertainty quantification relies on a seven-member deep ensemble of the baseline FNO, differing strictly in initialization seed. The selected direct and windowed checkpoints use seed 18, while the ensemble uses seeds $\{11, 22, 33, 44, 55, 66, 77\}$. Sample-scaling runs also use seed 18, so their full-data comparator has the same training seed.
+Uncertainty quantification relies on a seven-member deep ensemble of the baseline FNO trained with seven seeds under the same model and training configuration. The selected direct and windowed checkpoints in the main architecture comparison use seed 18, while the ensemble uses seeds $\{11, 22, 33, 44, 55, 66, 77\}$. A separate replication evaluates the four leading Hydrostatic architectures with seeds $\{18, 36, 67\}$; those results summarize mean per-scenario errors separately from the global errors in the main comparison. Sample-scaling runs also use seed 18, so their full-data comparator has the same training seed.
 
 \subsection{Hardware and runtime setting}
 \label{subsec:train-hardware}
 
-Dataset generation and the final non-timing evaluation use university cluster resources, with CUDA model evaluation assigned to a DGX-A100 node. The study does not include a controlled training-efficiency comparison; archival wall-clock costs for the conditional windowed models are reported separately in Appendix~\ref{app:training-time} and are interpreted only as hardware- and load-dependent computational cost.
+Dataset generation and the original main evaluation used university cluster resources, with CUDA model evaluation on a DGX-A100 node. The subsequent trajectory-reliability analysis and leading-model numerical reproduction used an NVIDIA GeForce RTX 4050 Laptop GPU; those checks retain their separate software and precision settings. The study does not include a controlled training-efficiency comparison; archival wall-clock costs for the conditional windowed models are reported separately in Appendix~\ref{app:training-time} and are interpreted only as hardware- and load-dependent computational cost.
 
-Random seed allocations are structured as follows: primary direct and windowed models use seed 18; dataset-scaling experiments use seed 18; and the seven-member uncertainty ensemble employs seeds $\{11, 22, 33, 44, 55, 66, 77\}$. Configuration files are included in the repository; reproducing the reported runs additionally requires the corresponding datasets, training records, and selected model states.
+Configuration files are included in the repository; reproducing the reported runs additionally requires the corresponding datasets, training records, and selected model states.

@@ -13,10 +13,20 @@
 \usepackage{array}
 \usepackage{enumitem}
 \usepackage{xurl}
-\usepackage{placeins}
+\usepackage[section]{placeins}
 \usepackage{tikz}
 \usepackage[hidelinks]{hyperref}
 \usetikzlibrary{arrows.meta, positioning, calc, fit}
+
+% Keep floats near their discussion without forcing rigid page breaks.
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{3}
+\setcounter{totalnumber}{6}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.85}
+\renewcommand{\textfraction}{0.08}
+\renewcommand{\floatpagefraction}{0.75}
+
 
 % The shared Elsevier sections use the CAS placement form [pos=htbp].
 % The neutral article class expects [htbp], so the wrapper normalizes all
@@ -24,13 +34,13 @@
 \let\ArxivTable\table
 \let\EndArxivTable\endtable
 \renewenvironment{table}[1][htbp]
-  {\ArxivTable[htbp]}
+  {\ArxivTable[!htbp]}
   {\EndArxivTable}
 
 \let\ArxivFigure\figure
 \let\EndArxivFigure\endfigure
 \renewenvironment{figure}[1][htbp]
-  {\ArxivFigure[htbp]}
+  {\ArxivFigure[!htbp]}
   {\EndArxivFigure}
 
 \emergencystretch=2em

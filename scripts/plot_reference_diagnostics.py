@@ -207,13 +207,15 @@ def _plot_gap_scale(
         y,
         marker="s",
         s=55,
-        color="#d62728",
+        facecolors="none",
+        edgecolors="#d62728",
+        linewidths=1.4,
         label="raw solver-gap RMSE",
         zorder=3,
     )
     for y_pos, row in zip(y, comparisons, strict=True):
         ax.annotate(
-            f"{row['gap_to_surrogate_ratio']:.1f}x",
+            f"{row['gap_to_surrogate_ratio']:.2f}x",
             (np.sqrt(row["solver_gap_rmse"] * row["surrogate_rmse"]), y_pos),
             xytext=(0, -8),
             textcoords="offset points",
