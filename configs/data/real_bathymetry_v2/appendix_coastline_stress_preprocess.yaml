@@ -1,5 +1,6 @@
 raw:
   publication_split: test
+  generation_config: configs/data/real_bathymetry_v2/appendix_coastline_stress_dataset.yaml
   scenario_manifest: data/real_bathymetry_v2/manifests/appendix_coastline_stress/scenario_manifest.jsonl
   fde_manifests:
     hydrostatic: data/real_bathymetry_v2/manifests/appendix_coastline_stress/hydrostatic_manifest.jsonl

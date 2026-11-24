@@ -4,7 +4,7 @@ configs:
 dataset:
   num_samples: 10
   seed: 367
-  num_workers: 1
+  num_workers: 8
   n_steps: 250
   save_every: 5
   auto_dt: true
@@ -12,8 +12,9 @@ dataset:
   include_initial_state: true
   sea_level_offset: 0.0
   source_strength_range:
-  - 0.45
-  - 0.85
+  - 0.15
+  - 0.3
+  max_initial_eta_over_depth: 0.1
   bathymetry_dir: data/real_bathymetry_inputs_v2/main_morphology_suite_10
   source_dir: data/real_bathymetry_v2/sources/main_morphology_suite_10
   output_dir: data/real_bathymetry_v2/raw/main_morphology_suite_10
@@ -22,22 +23,49 @@ dataset:
 requested_output:
   enabled: true
   schema_id: tsunami-surrogate.common-time-v2.contract.v1
-  status: provisional
-  execution_scope: preparation-only
+  status: accepted
+  execution_scope: production
   split: test
-  start: 0.0035
-  step: 0.0035
+  start: 8.4
+  step: 8.4
   count: 50
-  horizon: 0.175
+  horizon: 420.0
   max_natural_steps: 20000
   collect_natural_step_health: true
   eta_primary: true
   debug_full_states: false
   acknowledge_provisional: false
+  physical_scaling:
+    horizontal_scale: 2400.0
+    time_scale: 2400.0
+    vertical_scale: 1.0
+    aspect_ratio: 2400.0
+    length_unit: m
+    time_unit: s
+paired_inputs:
+  enabled: true
+  lineage_id: real-bathymetry-v2-main_morphology_suite_10-seed367-master384-solver128-target64
+  master_shape:
+  - 384
+  - 384
+  solver_shape:
+  - 128
+  - 128
+  target_shape:
+  - 64
+  - 64
+  downsample_method: block_mean_float64_v1
+  master_bathymetry_config: configs/data/bathymetry_master.yaml
+  master_source_config: configs/data/real_bathymetry/real_bathymetry_source_master.yaml
+  inventory_path: data/real_bathymetry_v2/manifests/main_morphology_suite_10/paired_input_inventory.jsonl
+  solver_input: solver
+  source_taper_stage: master
+  rough_zero_mean_rms_after_taper: false
+  master_zero_edge_cells: 12
 computational_domain:
   enabled: true
-  buffer_cells: 16
-  source_taper_cells: 8
+  buffer_cells: 32
+  source_taper_cells: 16
   bathymetry_extension: edge
   output_crop: central
 fdes:
@@ -49,27 +77,27 @@ solver_profiles:
     cfl: 0.1125
     boundary: radiation
     sponge_time_mode: elapsed_time_consistent
-    sponge_reference_dt: 0.0035
+    sponge_reference_dt: 8.4
   swe_muscl_hr:
     cfl: 0.225
     boundary: radiation
     sponge_time_mode: elapsed_time_consistent
-    sponge_reference_dt: 0.0035
+    sponge_reference_dt: 8.4
   boussinesq:
     cfl: 0.35
     boundary: open
     depth_scale: 1.0
     linear_solver_preconditioner: sparse_lu
     sponge_time_mode: elapsed_time_consistent
-    sponge_reference_dt: 0.0035
+    sponge_reference_dt: 8.4
     filter_time_mode: disabled
-    filter_reference_dt: 0.0035
+    filter_reference_dt: 8.4
     cg_failure_mode: strict_v2
 operations:
   enabled: true
   progress_every: 1
   solver_progress: true
-  max_in_flight: 1
+  max_in_flight: 8
 quality:
   on_violation: fail
   reject_nonfinite: true
@@ -83,11 +111,11 @@ quality:
   require_no_velocity_clipping: true
   max_post_step_cfl_ratio: 1.01
 solver:
-  nx: 96
-  ny: 96
-  dx: 0.015625
-  dy: 0.015625
-  dt: 0.001
+  nx: 192
+  ny: 192
+  dx: 18.75
+  dy: 18.75
+  dt: 2.4
   g: 9.81
   rho: 1000
   cfl: 0.45
@@ -95,7 +123,7 @@ solver:
   max_velocity: 30.0
   boundary: open
   use_sponge: true
-  sponge_width: 16
+  sponge_width: 32
   sponge_min_factor: 0.8
   sponge_axes: xy
   sponge_profile: cosine
