@@ -1,4 +1,7 @@
 #!/bin/bash
+#SBATCH --account=uit
+#SBATCH --partition=small
+#SBATCH --qos=mig1-18
 # Build the pinned GeoClaw/PETSc runtime under the project directory.
 #
 # This job is intentionally separate from dataset generation.  It installs
@@ -7,16 +10,15 @@
 #SBATCH --job-name=tsunami-geoclaw-setup
 #SBATCH --output=logs/slurm/%x_%j.out
 #SBATCH --error=logs/slurm/%x_%j.err
-#SBATCH --chdir=/datastore/vit/tsunami-surrogate
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=16G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
 #SBATCH --time=06:00:00
 
 set -euo pipefail
 
-PROJECT_ROOT="/datastore/vit/tsunami-surrogate"
+PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 TOOLS_ROOT="$PROJECT_ROOT/.tools"
 CLAW_ROOT="$TOOLS_ROOT/clawpack-v5.14.0"
 PETSC_DIR="$TOOLS_ROOT/petsc-3.25.3"
@@ -28,11 +30,9 @@ EXPECTED_GEOCLAW_COMMIT="11479f675dd8bb19066a2430c28206999cebf299"
 EXPECTED_PETSC_COMMIT="fd2ca03442be2a78130b411057f3b922130f6b1b"
 
 cd "$PROJECT_ROOT"
+source "$PROJECT_ROOT/slurm/environment.sh"
 mkdir -p "$TOOLS_ROOT" logs/slurm
 
-if type module >/dev/null 2>&1; then
-    module clear -f
-fi
 module load gcc/14.2.0
 module load openmpi/gcc/64/4.1.8
 
@@ -144,9 +144,9 @@ PYTHONPATH="$CLAW_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
     CLAW="$CLAW_ROOT" \
     "$PYTHON" - <<'PY'
 from pathlib import Path
-from src.evaluation.geoclaw_adapter import GeoClawEnvironment, validate_geoclaw_environment
+from tsunami_surrogate.evaluation.geoclaw_adapter import GeoClawEnvironment, validate_geoclaw_environment
 
-root = Path("/datastore/vit/tsunami-surrogate")
+root = Path.cwd()
 environment = GeoClawEnvironment(
     claw_root=root / ".tools/clawpack-v5.14.0",
     petsc_dir=root / ".tools/petsc-3.25.3",

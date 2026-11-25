@@ -23,7 +23,7 @@ from tsunami_surrogate.evaluation.buffered_crop_benchmark import (
     run_buffered_case,
     write_result,
 )
-from tsunami_surrogate.evaluation.common_time_v2_level_a import _load_canary_arrays
+from tsunami_surrogate.evaluation.common_time_level_a import _load_canary_arrays
 from tsunami_surrogate.evaluation.finite_horizon_boundary_study import comparison_metrics
 
 

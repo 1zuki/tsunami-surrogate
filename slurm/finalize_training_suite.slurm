@@ -1,17 +1,19 @@
 #!/bin/bash
+#SBATCH --account=uit
+#SBATCH --partition=small
+#SBATCH --qos=mig1-18
 #SBATCH --job-name=tsunami
 #SBATCH --output=logs/slurm/tsunami_%j.out
 #SBATCH --error=logs/slurm/tsunami_%j.err
-#SBATCH --chdir=/datastore/vit/tsunami-surrogate
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=2G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
 #SBATCH --time=00:20:00
 
 set -euo pipefail
 
-PROJECT_ROOT="/datastore/vit/tsunami-surrogate"
+PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 SUITE_ID="${SUITE_ID:?SUITE_ID must be exported by the suite submitter}"
 ARRAY_JOB_ID="${ARRAY_JOB_ID:?ARRAY_JOB_ID must be exported by the suite submitter}"
 GENERATED_DIR="${GENERATED_DIR:?GENERATED_DIR must be exported by the suite submitter}"
@@ -20,7 +22,7 @@ ARCHIVE_ROOT="$PROJECT_ROOT/logs/slurm/archives"
 STAGING="$ARCHIVE_ROOT/${SUITE_ID}_${ARRAY_JOB_ID}"
 
 cd "$PROJECT_ROOT"
-export PATH="/cm/local/apps/slurm/current/bin:$PATH"
+source "$PROJECT_ROOT/slurm/environment.sh"
 if [ -e "$STAGING" ]; then
     echo "Refusing to overwrite existing finalizer staging: $STAGING"
     exit 1

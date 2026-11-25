@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.data_gen.common_time_v2 import candidate_requested_times
-from src.evaluation import buffered_crop_benchmark
-from src.evaluation.buffered_crop_benchmark import (
+from tsunami_surrogate.data_gen.common_time import candidate_requested_times
+from tsunami_surrogate.evaluation import buffered_crop_benchmark
+from tsunami_surrogate.evaluation.buffered_crop_benchmark import (
     cosine_core_window,
     external_sponge_mask,
     prepare_buffered_case,
@@ -58,7 +58,7 @@ def test_fixed_sponge_width_must_fit_inside_the_exterior_buffer() -> None:
 
 
 def test_buffered_runner_uses_exact_canonical_requested_times(monkeypatch) -> None:
-    from src.evaluation import common_time_v2_level_a
+    from tsunami_surrogate.evaluation import common_time_level_a
 
     shape = (6, 6)
     bathymetry = -np.ones(shape, dtype=np.float32)
@@ -72,7 +72,7 @@ def test_buffered_runner_uses_exact_canonical_requested_times(monkeypatch) -> No
     }
 
     monkeypatch.setattr(
-        common_time_v2_level_a,
+        common_time_level_a,
         "_load_canary_arrays",
         lambda _record: (
             bathymetry,

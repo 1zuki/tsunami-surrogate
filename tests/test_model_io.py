@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.utils.model_io import validate_model_io_channels
+from tsunami_surrogate.utils.model_io import validate_model_io_channels
 
 
 class _DictDataset(Dataset):

@@ -5,7 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import torch
 
-from src.models.convlstm import ConvLSTMBaseline
+from tsunami_surrogate.models.convlstm import ConvLSTMBaseline
 
 
 def test_convlstm_shape_same_resolution():

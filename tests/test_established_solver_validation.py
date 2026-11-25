@@ -7,10 +7,10 @@ import numpy as np
 import pytest
 import yaml
 
-from src.data_gen.common_time_v2 import stable_hash_payload
-from src.data_gen.simulate_dataset import BufferedDomainConfig, _prepare_buffered_domain
-from src.evaluation.buffered_crop_benchmark import prepare_buffered_case
-from src.evaluation.established_solver_validation import (
+from tsunami_surrogate.data_gen.common_time import stable_hash_payload
+from tsunami_surrogate.data_gen.simulate_dataset import BufferedDomainConfig, _prepare_buffered_domain
+from tsunami_surrogate.evaluation.buffered_crop_benchmark import prepare_buffered_case
+from tsunami_surrogate.evaluation.established_solver_validation import (
     EXTERNAL_RESULT_SCHEMA_ID,
     EXTERNAL_RESULT_SCHEMA_ID_V3,
     SCHEMA_ID,
@@ -33,13 +33,13 @@ from src.evaluation.established_solver_validation import (
     established_solver_status,
     evaluate_minimum_established_solver_validation,
 )
-from src.evaluation.geoclaw_adapter import _write_external_checksums
+from tsunami_surrogate.evaluation.geoclaw_adapter import _write_external_checksums
 
 
 def test_candidate_config_is_complete() -> None:
     root = Path(__file__).resolve().parents[1]
     config = yaml.safe_load(
-        (root / "configs/eval/minimum_established_solver_validation.yaml").read_text(
+        (root / "tests/fixtures/configs/geoclaw_initial.yaml").read_text(
             encoding="utf-8"
         )
     )
@@ -51,7 +51,7 @@ def test_v3_candidate_config_matches_boussinesq_only_in_long_wave_regime() -> No
     config = yaml.safe_load(
         (
             root
-            / "configs/eval/minimum_established_solver_validation_v3.yaml"
+            / "tests/fixtures/configs/geoclaw_refined.yaml"
         ).read_text(encoding="utf-8")
     )
     _validate_config(config)
@@ -78,13 +78,13 @@ def test_v4_candidate_preserves_v3_thresholds_and_declares_roles() -> None:
     v3 = yaml.safe_load(
         (
             root
-            / "configs/eval/minimum_established_solver_validation_v3.yaml"
+            / "tests/fixtures/configs/geoclaw_refined.yaml"
         ).read_text(encoding="utf-8")
     )
     v4 = yaml.safe_load(
         (
             root
-            / "configs/eval/minimum_established_solver_validation_v4.yaml"
+            / "configs/eval/minimum_established_solver_validation.yaml"
         ).read_text(encoding="utf-8")
     )
     _validate_config(v4)
@@ -319,7 +319,7 @@ def test_production_cases_use_dataset_exact_source_preparation(monkeypatch) -> N
     source = np.random.default_rng(17).normal(size=(64, 64)).astype(np.float32)
     strength = float(np.float32(0.7312345))
     monkeypatch.setattr(
-        "src.evaluation.established_solver_validation._load_canary_arrays",
+        "tsunami_surrogate.evaluation.established_solver_validation._load_canary_arrays",
         lambda _canary: (
             bathymetry,
             source,

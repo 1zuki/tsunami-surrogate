@@ -91,7 +91,7 @@ run_seed_metrics() {
     require_checkpoint "$path"
     args+=(--checkpoint "$path")
   done
-  "$PY" -u scripts/eval_v2_seed_metrics.py \
+  "$PY" -u scripts/eval_seed_metrics.py \
     --config "$config" \
     "${args[@]}" \
     --dataset "$dataset" \
@@ -170,7 +170,7 @@ run_seed_metrics \
   "$(checkpoint convlstm_hydrostatic 67)"
 
 for seed in 18 36 67; do
-  "$PY" -u scripts/eval_v2_reference_analysis.py \
+  "$PY" -u scripts/eval_reference_analysis.py \
     --model "hydrostatic|configs/model/fno.yaml|$(checkpoint fno_hydrostatic "$seed")|data/processed/hydrostatic/test" \
     --model "muscl_hr|configs/model/fno_muscl_hr.yaml|$(checkpoint fno_muscl_hr "$seed")|data/processed/muscl_hr/test" \
     --model "boussinesq|configs/model/fno_boussinesq.yaml|$(checkpoint fno_boussinesq "$seed")|data/processed/boussinesq/test" \
@@ -181,7 +181,7 @@ for seed in 18 36 67; do
     --output-dir "$OUTPUT_ROOT/reference_analysis/seed_${seed}"
 done
 
-"$PY" -u scripts/summarize_v2_multiseed_reference.py \
+"$PY" -u scripts/summarize_multiseed_reference.py \
   --input "$OUTPUT_ROOT/reference_analysis/seed_18/cross_reference.json" \
   --input "$OUTPUT_ROOT/reference_analysis/seed_36/cross_reference.json" \
   --input "$OUTPUT_ROOT/reference_analysis/seed_67/cross_reference.json" \

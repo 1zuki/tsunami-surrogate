@@ -1,6 +1,6 @@
 import torch
 
-from src.training.metrics import MetricAccumulator, compute_metrics
+from tsunami_surrogate.training.metrics import MetricAccumulator, compute_metrics
 
 
 def _aggregate_batches(batches):

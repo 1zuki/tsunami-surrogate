@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tsunami_surrogate.data_gen.common_time_v2 import (
+from tsunami_surrogate.data_gen.common_time import (
     CONTRACT_SCHEMA_ID,
     code_state,
     sha256_file,

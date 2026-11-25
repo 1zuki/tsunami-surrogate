@@ -8,14 +8,14 @@ import numpy as np
 import pytest
 import yaml
 
-from src.data.dataset import TsunamiDataset
-from src.data_gen.preprocess import (
+from tsunami_surrogate.data.dataset import TsunamiDataset
+from tsunami_surrogate.data_gen.preprocess import (
     PROCESSED_MANIFEST_SCHEMA_ID,
     TsunamiPreprocessor,
 )
-from src.data_gen.common_time_v2 import candidate_requested_times
+from tsunami_surrogate.data_gen.common_time import candidate_requested_times
 from scripts.build_real_bathymetry_eval import _preprocess_config
-from src.utils.hashing import sha256_file
+from tsunami_surrogate.utils.hashing import sha256_file
 
 
 def _config(tmp_path: Path) -> Path:
@@ -216,7 +216,7 @@ def test_preprocess_accepts_exact_generation_contract_timestamps(
         timestamps=requested.requested_times,
     )
     monkeypatch.setattr(
-        "src.data_gen.common_time_v2.validate_publication",
+        "tsunami_surrogate.data_gen.common_time.validate_publication",
         lambda *_args, **_kwargs: {"contract_hash": requested.contract_hash},
     )
 
@@ -246,7 +246,7 @@ def test_preprocess_rejects_timestamps_outside_generation_contract(
         timestamps=wrong_times,
     )
     monkeypatch.setattr(
-        "src.data_gen.common_time_v2.validate_publication",
+        "tsunami_surrogate.data_gen.common_time.validate_publication",
         lambda *_args, **_kwargs: {"contract_hash": requested.contract_hash},
     )
 
@@ -270,7 +270,7 @@ def test_preprocess_without_generation_config_keeps_historical_grid_validation(
         timestamps=candidate_requested_times(),
     )
     monkeypatch.setattr(
-        "src.data_gen.common_time_v2.validate_publication",
+        "tsunami_surrogate.data_gen.common_time.validate_publication",
         lambda *_args, **_kwargs: {"contract_hash": contract_hash},
     )
 

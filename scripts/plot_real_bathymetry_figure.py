@@ -39,7 +39,7 @@ from tsunami_surrogate.training.checkpointing import load_checkpoint
 from tsunami_surrogate.utils.config import load_config
 
 
-PROCESSED_ROOT = "data/processed_real_bathymetry_v2"
+PROCESSED_ROOT = "data/processed_real_bathymetry"
 DEFAULT_MAIN_OUTPUT = "paper/figures/real_bathymetry_offshore.pdf"
 DEFAULT_APPENDIX_OUTPUT = "paper/figures/real_bathymetry_suites.pdf"
 

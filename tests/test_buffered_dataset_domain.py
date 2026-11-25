@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from src.data_gen.simulate_dataset import (
+from tsunami_surrogate.data_gen.simulate_dataset import (
     BufferedDomainConfig,
     RolloutResult,
     TsunamiDatasetBuilder,
@@ -17,7 +17,7 @@ from src.data_gen.simulate_dataset import (
     _prepare_tapered_source,
     _resolved_solver_cfg_for_fde,
 )
-from src.solver.operator_time import build_sponge_mask
+from tsunami_surrogate.solver.operator_time import build_sponge_mask
 
 
 def _config() -> BufferedDomainConfig:

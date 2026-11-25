@@ -8,7 +8,7 @@ import yaml
 from scripts.check_temporal_output_sensitivity import LandingSolver
 from scripts.plan_reference_sensitivity import select
 from scripts.verify_real_bathymetry_configs import verify
-from tsunami_surrogate.data_gen.common_time_v2 import parse_requested_output_config
+from tsunami_surrogate.data_gen.common_time import parse_requested_output_config
 
 
 def test_selection_covers_family_pairs_balances_strength_and_ignores_errors():
@@ -53,7 +53,7 @@ def saved_gebco_suites(tmp_path):
     data = tmp_path / "data"
     configs.mkdir()
     (data / "configs").mkdir(parents=True)
-    original = Path("configs/data/real_bathymetry_v2")
+    original = Path("configs/data/real_bathymetry")
     for source in original.glob("*_dataset.yaml"):
         name = source.name.removesuffix("_dataset.yaml")
         settings = yaml.safe_load(source.read_text())

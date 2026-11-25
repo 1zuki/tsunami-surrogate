@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import yaml
 
-from src.evaluation.boussinesq_boundary import (
+from tsunami_surrogate.evaluation.boussinesq_boundary import (
     SpectralPacketSpec,
     build_reference_packet,
     directional_states,
@@ -20,7 +20,7 @@ from src.evaluation.boussinesq_boundary import (
     evolve_reference,
     packet_timing,
 )
-from src.evaluation.common_time_v2_level_a import (
+from tsunami_surrogate.evaluation.common_time_level_a import (
     _boussinesq_reference_boundary_metrics,
     _boussinesq_reference_crop,
     _boussinesq_reference_refinement_error,
@@ -37,7 +37,7 @@ from src.evaluation.common_time_v2_level_a import (
 def _level_a_config() -> dict[str, object]:
     root = Path(__file__).resolve().parents[1]
     return yaml.safe_load(
-        (root / "configs/eval/common_time_v2_level_a.yaml").read_text(encoding="utf-8")
+        (root / "configs/eval/common_time_level_a.yaml").read_text(encoding="utf-8")
     )
 
 

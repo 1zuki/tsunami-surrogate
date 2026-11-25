@@ -30,12 +30,8 @@ REQUIRED_TRACKED_FILES = (
 )
 SUPPORTED_CLASSIFICATIONS = {
     "final_rebuild_training",
-    "legacy_dev_only",
     "pooled_reference_ablation",
 }
-MAX_ACCOUNT_MPS = 20
-MAX_ACCOUNT_CPUS = 32
-MAX_ACCOUNT_CONCURRENT_JOBS = 5
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 PROJECT_MODEL_ROOTS = {
@@ -94,6 +90,7 @@ class PreparedSuite:
     runs: tuple[PreparedRun, ...]
     disabled_entries: tuple[dict[str, str], ...]
     max_concurrent: int
+    resources: dict[str, Any]
 
 
 def _require_mapping(value: Any, name: str) -> dict[str, Any]:
@@ -132,23 +129,19 @@ def _path_exists_for_training(root: Path, raw_path: str) -> bool:
 
 def _validate_resources(resources: dict[str, Any]) -> int:
     max_concurrent = int(resources.get("max_concurrent", 0))
-    mps_per_job = int(resources.get("mps_per_job", 0))
-    cpus_per_job = int(resources.get("cpus_per_job", 0))
-    time_limit = str(resources.get("time_limit", ""))
-
-    if not 1 <= max_concurrent <= MAX_ACCOUNT_CONCURRENT_JOBS:
-        raise ValueError(
-            f"resources.max_concurrent must be in [1, "
-            f"{MAX_ACCOUNT_CONCURRENT_JOBS}]"
-        )
-    if mps_per_job <= 0 or max_concurrent * mps_per_job > MAX_ACCOUNT_MPS:
-        raise ValueError("suite MPS request exceeds the account limit")
-    if cpus_per_job <= 0 or max_concurrent * cpus_per_job > MAX_ACCOUNT_CPUS:
-        raise ValueError("suite CPU request exceeds the account limit")
-    if time_limit != "72:00:00":
-        raise ValueError(
-            "resources.time_limit must remain at the documented 72-hour cap"
-        )
+    job_limit = int(resources.get("account_job_limit", 0))
+    if not 1 <= max_concurrent <= job_limit:
+        raise ValueError("resources.max_concurrent must be within account_job_limit")
+    if "mps_per_job" in resources:
+        raise ValueError("Use an allocated GPU profile instead of mps_per_job")
+    for key in ("cpus_per_job", "memory_gb_per_job", "gpus_per_job"):
+        if int(resources.get(key, 0)) <= 0:
+            raise ValueError(f"resources.{key} must be positive")
+    for key in ("account", "partition", "qos", "gpu_type"):
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", str(resources.get(key, ""))):
+            raise ValueError(f"resources.{key} must name a scheduler resource")
+    if not re.fullmatch(r"\d+:[0-5]\d:[0-5]\d", str(resources.get("time_limit", ""))):
+        raise ValueError("resources.time_limit must use HH:MM:SS")
     return max_concurrent
 
 
@@ -356,6 +349,7 @@ def prepare_suite(
                 "classification": classification,
                 "run_count": len(runs),
                 "max_concurrent": max_concurrent,
+                "resources": resources,
                 "runs": [asdict(run) for run in runs],
                 "disabled_entries": disabled_entries,
             },
@@ -374,6 +368,7 @@ def prepare_suite(
         runs=tuple(runs),
         disabled_entries=tuple(disabled_entries),
         max_concurrent=max_concurrent,
+        resources=resources,
     )
 
 
@@ -405,6 +400,14 @@ def build_sbatch_command(
     return [
         "sbatch",
         "--parsable",
+        f"--chdir={root.resolve()}",
+        f"--account={suite.resources['account']}",
+        f"--partition={suite.resources['partition']}",
+        f"--qos={suite.resources['qos']}",
+        f"--gres=gpu:{suite.resources['gpu_type']}:{suite.resources['gpus_per_job']}",
+        f"--cpus-per-task={suite.resources['cpus_per_job']}",
+        f"--mem={suite.resources['memory_gb_per_job']}G",
+        f"--time={suite.resources['time_limit']}",
         f"--array=0-{last_index}%{concurrency}",
         f"--dependency=afterok:{afterok}",
         (

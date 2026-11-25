@@ -6,7 +6,7 @@ artifact_kind: r6-broad-numerical-validation-candidate
 # and records only evidence generated against this 384 -> 128 -> 192 -> 64,
 # 8.4 -> 420 contract.
 corrected_production:
-  contract_path: configs/eval/final_v2_suite.yaml
+  contract_path: configs/eval/benchmark_suite.yaml
   contract_hash: 288d19af5e8f5fe1658c098bf972ada97292a08fe35ed99c086406a291576d2f
   master_shape: [384, 384]
   solver_input_shape: [128, 128]

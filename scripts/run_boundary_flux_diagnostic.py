@@ -231,7 +231,7 @@ def main() -> None:
     parser.add_argument(
         "--replay-root",
         type=Path,
-        default=Path("/mnt/Windows/Dataset/current_dense_replay_20261117"),
+        default=Path("results/dense_replay"),
     )
     parser.add_argument("--output-dir", type=Path, default=Path("results/reviewer_revision/boundary_flux_current"))
     parser.add_argument("--final-time", type=float, default=0.08)

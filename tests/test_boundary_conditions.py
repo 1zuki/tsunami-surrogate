@@ -8,13 +8,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import pytest
 
-from src.solver.boundary_conditions import (
+from tsunami_surrogate.solver.boundary_conditions import (
     pad_scalar_field,
     radiation_boundary_state_x,
 )
-from src.solver.boussinesq import BoussinesqSolver
-from src.solver.hydrostatic_swe import ShallowWaterSolver
-from src.solver.operator_time import build_sponge_mask
+from tsunami_surrogate.solver.boussinesq import BoussinesqSolver
+from tsunami_surrogate.solver.hydrostatic_swe import ShallowWaterSolver
+from tsunami_surrogate.solver.operator_time import build_sponge_mask
 
 
 def test_left_radiation_state_preserves_outgoing_characteristic() -> None:

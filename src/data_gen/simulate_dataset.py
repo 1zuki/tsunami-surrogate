@@ -19,8 +19,10 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from tsunami_surrogate.utils.config import load_config
+
 try:
-    from tsunami_surrogate.data_gen.common_time_v2 import (
+    from tsunami_surrogate.data_gen.common_time import (
         ETA_SAMPLE_SCHEMA_ID,
         PUBLICATION_SCHEMA_ID,
         RequestedOutputConfig,
@@ -40,7 +42,7 @@ try:
         effective_worker_count,
     )
 except ImportError:
-    from common_time_v2 import (
+    from common_time import (
         ETA_SAMPLE_SCHEMA_ID,
         PUBLICATION_SCHEMA_ID,
         RequestedOutputConfig,
@@ -736,8 +738,12 @@ def _load_existing_solver_record(
     meta_path = sample_dir / "meta.json"
     with meta_path.open("r", encoding="utf-8") as f:
         meta = json.load(f)
+    # Requested-output publications store solver health in a nested summary.
+    # Resuming must preserve both those diagnostics and the sample lineage.
+    meta = {**meta.get("health_summary", {}), **meta}
 
     return {
+        **meta.get("health_summary", {}),
         "sample_index": sample_idx,
         "scenario_id": str(meta.get("scenario_id", f"scenario_{sample_idx:06d}")),
         "sample_dir": str(sample_dir),
@@ -745,7 +751,7 @@ def _load_existing_solver_record(
         "bathymetry_type": str(meta.get("bathymetry_type", "unknown")),
         "source_type": str(meta.get("source_type", "unknown")),
         "source_strength": float(meta.get("source_strength", np.nan)),
-        "num_frames": int(meta.get("num_frames", 0)),
+        "num_frames": int(meta.get("num_frames", (meta.get("trajectory_eta_shape") or [0])[0])),
         "trajectory_shape": meta.get("trajectory_shape", []),
         "trajectory_eta_shape": meta.get("trajectory_eta_shape", []),
         "fdes_run": list(meta.get("fdes_run", [fallback_solver_name])),
@@ -763,9 +769,12 @@ def _load_existing_solver_record(
         "dt_min": float(meta.get("dt_min", 0.0)),
         "dt_max": float(meta.get("dt_max", 0.0)),
         "quality_status": str(meta.get("quality_status", "unknown")),
+        "quality_violations": list(meta.get("quality_violations", [])),
+        "contract_hash": meta.get("contract_hash"),
         "input_fingerprint": meta.get("input_fingerprint"),
         "resolved_config_hash": meta.get("resolved_config_hash"),
         "code_state_hash": meta.get("code_state_hash"),
+        "authoritative_input_fingerprint": (meta.get("authoritative_input") or {}).get("input_fingerprint"),
         "reused_existing": True,
     }
 
@@ -3130,8 +3139,7 @@ class TsunamiDatasetBuilder:
                 f"Could not find {config_path}, is the path correct"
             )
 
-        with self.config_path.open("r", encoding="utf-8") as f:
-            cfg = yaml.safe_load(f)
+        cfg = load_config(self.config_path)
         if cfg is None:
             raise ValueError("yaml config is empty/invalid")
 
@@ -5125,7 +5133,7 @@ class TsunamiDatasetBuilder:
         requested = self.dataset.requested_output
         if requested is None or not records:
             return None
-        from tsunami_surrogate.data_gen.common_time_v2 import write_operational_shard_manifest
+        from tsunami_surrogate.data_gen.common_time import write_operational_shard_manifest
 
         publication_hashes: dict[str, str] = {}
         resolved_config_hashes: dict[str, str] = {}

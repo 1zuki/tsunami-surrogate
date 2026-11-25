@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.evaluation.aligned_comparison import (
+from tsunami_surrogate.evaluation.aligned_comparison import (
     MODE_COMMON_TIME,
     MODE_SAVED_INDEX_LEGACY,
     compare_solver_scenarios,
@@ -16,7 +16,7 @@ from src.evaluation.aligned_comparison import (
     require_explicit_mode,
     resolve_suite_contract,
 )
-from src.evaluation.alignment import SCHEMA_ID, stable_hash_scenario_ids
+from tsunami_surrogate.evaluation.alignment import SCHEMA_ID, stable_hash_scenario_ids
 
 
 def _write_json(path: Path, payload: dict) -> None:
