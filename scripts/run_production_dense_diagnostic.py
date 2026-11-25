@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tsunami_surrogate.data_gen.common_time_v2 import (
+from tsunami_surrogate.data_gen.common_time import (
     PUBLICATION_SCHEMA_ID,
     stable_hash_payload,
 )
@@ -53,8 +53,8 @@ from tsunami_surrogate.data_gen.simulate_dataset import (
 from tsunami_surrogate.evaluation.alignment import stable_hash_scenario_ids
 from tsunami_surrogate.utils.hashing import sha256_file
 
-DEFAULT_RAW_ROOT = Path("/mnt/Windows/Users/Izu/tsunami-surrogate/data/test/raw")
-DEFAULT_CACHE_ROOT = Path("/mnt/Windows/Users/Izu/tsunami-surrogate/data/test")
+DEFAULT_RAW_ROOT = Path("data/test/raw")
+DEFAULT_CACHE_ROOT = Path("data/test")
 SOLVERS = ("swe_hydrostatic", "swe_muscl_hr", "boussinesq")
 SOLVER_DIRS = {
     "swe_hydrostatic": "hydrostatic",
@@ -69,7 +69,7 @@ CSV_NAME = "production_dense_rows.csv"
 SOURCES = (
     Path(__file__).resolve().relative_to(ROOT),
     Path("tsunami_surrogate/__init__.py"),
-    Path("src/data_gen/common_time_v2.py"),
+    Path("src/data_gen/common_time.py"),
     Path("src/data_gen/generate_bathymetry.py"),
     Path("src/data_gen/generate_sources.py"),
     Path("src/data_gen/operational_timing.py"),
@@ -1078,7 +1078,7 @@ def main(argv: list[str] | None = None) -> None:
         "--output-root",
         type=Path,
         default=Path(
-            "/mnt/Windows/Dataset/current_production_dense_validation_20261117/production_replay"
+            "results/production_dense_validation/production_replay"
         ),
     )
     parser.add_argument("--raw-root", type=Path, default=DEFAULT_RAW_ROOT)

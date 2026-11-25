@@ -35,7 +35,6 @@ normalization:
   channels:
     bathymetry: true
     source: true
-    initial_depth: true
     solver_id: false
     trajectory: true
   eps: 1.0e-6

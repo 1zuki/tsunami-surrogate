@@ -15,14 +15,14 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.evaluation import visualize
-from src.evaluation.visualize import (
+from tsunami_surrogate.evaluation import visualize
+from tsunami_surrogate.evaluation.visualize import (
     CachedRolloutPlayer,
     RolloutFigure,
     VisualRollout,
     prepare_visual_rollout,
 )
-from src.evaluation.window_rollout import rollout_trajectory
+from tsunami_surrogate.evaluation.window_rollout import rollout_trajectory
 
 
 class _DirectModel(torch.nn.Module):

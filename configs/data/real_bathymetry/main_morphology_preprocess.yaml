@@ -1,10 +1,12 @@
 raw:
-  scenario_manifest: data/real_bathymetry/manifests/main_morphology/scenario_manifest.jsonl
+  publication_split: test
+  generation_config: configs/data/real_bathymetry/main_morphology_dataset.yaml
+  scenario_manifest: data/real_bathymetry_v2/manifests/main_morphology/scenario_manifest.jsonl
   fde_manifests:
-    hydrostatic: data/real_bathymetry/manifests/main_morphology/hydrostatic_manifest.jsonl
+    hydrostatic: data/real_bathymetry_v2/manifests/main_morphology/hydrostatic_manifest.jsonl
   raw_dirs:
-    hydrostatic: data/real_bathymetry/raw/main_morphology/hydrostatic/samples
-processed_dir: data/processed_real_bathymetry/main_morphology
+    hydrostatic: data/real_bathymetry_v2/raw/main_morphology/hydrostatic/samples
+processed_dir: data/processed_real_bathymetry_v2/main_morphology
 fde:
   mode: single
   targets:

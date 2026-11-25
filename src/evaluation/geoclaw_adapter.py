@@ -14,8 +14,8 @@ from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 
-from tsunami_surrogate.data_gen.common_time_v2 import sha256_file, stable_hash_payload
-from tsunami_surrogate.evaluation.common_time_v2_level_a import validate_checksums
+from tsunami_surrogate.data_gen.common_time import sha256_file, stable_hash_payload
+from tsunami_surrogate.evaluation.common_time_level_a import validate_checksums
 from tsunami_surrogate.evaluation.established_solver_validation import (
     EXTERNAL_RESULT_SCHEMA_ID,
     EXTERNAL_RESULT_SCHEMA_ID_V3,

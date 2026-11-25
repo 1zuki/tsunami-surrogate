@@ -8,7 +8,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.evaluation.normalization_bridge import (
+from tsunami_surrogate.evaluation.normalization_bridge import (
     denormalize_model_target,
     load_evaluation_normalization_bridge,
     load_standardization_spec,

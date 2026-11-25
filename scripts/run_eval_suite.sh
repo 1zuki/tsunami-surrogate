@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 
 PY="${PY:-.venv/bin/python}"
 DEVICE="${DEVICE:-cuda}"
-CONTRACT="configs/eval/final_v2_suite.yaml"
+CONTRACT="configs/eval/benchmark_suite.yaml"
 EXECUTE=0
 RUN_ID=""
 INCLUDE_ENSEMBLE=0
@@ -23,8 +23,8 @@ RERUN_PRODUCTION_VALIDATION=0
 DEEP_PAYLOAD_AUDIT=0
 NUMERICAL_WORKERS="${NUMERICAL_WORKERS:-8}"
 GEOCLAW_WORKERS="${GEOCLAW_WORKERS:-4}"
-CLAW_ROOT="${CLAW_ROOT:-/home/izu/opt/clawpack-v5.14.0}"
-PETSC_DIR="${PETSC_DIR:-/home/izu/opt/petsc-3.25.3}"
+CLAW_ROOT="${CLAW_ROOT:-.tools/clawpack-v5.14.0}"
+PETSC_DIR="${PETSC_DIR:-.tools/petsc-3.25.3}"
 PETSC_ARCH="${PETSC_ARCH:-arch-linux-c-opt}"
 GEOCLAW_PYTHON="${GEOCLAW_PYTHON:-$PY}"
 
@@ -424,7 +424,7 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
     ENSEMBLE_SLICE_ARGS+=(--ensemble-checkpoint "$checkpoint")
   done
 
-  run "$PY" scripts/export_v2_numerical_evidence.py \
+  run "$PY" scripts/export_numerical_evidence.py \
     --contract "$CONTRACT" \
     --production-validation-artifact "$STAGING_ROOT/production_validation/summary.json" \
     --output "$PAPER_ROOT/numerical_evidence.json"
@@ -450,7 +450,7 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
     config="${PAPER_DIRECT_CONFIGS[$i]}"
     checkpoint="${PAPER_DIRECT_CHECKPOINTS[$i]}"
     dataset="${PAPER_DIRECT_DATASETS[$i]}"
-    run "$PY" scripts/eval_v2_slices.py \
+    run "$PY" scripts/eval_slices.py \
       --config "$config" \
       --checkpoint "$checkpoint" \
       --dataset "$dataset" \
@@ -460,7 +460,7 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
   done
 
   for group in source_type bathymetry_type; do
-    run "$PY" scripts/eval_v2_slices.py \
+    run "$PY" scripts/eval_slices.py \
       --config configs/model/fno.yaml \
       --checkpoint experiments/fno/seed_18/best.pt \
       --dataset data/processed/hydrostatic/test \
@@ -480,7 +480,7 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
   )
   for i in "${!PAPER_WINDOW_IDS[@]}"; do
     model="${PAPER_WINDOW_IDS[$i]}"
-    run "$PY" scripts/eval_v2_slices.py \
+    run "$PY" scripts/eval_slices.py \
       --config "${PAPER_WINDOW_CONFIGS[$i]}" \
       --checkpoint "${PAPER_WINDOW_CHECKPOINTS[$i]}" \
       --dataset data/processed/hydrostatic/test \
@@ -495,12 +495,12 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
     --checkpoint experiments/fno/seed_18/best.pt \
     --device "$DEVICE" \
     --output "$PAPER_ROOT/resolution/proxy_hydrostatic.json"
-  run "$PY" scripts/eval_v2_native_transfer.py \
+  run "$PY" scripts/eval_native_transfer.py \
     --contract "$CONTRACT" \
     --device "$DEVICE" \
     --output "$PAPER_ROOT/resolution/native_muscl_hr.json"
 
-  run "$PY" scripts/eval_v2_reference_analysis.py \
+  run "$PY" scripts/eval_reference_analysis.py \
     --contract "$CONTRACT" \
     --model "hydrostatic|configs/model/fno.yaml|experiments/fno/seed_18/best.pt|data/processed/hydrostatic/test" \
     --model "muscl_hr|configs/model/fno_muscl_hr.yaml|experiments/fno_muscl_hr/seed_18/best.pt|data/processed/muscl_hr/test" \
@@ -522,7 +522,7 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
       --device "$DEVICE" \
       --output "$PAPER_ROOT/arrival_maps/${model}.json" \
       --maps-output "$PAPER_ROOT/arrival_maps/${model}.npz"
-    run "$PY" scripts/eval_v2_wave_metrics.py \
+    run "$PY" scripts/eval_wave_metrics.py \
       --contract "$CONTRACT" \
       --config "$config" \
       --checkpoint "$checkpoint" \
@@ -534,14 +534,14 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
       --output "$PAPER_ROOT/wave_metrics/${model}.json"
   done
 
-  run "$PY" scripts/eval_v2_slices.py \
+  run "$PY" scripts/eval_slices.py \
     --config configs/model/fno.yaml \
     "${ENSEMBLE_SLICE_ARGS[@]}" \
     --dataset data/processed/hydrostatic/test \
     "${PAPER_SUITES[@]}" \
     --device "$DEVICE" \
     --output "$PAPER_ROOT/ensemble/slices.json"
-  run "$PY" scripts/eval_v2_calibration.py \
+  run "$PY" scripts/eval_calibration.py \
     --config configs/model/fno.yaml \
     "${ENSEMBLE_ARGS[@]}" \
     --val-dataset data/processed/hydrostatic/val \
@@ -549,7 +549,7 @@ if [ "$INCLUDE_PAPER_EVIDENCE" = 1 ]; then
     "${PAPER_SUITES[@]}" \
     --device "$DEVICE" \
     --output "$PAPER_ROOT/ensemble/calibration.json"
-  run "$PY" scripts/eval_v2_seed_metrics.py \
+  run "$PY" scripts/eval_seed_metrics.py \
     --config configs/model/fno.yaml \
     "${ENSEMBLE_ARGS[@]}" \
     --dataset data/processed/hydrostatic/test \

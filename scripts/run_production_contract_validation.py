@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tsunami_surrogate.data_gen.common_time_v2 import (  # noqa: E402
+from tsunami_surrogate.data_gen.common_time import (  # noqa: E402
     PUBLICATION_SCHEMA_ID,
     code_state,
     parse_requested_output_config,
@@ -851,7 +851,7 @@ def run_validation(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--contract", type=Path, default=Path("configs/eval/final_v2_suite.yaml"))
+    parser.add_argument("--contract", type=Path, default=Path("configs/eval/benchmark_suite.yaml"))
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--canary-count", type=int, default=3)
     parser.add_argument("--deep-payload-audit", action="store_true")

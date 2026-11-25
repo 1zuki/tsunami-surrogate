@@ -1,23 +1,23 @@
 #!/bin/bash
+#SBATCH --account=uit
+#SBATCH --partition=normal
+#SBATCH --qos=mig2-35
+#SBATCH --gres=gpu:2g.35gb:1
 #SBATCH --job-name=tsunami
 #SBATCH --output=logs/slurm/%x_%A_%a.out
 #SBATCH --error=logs/slurm/%x_%A_%a.err
-#SBATCH --chdir=/datastore/vit/tsunami-surrogate
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=mps:4
 #SBATCH --mem=32G
 #SBATCH --time=72:00:00
 
 set -euo pipefail
 
-PROJECT_ROOT="/datastore/vit/tsunami-surrogate"
-ENV_PREFIX="$PROJECT_ROOT/.venv"
-SLURM_BIN="/cm/local/apps/slurm/current/bin"
+PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
+ENV_PREFIX="${ENV_PREFIX:-$PROJECT_ROOT/.venv}"
 RUNS_FILE="${RUNS_FILE:?RUNS_FILE must be exported by the suite submitter}"
 SUITE_ID="${SUITE_ID:?SUITE_ID must be exported by the suite submitter}"
-REQUIRED_VRAM="${REQUIRED_VRAM:-16384}"
 
 cd "$PROJECT_ROOT"
 
@@ -42,15 +42,10 @@ if [ ! -f "$CONFIG_PATH" ]; then
     echo "Missing generated config: $CONFIG_PATH"
     exit 1
 fi
-if type module >/dev/null 2>&1; then
-    module clear -f
-fi
 
-source /datastore/vit/miniconda3/etc/profile.d/conda.sh
-conda activate "$ENV_PREFIX"
+source "$PROJECT_ROOT/slurm/environment.sh"
 
 export PATH="$ENV_PREFIX/bin:/usr/bin:/bin:$PATH"
-export PATH="$ENV_PREFIX/bin:$SLURM_BIN:$PATH"
 export PIP_CACHE_DIR="$PROJECT_ROOT/.cache/pip"
 export TORCH_HOME="$PROJECT_ROOT/.cache/torch"
 export OMP_NUM_THREADS=1
@@ -62,74 +57,9 @@ if ! command -v nvidia-smi >/dev/null 2>&1; then
     echo "nvidia-smi is unavailable; refusing to requeue blindly"
     exit 1
 fi
-if [ ! -x /usr/local/bin/gpu_check.sh ]; then
-    echo "Missing compute-node helper: /usr/local/bin/gpu_check.sh"
-    exit 1
-fi
-if [ ! -x "$SLURM_BIN/scontrol" ]; then
-    echo "Missing Slurm control command: $SLURM_BIN/scontrol"
-    exit 1
-fi
-if grep -Fq "nvidia-smi-i " /usr/local/bin/gpu_check.sh; then
-    echo "gpu_check.sh contains invalid command 'nvidia-smi-i'"
-    echo "Ask the cluster administrator to change it to 'nvidia-smi -i'"
-    echo "Refusing to call the helper because it would requeue this job forever"
-    exit 1
-fi
 
-echo "Suite         : $SUITE_ID"
-echo "Run label     : $RUN_LABEL"
-echo "Array job     : ${SLURM_ARRAY_JOB_ID:-N/A}"
-echo "Array task    : ${SLURM_ARRAY_TASK_ID:-N/A}"
-echo "Host          : $(hostname)"
-echo "Start time    : $(date --iso-8601=seconds)"
-echo "Working dir   : $(pwd)"
-echo "Config        : $CONFIG_PATH"
-echo "Output dir    : $OUTPUT_DIR"
-echo "Training seed : $RUN_SEED"
-echo "Git commit    : $(git rev-parse HEAD 2>/dev/null || echo unknown)"
-echo "Python        : $(which python)"
-echo "Python ver.   : $(python --version)"
-echo "nvidia-smi    : $(command -v nvidia-smi)"
 
-unset CUDA_VISIBLE_DEVICES
-
-set +e
-CHECK_OUT=$(env PATH="$SLURM_BIN:/usr/bin:/bin:$PATH" \
-    /usr/local/bin/gpu_check.sh "$REQUIRED_VRAM" "$SLURM_JOB_ID")
-EXIT_CODE=$?
-set -e
-
-if [ "$EXIT_CODE" -eq 10 ]; then
-    echo "$CHECK_OUT"
-    exit 0
-elif [ "$EXIT_CODE" -eq 11 ]; then
-    echo "$CHECK_OUT"
-    exit 1
-elif [ "$EXIT_CODE" -ne 0 ]; then
-    echo "gpu_check.sh failed with exit code $EXIT_CODE"
-    echo "$CHECK_OUT"
-    exit "$EXIT_CODE"
-fi
-if [[ ! "$CHECK_OUT" =~ ^[0-9]+$ ]]; then
-    echo "gpu_check.sh returned an invalid GPU index: $CHECK_OUT"
-    exit 1
-fi
-
-BEST_GPU="$CHECK_OUT"
-export CUDA_VISIBLE_DEVICES="$BEST_GPU"
-export CUDA_MPS_PIPE_DIRECTORY="/tmp/nvidia-mps-job${SLURM_JOB_ID}"
-export CUDA_MPS_LOG_DIRECTORY="/tmp/nvidia-mps-log-job${SLURM_JOB_ID}"
-
-cleanup() {
-    rm -rf "$CUDA_MPS_PIPE_DIRECTORY" "$CUDA_MPS_LOG_DIRECTORY"
-}
-trap cleanup EXIT
-
-cleanup
-mkdir -p "$CUDA_MPS_PIPE_DIRECTORY" "$CUDA_MPS_LOG_DIRECTORY"
-
-echo "Selected GPU  : $BEST_GPU"
+echo "Selected GPU  : ${CUDA_VISIBLE_DEVICES:-Slurm-managed}"
 nvidia-smi --query-gpu=index,name,memory.total,memory.free --format=csv,noheader
 python -c "import torch; print('torch', torch.__version__); print('CUDA available', torch.cuda.is_available()); print('CUDA version', torch.version.cuda); print('device count', torch.cuda.device_count()); print('device', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
 

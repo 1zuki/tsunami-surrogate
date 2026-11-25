@@ -23,7 +23,7 @@ from scripts.eval_suite_preflight import (
     load_suite_contract,
     run_preflight,
 )
-from src.evaluation.uncertainty import (
+from tsunami_surrogate.evaluation.uncertainty import (
     ErrorUncertaintyCorrelationAccumulator,
 )
 
@@ -225,7 +225,7 @@ def test_cleanup_patterns_only_cover_validated_replacement_groups() -> None:
 
 
 def test_live_manifest_declares_paper_and_numerical_rerun_cells() -> None:
-    contract = load_suite_contract("configs/eval/final_v2_suite.yaml")
+    contract = load_suite_contract("configs/eval/benchmark_suite.yaml")
     missing_holdouts = [
         ROOT / str(row["manifest"])
         for row in contract.get("strict_holdouts", [])
@@ -268,7 +268,7 @@ def test_live_manifest_declares_paper_and_numerical_rerun_cells() -> None:
 
 
 def test_live_suite_matches_corrected_generation_configs() -> None:
-    contract = load_suite_contract("configs/eval/final_v2_suite.yaml")
+    contract = load_suite_contract("configs/eval/benchmark_suite.yaml")
 
     times = _expected_times(contract)
     bindings = _validate_generation_config_bindings(contract)
@@ -283,7 +283,7 @@ def test_live_suite_matches_corrected_generation_configs() -> None:
 
 
 def test_live_suite_rejects_paper_evidence_until_numerical_revalidation() -> None:
-    contract = load_suite_contract("configs/eval/final_v2_suite.yaml")
+    contract = load_suite_contract("configs/eval/benchmark_suite.yaml")
 
     with pytest.raises(
         PreflightError,

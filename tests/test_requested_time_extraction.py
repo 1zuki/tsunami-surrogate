@@ -9,8 +9,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data_gen import simulate_dataset as simulate_module
-from src.data_gen.simulate_dataset import (
+from tsunami_surrogate.data_gen import simulate_dataset as simulate_module
+from tsunami_surrogate.data_gen.simulate_dataset import (
     _extract_requested_states_from_bracket,
     _run_fde_rollout,
     _simulate_one_local,

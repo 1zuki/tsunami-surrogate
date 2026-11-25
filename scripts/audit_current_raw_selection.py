@@ -18,8 +18,8 @@ from typing import Any
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_RAW_ROOT = Path("/mnt/Windows/Users/Izu/tsunami-surrogate/data/test/raw")
-DEFAULT_CACHE_ROOT = Path("/mnt/Windows/Users/Izu/tsunami-surrogate/data/test")
+DEFAULT_RAW_ROOT = Path("data/test/raw")
+DEFAULT_CACHE_ROOT = Path("data/test")
 SOLVERS = ("hydrostatic", "muscl_hr", "boussinesq")
 SOLVER_NAMES = {
     "hydrostatic": "swe_hydrostatic",

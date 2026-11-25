@@ -9,14 +9,14 @@ import numpy as np
 import pytest
 import yaml
 
-from src.data_gen.common_time_v2 import (
+from tsunami_surrogate.data_gen.common_time import (
     authoritative_input_fingerprint,
     code_state,
     hash_array,
     sha256_file,
 )
-import src.evaluation.finite_horizon_boundary_study as study
-from src.evaluation.finite_horizon_boundary_study import (
+import tsunami_surrogate.evaluation.finite_horizon_boundary_study as study
+from tsunami_surrogate.evaluation.finite_horizon_boundary_study import (
     _load_task_artifact,
     audit_source_geometry,
     build_task_plan,

@@ -34,7 +34,7 @@ def test_refinement_rejects_noninteger_factor():
 def test_refined_bundle_metadata_matches_execution_arrays(tmp_path):
     import json
 
-    from tsunami_surrogate.data_gen.common_time_v2 import stable_hash_payload
+    from tsunami_surrogate.data_gen.common_time import stable_hash_payload
     from tsunami_surrogate.evaluation.established_solver_validation import (
         _write_checksums,
     )

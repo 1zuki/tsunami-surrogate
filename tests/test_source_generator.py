@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import yaml
 
-from src.data_gen.generate_sources import SourceGenerator
+from tsunami_surrogate.data_gen.generate_sources import SourceGenerator
 
 
 def _write_config(

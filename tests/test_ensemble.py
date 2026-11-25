@@ -4,7 +4,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import torch
 from torch import nn
-from src.models.ensemble import EnsemblePredictor
+from tsunami_surrogate.models.ensemble import EnsemblePredictor
 
 
 class IdentityModel(nn.Module):

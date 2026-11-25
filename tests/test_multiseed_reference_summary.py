@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.summarize_v2_multiseed_reference import summarize_payloads
+from scripts.summarize_multiseed_reference import summarize_payloads
 
 
 def _payload(seed: int, rho: float) -> dict:
@@ -12,7 +12,7 @@ def _payload(seed: int, rho: float) -> dict:
         "training_seed": seed,
         "num_samples": 10,
         "dataset_paths": {"hydrostatic": "test-a", "muscl_hr": "test-b"},
-        "common_time_v2": {"frame_count": 50},
+        "common_time": {"frame_count": 50},
         "directions": [
             {
                 "model_solver": "hydrostatic",

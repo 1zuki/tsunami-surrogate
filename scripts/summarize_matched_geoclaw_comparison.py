@@ -17,9 +17,9 @@ from scripts import run_benchmark_numerical_study as numerical
 import numpy as np
 import yaml
 
-from tsunami_surrogate.data_gen.common_time_v2 import hash_array, parse_requested_output_config, stable_hash_payload
+from tsunami_surrogate.data_gen.common_time import hash_array, parse_requested_output_config, stable_hash_payload
 from tsunami_surrogate.data_gen.simulate_dataset import BufferedDomainConfig, _prepare_buffered_domain
-from tsunami_surrogate.evaluation.common_time_v2_level_a import validate_checksums
+from tsunami_surrogate.evaluation.common_time_level_a import validate_checksums
 from tsunami_surrogate.evaluation.established_solver_validation import (
     CORRECTED_PRODUCTION_GEOCLAW_SCHEMA_ID,
     _load_external_result,
@@ -295,7 +295,7 @@ def main() -> None:
     sources = [
         Path(__file__).resolve(), ROOT / "tsunami_surrogate/__init__.py",
         ROOT / "scripts/summarize_geoclaw_resolution.py",
-        ROOT / "src/evaluation/common_time_v2_level_a.py",
+        ROOT / "src/evaluation/common_time_level_a.py",
         ROOT / "src/evaluation/established_solver_validation.py",
         ROOT / "src/evaluation/geoclaw_adapter.py",
     ]

@@ -1,6 +1,6 @@
 schema_id: tsunami-surrogate.pooled-reference-ablation-protocol.v1
 protocol_id: pooled-reference-ablation-r6-five-seed
-contract: configs/eval/final_v2_suite.yaml
+contract: configs/eval/benchmark_suite.yaml
 contract_hash: 288d19af5e8f5fe1658c098bf972ada97292a08fe35ed99c086406a291576d2f
 seeds: [18, 36, 67, 72, 154]
 

@@ -79,11 +79,11 @@ audit:
     muscl_hr: data/processed/muscl_hr/test
     boussinesq: data/processed/boussinesq/test
   raw_test_solver_roots:
-    hydrostatic: /mnt/Windows/Users/Izu/tsunami-surrogate/data/test/raw/hydrostatic/samples
-    muscl_hr: /mnt/Windows/Users/Izu/tsunami-surrogate/data/test/raw/muscl_hr/samples
-    boussinesq: /mnt/Windows/Users/Izu/tsunami-surrogate/data/test/raw/boussinesq/samples
-  scenario_manifest_path: /mnt/Windows/Users/Izu/tsunami-surrogate/data/test/synthetic/scenario_manifest.jsonl
-  results_dir: /mnt/Windows/Dataset/current_production_dense_validation_20261117/audit
+    hydrostatic: data/test/raw/hydrostatic/samples
+    muscl_hr: data/test/raw/muscl_hr/samples
+    boussinesq: data/test/raw/boussinesq/samples
+  scenario_manifest_path: data/test/synthetic/scenario_manifest.jsonl
+  results_dir: results/production_dense_validation/audit
   equality:
     array_atol: 1.0e-6
     scalar_atol: 1.0e-12

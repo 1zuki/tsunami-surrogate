@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 import yaml
 
-from src.evaluation.geoclaw_adapter import GeoClawEnvironment, run_geoclaw_bundle
-from src.evaluation.established_solver_validation import (
+from tsunami_surrogate.evaluation.geoclaw_adapter import GeoClawEnvironment, run_geoclaw_bundle
+from tsunami_surrogate.evaluation.established_solver_validation import (
     EXTERNAL_RESULT_SCHEMA_ID_V3,
     SCHEMA_ID_V3,
     _write_checksums,
@@ -28,7 +28,7 @@ def test_installed_geoclaw_swe_and_sgn_smoke(tmp_path: Path) -> None:
     config = yaml.safe_load(
         (
             repo
-            / "configs/eval/minimum_established_solver_validation_v3.yaml"
+            / "tests/fixtures/configs/geoclaw_refined.yaml"
         ).read_text(encoding="utf-8")
     )
     nx, ny = 16, 4

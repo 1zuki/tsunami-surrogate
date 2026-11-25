@@ -13,7 +13,7 @@ import time
 from typing import Any, Mapping, Sequence
 from uuid import uuid4
 
-from tsunami_surrogate.data_gen.common_time_v2 import sha256_file
+from tsunami_surrogate.data_gen.common_time import sha256_file
 
 
 OPERATIONAL_TIMING_SCHEMA_ID = (

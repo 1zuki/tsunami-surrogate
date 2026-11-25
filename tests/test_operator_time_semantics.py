@@ -8,10 +8,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import pytest
 
-from src.solver.boussinesq import BoussinesqSolver
-from src.solver.hydrostatic_swe import ShallowWaterSolver
-from src.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
-from src.solver.operator_time import filter_coefficient, sponge_factor
+from tsunami_surrogate.solver.boussinesq import BoussinesqSolver
+from tsunami_surrogate.solver.hydrostatic_swe import ShallowWaterSolver
+from tsunami_surrogate.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
+from tsunami_surrogate.solver.operator_time import filter_coefficient, sponge_factor
 
 
 def _swe(cls=ShallowWaterSolver, **kwargs):

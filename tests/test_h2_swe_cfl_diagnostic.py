@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from src.data_gen.common_time_v2 import stable_hash_payload
-from src.evaluation.h2_swe_cfl_diagnostic import (
+from tsunami_surrogate.data_gen.common_time import stable_hash_payload
+from tsunami_surrogate.evaluation.h2_swe_cfl_diagnostic import (
     SCHEMA_ID,
     _build_tasks,
     _load_config,
@@ -69,7 +69,7 @@ def _synthetic_source(
 
 
 def test_config_freezes_eight_cases_and_geometric_cfl_ladders() -> None:
-    config = _load_config(Path("configs/eval/h2_swe_cfl_refinement_v1.yaml"))
+    config = _load_config(Path("configs/eval/h2_swe_cfl_refinement.yaml"))
     assert len(config["cases"]) == 8
     assert config["selection_is_outcome_targeted"] is True
     assert config["validation_or_test_outcomes_inspected"] is False
@@ -78,7 +78,7 @@ def test_config_freezes_eight_cases_and_geometric_cfl_ladders() -> None:
 
 
 def test_task_plan_is_deterministic_and_covers_each_case_solver_pair() -> None:
-    config = _load_config(Path("configs/eval/h2_swe_cfl_refinement_v1.yaml"))
+    config = _load_config(Path("configs/eval/h2_swe_cfl_refinement.yaml"))
     source_contract, source_result = _synthetic_source(config)
     first = _build_tasks(config, source_contract, source_result)
     second = _build_tasks(
@@ -98,7 +98,7 @@ def test_task_plan_is_deterministic_and_covers_each_case_solver_pair() -> None:
 
 
 def test_task_plan_fails_closed_on_source_identity_mismatch() -> None:
-    config = _load_config(Path("configs/eval/h2_swe_cfl_refinement_v1.yaml"))
+    config = _load_config(Path("configs/eval/h2_swe_cfl_refinement.yaml"))
     source_contract, source_result = _synthetic_source(config)
     source_contract["selected_scenarios"][0]["record"][
         "input_fingerprint"

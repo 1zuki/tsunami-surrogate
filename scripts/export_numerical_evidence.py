@@ -1,0 +1,126 @@
+#!/usr/bin/env python
+"""Export a checksum-bound index of accepted common-time-v2 numerical evidence."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import sys
+from typing import Any, Mapping
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.eval_suite_preflight import load_suite_contract
+from tsunami_surrogate.utils.io import save_json
+
+
+def _read_object(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise TypeError(f"Expected JSON object: {path}")
+    return payload
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--contract", default="configs/eval/benchmark_suite.yaml")
+    parser.add_argument("--output", required=True)
+    parser.add_argument(
+        "--production-validation-artifact",
+        default=None,
+        help="Fresh current-production validation summary.json bound to this export.",
+    )
+    args = parser.parse_args()
+
+    contract = load_suite_contract(args.contract)
+    numerical_scope = contract.get("numerical_evidence_scope", {})
+    current_validation = None
+    if args.production_validation_artifact:
+        validation_path = Path(args.production_validation_artifact)
+        current_validation = _read_object(validation_path)
+        if (
+            current_validation.get("evaluation_type")
+            != "current_production_contract_validation"
+            or current_validation.get("status") != "passed"
+            or current_validation.get("contract_hash")
+            != contract["scientific_scope"]["contract_hash"]
+        ):
+            raise ValueError("Production validation artifact is not bound to this contract")
+        numerical_scope = {
+            **dict(numerical_scope),
+            "status": "current_production_validated",
+            "current_production_contract_validated": True,
+        }
+    rows = []
+    for entry in contract.get("accepted_numerical_artifacts", []):
+        if not isinstance(entry, Mapping):
+            raise TypeError("accepted_numerical_artifacts rows must be mappings")
+        root = ROOT / str(entry["root"])
+        decision_path = root / str(entry["decision_path"])
+        decision = _read_object(decision_path)
+        observed = decision.get(str(entry["decision_key"]))
+        expected = entry["expected_decision"]
+        if observed != expected:
+            raise ValueError(
+                f"Numerical evidence decision mismatch for {entry['id']}: "
+                f"{observed!r} != {expected!r}"
+            )
+        checksums = []
+        for relative in entry.get("checksum_files", []):
+            path = root / str(relative)
+            if not path.is_file():
+                raise FileNotFoundError(path)
+            checksums.append(
+                {
+                    "path": str(path.relative_to(ROOT)),
+                    "sha256": _sha256(path),
+                }
+            )
+        rows.append(
+            {
+                "id": str(entry["id"]),
+                "root": str(root.relative_to(ROOT)),
+                "decision_path": str(decision_path.relative_to(ROOT)),
+                "decision_sha256": _sha256(decision_path),
+                "decision_key": str(entry["decision_key"]),
+                "decision": observed,
+                "checksum_files": checksums,
+            }
+        )
+
+    result = {
+        "evaluation_type": "v2_numerical_evidence_index",
+        "contract_path": str(args.contract),
+        "contract_sha256": _sha256(ROOT / args.contract),
+        "numerical_evidence_scope": dict(numerical_scope),
+        "current_production_validation": (
+            None
+            if current_validation is None
+            else {
+                "status": current_validation["status"],
+                "contract_hash": current_validation["contract_hash"],
+                "canary_count": current_validation["canary_count"],
+                "summary_path": "production_validation/summary.json",
+                "summary_sha256": _sha256(validation_path),
+            }
+        ),
+        "rows": rows,
+    }
+    save_json(result, args.output)
+    print(f"[v2-numerical-evidence] rows={len(rows)} -> {args.output}")
+
+
+if __name__ == "__main__":
+    main()

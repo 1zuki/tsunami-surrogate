@@ -468,7 +468,7 @@ def _paper_evidence_cells(
             "group": "paper_reference_analysis",
             "path": "paper_evidence/reference_analysis/solver_gap.json",
             "evaluation_type": "v2_solver_gap",
-            "required_keys": ["common_time_v2", "bootstrap", "pairs"],
+            "required_keys": ["common_time", "bootstrap", "pairs"],
             "rows_key": "pairs",
             "row_count": len(directed_pairs),
             "row_identity_keys": ["solver_a", "solver_b"],
@@ -492,7 +492,7 @@ def _paper_evidence_cells(
             "path": "paper_evidence/reference_analysis/cross_reference.json",
             "evaluation_type": "v2_cross_reference_discrepancy",
             "required_keys": [
-                "common_time_v2",
+                "common_time",
                 "bootstrap",
                 "model_specs",
                 "directions",
@@ -577,7 +577,7 @@ def _paper_evidence_cells(
                     "dataset_paths": [str(row["dataset"])],
                     "num_samples": test_count,
                     "required_keys": [
-                        "common_time_v2",
+                        "common_time",
                         "gauges",
                         "aggregates.waveform_nrmse",
                         "aggregates.arrival_time_abs_error",
@@ -1274,7 +1274,7 @@ def build_manifest(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--contract", default="configs/eval/final_v2_suite.yaml")
+    parser.add_argument("--contract", default="configs/eval/benchmark_suite.yaml")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--preflight-report", required=True)

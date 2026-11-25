@@ -10,8 +10,13 @@ description: >-
   uncertainty ensemble remains a separate protocol.
 
 resources:
-  max_concurrent: 5
-  mps_per_job: 2
+  max_concurrent: 3
+  account_job_limit: 3
+  account: uit
+  partition: normal
+  qos: mig2-35
+  gpu_type: 2g.35gb
+  gpus_per_job: 1
   cpus_per_job: 4
   memory_gb_per_job: 32
   time_limit: "72:00:00"

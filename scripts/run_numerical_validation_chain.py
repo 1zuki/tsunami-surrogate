@@ -19,17 +19,17 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.audit_common_time_v2_h0 import audit_h0_regression
-from tsunami_surrogate.data_gen.common_time_v2 import code_state
-from tsunami_surrogate.evaluation.common_time_v2_h1 import (
+from scripts.audit_common_time_h0 import audit_h0_regression
+from tsunami_surrogate.data_gen.common_time import code_state
+from tsunami_surrogate.evaluation.common_time_h1 import (
     execute_h1_contract,
     freeze_h1_contract,
 )
-from tsunami_surrogate.evaluation.common_time_v2_h2 import (
+from tsunami_surrogate.evaluation.common_time_h2 import (
     execute_h2_contract,
     freeze_h2_contract,
 )
-from tsunami_surrogate.evaluation.common_time_v2_level_a import (
+from tsunami_surrogate.evaluation.common_time_level_a import (
     execute_level_a,
     preregister_level_a,
 )
@@ -115,7 +115,7 @@ def _write_yaml(path: Path, payload: Mapping[str, Any]) -> None:
 def _require_current_numerical_scope(
     *, allow_unvalidated_contract: bool = False
 ) -> dict[str, Any]:
-    suite_contract = _load_yaml(ROOT / "configs/eval/final_v2_suite.yaml")
+    suite_contract = _load_yaml(ROOT / "configs/eval/benchmark_suite.yaml")
     numerical_scope = suite_contract.get("numerical_evidence_scope", {})
     if not bool(
         numerical_scope.get("current_production_contract_validated", False)
@@ -167,10 +167,10 @@ def validate_prerequisites(
         (PRIOR_H2 / "execution/result.json", "file"),
         (SWE_DIAGNOSTIC / "execution/result.json", "file"),
         (HYDRO_CONTINUATION / "execution/result.json", "file"),
-        (ROOT / "configs/eval/common_time_v2_level_a.yaml", "file"),
-        (ROOT / "configs/eval/minimum_established_solver_validation_v4.yaml", "file"),
-        (ROOT / "configs/eval/common_time_v2_h1.yaml", "file"),
-        (ROOT / "configs/eval/common_time_v2_h2_v2.yaml", "file"),
+        (ROOT / "configs/eval/common_time_level_a.yaml", "file"),
+        (ROOT / "configs/eval/minimum_established_solver_validation.yaml", "file"),
+        (ROOT / "configs/eval/common_time_h1.yaml", "file"),
+        (ROOT / "configs/eval/common_time_h2.yaml", "file"),
     ):
         _require_path(path, kind=kind)
     for executable in ("tar", "zstd"):
@@ -302,11 +302,11 @@ def run_chain(
         expected=True,
     )
 
-    level_a_config = _load_yaml(ROOT / "configs/eval/common_time_v2_level_a.yaml")
+    level_a_config = _load_yaml(ROOT / "configs/eval/common_time_level_a.yaml")
     level_a_config["canaries"]["h0_inventory"] = str(
         h0_root / "h0_input_inventory.jsonl"
     )
-    level_a_config_path = configs_root / "common_time_v2_level_a.yaml"
+    level_a_config_path = configs_root / "common_time_level_a.yaml"
     _write_yaml(level_a_config_path, level_a_config)
     print("[numerical-chain] Level A preregistration and execution", flush=True)
     level_a_root = preregister_level_a(
@@ -332,7 +332,7 @@ def run_chain(
     print("[numerical-chain] Minimum established-solver bundle", flush=True)
     level_b_root = prepare_minimum_established_solver_validation(
         repo_root=ROOT,
-        config_path=ROOT / "configs/eval/minimum_established_solver_validation_v4.yaml",
+        config_path=ROOT / "configs/eval/minimum_established_solver_validation.yaml",
         level_a_root=level_a_root,
         output_root=artifacts_root / "level_b_minimum",
         workers=workers,
@@ -368,7 +368,7 @@ def run_chain(
     )
 
     print("[numerical-chain] H1 implementation/health smoke", flush=True)
-    h1_config = _load_yaml(ROOT / "configs/eval/common_time_v2_h1.yaml")
+    h1_config = _load_yaml(ROOT / "configs/eval/common_time_h1.yaml")
     h1_config["prerequisites"].update(
         {
             "h0_contract_hash": h0_root.name,
@@ -376,7 +376,7 @@ def run_chain(
             "level_b_bundle_hash": level_b_root.name,
         }
     )
-    h1_config_path = configs_root / "common_time_v2_h1.yaml"
+    h1_config_path = configs_root / "common_time_h1.yaml"
     _write_yaml(h1_config_path, h1_config)
     h1_root = freeze_h1_contract(
         repo_root=ROOT,
@@ -402,7 +402,7 @@ def run_chain(
     )
 
     print("[numerical-chain] H2 paired-CFL regression", flush=True)
-    h2_config = _load_yaml(ROOT / "configs/eval/common_time_v2_h2_v2.yaml")
+    h2_config = _load_yaml(ROOT / "configs/eval/common_time_h2.yaml")
     h2_config["prerequisites"].update(
         {
             "h0_contract_hash": h0_root.name,
@@ -412,7 +412,7 @@ def run_chain(
         }
     )
     h2_config["selection"]["exclude_h1_contract_hash"] = h1_root.name
-    h2_config_path = configs_root / "common_time_v2_h2_v2.yaml"
+    h2_config_path = configs_root / "common_time_h2.yaml"
     _write_yaml(h2_config_path, h2_config)
     h2_root = freeze_h2_contract(
         repo_root=ROOT,
@@ -503,12 +503,12 @@ def main() -> None:
     parser.add_argument(
         "--claw-root",
         type=Path,
-        default=Path("/home/izu/opt/clawpack-v5.14.0"),
+        default=Path(".tools/clawpack-v5.14.0"),
     )
     parser.add_argument(
         "--petsc-dir",
         type=Path,
-        default=Path("/home/izu/opt/petsc-3.25.3"),
+        default=Path(".tools/petsc-3.25.3"),
     )
     parser.add_argument("--petsc-arch", default="arch-linux-c-opt")
     parser.add_argument(

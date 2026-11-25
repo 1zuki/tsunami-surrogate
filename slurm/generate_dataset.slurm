@@ -1,18 +1,20 @@
 #!/bin/bash
+#SBATCH --account=uit
+#SBATCH --partition=small
+#SBATCH --qos=mig1-18
 #SBATCH --job-name=tsunami
 #SBATCH --output=logs/slurm/%x_generate_%j.out
 #SBATCH --error=logs/slurm/%x_generate_%j.err
-#SBATCH --chdir=/datastore/vit/tsunami-surrogate
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=24
-#SBATCH --mem=60G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
 #SBATCH --time=72:00:00
 
 set -euo pipefail
 
-PROJECT_ROOT="/datastore/vit/tsunami-surrogate"
-ENV_PREFIX="$PROJECT_ROOT/.venv"
+PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
+ENV_PREFIX="${ENV_PREFIX:-$PROJECT_ROOT/.venv}"
 SPLIT="${SPLIT:?SPLIT must be train, eval, or test}"
 RESUME="${RESUME:-0}"
 CONFIG_PATH="${CONFIG_PATH:-}"
@@ -69,11 +71,7 @@ if [ -z "$CONFIG_PATH" ]; then
 fi
 
 cd "$PROJECT_ROOT"
-if type module >/dev/null 2>&1; then
-    module clear -f
-fi
-source /datastore/vit/miniconda3/etc/profile.d/conda.sh
-conda activate "$ENV_PREFIX"
+source "$PROJECT_ROOT/slurm/environment.sh"
 
 export PATH="$ENV_PREFIX/bin:/usr/bin:/bin:$PATH"
 export OMP_NUM_THREADS=1

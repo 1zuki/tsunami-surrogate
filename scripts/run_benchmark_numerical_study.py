@@ -27,7 +27,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from tsunami_surrogate.data_gen.common_time_v2 import hash_array, parse_requested_output_config
+from tsunami_surrogate.data_gen.common_time import hash_array, parse_requested_output_config
 from tsunami_surrogate.data_gen.simulate_dataset import (
     BufferedDomainConfig,
     QualityPolicy,
@@ -510,7 +510,7 @@ def _plan(config_path: Path, dataset_root: Path | None, case_limit: int | None,
     inputs = [_file_record(config_path), _file_record(dataset_path), *manifests]
     code_paths = [
         Path(__file__).resolve(), ROOT / "src/data_gen/simulate_dataset.py",
-        ROOT / "src/data_gen/common_time_v2.py", ROOT / "src/utils/hashing.py",
+        ROOT / "src/data_gen/common_time.py", ROOT / "src/utils/hashing.py",
     ]
     code_paths.extend(sorted((ROOT / "src/solver").glob("*.py")))
     inputs.extend(_file_record(path) for path in code_paths)
