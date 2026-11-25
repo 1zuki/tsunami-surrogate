@@ -7,8 +7,9 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="/datastore/vit/tsunami-surrogate"
+PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 cd "$PROJECT_ROOT"
+source "$PROJECT_ROOT/slurm/environment.sh"
 mkdir -p logs/slurm
 
 if ! command -v sbatch >/dev/null 2>&1; then
@@ -24,9 +25,9 @@ submit_native() {
     local train_config="configs/model/fno_res${grid}_muscl_hr.yaml"
 
     generate_job=$(sbatch --parsable \
-        --cpus-per-task=8 \
+        --cpus-per-task=4 \
         --mem=20G \
-        --export="ALL,SPLIT=train,CONFIG_PATH=${generation_config},RESUME=0,NUM_WORKERS=8,MAX_IN_FLIGHT=8" \
+        --export="ALL,SPLIT=train,CONFIG_PATH=${generation_config},RESUME=0,NUM_WORKERS=4,MAX_IN_FLIGHT=4" \
         slurm/generate_dataset.slurm)
     preprocess_job=$(sbatch --parsable \
         --dependency="afterok:${generate_job}" \
@@ -34,7 +35,7 @@ submit_native() {
         slurm/preprocess_dataset.slurm)
     train_job=$(sbatch --parsable \
         --dependency="afterok:${preprocess_job}" \
-        --export="ALL,CONFIG_PATH=${train_config},REQUIRED_VRAM=16384" \
+        --export="ALL,CONFIG_PATH=${train_config}" \
         slurm/train_fno.slurm)
 
     printf 'res%s generation=%s preprocess=%s train=%s\n' \
@@ -46,7 +47,7 @@ submit_native 64
 submit_native 128
 
 real_job=$(sbatch --parsable \
-    --export="ALL,NUM_WORKERS=8" \
+    --export="ALL,NUM_WORKERS=4" \
     slurm/build_real_bathymetry.slurm)
 printf 'real_bathymetry rebuild=%s\n' "$real_job"
 

@@ -5,14 +5,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
 import pytest
-from src.data.dataset import (
+from tsunami_surrogate.data.dataset import (
     PROCESSED_MANIFEST_SCHEMA_ID,
     ShardedTsunamiDataset,
     TsunamiDataset,
     create_dataloaders,
     save_npz,
 )
-from src.utils.hashing import sha256_file
+from tsunami_surrogate.utils.hashing import sha256_file
 
 
 def test_dataset_shape(tmp_path):

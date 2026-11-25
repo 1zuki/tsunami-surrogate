@@ -607,19 +607,19 @@ def main() -> None:
         help="Old rollout root used only to recover preserved static inputs.",
     )
     p.add_argument(
-        "--input-root", default="data/real_bathymetry_inputs_v2"
+        "--input-root", default="data/real_bathymetry_inputs"
     )
     p.add_argument(
         "--base-config",
         default="configs/data/dataset_test.yaml",
     )
-    p.add_argument("--out-root", default="data/real_bathymetry_v2")
+    p.add_argument("--out-root", default="data/real_bathymetry")
     p.add_argument(
-        "--processed-root", default="data/processed_real_bathymetry_v2"
+        "--processed-root", default="data/processed_real_bathymetry"
     )
     p.add_argument(
         "--config-out",
-        default="data/real_bathymetry_v2/configs",
+        default="data/real_bathymetry/configs",
     )
     p.add_argument(
         "--train-stats", default="data/processed/hydrostatic/normalization_stats.json"

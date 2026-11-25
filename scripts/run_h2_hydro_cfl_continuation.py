@@ -11,7 +11,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from tsunami_surrogate.evaluation.common_time_v2_h1 import THREAD_ENV_KEYS
+from tsunami_surrogate.evaluation.common_time_h1 import THREAD_ENV_KEYS
 from tsunami_surrogate.evaluation.h2_hydro_cfl_continuation import (
     continuation_status,
     execute_continuation,
@@ -20,7 +20,7 @@ from tsunami_surrogate.evaluation.h2_hydro_cfl_continuation import (
 )
 
 
-DEFAULT_CONFIG = Path("configs/eval/h2_hydro_cfl_continuation_v1.yaml")
+DEFAULT_CONFIG = Path("configs/eval/h2_hydro_cfl_continuation.yaml")
 DEFAULT_SOURCE = Path(
     "artifacts/common_time_v2/h2_diagnostics/swe_cfl_refinement_v1/"
     "1a29fea6ee28afb528e844abb55a6988249c09ed507e655e5aad1f657e2da138"

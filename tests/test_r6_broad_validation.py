@@ -7,14 +7,14 @@ import numpy as np
 import pytest
 import yaml
 
-from src.evaluation.r6_broad_validation import (
+from tsunami_surrogate.evaluation.r6_broad_validation import (
     R6ValidationError,
     _finalize_output,
     _verify_completed_geoclaw,
     _requested_times,
     _validate_config,
 )
-from src.evaluation.common_time_v2_level_a import validate_checksums
+from tsunami_surrogate.evaluation.common_time_level_a import validate_checksums
 
 
 def _config() -> dict[str, object]:
@@ -52,7 +52,10 @@ def test_r6_broad_validation_rejects_the_historical_geometry() -> None:
 
 def test_r6_broad_validation_binds_the_completed_geoclaw_revisions() -> None:
     root = Path(__file__).resolve().parents[1]
-    geoclaw = _verify_completed_geoclaw(root, _config())
+    config = _config()
+    if not (root / config["external_comparator"]["summary"]).is_file():
+        pytest.skip("Requires the archived GeoClaw evaluation, which is not included in a source clone")
+    geoclaw = _verify_completed_geoclaw(root, config)
 
     assert geoclaw["case_count"] == 3
     assert geoclaw["comparison_count"] == 6
@@ -61,6 +64,11 @@ def test_r6_broad_validation_binds_the_completed_geoclaw_revisions() -> None:
         "geoclaw_commit",
         "petsc_commit",
     }
+
+
+def test_r6_broad_validation_requires_the_geoclaw_archive(tmp_path: Path) -> None:
+    with pytest.raises(R6ValidationError, match="Missing JSON artifact"):
+        _verify_completed_geoclaw(tmp_path, _config())
 
 
 def test_r6_broad_validation_checksum_manifest_is_written_after_workspace_cleanup(

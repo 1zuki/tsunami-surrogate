@@ -6,8 +6,8 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.utils.device import hardware_info, resolve_device
-from src.utils.precision import configure_torch_precision, parse_optional_bool, tf32_backend_state
+from tsunami_surrogate.utils.device import hardware_info, resolve_device
+from tsunami_surrogate.utils.precision import configure_torch_precision, parse_optional_bool, tf32_backend_state
 
 
 def test_resolve_device_cpu():

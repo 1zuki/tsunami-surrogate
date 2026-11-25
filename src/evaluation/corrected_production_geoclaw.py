@@ -20,9 +20,9 @@ from typing import Any, Callable, Mapping
 import numpy as np
 import yaml
 
-from tsunami_surrogate.data_gen.common_time_v2 import hash_array, sha256_file, stable_hash_payload
+from tsunami_surrogate.data_gen.common_time import hash_array, sha256_file, stable_hash_payload
 from tsunami_surrogate.data_gen.simulate_dataset import BufferedDomainConfig, _prepare_buffered_domain
-from tsunami_surrogate.evaluation.common_time_v2_level_a import validate_checksums
+from tsunami_surrogate.evaluation.common_time_level_a import validate_checksums
 from tsunami_surrogate.evaluation.established_solver_validation import (
     CORRECTED_PRODUCTION_GEOCLAW_EXTERNAL_RESULT_SCHEMA_ID,
     CORRECTED_PRODUCTION_GEOCLAW_SCHEMA_ID,

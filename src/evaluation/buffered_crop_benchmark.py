@@ -15,7 +15,7 @@ from tsunami_surrogate.data_gen.simulate_dataset import (
     _prepare_buffered_domain,
     _simulate_one_local,
 )
-from tsunami_surrogate.data_gen.common_time_v2 import candidate_requested_times, hash_array
+from tsunami_surrogate.data_gen.common_time import candidate_requested_times, hash_array
 from tsunami_surrogate.evaluation.finite_horizon_boundary_study import comparison_metrics
 from tsunami_surrogate.solver.boussinesq import BoussinesqSolver
 from tsunami_surrogate.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
@@ -238,7 +238,7 @@ def run_buffered_case_detailed(
     resolved_cfl = _resolved_target_cfl(solver_name, target_cfl)
     # Imported lazily to keep the reusable buffered-domain helpers independent
     # of the Level A module that also consumes this runner.
-    from tsunami_surrogate.evaluation.common_time_v2_level_a import _load_canary_arrays
+    from tsunami_surrogate.evaluation.common_time_level_a import _load_canary_arrays
 
     bathymetry, source, _strength_array, strength, _arrays = _load_canary_arrays(
         record

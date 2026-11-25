@@ -1,3 +1,4 @@
 @echo off
-python scripts\make_dataset.py --config configs\data\dataset.yaml --stop-at 1
-echo Done.
+cd /d "%~dp0\.."
+python scripts\run_smoke_pipeline.py %*
+exit /b %errorlevel%

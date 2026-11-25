@@ -231,10 +231,10 @@ def execute(args):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--selection", type=Path, default=ROOT / "docs/reference-sensitivity-30-20261125/plan.json")
-    p.add_argument("--original-plan", type=Path, default=Path("/mnt/Windows/Dataset/verdict_revision_20261124/benchmark_numerical/plan.json"))
-    p.add_argument("--dataset-root", type=Path, default=Path("/mnt/Windows/Users/Izu/tsunami-surrogate/data/test"))
+    p.add_argument("--original-plan", type=Path, default=Path("results/revision_evidence/benchmark_numerical/plan.json"))
+    p.add_argument("--dataset-root", type=Path, default=Path("data/test"))
     p.add_argument("--test-dataset", type=Path, default=ROOT / scoring.TEST_PATH)
-    p.add_argument("--preflight", type=Path, default=Path("/mnt/Windows/Dataset/verdict_revision_20261124/reference_resolution_checkpoint_preflight.json"))
+    p.add_argument("--preflight", type=Path, default=Path("results/revision_evidence/reference_resolution_checkpoint_preflight.json"))
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--workers", type=int, choices=(1, 2, 3, 4), default=4)
     p.add_argument("--batch-size", type=int, choices=(1, 2), default=2)

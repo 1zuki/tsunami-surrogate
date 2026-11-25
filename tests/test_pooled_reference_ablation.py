@@ -14,13 +14,13 @@ from scripts.eval_pooled_reference_ablation import (
     _domain_arrival_time,
     _model_prediction,
 )
-from src.data.dataset import BalancedSolverBatchSampler
-from src.evaluation.normalization_bridge import (
+from tsunami_surrogate.data.dataset import BalancedSolverBatchSampler
+from tsunami_surrogate.evaluation.normalization_bridge import (
     EvaluationNormalizationBridge,
     StandardizationSpec,
 )
-from src.training.checkpointing import training_contract_signature
-from src.utils.config import load_config
+from tsunami_surrogate.training.checkpointing import training_contract_signature
+from tsunami_surrogate.utils.config import load_config
 
 
 SOLVERS = ("hydrostatic", "muscl_hr", "boussinesq")
@@ -222,4 +222,5 @@ def test_pooled_suite_reuses_existing_native_specialists() -> None:
     enabled = [entry for entry in entries.values() if entry.get("enabled", True)]
     assert len(enabled) == 4
     assert sum(len(entry["seeds"]) for entry in enabled) == 12
-    assert cfg["resources"]["mps_per_job"] == 4
+    assert cfg["resources"]["max_concurrent"] == 3
+    assert cfg["resources"]["gpu_type"] == "2g.35gb"

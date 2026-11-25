@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.evaluation.alignment import (
+from tsunami_surrogate.evaluation.alignment import (
     MODE_COMMON_TIME,
     MODE_SAVED_INDEX_LEGACY,
     SCHEMA_ID,

@@ -1,5 +1,5 @@
 dataset_config: configs/data/dataset_test.yaml
-dataset_root: /mnt/Windows/Users/Izu/tsunami-surrogate/data/test
+dataset_root: data/test
 baseline_core: 128
 publication_core: 64
 coarse_core: 64

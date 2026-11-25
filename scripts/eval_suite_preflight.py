@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tsunami_surrogate.data_gen.common_time_v2 import (  # noqa: E402
+from tsunami_surrogate.data_gen.common_time import (  # noqa: E402
     PUBLICATION_SCHEMA_ID,
     parse_requested_output_config,
     stable_hash_payload,
@@ -1251,7 +1251,7 @@ def _validate_generation_artifacts(
     if frozen.get("status") != "frozen":
         raise PreflightError(
             "Fresh corrected generation artifacts have not been frozen in "
-            "configs/eval/final_v2_suite.yaml yet"
+            "configs/eval/benchmark_suite.yaml yet"
         )
     split_names = {"train": "train", "val": "eval", "test": "test"}
     for processed_split, publication_split in split_names.items():
@@ -2235,7 +2235,7 @@ def run_preflight(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--contract", default="configs/eval/final_v2_suite.yaml")
+    parser.add_argument("--contract", default="configs/eval/benchmark_suite.yaml")
     parser.add_argument("--output-root", default=None)
     parser.add_argument("--report", default=None)
     parser.add_argument("--include-ensemble", action="store_true")

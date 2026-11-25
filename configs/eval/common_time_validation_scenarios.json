@@ -1147,5 +1147,5 @@
     ],
     "list_hash": "0d627b6b9a44037d1b4bfc3569ec05dfdf6b85536e47c38ee096ed37d358817c"
   },
-  "source_audit_artifact": "/mnt/Windows/Dataset/current_production_dense_validation_20261117/audit/paired_reference_audit.json"
+  "source_audit_artifact": "results/production_dense_validation/audit/paired_reference_audit.json"
 }

@@ -54,10 +54,10 @@ def exported_source(tmp_path_factory):
     [
         ("build_core_checkpoint_release", "--replay"),
         ("eval_accuracy", "--checkpoint"),
-        ("eval_v2_calibration", "--val-dataset"),
+        ("eval_calibration", "--val-dataset"),
         ("eval_pooled_reference_ablation", "--reference-dataset"),
-        ("eval_v2_reference_analysis", "--output-dir"),
-        ("eval_v2_seed_metrics", "--expected-seeds"),
+        ("eval_reference_analysis", "--output-dir"),
+        ("eval_seed_metrics", "--expected-seeds"),
     ],
 )
 def test_python_entrypoints_import_from_uninstalled_checkout(

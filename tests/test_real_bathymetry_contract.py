@@ -11,7 +11,7 @@ from scripts.build_real_bathymetry_eval import (
     _dataset_config,
     _write_paired_external_input,
 )
-from src.data_gen.simulate_dataset import TsunamiDatasetBuilder, _block_mean_downsample
+from tsunami_surrogate.data_gen.simulate_dataset import TsunamiDatasetBuilder, _block_mean_downsample
 
 
 ROOT = Path(__file__).resolve().parents[1]

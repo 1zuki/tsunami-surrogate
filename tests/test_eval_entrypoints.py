@@ -4,8 +4,8 @@ import numpy as np
 
 from scripts.eval_accuracy import _resolve_metrics_output_path
 from scripts.eval_solver_speed import _prepare_scenario, _rollout_solver
-from src.data_gen.common_time_v2 import parse_requested_output_config
-from src.data_gen.simulate_dataset import BufferedDomainConfig
+from tsunami_surrogate.data_gen.common_time import parse_requested_output_config
+from tsunami_surrogate.data_gen.simulate_dataset import BufferedDomainConfig
 
 
 def test_accuracy_output_override_is_exact():

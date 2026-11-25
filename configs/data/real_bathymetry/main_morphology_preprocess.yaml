@@ -1,4 +1,6 @@
 raw:
+  publication_split: test
+  generation_config: configs/data/real_bathymetry/main_morphology_dataset.yaml
   scenario_manifest: data/real_bathymetry/manifests/main_morphology/scenario_manifest.jsonl
   fde_manifests:
     hydrostatic: data/real_bathymetry/manifests/main_morphology/hydrostatic_manifest.jsonl

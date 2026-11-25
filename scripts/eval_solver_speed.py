@@ -23,7 +23,7 @@ from tsunami_surrogate.data_gen.simulate_dataset import (
     _resolved_solver_cfg_for_fde,
     _simulate_requested_times_local,
 )
-from tsunami_surrogate.data_gen.common_time_v2 import RequestedOutputConfig
+from tsunami_surrogate.data_gen.common_time import RequestedOutputConfig
 from tsunami_surrogate.utils.config import load_config
 from tsunami_surrogate.utils.device import hardware_info, resolve_device
 from tsunami_surrogate.utils.io import save_json

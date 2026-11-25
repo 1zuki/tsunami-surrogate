@@ -101,10 +101,10 @@ DEFAULT_CASES = [
         key="wet_dry_stress_failure",
         label="Wet-dry stress failure",
         data_path=Path(
-            "data/processed_real_bathymetry_v2/appendix_coastline_stress/hydrostatic/test"
+            "data/processed_real_bathymetry/appendix_coastline_stress/hydrostatic/test"
         ),
         stats_path=Path(
-            "data/processed_real_bathymetry_v2/appendix_coastline_stress/hydrostatic/normalization_stats.json"
+            "data/processed_real_bathymetry/appendix_coastline_stress/hydrostatic/normalization_stats.json"
         ),
         config_path=Path("configs/model/fno.yaml"),
         checkpoint_path=Path("experiments/fno/seed_18/best.pt"),

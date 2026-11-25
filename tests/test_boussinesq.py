@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from src.solver.boundary_conditions import pad_scalar_field
-from src.solver.boussinesq import BoussinesqSolver, simulate_rollout
+from tsunami_surrogate.solver.boundary_conditions import pad_scalar_field
+from tsunami_surrogate.solver.boussinesq import BoussinesqSolver, simulate_rollout
 
 
 def test_boussinesq_initial_state_shape() -> None:

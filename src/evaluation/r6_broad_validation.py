@@ -23,7 +23,7 @@ import numpy as np
 import yaml
 
 from scripts.run_production_contract_validation import run_validation
-from tsunami_surrogate.data_gen.common_time_v2 import code_state, hash_array, stable_hash_payload
+from tsunami_surrogate.data_gen.common_time import code_state, hash_array, stable_hash_payload
 from tsunami_surrogate.data_gen.simulate_dataset import (
     BufferedDomainConfig,
     _make_boussinesq_solver_from_cfg,
@@ -33,7 +33,7 @@ from tsunami_surrogate.data_gen.simulate_dataset import (
     _simulate_one_local,
 )
 from tsunami_surrogate.evaluation.boussinesq_boundary import discrete_dispersion, directional_rate
-from tsunami_surrogate.evaluation.common_time_v2_level_a import validate_checksums
+from tsunami_surrogate.evaluation.common_time_level_a import validate_checksums
 from tsunami_surrogate.utils.hashing import sha256_file
 
 
