@@ -144,7 +144,7 @@ PYTHONPATH="$CLAW_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
     CLAW="$CLAW_ROOT" \
     "$PYTHON" - <<'PY'
 from pathlib import Path
-from src.evaluation.geoclaw_adapter import GeoClawEnvironment, validate_geoclaw_environment
+from tsunami_surrogate.evaluation.geoclaw_adapter import GeoClawEnvironment, validate_geoclaw_environment
 
 root = Path.cwd()
 environment = GeoClawEnvironment(

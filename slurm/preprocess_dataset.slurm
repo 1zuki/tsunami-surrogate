@@ -39,6 +39,6 @@ echo "Config      : $CONFIG_PATH"
 echo "Git commit  : $(git rev-parse HEAD 2>/dev/null || echo unknown)"
 echo "Python      : $(command -v python)"
 
-python -u -m src.data_gen.preprocess --config "$CONFIG_PATH"
+python -u -m tsunami_surrogate.data_gen.preprocess --config "$CONFIG_PATH"
 
 echo "End time    : $(date --iso-8601=seconds)"
