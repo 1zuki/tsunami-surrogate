@@ -1,22 +1,24 @@
 #!/bin/bash
+#SBATCH --account=uit
+#SBATCH --partition=small
+#SBATCH --qos=mig1-18
 #SBATCH --job-name=tsunami-numval
 #SBATCH --output=logs/slurm/%x_%j.out
 #SBATCH --error=logs/slurm/%x_%j.err
-#SBATCH --chdir=/datastore/vit/tsunami-surrogate
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
 #SBATCH --time=72:00:00
 
 set -euo pipefail
 
-PROJECT_ROOT="/datastore/vit/tsunami-surrogate"
+PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 RUN_ROOT="evaluation_runs/numerical_validation_final_v2_20260910-r1"
 PYTHON="$PROJECT_ROOT/.venv/bin/python"
 
 cd "$PROJECT_ROOT"
-export PATH="/cm/shared/apps/mvapich2/gcc/64/2.3.7/bin:/cm/shared/apps/openpbs/23.06.06/bin:/usr/bin:/bin:$PATH"
+source "$PROJECT_ROOT/slurm/environment.sh"
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
@@ -32,8 +34,8 @@ echo "MPI        : $(command -v mpiexec)"
 "$PYTHON" -u scripts/run_numerical_validation_chain.py \
   --allow-unvalidated-contract \
   --output-root "$RUN_ROOT" \
-  --workers 8 \
-  --geoclaw-workers 4 \
+  --workers "${SLURM_CPUS_PER_TASK:-4}" \
+  --geoclaw-workers 2 \
   --claw-root "$PROJECT_ROOT/.tools/clawpack-v5.14.0" \
   --petsc-dir "$PROJECT_ROOT/.tools/petsc-3.25.3" \
   --petsc-arch arch-linux-c-opt \

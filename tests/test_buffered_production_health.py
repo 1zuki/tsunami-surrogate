@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.evaluation.buffered_production_health import _row_passes, _task_identity
+from tsunami_surrogate.evaluation.buffered_production_health import _row_passes, _task_identity
 
 
 def test_health_task_identity_is_deterministic() -> None:

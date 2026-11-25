@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from scripts import eval_suite_preflight
-from src.utils.hashing import sha256_file
+from tsunami_surrogate.utils.hashing import sha256_file
 
 
 def test_deep_payload_audit_runs_jobs_in_parallel(

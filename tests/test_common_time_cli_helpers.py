@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts import compare_solvers_aligned as aligned_cli
 from scripts import eval_emulator_superiority as emulator_cli
 from scripts import run_dense_reference_validation as dense_cli
-from src.evaluation.cli_progress import (
+from tsunami_surrogate.evaluation.cli_progress import (
     ScenarioProgressLogger,
     default_progress_every_for_suite,
     resolve_progress_every,

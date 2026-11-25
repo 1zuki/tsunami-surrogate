@@ -323,7 +323,7 @@ def main() -> None:
     parser.add_argument("--reference-dataset", action="append", required=True, help="SOLVER|PATH")
     parser.add_argument("--model", action="append", required=True)
     parser.add_argument("--output", required=True)
-    parser.add_argument("--contract", default="configs/eval/final_v2_suite.yaml")
+    parser.add_argument("--contract", default="configs/eval/benchmark_suite.yaml")
     parser.add_argument("--bootstrap-seed", type=int, default=20260915)
     parser.add_argument("--bootstrap-resamples", type=int, default=2000)
     parser.add_argument("--batch-size", type=int, default=32)
@@ -570,7 +570,7 @@ def main() -> None:
             "They do not identify physical truth, numerical fidelity, or physical superiority."
         ),
         "contract_hash": expected_contract,
-        "common_time_v2": {
+        "common_time": {
             "requested_times": times.tolist(),
             "frame_count": int(times.size),
             "horizon": float(times[-1]),

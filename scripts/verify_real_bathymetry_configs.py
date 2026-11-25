@@ -12,7 +12,7 @@ import numpy as np
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from tsunami_surrogate.data_gen.common_time_v2 import parse_requested_output_config
+from tsunami_surrogate.data_gen.common_time import parse_requested_output_config
 
 
 def verify(config_root: Path, data_root: Path) -> dict:
@@ -60,7 +60,7 @@ def verify(config_root: Path, data_root: Path) -> dict:
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--config-root", type=Path, default=Path("configs/data/real_bathymetry_v2"))
+    p.add_argument("--config-root", type=Path, default=Path("configs/data/real_bathymetry"))
     p.add_argument("--data-root", type=Path, default=Path("data/real_bathymetry_v2"))
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()

@@ -9,13 +9,13 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data_gen.simulate_dataset import _simulate_one_local
-from src.evaluation.alignment import (
+from tsunami_surrogate.data_gen.simulate_dataset import _simulate_one_local
+from tsunami_surrogate.evaluation.alignment import (
     SCHEMA_ID,
     stable_hash_payload,
     stable_hash_scenario_ids,
 )
-from src.evaluation.dense_reference_validation import (
+from tsunami_surrogate.evaluation.dense_reference_validation import (
     FDE_NAME_BY_SOLVER_KEY,
     SOLVER_ORDER,
     build_solver_from_legacy_sample,
@@ -25,7 +25,7 @@ from src.evaluation.dense_reference_validation import (
     run_dense_reference_validation,
     safe_ratio,
 )
-from src.utils.config import load_config
+from tsunami_surrogate.utils.config import load_config
 
 
 def _sample_arrays(nx: int = 6, ny: int = 6) -> dict[str, np.ndarray]:
@@ -444,7 +444,7 @@ def test_dense_rollout_elapsed_benchmark_time_matches_cumulative_solver_time() -
 
 
 def test_dense_rollout_time_summary_avoids_float32_accumulation_drift() -> None:
-    from src.evaluation.dense_reference_validation import (
+    from tsunami_surrogate.evaluation.dense_reference_validation import (
         summarize_dense_rollout_diagnostics,
     )
 

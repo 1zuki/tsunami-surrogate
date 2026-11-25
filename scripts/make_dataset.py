@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tsunami_surrogate.data_gen.simulate_dataset import TsunamiDatasetBuilder  # noqa: E402
+from tsunami_surrogate.utils.config import load_config  # noqa: E402
 
 
 THREAD_ENV_KEYS = (
@@ -87,11 +88,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _load_config(path: Path) -> dict[str, Any]:
-    with path.open("r", encoding="utf-8") as handle:
-        raw = yaml.safe_load(handle) or {}
-    if not isinstance(raw, dict):
-        raise TypeError(f"Expected a mapping in {path}")
-    return raw
+    return load_config(path)
 
 
 def _apply_overrides(cfg: dict[str, Any], args: argparse.Namespace) -> None:

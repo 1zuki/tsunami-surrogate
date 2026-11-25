@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from src.data_gen.common_time_v2 import stable_hash_payload
-from src.evaluation.h2_hydro_cfl_continuation import (
+from tsunami_surrogate.data_gen.common_time import stable_hash_payload
+from tsunami_surrogate.evaluation.h2_hydro_cfl_continuation import (
     SCHEMA_ID,
     _load_config,
     _screening,
@@ -15,7 +15,7 @@ from src.evaluation.h2_hydro_cfl_continuation import (
 
 def test_continuation_config_freezes_three_worst_hydro_cases() -> None:
     config = _load_config(
-        Path("configs/eval/h2_hydro_cfl_continuation_v1.yaml")
+        Path("configs/eval/h2_hydro_cfl_continuation.yaml")
     )
     assert config["solver"] == "swe_hydrostatic"
     assert config["cfl_pair"] == {

@@ -19,7 +19,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tsunami_surrogate.utils.hashing import sha256_file, stable_json_sha256
-from tsunami_surrogate.data_gen.common_time_v2 import (
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.data_gen.common_time import (
     RequestedOutputConfig,
     parse_requested_output_config,
 )
@@ -78,8 +79,7 @@ class TsunamiPreprocessor:
         if not self.config_path.exists():
             raise FileNotFoundError(f"Could not find {config_path}, is the path correct")
 
-        with self.config_path.open("r", encoding="utf-8") as f:
-            cfg = yaml.safe_load(f)
+        cfg = load_config(self.config_path)
 
         if cfg is None:
             raise ValueError("yaml config is empty/invalid")
@@ -88,7 +88,10 @@ class TsunamiPreprocessor:
         processed_dir = pathlib.Path(cfg.get("processed_dir", "data/processed"))
         manifest_path = pathlib.Path(cfg.get("manifest_path", "data/synthetic/hydrostatic_manifest.jsonl"))
 
-        split_cfg = cfg.get("split", cfg.get("spilt", {}))
+        for obsolete, replacement in (("spilt", "split"), ("intput", "input")):
+            if obsolete in cfg:
+                raise ValueError(f"Use {replacement!r} instead of {obsolete!r}")
+        split_cfg = cfg.get("split", {})
         train_ratio = float(split_cfg.get("train", 0.7))
         val_ratio = float(split_cfg.get("val", 0.15))
         test_ratio = float(split_cfg.get("test", 0.15))
@@ -101,7 +104,7 @@ class TsunamiPreprocessor:
 
         fde_mode = str(fde_cfg.get("mode", "legacy")).strip().lower()
 
-        input_cfg = cfg.get("input", cfg.get("intput", {}))
+        input_cfg = cfg.get("input", {})
         use_bathy = bool(input_cfg.get("use_bathymetry", True))
         use_src = bool(input_cfg.get("use_source", True))
         use_init_depth = bool(input_cfg.get("use_initial_depth", True))
@@ -201,8 +204,7 @@ class TsunamiPreprocessor:
                         "Could not find raw.generation_config: "
                         f"{generation_path}"
                     )
-                with generation_path.open("r", encoding="utf-8") as handle:
-                    generation_cfg = yaml.safe_load(handle) or {}
+                generation_cfg = load_config(generation_path)
                 if not isinstance(generation_cfg, dict):
                     raise ValueError("raw.generation_config must contain a YAML mapping")
                 requested_output = parse_requested_output_config(
@@ -424,14 +426,14 @@ class TsunamiPreprocessor:
 
         if publication_path.is_file():
             try:
-                from tsunami_surrogate.data_gen.common_time_v2 import (
+                from tsunami_surrogate.data_gen.common_time import (
                     CONTRACT_SCHEMA_ID,
                     ETA_SAMPLE_SCHEMA_ID,
                     validate_candidate_times,
                     validate_publication,
                 )
             except ImportError:
-                from common_time_v2 import (  # type: ignore
+                from common_time import (  # type: ignore
                     CONTRACT_SCHEMA_ID,
                     ETA_SAMPLE_SCHEMA_ID,
                     validate_candidate_times,
@@ -2146,7 +2148,7 @@ def _build_argparser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/data/preprocess.yaml",
+        default="configs/data/preprocess_train.yaml",
         help="path to the preprocessing yaml configuration.",
     )
     return parser

@@ -10,13 +10,13 @@ from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 
-from tsunami_surrogate.data_gen.common_time_v2 import (
+from tsunami_surrogate.data_gen.common_time import (
     code_state,
     sha256_file,
     stable_hash_payload,
 )
 from tsunami_surrogate.evaluation.buffered_crop_benchmark import SOLVERS, run_buffered_case
-from tsunami_surrogate.evaluation.common_time_v2_level_a import _select_canaries
+from tsunami_surrogate.evaluation.common_time_level_a import _select_canaries
 
 
 SCHEMA_ID = "tsunami-surrogate.buffered-production-health.v1"

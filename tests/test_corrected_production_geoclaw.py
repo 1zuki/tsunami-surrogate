@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from src.evaluation.corrected_production_geoclaw import _load_config, _requested_times
+from tsunami_surrogate.evaluation.corrected_production_geoclaw import _load_config, _requested_times
 
 
 def test_corrected_production_geoclaw_config_uses_the_r6_time_construction() -> None:

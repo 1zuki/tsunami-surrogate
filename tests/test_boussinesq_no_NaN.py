@@ -1,4 +1,4 @@
-from src.solver.boussinesq import BoussinesqSolver
+from tsunami_surrogate.solver.boussinesq import BoussinesqSolver
 import numpy as np
 
 nx, ny = 64, 64

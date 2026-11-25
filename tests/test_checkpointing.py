@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 import torch
 
-from src.models import build_model
-from src.training.checkpointing import (
+from tsunami_surrogate.models import build_model
+from tsunami_surrogate.training.checkpointing import (
     capture_data_provenance,
     load_checkpoint,
     save_checkpoint,

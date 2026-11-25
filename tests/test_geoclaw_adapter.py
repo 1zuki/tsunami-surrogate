@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import yaml
 
-from src.evaluation.geoclaw_adapter import (
+from tsunami_surrogate.evaluation.geoclaw_adapter import (
     GeoClawEnvironment,
     _adapter_hash,
     _collect_output,
@@ -19,7 +19,7 @@ from src.evaluation.geoclaw_adapter import (
     _write_state_file,
     validate_geoclaw_environment,
 )
-from src.evaluation.established_solver_validation import (
+from tsunami_surrogate.evaluation.established_solver_validation import (
     SCHEMA_ID_V3,
     SCHEMA_ID_V4,
     _validate_config,
@@ -87,7 +87,7 @@ def _patch_lines(
 def test_external_execution_policy_is_frozen_and_complete() -> None:
     root = Path(__file__).resolve().parents[1]
     config = yaml.safe_load(
-        (root / "configs/eval/minimum_established_solver_validation.yaml").read_text(
+        (root / "tests/fixtures/configs/geoclaw_initial.yaml").read_text(
             encoding="utf-8"
         )
     )
@@ -398,11 +398,11 @@ def test_environment_validation_rejects_python_without_required_modules(
     python = tmp_path / "python"
     python.write_text("", encoding="utf-8")
     monkeypatch.setattr(
-        "src.evaluation.geoclaw_adapter.shutil.which",
+        "tsunami_surrogate.evaluation.geoclaw_adapter.shutil.which",
         lambda _name: "/bin/true",
     )
     monkeypatch.setattr(
-        "src.evaluation.geoclaw_adapter.subprocess.run",
+        "tsunami_surrogate.evaluation.geoclaw_adapter.subprocess.run",
         lambda *args, **kwargs: __import__("subprocess").CompletedProcess(
             args[0],
             1,

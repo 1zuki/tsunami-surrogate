@@ -9,8 +9,8 @@ import pytest
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from src.training.train import Trainer, _as_cpu_rng_state, _restore_rng_state
-from src.utils.seed import (
+from tsunami_surrogate.training.train import Trainer, _as_cpu_rng_state, _restore_rng_state
+from tsunami_surrogate.utils.seed import (
     make_torch_generator,
     make_worker_init_fn,
     seed_everything,

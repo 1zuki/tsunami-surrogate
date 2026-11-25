@@ -9,8 +9,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
-from src.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
+from tsunami_surrogate.solver.hydrostatic_swe import HydrostaticShallowWaterSolver
+from tsunami_surrogate.solver.muscl_hr_swe import MUSCLHRShallowWaterSolver
 
 
 def _lake_at_rest_case(solver_cls: type[HydrostaticShallowWaterSolver]) -> tuple[float, float, float]:

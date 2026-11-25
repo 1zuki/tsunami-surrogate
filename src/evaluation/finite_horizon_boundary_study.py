@@ -16,14 +16,14 @@ from typing import Any, Callable, Mapping, Sequence
 import numpy as np
 import yaml
 
-from tsunami_surrogate.data_gen.common_time_v2 import (
+from tsunami_surrogate.data_gen.common_time import (
     code_state,
     hash_array,
     sha256_file,
     stable_hash_payload,
 )
 from tsunami_surrogate.data_gen.simulate_dataset import _simulate_one_local
-from tsunami_surrogate.evaluation.common_time_v2_level_a import (
+from tsunami_surrogate.evaluation.common_time_level_a import (
     _load_canary_arrays,
     _select_canaries,
     _solver,

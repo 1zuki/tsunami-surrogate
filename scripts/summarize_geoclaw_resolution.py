@@ -14,7 +14,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from tsunami_surrogate.evaluation.common_time_v2_level_a import validate_checksums
+from tsunami_surrogate.evaluation.common_time_level_a import validate_checksums
 from tsunami_surrogate.evaluation.established_solver_validation import (
     _load_external_result,
     _load_external_run_manifest,

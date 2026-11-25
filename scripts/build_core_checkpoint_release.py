@@ -30,7 +30,7 @@ SEEDS = (18, 36, 67)
 ENSEMBLE_SEEDS = (11, 22, 33, 44, 55, 66, 77)
 SEED_MODELS = {"fno": 64, "ffno": 64, "convlstm": 8, "ufno": 8}
 GROUPS = ("direct", "multiseed", "reference", "pooled", "ensemble", "trajectory")
-CONTRACT = "configs/eval/final_v2_suite.yaml"
+CONTRACT = "configs/eval/benchmark_suite.yaml"
 MANIFEST = "core-release.json"
 SUMS = "SHA256SUMS.txt"
 DATA_DOI = "https://doi.org/10.5281/zenodo.22997509"
@@ -49,10 +49,10 @@ SCRIPT_FILES = (
     "eval_pooled_reference_ablation",
     "eval_suite_preflight",
     "eval_trajectory_calibration",
-    "eval_v2_calibration",
-    "eval_v2_reference_analysis",
-    "eval_v2_seed_metrics",
-    "eval_v2_slices",
+    "eval_calibration",
+    "eval_reference_analysis",
+    "eval_seed_metrics",
+    "eval_slices",
     "eval_window_rollout",
     "eval_window_suites",
 )
@@ -251,7 +251,7 @@ def plan(
             )
         recipes["multiseed"].append(
             replay_step(
-                "eval_v2_seed_metrics",
+                "eval_seed_metrics",
                 [
                     "--config",
                     row["config_path"],
@@ -293,7 +293,7 @@ def plan(
             files[evidence] = recorded_files[evidence]
     recipes["reference"].append(
         replay_step(
-            "eval_v2_reference_analysis",
+            "eval_reference_analysis",
             [
                 "--contract",
                 CONTRACT,
@@ -369,7 +369,7 @@ def plan(
     ]
     recipes["ensemble"] = [
         replay_step(
-            "eval_v2_calibration",
+            "eval_calibration",
             [
                 *ensemble_args,
                 "--val-dataset",
@@ -389,7 +389,7 @@ def plan(
             ["tab:uncertainty", "tab:app-ensemble-calibration"],
         ),
         replay_step(
-            "eval_v2_seed_metrics",
+            "eval_seed_metrics",
             [
                 *ensemble_args,
                 "--dataset",

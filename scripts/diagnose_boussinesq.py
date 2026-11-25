@@ -88,8 +88,8 @@ def _generate_scenario(
     config_cfg: Dict[str, Any],
     sample_idx: int,
 ) -> ScenarioData:
-    bathy_cfg_path = Path(str(config_cfg.get("bathymetry", "configs/data/bathymetry_boussinesq.yaml")))
-    source_cfg_path = Path(str(config_cfg.get("source", "configs/data/source_boussinesq.yaml")))
+    bathy_cfg_path = Path(str(config_cfg.get("bathymetry", "configs/diagnostics/boussinesq_bathymetry.yaml")))
+    source_cfg_path = Path(str(config_cfg.get("source", "configs/diagnostics/boussinesq_source.yaml")))
     run_seed_raw = dataset_cfg.get("seed", 42)
     run_seed = int(42 if run_seed_raw is None else run_seed_raw)
     sample_seed = _seed_for_sample(run_seed, sample_idx)
@@ -251,7 +251,7 @@ def _plot_frames(frames: np.ndarray, times: np.ndarray, out_path: Path, max_fram
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Boussinesq propagation diagnostic with quantitative time-series + frame plots.")
-    p.add_argument("--config", type=str, default="configs/data/dataset_boussinesq.yaml")
+    p.add_argument("--config", type=str, default="configs/diagnostics/boussinesq_dataset.yaml")
     p.add_argument("--sample-index", type=int, default=1)
     p.add_argument("--output-dir", type=str, default="results/boussinesq_diagnostic")
     p.add_argument("--n-steps", type=int, default=None)

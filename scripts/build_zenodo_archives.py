@@ -376,9 +376,9 @@ def _reproduction_specs(
                 MULTISEED_RESULTS_ROOT / "seed_metrics",
                 MULTISEED_RESULTS_ROOT / "reference_analysis",
                 ROOT / "configs/model/multiseed",
-                ROOT / "scripts/eval_v2_seed_metrics.py",
-                ROOT / "scripts/eval_v2_reference_analysis.py",
-                ROOT / "scripts/summarize_v2_multiseed_reference.py",
+                ROOT / "scripts/eval_seed_metrics.py",
+                ROOT / "scripts/eval_reference_analysis.py",
+                ROOT / "scripts/summarize_multiseed_reference.py",
                 ROOT / "scripts/run_multiseed_evaluation.sh",
                 ROOT / "scripts/run_geoclaw_discrepancy_ablation.py",
                 ROOT / "paper/figures/geoclaw_discrepancy_ablation.json",
@@ -418,7 +418,7 @@ def _processed_specs() -> tuple[ArchiveSpec, ...]:
         ArchiveSpec(
             "provenance/processed_contract_and_preprocessing.tar.zst",
             (
-                ROOT / "configs/eval/final_v2_suite.yaml",
+                ROOT / "configs/eval/benchmark_suite.yaml",
                 ROOT / "configs/data/preprocess_train.yaml",
                 ROOT / "configs/data/preprocess_eval.yaml",
                 ROOT / "configs/data/preprocess_test.yaml",
@@ -586,7 +586,7 @@ def _write_json(path: Path, value: Any) -> None:
 
 
 def _active_contract_summary() -> tuple[str, str]:
-    contract_path = ROOT / "configs/eval/final_v2_suite.yaml"
+    contract_path = ROOT / "configs/eval/benchmark_suite.yaml"
     payload = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
     scientific = payload["scientific_scope"]
     requested = scientific["requested_times"]

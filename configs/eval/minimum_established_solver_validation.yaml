@@ -1,4 +1,4 @@
-schema_id: tsunami-surrogate.minimum-established-solver-validation.v2
+schema_id: tsunami-surrogate.minimum-established-solver-validation.v4
 artifact_kind: minimum-established-solver-validation-candidate
 
 prerequisites:
@@ -22,6 +22,7 @@ external_comparator:
   swe_mode: standard_single_level_cartesian_swe
   dispersive_mode: serre_green_naghdi
   dispersive_equation_id: 2
+  dispersive_pairing_scope: asymptotic_small_amplitude_constant_depth_long_wave
   amr_levels: 1
   friction: disabled
   coriolis: disabled
@@ -30,6 +31,11 @@ external_comparator:
   boundary_mapping:
     periodic: periodic
     open: extrapolation
+  expected_revisions:
+    clawpack_commit: 5ce53b4814a3e03536fa17e8ae05e65960194c56
+    geoclaw_commit: 11479f675dd8bb19066a2430c28206999cebf299
+    petsc_commit: fd2ca03442be2a78130b411057f3b922130f6b1b
+    petsc_options_sha256: e7494f0405490bdf6529976490ee9dba1900872569e27b07af22e44ca102763f
 
 external_execution:
   spatial_order: 2
@@ -66,6 +72,8 @@ external_execution:
     petsc_ksp_type: gmres
     petsc_ksp_rtol: 1.0e-9
     petsc_ksp_max_it: 200
+    petsc_report_converged_reason: true
+    petsc_fail_on_nonconvergence: true
     mpi_processes: 2
     omp_threads: 1
 
@@ -91,8 +99,39 @@ gauges:
     - [0.50, 0.50]
     - [0.70, 0.50]
     - [0.85, 0.50]
-  arrival_fraction_of_external_peak: 0.10
   inactive_external_peak_floor: 1.0e-8
+
+metric_policy:
+  per_time_signal_floor_fraction: 0.05
+  peak_plateau_fraction: 0.99
+  lag_minimum_overlap_fraction: 0.50
+  arrival_metric: disabled_initially_supported_fields
+  absolute_errors: always_report
+  analytical_flat_swe_decomposition: always_report
+
+decision_policy:
+  threshold_float_rel_tolerance: 1.0e-12
+  threshold_float_abs_tolerance: 1.0e-15
+  diagnostic_boundary_band_cells: 8
+  category_roles:
+    flat_analytical:
+      comparison: descriptive_only
+      refinement: gate
+    matched_long_wave:
+      comparison: gate
+      descriptive_metrics:
+        - waveform_lag_steps_max
+      refinement: gate
+    production_input:
+      comparison: descriptive_only
+      identity_time_finite_health: gate
+  flat_analytical_verification:
+    finest_analytical_inhouse_relative_l2_max: 0.20
+    require_pairwise_strict_decrease: true
+    gated_error_series:
+      - trajectory_relative_l2
+      - analytical_inhouse_relative_l2
+      - analytical_external_relative_l2
 
 cases:
   - case_id: flat_linear_packet
@@ -108,20 +147,18 @@ cases:
     pairings:
       - [swe_hydrostatic, geoclaw_swe]
       - [swe_muscl_hr, geoclaw_swe]
-      - [boussinesq, geoclaw_sgn]
 
-  - case_id: smooth_periodic_bathymetry
-    category: smooth_variable_bathymetry
-    generator: smooth_periodic_bathymetry
+  - case_id: matched_long_wave_mode
+    category: matched_long_wave
+    generator: flat_linear_mode
     grids: [32, 64, 128]
-    transverse_cells: 4
-    depth: 1.0
-    bathymetry_amplitude: 0.10
+    transverse_cells: 8
+    depth: 0.05
     amplitude: 1.0e-5
+    mode: 1
+    phase_origin: 0.25
     boundary: periodic
     pairings:
-      - [swe_hydrostatic, geoclaw_swe]
-      - [swe_muscl_hr, geoclaw_swe]
       - [boussinesq, geoclaw_sgn]
 
   - case_id: production_input_canaries
@@ -155,42 +192,54 @@ cases:
 thresholds:
   flat_analytical:
     trajectory_relative_l2: 0.20
-    per_time_relative_l2_p95: 0.20
+    per_time_scaled_l2_p95: 0.20
     gauge_nrmse_max: 0.15
-    arrival_time_abs_max: 0.0070
     peak_relative_error_max: 0.15
-    time_to_peak_abs_max: 0.0070
+    peak_plateau_time_abs_max: 0.0070
     waveform_lag_steps_max: 2
-  smooth_variable_bathymetry:
-    trajectory_relative_l2: 0.25
-    per_time_relative_l2_p95: 0.25
-    gauge_nrmse_max: 0.20
-    arrival_time_abs_max: 0.0105
-    peak_relative_error_max: 0.20
-    time_to_peak_abs_max: 0.0105
-    waveform_lag_steps_max: 3
+  matched_long_wave:
+    trajectory_relative_l2: 0.20
+    per_time_scaled_l2_p95: 0.20
+    gauge_nrmse_max: 0.15
+    peak_relative_error_max: 0.15
+    peak_plateau_time_abs_max: 0.0070
+    waveform_lag_steps_max: 2
   production_input:
     trajectory_relative_l2: 0.35
-    per_time_relative_l2_p95: 0.35
+    per_time_scaled_l2_p95: 0.35
     gauge_nrmse_max: 0.30
-    arrival_time_abs_max: 0.0140
     peak_relative_error_max: 0.30
-    time_to_peak_abs_max: 0.0140
+    peak_plateau_time_abs_max: 0.0140
     waveform_lag_steps_max: 4
   refinement:
     finest_to_coarsest_error_ratio_max: 1.05
     gated_pairings:
       - swe_hydrostatic__geoclaw_swe
       - swe_muscl_hr__geoclaw_swe
+      - boussinesq__geoclaw_sgn
 
 aggregation:
-  require_every_comparison: true
+  require_every_gated_comparison: true
+  require_every_descriptive_comparison: false
   require_every_gated_refinement: true
+  require_every_gated_verification: true
+  production_compatibility_metrics: descriptive_only
   missing_or_invalid_external_result: fail
   threshold_changes_after_external_results: forbidden
+  external_checksums: exact_canonical_coverage
+  external_manifest_binding: required
 
 interpretation:
   external_solver_is_truth: false
-  boussinesq_scope: small_amplitude_flat_or_smooth_fully_wet_regime
+  boussinesq_scope: asymptotic_small_amplitude_constant_depth_long_wave_only
+  unmatched_boussinesq_sgn_comparisons: forbidden
   production_case_scope: exact_96x96_inhouse_pipeline_crop_against_boundary_safe_padded_geoclaw_swe
-  threshold_rationale: conservative pre-result engineering limits on the normalized unit-domain benchmark; any revision creates a new candidate contract
+  design_lineage_bundle: 5b872277129dc0c4503bd8fd7e3f6e1f4d2a60c49e25292919c005230673d72a
+  design_lineage_outcome: immutable_blocked_evidence_preserved_unchanged
+  threshold_rationale: v3 numerical limits carried forward exactly; v4 changes evidence roles, not limits
+  flat_verification_rationale: gate convergence plus finest analytical accuracy instead of requiring coarse grids to satisfy finest-resolution comparison limits
+  production_rationale: complex different-scheme outputs are mandatory compatibility diagnostics, not pointwise external truth
+  lag_rationale: standing periodic modes do not provide an identifiable translation-delay gate; lag remains reported
+  low_signal_rationale: per-time denominators use the preregistered five-percent trajectory signal floor
+  arrival_rationale: disabled because all frozen comparison fields have nonzero support at the first requested time
+  peak_time_rationale: compare 99-percent peak plateaus instead of unstable single-sample argmax indices

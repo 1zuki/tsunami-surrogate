@@ -7,7 +7,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.evaluation.target_scaling import (
+from tsunami_surrogate.evaluation.target_scaling import (
     apply_target_denorm,
     load_target_denorm,
     signatures_match,

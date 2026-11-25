@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from src.data_gen.common_time_v2 import code_state
+from tsunami_surrogate.data_gen.common_time import code_state
 
 
 def test_code_state_ignores_ignored_runtime_configs() -> None:

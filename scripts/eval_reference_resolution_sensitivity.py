@@ -22,7 +22,7 @@ import torch
 import yaml
 
 from tsunami_surrogate.data.dataset import ShardedTsunamiDataset
-from tsunami_surrogate.data_gen.common_time_v2 import hash_array, parse_requested_output_config
+from tsunami_surrogate.data_gen.common_time import hash_array, parse_requested_output_config
 from tsunami_surrogate.evaluation.normalization_bridge import load_standardization_spec
 from tsunami_surrogate.models import build_model, model_config_signature
 from tsunami_surrogate.utils.device import resolve_device
@@ -516,7 +516,7 @@ def main() -> None:
         Path(__file__).resolve(), ROOT / "scripts/eval_suite_preflight.py",
         ROOT / "tsunami_surrogate/__init__.py", ROOT / "src/training/checkpointing.py",
         ROOT / "src/evaluation/normalization_bridge.py", ROOT / "src/data/dataset.py",
-        ROOT / "src/data_gen/common_time_v2.py", ROOT / "src/utils/hashing.py",
+        ROOT / "src/data_gen/common_time.py", ROOT / "src/utils/hashing.py",
         ROOT / "src/utils/device.py",
     ]
     sources.extend(sorted((ROOT / "src/models").rglob("*.py")))

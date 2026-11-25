@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.data_gen.simulate_dataset import (
+from tsunami_surrogate.data_gen.simulate_dataset import (
     QualityPolicy,
     RolloutResult,
     _compute_rollout_health,

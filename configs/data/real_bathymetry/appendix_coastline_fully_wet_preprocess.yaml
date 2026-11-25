@@ -1,10 +1,12 @@
 raw:
-  scenario_manifest: data/real_bathymetry/manifests/appendix_coastline_fully_wet/scenario_manifest.jsonl
+  publication_split: test
+  generation_config: configs/data/real_bathymetry/appendix_coastline_fully_wet_dataset.yaml
+  scenario_manifest: data/real_bathymetry_v2/manifests/appendix_coastline_fully_wet/scenario_manifest.jsonl
   fde_manifests:
-    hydrostatic: data/real_bathymetry/manifests/appendix_coastline_fully_wet/hydrostatic_manifest.jsonl
+    hydrostatic: data/real_bathymetry_v2/manifests/appendix_coastline_fully_wet/hydrostatic_manifest.jsonl
   raw_dirs:
-    hydrostatic: data/real_bathymetry/raw/appendix_coastline_fully_wet/hydrostatic/samples
-processed_dir: data/processed_real_bathymetry/appendix_coastline_fully_wet
+    hydrostatic: data/real_bathymetry_v2/raw/appendix_coastline_fully_wet/hydrostatic/samples
+processed_dir: data/processed_real_bathymetry_v2/appendix_coastline_fully_wet
 fde:
   mode: single
   targets:

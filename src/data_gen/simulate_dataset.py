@@ -19,8 +19,10 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from tsunami_surrogate.utils.config import load_config
+
 try:
-    from tsunami_surrogate.data_gen.common_time_v2 import (
+    from tsunami_surrogate.data_gen.common_time import (
         ETA_SAMPLE_SCHEMA_ID,
         PUBLICATION_SCHEMA_ID,
         RequestedOutputConfig,
@@ -40,7 +42,7 @@ try:
         effective_worker_count,
     )
 except ImportError:
-    from common_time_v2 import (
+    from common_time import (
         ETA_SAMPLE_SCHEMA_ID,
         PUBLICATION_SCHEMA_ID,
         RequestedOutputConfig,
@@ -3130,8 +3132,7 @@ class TsunamiDatasetBuilder:
                 f"Could not find {config_path}, is the path correct"
             )
 
-        with self.config_path.open("r", encoding="utf-8") as f:
-            cfg = yaml.safe_load(f)
+        cfg = load_config(self.config_path)
         if cfg is None:
             raise ValueError("yaml config is empty/invalid")
 
@@ -5125,7 +5126,7 @@ class TsunamiDatasetBuilder:
         requested = self.dataset.requested_output
         if requested is None or not records:
             return None
-        from tsunami_surrogate.data_gen.common_time_v2 import write_operational_shard_manifest
+        from tsunami_surrogate.data_gen.common_time import write_operational_shard_manifest
 
         publication_hashes: dict[str, str] = {}
         resolved_config_hashes: dict[str, str] = {}

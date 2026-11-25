@@ -11,8 +11,8 @@ from scripts.train_ensemble import (
     _parse_seeds,
     _require_fresh_member,
 )
-from src.utils.config import load_config
-from src.utils.experiment import init_run
+from tsunami_surrogate.utils.config import load_config
+from tsunami_surrogate.utils.experiment import init_run
 
 
 LOCAL_SINGLE_SEED_CONFIGS = (

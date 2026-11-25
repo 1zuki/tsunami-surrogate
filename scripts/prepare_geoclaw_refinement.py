@@ -19,8 +19,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from tsunami_surrogate.data_gen.common_time_v2 import hash_array, stable_hash_payload
-from tsunami_surrogate.evaluation.common_time_v2_level_a import validate_checksums
+from tsunami_surrogate.data_gen.common_time import hash_array, stable_hash_payload
+from tsunami_surrogate.evaluation.common_time_level_a import validate_checksums
 from tsunami_surrogate.evaluation.established_solver_validation import _write_checksums
 from tsunami_surrogate.utils.hashing import sha256_file
 
