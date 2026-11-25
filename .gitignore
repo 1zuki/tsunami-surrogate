@@ -29,7 +29,6 @@ test-format/
 els-cas-templates/
 uit-nckh-proposal/
 cover-letter/
-docs/
 
 # test script
 test.py
@@ -56,9 +55,13 @@ results/*
 /results_archive/
 /ablation_runs/
 
-# Immutable run snapshots are intentionally versioned.
-!runs/**/results/
-!runs/**/results/**
+# Historical outputs and manuscript backups stay outside the source tree.
+/runs/
+/paper-backup/
+/paper/tmp/
+/tmp/
+/.ua/
+/graphify-out/
 
 experiments/solver_compare/*
 
@@ -118,7 +121,6 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
-.gitignore
 .sixth
 .venv/
 
@@ -293,3 +295,19 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# LaTeX build products
+*.aux
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# Public documentation is selected explicitly; local research notes stay private.
+/docs/*
+!/docs/reference-sensitivity-30-20261125/
+!/docs/CONFIGURATION.md
+!/docs/REPOSITORY_GUIDE.md
+/.tmp/
+/.tools/
